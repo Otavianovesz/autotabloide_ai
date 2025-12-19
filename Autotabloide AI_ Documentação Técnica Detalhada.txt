@@ -1,0 +1,2206 @@
+﻿MANUAL DE ENGENHARIA E DESENVOLVIMENTO INTEGRAL: AUTOTABLOIDE AI
+Prefácio e Diretrizes de Governança Técnica
+Este documento constitui a especificação técnica integral, definitiva e normativa para o desenvolvimento do sistema Autotabloide AI. A natureza deste projeto é classificada como Execução Crítica, exigindo uma adesão estrita aos padrões arquiteturais, protocolos de dados e lógica algorítmica aqui delineados. Não se trata de um documento de sugestões ou de melhores práticas opcionais; trata-se de um manual de engenharia que estabelece a "Lei do Sistema".
+O objetivo primário é a construção de uma Engine de Automação Gráfica Varejista (Retail Graphic Automation Engine) capaz de orquestrar a produção de material gráfico para o varejo de alta frequência (tabloides, cartazes, etiquetas de gôndola) com intervenção humana mínima. A estratégia central baseia-se na alavancagem de Inteligência Artificial Generativa para a higienização de dados brutos (ETL) e no uso de algoritmos de manipulação vetorial para renderização de alta fidelidade. O sistema deve operar sob a filosofia "Offline-First", priorizando o controle local de dados, a segurança da propriedade intelectual e a performance de renderização, eliminando a dependência de latência de rede para operações críticas.
+A autoridade deste documento é absoluta e deve ser tratada como a "Fonte da Verdade" (Single Source of Truth). A integridade do ecossistema depende de que cada decisão de engenharia — desde a escolha da biblioteca de parsing XML até a configuração de concorrência do banco de dados — reflita exatamente as instruções contidas nestas páginas. Qualquer desvio não autorizado resultará inevitavelmente em dívida técnica, inconsistência de dados ou falha catastrófica na renderização final.
+Parte I: Fundação e Arquitetura do Sistema
+A fundação do Autotabloide AI foi desenhada para resistir ao caos operacional do ambiente de varejo. A escolha tecnológica rejeita intencionalmente a volatilidade de frameworks web modernos baseados em JavaScript para o core logic, favorecendo a robustez, a tipagem estrita e a capacidade de processamento matemático de uma aplicação desktop nativa.
+Capítulo 1: O Núcleo Tecnológico (Core Stack)
+A arquitetura do sistema é monolítica e coesa, desenhada para garantir que o ambiente de execução seja previsível e controlado. A fragmentação tecnológica é o inimigo da estabilidade em sistemas de automação gráfica.
+1.1 O Motor de Execução (Runtime Environment)
+O núcleo do sistema será construído sobre Python 3.12 ou superior. Esta escolha transcende a preferência sintática; é uma decisão estratégica baseada na disponibilidade de bibliotecas de ligação com C (C-bindings) de alta performance. O Python oferece a única interseção viável no mercado atual entre a manipulação de estruturas de dados vetoriais complexas (via lxml) e o acesso ao estado da arte em visão computacional e Inteligência Artificial (via PyTorch e OpenCV). Nenhuma outra linguagem fornece a cola necessária para unir o parsing de XML de baixo nível com redes neurais profundas no mesmo espaço de memória e ciclo de execução.
+O gerenciamento do ambiente de execução é crítico para evitar o fenômeno de "Dependency Hell", onde atualizações silenciosas de bibliotecas de terceiros quebram a funcionalidade do sistema meses após o deploy.
+Tabela 1.1: Especificação do Ambiente de Execução
+Componente
+	Especificação Técnica
+	Justificativa Arquitetural
+	Linguagem
+	Python 3.12+
+	Suporte a Tipagem Estática forte, melhorias de performance no GIL e compatibilidade com bibliotecas de IA modernas.
+	Gerenciador
+	Poetry
+	Garante builds determinísticos. O arquivo pyproject.toml atua como um contrato imutável de versões. O uso de pip isolado é proibido.
+	Isolamento
+	Virtualenv (.venv)
+	Cada instância da aplicação deve carregar seu próprio universo de dependências, isolado do sistema operacional do host.
+	A regra de ouro para o gerenciamento de dependências é o travamento de versões. O arquivo pyproject.toml deve especificar versões exatas (pinned versions) para bibliotecas críticas como SQLAlchemy, Flet e OpenCV. A permissividade em atualizações automáticas ("^3.0.0") é vetada para componentes centrais.
+1.2 A Interface Gráfica (GUI Framework)
+Para a interface com o usuário, o sistema adota o framework Flet, uma implementação em Python da engine Flutter do Google. A decisão de evitar uma interface baseada em navegador (como Django ou React rodando em Electron) deve-se à necessidade de acesso direto e irrestrito aos recursos de hardware locais (sistema de arquivos, GPU para renderização de UI) sem as camadas de abstração e segurança (sandbox) impostas pelos navegadores web.
+O Autotabloide AI deve rodar como um executável Desktop Nativo no ambiente Windows. O Flet permite que a lógica de interface (frontend) e a lógica de negócios (backend) residam no mesmo processo Python, eliminando a latência de comunicação via API REST/GraphQL que existiria em uma arquitetura separada. Isso resulta em uma interface capaz de rodar a 60 FPS, proporcionando uma experiência fluida mesmo ao manipular grades com milhares de produtos.
+Diretrizes Estéticas e Funcionais (UI/UX): O sistema impõe o ThemeMode.DARK como padrão inalterável. A justificativa ergonômica baseia-se no ambiente de uso: operadores de design e varejo passam longas horas frente às telas. O modo escuro reduz a fadiga ocular e, crucialmente, aumenta a percepção de contraste e vivacidade das cores dos produtos e layouts, que são o foco do trabalho.
+A paleta de cores deve seguir uma hierarquia visual estrita para guiar a atenção do operador:
+* Base: Cinza Chumbo (#1A1A1A) para superfícies neutras.
+* Ação Primária: Azul Royal (#007AFF) para botões de confirmação e navegação.
+* Semântica de Estado: Vermelho para erros de bloqueio (ex: "Preço Ausente"), Amarelo para avisos (ex: "Baixa Resolução") e Verde para validação de sucesso.
+A responsividade da interface deve ser otimizada para a resolução Full HD (1920x1080), que constitui o padrão de hardware na indústria varejista e em departamentos de marketing.
+1.3 O Banco de Dados (Persistence Layer)
+A camada de persistência é o coração da integridade dos dados. O sistema rejeita soluções NoSQL (baseadas em documentos JSON) para o inventário principal, exigindo a rigidez estrutural e a integridade referencial de um banco de dados relacional SQL.
+SGBD: SQLite 3 em Modo WAL O motor de banco de dados escolhido é o SQLite 3, configurado obrigatoriamente no modo WAL (Write-Ahead Logging). Esta configuração técnica é o diferencial que permite a performance necessária para a aplicação. No modo tradicional (Journal Mode), uma operação de escrita bloqueia todo o banco de dados para leitura. Dado que a interface Flet precisa ler o banco continuamente para atualizar a tela (renderização reativa), e que processos de IA em background podem estar escrevendo centenas de registros simultaneamente, o bloqueio tradicional congelaria a UI. O modo WAL permite a concorrência "Leitores não bloqueiam Escritores", garantindo fluidez total.
+ORM: SQLAlchemy (Async) O acesso direto ao banco via strings SQL puras ("raw SQL") é proibido para evitar vulnerabilidades de injeção e, mais importante, para manter a manutenibilidade do código. Todo o acesso deve ser mediado pelo SQLAlchemy em sua versão Assíncrona (AsyncIO). O padrão arquitetural a ser seguido é o Repository Pattern, encapsulando as queries em classes dedicadas (ex: ProductRepository), desacoplando a lógica de persistência da lógica de interface.
+1.4 Motor de Vetorização (The Vector Engine)
+O Autotabloide AI distingue-se pela sua capacidade de manipular gráficos vetoriais programaticamente, tratando arquivos de design como código fonte.
+* Formato de Entrada: SVG 1.1 (Scalable Vector Graphics). O sistema interpreta o SVG não como uma imagem estática, mas como uma árvore DOM (Document Object Model) XML viva.
+* Parsing: A biblioteca lxml.etree é mandatória. Ela oferece a implementação mais rápida de processamento XML em Python (baseada em C), permitindo a localização de nós via XPath complexo (ex: encontrar um preço específico dentro de um grupo aninhado) em microssegundos.
+* Rasterização: A conversão final do vetor manipulado para formatos de distribuição (PDF ou PNG) será realizada pelas bibliotecas CairoSVG ou ReportLab. Estas ferramentas são responsáveis por traduzir as instruções vetoriais matemáticas em pixels (para telas) ou instruções de impressão postscript (para gráficas).
+Parte II: Topologia de Arquivos e Sistema de Arquivos
+Um sistema de automação robusto não pode depender da organização de arquivos do usuário. O Autotabloide AI deve instituir um ecossistema de arquivos hermético, criando sua própria estrutura de diretórios na inicialização e gerenciando seus ativos de forma autônoma. A aplicação não deve "pedir permissão" para criar pastas, mas sim impor sua topologia necessária para o funcionamento.
+Capítulo 2: A Árvore de Diretórios Mestre
+No momento do boot da aplicação (main.py), uma rotina de verificação de integridade deve escanear a existência da árvore de diretórios abaixo. A ausência de qualquer pasta deve desencadear sua criação imediata. Falhas de permissão de escrita nesta etapa devem abortar a inicialização com um erro fatal, pois o sistema não pode operar em modo "somente leitura".
+Tabela 2.1: Estrutura do File System (System Root)
+Diretório (Caminho Relativo)
+	Função Crítica e Conteúdo
+	Política de Acesso e Retenção
+	/AutoTabloide_System_Root/
+	Raiz absoluta do ambiente da aplicação.
+	Controle total pelo sistema.
+	/bin/
+	Armazena executáveis externos (Ghostscript, ffmpeg) necessários para conversões de mídia.
+	Somente Leitura (Read-Only).
+	/config/
+	Arquivos de configuração do usuário (settings.json), chaves de API e preferências de tema.
+	Leitura e Escrita persistente.
+	/database/
+	O santuário dos dados. Contém core.db, core.db-shm e core.db-wal.
+	Acesso exclusivo do processo da aplicação via SQLite.
+	/snapshots/
+	Backups de segurança zipados (yyyy-mm-dd_hh-mm.zip).
+	Escrita sequencial (Append-only).
+	/assets/store/
+	O "Cofre" (Vault). Armazena imagens processadas e renomeadas por Hash.
+	Imutável. Arquivos nunca são sobrescritos, apenas lidos.
+	/staging/
+	Área de quarentena. Downloads temporários de imagens brutas antes do processamento.
+	Volátil. Limpeza periódica.
+	/temp_render/
+	Lixo de renderização (previews, arquivos temporários).
+	Limpeza total a cada reinicialização (Boot).
+	/library/svg_source/
+	Repositório de templates originais .svg (Source of Truth do Design).
+	Somente Leitura. O sistema nunca edita estes arquivos.
+	/library/thumbnails/
+	Miniaturas geradas dos layouts para exibição na galeria da UI.
+	Gerado automaticamente pelo sistema.
+	/workspace/projects/
+	Arquivos de estado de sessão (.json). Representam os "Save Games" dos usuários.
+	Leitura e Escrita frequente.
+	Capítulo 3: Protocolo de Segurança de Imagens (The Image Vault)
+A gestão de ativos digitais é historicamente um ponto de falha em sistemas de marketing devido à duplicidade e inconsistência de nomenclatura. O Autotabloide AI resolve isso através de um protocolo rígido de Desduplicação via Hashing Criptográfico.
+Regra Absoluta de Nomenclatura: O nome do arquivo de imagem armazenado no disco JAMAIS deve refletir o nome do produto ou a intenção humana. Nomes como cerveja_brahma_lata.png ou oferta_final.jpg são estritamente proibidos dentro da pasta /assets/store/.
+Mecanismo de Ingestão e Desduplicação:
+1. Cálculo do Hash: Sempre que uma imagem entra no pipeline (via upload ou download), o sistema calcula o Hash MD5 do conteúdo binário do arquivo. Este hash é uma impressão digital única daquela sequência de bytes.
+2. Verificação de Existência: O sistema consulta o diretório /assets/store/ para verificar se já existe um arquivo nomeado com esse hash (ex: a1b2c3d4e5f6....png).
+3. Decisão de Armazenamento:
+   * Se o Hash existe: O sistema descarta o arquivo recém-recebido (pois é uma duplicata binária exata) e utiliza o caminho do arquivo já existente.
+   * Se o Hash é novo: O sistema renomeia o arquivo para .png e o move para o Cofre.
+Justificativa Técnica: Este método garante a integridade referencial e economiza espaço em disco drasticamente. Se um usuário baixar a mesma imagem de "Pack de Cerveja" 50 vezes com nomes diferentes, o sistema armazenará fisicamente apenas uma cópia. Além disso, elimina problemas de encoding de caracteres em nomes de arquivos (espaços, acentos) que frequentemente causam erros em scripts de renderização.
+Parte III: Engenharia de Dados e Modelagem (SQL)
+A modelagem de dados do Autotabloide AI deve ser Relacional e Estrita. A flexibilidade do NoSQL é útil para certas aplicações, mas desastrosa para sistemas de inventário que exigem consistência de preços e histórico.
+Capítulo 4: O Esquema de Dados (Database Schema)
+Todas as tabelas devem ser definidas utilizando as classes declarativas do SQLAlchemy, servindo como a única definição da estrutura do banco. Migrações de esquema (via Alembic) devem ser consideradas para evoluções futuras, mas a estrutura inicial abaixo é canônica.
+4.1 Tabela produtos (Inventory)
+Esta tabela atua como a "Fonte da Verdade" para qualquer operação de renderização. Nenhum preço ou nome vai para um cartaz sem antes existir como um registro validado nesta tabela.
+Tabela 4.1: Definição da Tabela Produtos
+Coluna
+	Tipo SQL
+	Restrições (Constraints)
+	Descrição Técnica e Lógica de Negócio
+	id
+	INTEGER
+	PK, AUTOINCREMENT
+	Identificador único interno. Nunca exposto ao usuário final, usado para relações FK.
+	sku_origem
+	TEXT
+	UNIQUE, NOT NULL
+	A descrição exata vinda do sistema ERP/Planilha. Não é mais uma chave primária. Usada para correlação via Fuzzy Matching ou IA com o banco existente em importações.
+	nome_sanitizado
+	TEXT
+	NOT NULL
+	O nome do produto processado pela IA para legibilidade humana. Regra de Estilização Obrigatória: Title Case (Primeira letra de cada palavra em maiúscula, restantes em minúsculas).
+	marca_normalizada
+	TEXT
+	INDEX
+	A marca extraída (ex: "Camil"). Indexada para permitir filtros de performance em grandes catálogos.
+	detalhe_peso
+	TEXT
+	NULLABLE
+	O peso ou volume padronizado (ex: "5kg", "350ml"). Separado do nome para permitir formatação tipográfica distinta (fonte menor).
+	preco_venda_atual
+	DECIMAL(10,2)
+	NOT NULL
+	O preço vigente. O uso de DECIMAL é obrigatório para evitar erros de ponto flutuante inerentes ao tipo FLOAT.
+	preco_referencia
+	DECIMAL(10,2)
+	NULLABLE
+	O preço "De" (anterior). Essencial para calcular a porcentagem de desconto e exibir etiquetas de "Oferta".
+	img_hash_ref
+	CHAR(32)
+	FOREIGN KEY
+	Suporte a Múltiplos Ativos (1:N): Armazena uma lista/array JSON de Hashes MD5 referenciando os arquivos físicos no Cofre (/assets/store/). Permite kits e produtos com variações/sabores.
+	status_qualidade
+	INTEGER
+	DEFAULT 0
+	Enumeração de estado do cadastro: 0=Incompleto, 1=Sem Foto, 2=Foto Baixa Resolução, 3=Pronto/Perfeito. Controla a cor do semáforo na UI.
+	4.2 Tabela layouts_meta (Design Specs)
+O sistema não deve ser obrigado a abrir e ler (parsear) arquivos SVG complexos cada vez que precisar listar opções para o usuário. Isso seria ineficiente. Ao importar um novo template, o sistema deve extrair seus metadados e "cacheá-los" nesta tabela.
+Tabela 4.2: Definição da Tabela Layouts Meta
+Coluna
+	Tipo SQL
+	Descrição Técnica
+	id
+	INTEGER
+	Chave Primária.
+	nome_amigavel
+	TEXT
+	O nome legível do layout (ex: "Tabloide Fim de Semana - Tema Verão").
+	arquivo_fonte
+	TEXT
+	O nome exato do arquivo na pasta /library/svg_source.
+	tipo_midia
+	ENUM
+	Classificação do layout: 'TABLOIDE', 'CARTAZ_A4', 'CARTAZ_GIGANTE', 'ETIQUETA'. Define regras de imposição de impressão.
+	capacidade_slots
+	INTEGER
+	Um inteiro representando quantos produtos cabem no layout (ex: 12). Usado para validação de completude do projeto.
+	estrutura_json
+	JSON
+	Um mapa serializado contendo a árvore de camadas detectadas, coordenadas e IDs. Permite que a UI desenhe "placeholders" sem carregar o SVG real.
+	fontes_requeridas
+	JSON
+	Uma lista de strings com as famílias de fontes necessárias (ex: ["Helvetica", "Impact"]). Usado para auditoria de pré-renderização.
+	4.3 Tabela projetos_salvos (Workspaces)
+Esta tabela permite a persistência do trabalho em andamento. Um projeto é essencialmente um mapeamento entre Slots de Layout e IDs de Produtos.
+Tabela 4.3: Definição da Tabela Projetos Salvos
+Coluna
+	Tipo SQL
+	Descrição Técnica
+	id
+	INTEGER
+	Chave Primária.
+	nome_projeto
+	TEXT
+	Identificador definido pelo usuário (ex: "Ofertas Carnaval 2025").
+	layout_id
+	INTEGER
+	Chave estrangeira ligando ao layout base em layouts_meta.
+	estado_slots
+	JSON
+	O coração do projeto. Um objeto JSON mapeando chaves de slot para IDs de produtos. Ex: {"slot_1": 50, "slot_2": 99, "slot_3": null}.
+	overrides_json
+	JSON
+	Armazena exceções e edições manuais que se aplicam apenas a este projeto. Ex: mudar o preço de um produto só neste cartaz sem alterar o banco global.
+	Parte IV: O Motor de Layout e Renderização (The Core)
+Este capítulo descreve o diferencial tecnológico do software: a capacidade de traduzir a intenção de design (criada em ferramentas como Adobe Illustrator) em código executável.
+Capítulo 5: O Protocolo de Nomenclatura "SVG Tagging"
+Para que o Autotabloide AI saiba exatamente onde posicionar um preço ou uma imagem, o usuário (Designer) deve seguir um protocolo de nomenclatura rígido ao criar o arquivo SVG. O código Python não "vê" o layout visualmente; ele navega pela árvore XML buscando por IDs de Camada (Layer IDs) específicos. Este é o contrato de interface entre o humano e a máquina.
+5.1 A Estrutura de Agrupamento (Clustering)
+Em um layout complexo como um tabloide com 12 ofertas, a desorganização das camadas tornaria a automação impossível.
+* A Regra do Agrupamento: No Illustrator, todos os elementos que compõem uma única oferta (foto, preço, nome, unidade) devem ser agrupados (Ctrl+G).
+* Identificação do Grupo: O ID deste grupo no painel de camadas DEVE ser nomeado sequencialmente: #SLOT_01, #SLOT_02,..., #SLOT_12.
+* Lógica do Código: O algoritmo de renderização executará um loop: for i in range(1, capacidade + 1). Em cada iteração, ele busca pelo nó XML f"//*". Se o nó não existir, o slot é ignorado; se existir, o sistema injeta os dados do produto atribuído àquele índice.
+5.2 As Etiquetas de Dados (Data Tags)
+Dentro de cada grupo #SLOT_XX, o Python busca pelos seguintes elementos filhos para realizar a injeção de conteúdo. A nomenclatura é Case Sensitive.
+1. #ALVO_IMAGEM (Retângulo/Path):
+   * Função: Define a área máxima permitida (Bounding Box) para a imagem do produto.
+   * Comportamento de Renderização (Refinado): O sistema lê as coordenadas x, y, width e height. Deve suportar Lógica de Grid/Composição: Se o registro do produto possuir múltiplos hashes em img_hash_ref (ex: Kit ou Vários Sabores), o motor deve dividir a área #ALVO_IMAGEM e diagramar as múltiplas imagens em um layout de mini-grid automaticamente, mantendo o Aspect Fit individual.
+2. #TXT_NOME_PRODUTO (Objeto de Texto):
+   * Função: Recebe o nome do produto.
+   * Algoritmo de Autosizing (Ajuste Dinâmico): O sistema lê as propriedades de estilo (fonte, tamanho inicial) deste objeto. Antes de renderizar, ele calcula a largura do texto do novo produto. Se o texto exceder a largura da caixa de texto, o código reduz o tamanho da fonte iterativamente (em passos de 0.5pt) até que o texto caiba perfeitamente, garantindo que nomes longos nunca sejam cortados. Lógica Condicional (Adicionada): Se o slot #TXT_UNIDADE estiver ausente no layout, o conteúdo de detalhe_peso do produto deve ser concatenado ao final do nome_sanitizado neste slot.
+3. #TXT_PRECO_INT (Texto): Recebe a parte inteira do valor (ex: "19"). Normalmente estilizado com fonte maior e mais pesada.
+4. #TXT_PRECO_DEC (Texto): Recebe os centavos (ex: ",90"). Frequentemente posicionado em sobrescrito (superscript).
+5. #TXT_UNIDADE (Texto): Lógica Condicional (Adicionada): Se o slot #TXT_UNIDADE estiver ausente no layout, o conteúdo de detalhe_peso do produto deve ser concatenado ao final do nome_sanitizado neste slot.
+6. #TXT_LEGAL (Texto): Campo opcional para textos legais, validade da oferta ou avisos de "Beba com Moderação".
+5.3 Tags e Lógica Crítica (Novos Protocolos)
+Foi adicionado o suporte a textos legais globais e a nova lógica de segurança para bebidas alcoólicas.
+1. #TXT_LEGAL_GLOBAL (Texto - Novo):
+   * Função: Define uma área para textos legais ou rodapés que se aplicam a todo o cartaz ou tabloide (rodapés, validade geral, disclaimers).
+   * Localização: Este nó XML deve ser posicionado pelo designer fora de qualquer grupo #SLOT_XX.
+2. Lógica de Ícone +18 (Recurso Crítico):
+   * Condição: Ao renderizar um slot, o sistema deve verificar a categoria do produto. Se a categoria for "Bebida Alcoólica" (ou outra categoria restrita), o sistema injetará e posicionará automaticamente o ícone vetorial de "Proibido para Menores" (pré-definido na biblioteca de ativos) no canto superior esquerdo do elemento #SLOT_XX.
+   * Z-Index: O ícone deve possuir um Z-Index que garanta que ele apareça sobre todos os demais elementos do slot.
+
+
+5.4 A Física das Camadas (Z-Index)
+O renderizador Python respeita rigorosamente a ordem de empilhamento (Z-Index) definida na árvore XML do SVG.
+* Sobreposição: Se o elemento #TXT_PRECO_INT estiver listado abaixo de #ALVO_IMAGEM na estrutura XML (o que significa que ele é "desenhado depois"), o preço aparecerá sobre a foto do produto.
+* Design Avançado (Overlays): O designer pode inserir uma imagem PNG transparente com o ID overlay no topo do grupo #SLOT_XX (ex: uma faixa diagonal escrito "OFERTA RELÂMPAGO"). O sistema garantirá que este elemento seja renderizado por último, cobrindo parcialmente a foto do produto e criando um efeito visual profissional de profundidade.
+Parte V: Especificação Funcional Detalhada (UX/UI)
+Esta seção traduz a arquitetura de backend em experiência do usuário, detalhando o comportamento de cada tela e interação.
+Capítulo 6: Tela 1 - O Hub de Layouts ("Ateliê")
+Objetivo: Centralizar a gestão de templates, validar a integridade técnica dos arquivos SVG importados e iniciar novos projetos.
+6.1 Área de Upload (Dropzone Inteligente)
+* Interface: Uma área tracejada proeminente ocupando o topo da tela.
+* Processo de Ingestão: Ao soltar um arquivo .svg, o sistema inicia uma cadeia de validação:
+   1. Cópia Segura: O arquivo é copiado para /library/svg_source.
+   2. Validação Estrutural: O parser lxml varre o arquivo. Se encontrar grupos #SLOT_XX, classifica-o como 'TABLOIDE'. Se encontrar apenas tags soltas sem slots numerados, classifica como 'CARTAZ'.
+   3. Auditoria de Fontes: O sistema lista todas as fontes referenciadas no SVG e verifica se estão instaladas no SO ou na pasta /assets/fonts. Se detectar uma fonte ausente (ex: "Helvetica-Bold"), exibe um alerta bloqueante: "A fonte requerida não está disponível. A renderização textual será imprecisa."
+   4. Geração de Preview: O renderizador cria uma miniatura PNG do layout vazio e salva em /library/thumbnails.
+6.2 A Galeria (Grid View)
+* Visualização: Cards de 250x350px exibindo as miniaturas dos layouts.
+* Context Menu (Botão Direito) - Ferramenta de Debug:
+   * "Inspecionar Estrutura (Raio-X)": Abre um modal crítico para designers. O sistema renderiza o SVG substituindo os elementos invisíveis (como #ALVO_IMAGEM) por retângulos coloridos semitransparentes (Verde para áreas de imagem, Vermelho para áreas de texto). Isso permite verificar visualmente se o código "entendeu" corretamente as áreas de injeção de dados desenhadas no Illustrator.
+Capítulo 7: Tela 2 - A Gestão de Dados ("O Almoxarifado")
+Objetivo: Higienizar dados brutos importados de ERPs e gerenciar o pipeline de aquisição e tratamento de imagens.
+7.1 Tabela Mestre (DataGrid Virtualizada)
+* Tecnologia de UI: Implementação de DataTable com Virtualização. O componente deve renderizar no DOM apenas as linhas visíveis na janela de visualização, permitindo a rolagem fluida de listas com mais de 10.000 produtos sem consumo excessivo de memória RAM.
+* Interatividade:
+   * Coluna [IMG]: Exibe um avatar pequeno. Clicar nesta célula abre o "Image Handler".
+   * Coluna ``: Ícone de semáforo (Vermelho/Amarelo/Verde) derivado do campo status_qualidade.
+* Filtros Rápidos: Toggles para "Mostrar apenas itens sem imagem" e "Mostrar apenas preços alterados hoje".
+7.2 O Módulo de Imagem (Image Handler) - Pipeline Complexo Este subsistema automatiza o trabalho manual mais demorado do design: encontrar e recortar fotos de produtos.
+Aba 1: Busca Automática (Web Scraping) O sistema utiliza o nome_sanitizado do produto para disparar uma busca em background (via Google Custom Search API ou Scraper dedicado). Exibe os 6 melhores resultados visuais em um grid. O usuário clica na melhor opção.
+Aba 2: Processamento Neural (Pipeline Gráfico) Assim que uma imagem é escolhida (ou colada da área de transferência):
+1. Estágio 1 (Remoção de Fundo): A biblioteca rembg, utilizando o modelo de rede neural U2-Net, processa a imagem para identificar o objeto principal e remover o fundo, retornando um PNG com canal Alpha transparente.
+2. Estágio 2 (Auto-Crop Inteligente):
+   * O OpenCV analisa o canal Alpha da imagem resultante.
+   * Identifica o Bounding Rect (menor retângulo possível) que contém todos os pixels não transparentes.
+   * Executa o corte (Crop) da imagem para remover as bordas vazias excessivas.
+   * Adiciona um Padding de segurança (10px).
+   * Objetivo: Maximizar a área ocupada pelo produto. Sem isso, uma garrafa pequena no centro de uma imagem grande ficaria minúscula quando inserida no slot do cartaz.
+3. Estágio 3 (Persistência):
+   * Calcula o Hash MD5.
+   * Verifica duplicidade.
+   * Salva no cofre /assets/store/.
+   * Atualiza o registro do produto no banco de dados.
+Capítulo 8: Tela 3 - O Montador de Tabloides ("A Mesa")
+Objetivo: A experiência central de montagem, simulando uma mesa de luz digital.
+8.1 Layout da Tela (Split Screen)
+* Painel Esquerdo (30%): A Estante. Lista de produtos cadastrados, com busca e filtros. Atua como a fonte do "Drag".
+* Painel Direito (70%): O Papel. Visualização WYSIWYG (What You See Is What You Get) do layout SVG selecionado. Atua como o alvo do "Drop".
+8.2 Mecânica de Drag & Drop e Renderização Reativa
+* Os Slots: No painel direito, o sistema desenha zonas de queda invisíveis correspondentes às coordenadas de cada #SLOT_XX.
+* Ação: O usuário arrasta um produto da esquerda e solta sobre o Slot 5 na direita.
+* Feedback Visual: O Slot 5 brilha em verde para indicar que é um alvo válido.
+* Processamento: Ao soltar, o sistema não re-renderiza a página inteira. Ele dispara uma renderização local apenas para o Slot 5, injetando a imagem, nome e preço, e atualiza o vetor na tela instantaneamente.
+* Persistência de Estado: A cada "Drop", o arquivo JSON do projeto em /workspace/projects/ é atualizado silenciosamente, garantindo que o trabalho nunca seja perdido em caso de falha de energia.
+8.3 Edição Contextual (Overrides) Frequentemente, o nome oficial do produto ("Refrigerante Coca Cola Garrafa Pet 2 Litros") não se adequa esteticamente a um slot pequeno.
+* Ação: Duplo clique sobre o produto já posicionado no slot.
+* Modal de Override: Abre uma janela permitindo editar "Nome para ESTE Tabloide" e "Preço Promocional".
+* Lógica de Dados: Ao salvar, o sistema grava essa alteração no JSON de overrides do projeto, mas NÃO altera o registro mestre do produto na tabela produtos. Isso permite flexibilidade total de design (ex: abreviar nomes) sem corromper a integridade do banco de dados principal.
+8.4 Menu de Importação em Massa (Excel Wizard)
+* Fluxo de IA e Conciliação:
+   1. O sistema lê um arquivo Excel importado.
+   2. Compara a coluna de identificação com o sku_origem do banco.
+   3. Tela de Conflito (O Juiz): Se o Excel diz que o preço é R$ 4,99, mas o Banco diz R$ 5,50, o sistema apresenta um painel de decisão lado a lado. O usuário pode clicar em "Usar Todos do Excel" ou resolver linha por linha.
+   4. Produtos novos (sem cadastro) são passados pela IA (LLM) para sanitização de nome e marcados como "Pendente de Imagem".
+Capítulo 9: Tela 4 - A Fábrica de Cartazes ("Gôndola")
+Objetivo: Produção em massa focada em eficiência de impressão (Imposition).
+9.1 Seletor de Matriz (Imposition Algorithm) Diferente do tabloide (onde 1 layout = 1 página), a impressão de cartazes exige otimização de papel.
+* Inputs: O usuário seleciona 50 produtos e um layout "Cartaz A4". Escolhe o papel de saída "Folha A3".
+* Cálculo Geométrico: O sistema detecta matematicamente que cabem 2 cartazes A4 (210x297mm) em uma folha A3 (420x297mm).
+* Geração: O renderizador gera um PDF de 25 páginas. A página 1 conterá o Cartaz do Produto 1 (esquerda) e o Cartaz do Produto 2 (direita), prontos para serem cortados na guilhotina.
+9.2 Filtro Inteligente de "Já Impresso" Para economizar recursos, o sistema verifica a tabela de histórico ou logs de impressão. Se o usuário importar uma lista com 100 itens, e 90 deles possuírem exatamente o mesmo preço da última impressão realizada há 7 dias, o sistema emite um alerta inteligente: "Economia de Recurso: 90 itens não sofreram alteração de preço desde a última impressão. Deseja imprimir apenas os 10 itens alterados?". Esta funcionalidade reduz drasticamente o custo operacional de tinta e papel da loja.
+Capítulo 10: Tela 5 - Dashboard e Controle ("Cofre")
+10.1 Gestão de Versões e Backup (Snapshots)
+* Timeline: Gráfico visual mostrando a evolução do cadastro ("Itens cadastrados" vs "Itens impressos") ao longo do tempo.
+* Gerenciador de Snapshots:
+   * Botão "Snapshot Agora": O sistema executa um bloqueio de escrita momentâneo no banco (Lock), força um checkpoint no arquivo WAL, e cria um arquivo ZIP contendo o core.db e as imagens adicionadas desde o último backup na pasta /snapshots/.
+   * Restauração (Time Machine): Uma lista de backups anteriores permite que o usuário restaure o sistema para o estado exato de "Ontem às 18:00", desfazendo erros catastróficos de operação.
+Parte VI: Protocolos de Inteligência Artificial
+A Inteligência Artificial no Autotabloide AI não tem permissão para ser "criativa". Ela deve ser configurada como um parser determinístico e rigoroso.
+Capítulo 11: A IA Generativa como Agente de ETL
+11.1 Configuração do Modelo (LLM)
+* Parâmetros de Inferência: Temperature deve ser fixada em 0.0 e Top-P em 0.1. Isso elimina a aleatoriedade da resposta, garantindo que a mesma entrada sempre produza a mesma saída.
+* System Prompt (Mandatório):"Você é um algoritmo de limpeza de dados (ETL). Sua única função é receber uma string de produto de supermercado mal formatada e retornar um JSON com os campos: 'produto' (Substantivo principal, Capitalized), 'marca' (Se houver, Capitalized), 'variacao' (Sabor/Tipo), 'peso' (Padronizado: g, kg, ml, L, un). Não adicione adjetivos. Não corrija marcas desconhecidas se não tiver certeza absoluta. Exemplo Entrada: 'SAB OMO LAV PERF 800'. Saída: {'produto': 'Sabão em Pó', 'marca': 'Omo', 'variacao': 'Lavagem Perfeita', 'peso': '800g'}."
+A IA é acionada automaticamente durante a importação de planilhas Excel "sujas", preenchendo os campos sanitizados sem intervenção humana, transformando descrições criptográficas de ERP em textos prontos para publicidade.
+Parte VII: Exportação e Finalização
+Capítulo 12: O Motor de Exportação
+12.1 Exportação para Web (RGB)
+* Formato: PNG ou JPG.
+* Resolução: 96 ou 150 DPI (adequado para WhatsApp/Redes Sociais).
+* Conversão de Cor: O motor deve converter as cores do espaço CMYK (usado no SVG de impressão) para RGB, garantindo que as cores não fiquem "lavadas" ou neon em telas de celular.
+12.2 Exportação para Gráfica (PDF/CMYK)
+* Engine: Ghostscript ou ReportLab.
+* Resolução: 300 DPI (Alta Resolução).
+* Gestão de Fontes (Curvas): O sistema deve converter todo o texto em Vetores (Curvas/Paths) no momento da geração do PDF. Isso elimina o risco comum de a gráfica abrir o arquivo e ter a formatação destruída por falta da fonte original.
+* Marcas de Corte (Crop Marks): Se o layout for menor que o papel de saída, o sistema desenha automaticamente as linhas guia de corte nos quatro cantos da página.
+
+
+VOLUME II: O MOTOR GRÁFICO (SVG ENGINE) E LÓGICA DE RENDERIZAÇÃO
+
+
+Classificação: CONFIDENCIAL
+Nível: EXECUÇÃO CRÍTICA
+Autor: Otaviano Vesz
+Versão: 3.0.0 (Definitiva)
+Referência: Continuação direta do Volume I - Fundação e Arquitetura do Sistema 1
+________________
+
+
+PREFÁCIO TÉCNICO E ESCOPO DO VOLUME II
+
+
+Este documento constitui o segundo pilar da documentação técnica do Autotabloide AI. Enquanto o Volume I estabeleceu a infraestrutura, a topologia de arquivos e os protocolos de banco de dados, este volume dedica-se exclusivamente à "alma matemática" da aplicação: o Motor de Renderização Vetorial (SVG-Engine).
+A missão deste componente é transmutar dados brutos armazenados no banco SQLite (preços, descrições) e ativos binários (imagens de produtos sanitizadas) em arte final de alta fidelidade, pronta para impressão em escala industrial ou distribuição digital. Diferente de sistemas web que dependem de renderização do navegador (HTML/CSS), o Autotabloide AI opera sob um paradigma de Controle Absoluto de Pixel, exigindo uma manipulação direta da árvore DOM (Document Object Model) do formato SVG e cálculos algébricos precisos para o posicionamento de elementos.
+A premissa central que rege este volume é a Imutabilidade do Design. O código Python jamais deve tentar "criar" design; sua função é interpretar e manipular com precisão cirúrgica os gabaritos (templates) criados por humanos no Adobe Illustrator. O SVG de entrada é a "Fonte da Verdade Visual"; o Python é o agente executor que preenche as lacunas deixadas pelo designer.
+________________
+
+
+PARTE I: FUNDAMENTOS MATEMÁTICOS E O ESPAÇO VETORIAL
+
+
+
+
+CAPÍTULO 1: O UNIVERSO CARTESIANO E SISTEMAS DE COORDENADAS
+
+
+Para manipular vetores com a precisão exigida pelo varejo — onde o alinhamento de um preço deve ser perfeito ao nível do milímetro, independentemente se o valor é "R$ 1,99" ou "R$ 1.299,00" — é imperativo compreender profundamente o espaço cartesiano em que o Autotabloide opera. Não estamos lidando com pixels de tela dependentes de resolução (DPI), mas com unidades vetoriais abstratas que serão rasterizadas apenas no último milissegundo do processo.
+
+
+1.1. A Dicotomia ViewBox vs. Viewport
+
+
+O SVG-Engine deve diferenciar, no momento do parsing inicial via lxml 1, dois conceitos fundamentais que governam a escala e a renderização:
+* Viewport (A Janela Física): Definido pelos atributos width e height na tag raiz <svg>. Geralmente especificado em unidades físicas como milímetros (mm) para impressão (CMYK) ou pixels (px) para web.
+* ViewBox (O Universo Lógico): Definido pelo atributo viewBox="min-x min-y width height".
+Diretriz de Engenharia: O sistema deve ignorar as unidades físicas do Viewport durante a manipulação lógica. Todo o cálculo de posicionamento, redimensionamento de fontes e injeção de imagens deve ocorrer exclusivamente no sistema de coordenadas abstrato do viewBox.
+Considere um documento com a seguinte definição:
+
+
+XML
+
+
+
+
+<svg width="210mm" height="297mm" viewBox="0 0 1000 1414">
+
+Neste cenário, o motor considera que a largura do universo é de 1000 unidades lógicas. Se precisarmos mover um elemento de preço 10% para a direita, calculamos um deslocamento de +100 unidades. Não importa se isso representa 21mm, 50mm ou 500 pixels na saída final. A conversão para o meio físico ocorre apenas na etapa de rasterização realizada pelo CairoSVG ou ReportLab.1 Essa abstração permite que o mesmo algoritmo de "Text-Fitting" funcione identicamente em um cartaz A4 e em um outdoor de 5 metros, desde que as proporções do ViewBox sejam mantidas.
+
+
+1.2. Matrizes de Transformação Afim (Affine Transformations)
+
+
+O posicionamento de elementos dinâmicos — especificamente a imagem do produto dentro do slot #ALVO_IMAGEM — não é realizado alterando coordenadas x e y simples. Tal abordagem destruiria a integridade de grupos complexos e ignoraria rotações ou escalas pré-aplicadas pelo designer. O Autotabloide utiliza a propriedade transform="matrix(a, b, c, d, e, f)" para todas as manipulações espaciais.
+A matriz de transformação padrão no SVG (e na álgebra linear computacional) é definida como uma matriz 3x3:
+
+
+$$\begin{bmatrix} a & c & e \\ b & d & f \\ 0 & 0 & 1 \end{bmatrix}$$
+Onde os coeficientes representam:
+* $a$: Escala no eixo X (Scale X).
+* $d$: Escala no eixo Y (Scale Y).
+* $e$: Translação no eixo X (Translate X).
+* $f$: Translação no eixo Y (Translate Y).
+* $b$ e $c$: Inclinação (Skew/Shear) e Rotação. No contexto de varejo, estes valores são quase sempre 0, pois a apresentação de produtos exige retilineidade para máxima legibilidade.
+Algoritmo de Normalização de Escala (Aspect Fit):
+Ao injetar a imagem de um produto no layout, o sistema obedece a uma regra inviolável: nunca distorcer a proporção (Aspect Ratio). Uma garrafa de vinho não pode parecer "gorda" nem "esticada". O cálculo obrigatório para gerar a matriz correta deriva da relação entre o Bounding Box do elemento #ALVO_IMAGEM (o retângulo desenhado pelo designer) e as dimensões reais do raster PNG (hash MD5) carregado do sistema de arquivos.1
+Seja $R_{target}$ o retângulo de destino (o slot no SVG) e $R_{source}$ a imagem do produto vinda do disco:
+
+
+$$ScaleFactor = \min\left(\frac{W_{target}}{W_{source}}, \frac{H_{target}}{H_{source}}\right)$$
+Este fator de escala garante que a imagem preencha o máximo possível do slot sem vazar. A nova matriz de transformação $M_{new}$ aplicada ao objeto imagem será:
+
+
+$$M_{new} = \begin{bmatrix} ScaleFactor & 0 & (X_{target} + \frac{W_{target} - W_{source} \cdot ScaleFactor}{2}) \\ 0 & ScaleFactor & (Y_{target} + \frac{H_{target} - H_{source} \cdot ScaleFactor}{2}) \\ 0 & 0 & 1 \end{bmatrix}$$
+Os termos $(X_{target} +...)$ e $(Y_{target} +...)$ calculam o deslocamento necessário para centralizar a imagem redimensionada dentro do retângulo original (Center-Center Alignment). Esta fórmula deve ser implementada em Python puro, sem dependências de bibliotecas gráficas pesadas nesta etapa, mantendo o overhead computacional mínimo.
+1.3 Lógica para PDFs Multipáginas (Fábrica de Cartazes) (Adição)
+
+
+Para suportar a geração de tabloides e conjuntos de cartazes que exigem mais de uma página física ou digital, o Motor de Vetorização deve operar no modo de processamento sequencial de frames (quadros).
+1. Modelo de Entidade: Um projeto salvo (Tabela projetos_salvos) deve ser capaz de referenciar não apenas um layout_id, mas uma lista ordenada de layout_ids, permitindo que um único projeto abranja vários templates SVG (ex: Página 1 é uma capa, Página 2-N são páginas de oferta interna). Para cartazes NUP (vários por folha), o motor considera N cartazes como um único conjunto de renderização que ocupa um frame de saída.
+2. Geração Sequencial: O motor de renderização (CairoSVG / ReportLab) deve ser invocado em um loop que itera sobre todos os frames a serem gerados.
+3. Montagem Final (Concatenamento): A saída de cada frame (seja uma página de tabloide ou um conjunto de cartazes NUP) deve ser escrita como um bloco sequencial de dados dentro de um único arquivo de destino. Para a exportação final em PDF, o sistema deve utilizar uma biblioteca de manipulação de PDF de baixo nível (ex: PyPDF2 ou um binding do Ghostscript, se necessário) para concatenar todos os PDFs de frame gerados temporariamente em um único documento PDF multipágina.
+4. Metadados: Os metadados de impressão (marcas de corte, bleed) devem ser calculados de forma independente para cada página/cartaz, mas embutidos no PDF final de forma coesa.
+
+
+
+
+CAPÍTULO 2: A ARQUITETURA DO PARSER DOM (LXML E XPATH)
+
+
+A manipulação do arquivo .svg não pode ser tratada como uma simples substituição de strings (String Replacement ou Regex). O SVG é um formato XML estrito e complexo. Tentar substituir texto via Regex em um arquivo SVG pode corromper a estrutura de nós, quebrar referências de definições (<defs>) ou invalidar o arquivo final. O Autotabloide opera manipulando a Árvore de Objetos do Documento (DOM).
+
+
+2.1. O Ciclo de Vida do Parsing e Performance
+
+
+Conforme estipulado no Core Stack do Volume I 1, a biblioteca escolhida é a lxml, uma ligação Python para as bibliotecas C libxml2 e libxslt. A escolha não é arbitrária: lxml é ordens de magnitude mais rápida que a biblioteca padrão xml.etree do Python, crucial quando precisamos gerar 1.000 cartazes em lote.
+O fluxo de execução para cada renderização segue um pipeline estrito:
+4. Carregamento IO-Bound: Leitura do arquivo .svg da pasta /library/svg_source para a memória RAM.
+5. Parseamento: tree = etree.parse(file_stream). Neste ponto, o arquivo deixa de ser texto e vira uma estrutura de dados navegável.
+6. Higienização de Namespaces: SVGs gerados pelo Adobe Illustrator contêm metadados proprietários (namespaces adobe:, i:, x: e tags pgf). O parser deve executar uma rotina de limpeza (objectify.deannotate ou remoção manual de atributos) antes do processamento. Isso reduz o tamanho do arquivo em memória e previne erros de validação no renderizador final (CairoSVG).
+7. Indexação de Nós (Otimização de Busca):
+Para evitar percorrer a árvore inteira a cada inserção de dado (o que resultaria em complexidade $O(N^2)$ ou pior), o sistema deve criar um índice interno na inicialização do template.
+Tabela 1: Comparativo de Estratégias de Acesso ao DOM
+Estratégia
+	Complexidade
+	Descrição
+	Uso no Autotabloide
+	Busca Sequencial
+	$O(N)$
+	Percorre cada nó até achar o ID.
+	PROIBIDO. Lento para SVGs complexos.
+	XPath Puro
+	$O(N)$ ou $O(\log N)$
+	Usa motor C otimizado, mas ainda recalcula a rota.
+	Permitido para buscas complexas/aninhadas.
+	Hash Map Index
+	$O(1)$
+	Cria um dicionário {id: node_ref} no início.
+	MANDATÓRIO para nós críticos (#SLOT, #PRECO).
+	Pseudo-código da Indexação Otimizada:
+
+
+Python
+
+
+
+
+node_index = {}
+# XPath otimizado para buscar apenas elementos que possuem atributo ID
+for element in tree.xpath('//*[@id]'):
+   node_index[element.get('id')] = element
+
+Esta técnica transforma o processo de "encontrar onde colocar o preço" em uma operação de acesso instantâneo de memória, vital para a performance do loop de renderização em massa.
+
+
+2.2. Identificação e Isolamento de Slots (Sandbox Logic)
+
+
+O protocolo de nomenclatura definido no Volume I 1 exige que os agrupamentos de ofertas sejam nomeados como #SLOT_01, #SLOT_02, etc. O SVG-Engine trata cada um desses grupos (<g>) como um "Sandbox" ou universo isolado.
+Quando o renderizador está processando o Produto A no Slot 1:
+   1. Ele recupera o nó <g id="SLOT_01"> do índice.
+   2. Todas as operações subsequentes (busca por #TXT_PRECO, #ALVO_IMAGEM) são realizadas no contexto relativo deste nó, e não no documento global.
+Por que isso é crítico?
+Designers frequentemente duplicam grupos no Illustrator (Ctrl+C, Ctrl+V) sem renomear os IDs internos. É comum ter um SVG onde o Slot 1 tem um filho chamado id="preco" e o Slot 2 também tem um filho id="preco". Se a busca fosse global (tree.find('//*[@id="preco"]')), o sistema sempre encontraria o primeiro preço e ignoraria o segundo, resultando em todos os produtos com o preço do primeiro item. A busca relativa (slot_node.xpath('.//*[@id="preco"]')) garante que estamos alterando apenas o preço daquele slot específico.
+Validação de Integridade Estrutural:
+Antes de qualquer tentativa de injeção de dados, o motor executa uma validação de esquema no Slot. Se o #SLOT_01 existe, mas não contém os nós filhos obrigatórios (como #TXT_PRECO_INT), o sistema levanta uma exceção específica (LayoutStructureError), aborta a renderização daquele item e registra o erro. O sistema jamais "adivinha" onde colocar o dado; se a estrutura não bate com a especificação, a falha deve ser explícita.
+________________
+
+
+PARTE II: O MOTOR DE TIPOGRAFIA E TEXT-FITTING
+
+
+A tipografia é a maior variável não controlada no varejo. O nome de um produto pode variar de 3 caracteres ("Sal") a 60 caracteres ("Limpador Multiuso Veja Perfumes da Natureza Lavanda 500ml"). O layout gráfico, contudo, possui espaço fixo. O SVG-Engine deve resolver essa contradição física através de algoritmos de ajuste dinâmico.
+
+
+CAPÍTULO 3: ALGORITMOS DE AJUSTE DE TEXTO (TEXT-FITTING)
+
+
+O objetivo do algoritmo de Text-Fitting é garantir que o texto ocupe a área designada com a máxima legibilidade possível, sem jamais vazar (overflow) ou colidir com outros elementos.
+
+
+3.1. A Caixa de Contenção e Metadados de Fonte
+
+
+O elemento #TXT_NOME_PRODUTO no SVG original serve como baliza. O motor extrai dele:
+   * A coordenada de âncora $(x, y)$.
+   * A família da fonte e estilo (ex: "Helvetica-Bold").
+   * O tamanho de fonte "ideal" ($F_{max}$) definido pelo designer.
+   * A largura máxima permitida ($W_{max}$).
+Se o elemento SVG for um <text> simples, a largura máxima nem sempre é explícita. Nesses casos, o sistema pode utilizar um retângulo auxiliar invisível (com ID #BOUNDS_NOME) para definir explicitamente os limites de largura e altura.
+
+
+3.2. O Algoritmo de "Busca Binária de Fonte"
+
+
+Muitos sistemas tentam reduzir o tamanho da fonte decrementando 1 ponto por vez (loop linear) até que o texto caiba. Isso é computacionalmente ineficiente. O Autotabloide implementa um algoritmo de Busca Binária para encontrar o Tamanho de Fonte Ótimo ($F_{opt}$).
+Definição do Problema:
+Dado uma string $S$, encontrar o maior $f \in [F_{min}, F_{max}]$ tal que $Width(S, f) \le W_{max}$.
+Lógica de Execução:
+   7. Calcula-se a largura do texto usando $F_{max}$. Se $\le W_{max}$, usa-se $F_{max}$ e encerra-se.
+   8. Caso contrário, inicia-se a busca:
+   * Defina limites: $Low = F_{min}$, $High = F_{max}$.
+   * Enquanto $(High - Low) > 0.5$ (precisão de meio ponto):
+   * $Mid = (Low + High) / 2$
+   * Se $Width(S, Mid) > W_{max}$:
+   * O texto ainda está grande. O novo teto é $High = Mid$.
+   * Senão (o texto cabe):
+   * Tenta-se aumentar. O novo piso é $Low = Mid$.
+   9. Aplica-se $Low$ como o atributo font-size final.
+Este método converge para o tamanho ideal em aproximadamente 4 a 6 iterações, independentemente de quão grande seja o texto inicial, garantindo performance estável mesmo em cargas de trabalho pesadas.
+
+
+3.3. Cálculo de Métricas de Fonte (Font Metrics e Kerning)
+
+
+O Python não renderiza pixels nativamente, mas precisa saber exatamente quantos pixels a string "Oferta" ocupará. O Autotabloide utiliza bindings para a biblioteca FreeType (frequentemente via Pillow ou fontTools) para carregar o arquivo .ttf ou .otf real localizado na pasta /library/fonts.1
+O cálculo da largura total ($Width_{total}$) não é uma simples soma das larguras dos caracteres. Deve-se considerar o Kerning (o ajuste de espaço entre pares específicos de letras, como 'A' e 'V').
+
+
+$$Width_{total} = \sum_{i=1}^{n} \left( AdvanceWidth(char_i) + KernPair(char_i, char_{i+1}) \right)$$
+Ignorar o Kerning resultaria em um cálculo impreciso, onde o sistema "acha" que o texto cabe, mas na renderização final ele colide com a borda do cartaz. O Autotabloide exige carregamento das tabelas de kerning (hmtx e kern tables) das fontes utilizadas.
+3.4 Algoritmo de Autosizing e Quebra de Linha (Correção e Adição)
+
+
+A lógica de ajuste dinâmico de fonte (Algoritmo de Autosizing) deve ser estritamente corrigida para priorizar a harmonia visual e a legibilidade, conforme a seguinte regra:
+   1. Regra de Ouro (Correção): O sistema JAMAIS deve tentar aumentar o tamanho da fonte além do definido originalmente no objeto de texto do template SVG. O tamanho inicial é o ponto máximo permitido. Se o texto couber perfeitamente na primeira linha ou na caixa e o seu tamanho for menor que a largura da caixa, o sistema deve manter o tamanho da fonte original do template para harmonia visual.
+   2. Prioridade de Quebra (Adição): Antes de qualquer redução de tamanho de fonte, o algoritmo deve tentar ajustar o texto automaticamente. Textos que excedem a largura do #TXT_NOME_PRODUTO devem ser quebrados em múltiplas linhas.
+   * Hifenização: A quebra de linha deve utilizar, se necessário, a lógica de hifenização silábica (se o idioma for PT-BR) para otimizar o espaço e a estética da quebra, utilizando bibliotecas como Pyphen ou um algoritmo interno de ajuste de linha.
+   * Alinhamento: A quebra e o posicionamento das linhas resultantes devem respeitar rigorosamente o alinhamento (Esquerda, Centro, Direita, Justificado) definido nas propriedades do objeto de texto SVG original.
+   3. Redução Condicional (Correção): Somente se o texto ainda exceder a altura total da caixa após a quebra de linha (truncamento vertical), o sistema deve iniciar o processo iterativo de redução do tamanho da fonte (em passos de 0.5pt) até que o texto caiba perfeitamente.
+
+
+
+
+CAPÍTULO 4: A LÓGICA CONDICIONAL DE PREÇOS (THE PRICE ENGINE)
+
+
+O preço é a entidade mais sensível do material de varejo. Sua representação visual obedece a regras de hierarquia de informação e psicologia de vendas (Neuromarketing). O Autotabloide trata o preço não como uma string simples, mas como um Objeto Composto.
+
+
+4.1. Decomposição e Sanitização
+
+
+A entrada vinda do Banco de Dados (preco_venda_atual) 1 é tipicamente um Decimal ou Float. O primeiro passo é a normalização para string com precisão fixa de duas casas decimais.
+Exemplo: Entrada 19.9 $\rightarrow$ String "19,90".
+A string é então explodida em componentes atômicos:
+   * Part_Int: "19"
+   * Part_Dec: "90"
+   * Currency: "R$"
+   * Separator: ","
+
+
+4.2. Injeção Condicional e Mapeamento de Nós
+
+
+O motor busca no Slot os nós de destino: #TXT_PRECO_INT, #TXT_PRECO_DEC, #TXT_MOEDA, #TXT_UNIDADE. A existência ou ausência destes nós no template SVG dita o comportamento do renderizador (Feature Detection).
+Lógica de Supressão de Centavos ("Smart Pricing"):
+Alguns designs minimalistas ou de "Atacarejo" exigem que, se o preço for redondo (ex: R$ 10,00), os centavos sejam suprimidos ou reduzidos visualmente para dar ênfase ao valor inteiro.
+
+
+Python
+
+
+
+
+if decimal_part == "00" and template_allows_suppression:
+   # Oculta a camada de decimais
+   node_dec.set("visibility", "hidden")
+   node_virgula.set("visibility", "hidden")
+   # Recalcula a posição do inteiro para re-centralizar o bloco visual
+   recenter_price_block(node_int, slot_width)
+
+Essa lógica condicional elimina a necessidade de ter dois templates separados (um para preços quebrados, outro para redondos). O código adapta o layout baseada no dado.
+
+
+4.3. Ancoragem Dinâmica (Dynamic Anchoring)
+
+
+Diferente do HTML, onde elementos fluem naturalmente (flow layout), no SVG os elementos têm coordenadas absolutas. Se o valor muda de "1" para "100", a largura do texto aumenta, e os elementos à direita (vírgula, centavos) precisam ser empurrados.
+Se o alinhamento do preço é à Esquerda (Left-Aligned):
+   * Renderiza-se o Inteiro em $X_{start}$.
+   * Calcula-se a largura do Inteiro renderizado ($W_{int}$).
+   * Posiciona-se a vírgula em $X_{sep} = X_{start} + W_{int} - Kerning$.
+   * Posiciona-se o Decimal em $X_{dec} = X_{sep} + W_{sep}$.
+   * Posiciona-se a Unidade em $X_{unid} = X_{dec} + W_{dec} + Spacing$.
+O motor recalcula e reescreve os atributos x de cada sub-elemento do preço a cada iteração. Isso garante um espaçamento visualmente perfeito ("Tight Typesetting") que sistemas automáticos genéricos raramente conseguem atingir.
+4.4 Suporte a Preço "De/Por" e Tags Específicas (Expansão e Adição)
+
+
+Para atender às exigências legais e de marketing que exigem a exibição de um preço anterior (De) e o preço promocional (Por), o motor de renderização deve expandir seu suporte a tags e alinhamentos:
+   1. Suporte Nativo a Preço "De" (Antigo/Referência) (Expansão): O motor deve reconhecer tags dedicadas para o preço de referência.
+   * Tag: #TXT_PRECO_DE
+   * Função: Recebe o valor do campo preco_referencia (Tabela produtos).
+   * Comportamento: Se a tag existir no slot e preco_referencia for preenchido, o valor deve ser injetado. Se preco_referencia for nulo, a tag deve ser suprimida (removida da árvore XML) para não poluir o layout.
+   2. Preço "Por" (Atual): Os tags existentes (#TXT_PRECO_INT e #TXT_PRECO_DEC) continuarão a receber o preco_venda_atual.
+   3. Tag para Preço Completo (#TXT_PRECO_COMPLETO) (Adição):
+   * Tag: #TXT_PRECO_COMPLETO
+   * Função: Oferece uma alternativa para layouts que não separam inteiros e centavos, injetando o preço formatado completo em uma única string de texto (ex: "R$ 19,90").
+   * Comportamento: Quando esta tag é usada, o algoritmo não deve processar #TXT_PRECO_INT e #TXT_PRECO_DEC para o mesmo preço, evitando redundância e conflito de dados.
+   4. Alinhamentos Variados (Adição): O algoritmo de injeção de dados (para preço e nome) deve ler a propriedade de alinhamento (text-anchor ou equivalente) do objeto de texto SVG original. O posicionamento e a justificação do texto injetado devem respeitar o alinhamento original (Esquerda, Centro, Direita, Justificado), garantindo que o texto ancore corretamente nas coordenadas x/y definidas pelo designer.
+
+
+
+
+________________
+
+
+PARTE III: GESTÃO DE CAMADAS, IMAGENS E PROFUNDIDADE
+
+
+
+
+CAPÍTULO 5: TOPOLOGIA DA ÁRVORE XML E Z-INDEX
+
+
+O padrão SVG 1.1 não suporta o atributo z-index do CSS. A ordem de empilhamento (stacking order) é definida estritamente pela ordem de aparição dos elementos na árvore XML. O último elemento a ser processado pelo renderizador é o que aparece "por cima" visualmente (Painter's Algorithm).
+
+
+5.1. Manipulação de Profundidade (Layer Shuffling)
+
+
+Para garantir a legibilidade, o Autotabloide impõe uma hierarquia visual estrita, independentemente de como o designer organizou as camadas no Illustrator. O Parser lê os elementos e, antes de salvar, reordena os nós filhos do grupo Slot em "Buckets Lógicos".
+Hierarquia de Camadas do Autotabloide:
+   * Background Layer (Índice 0): Formas, fundos coloridos, sombras.
+   * Product Layer: O elemento #ALVO_IMAGEM.
+   * Information Layer: Textos de nome, marca, peso.
+   * Price Layer: O bloco de preço (máximo contraste).
+   * Overlay Layer (Índice N): Selos de "Oferta", "Esgotado", faixas promocionais.
+Em Python/lxml, a manipulação é feita removendo o elemento de sua posição original e anexando-o novamente ao final da lista de filhos do pai:
+
+
+Python
+
+
+
+
+parent_node.append(overlay_node) # Move para o topo da pilha visual
+
+Essa reordenação automática previne erros comuns de design, como uma imagem de produto muito grande cobrindo o preço ou o texto descritivo.
+
+
+CAPÍTULO 6: O PIPELINE DE IMAGEM (RASTER PROCESSING)
+
+
+Embora o SVG seja vetorial, a fotografia do produto é um raster (pixels). O manuseio eficiente desses arquivos binários é crítico para evitar o inchaço de memória e garantir a velocidade de renderização.
+
+
+6.1. Linking vs. Embedding
+
+
+O SVG permite embutir imagens diretamente no código XML como strings Base64 (Data URI). O Autotabloide proíbe estritamente essa prática para materiais de impressão. O encoding Base64 aumenta o tamanho do arquivo em aproximadamente 33%, sobrecarrega o parser XML e consome memória excessiva.
+Protocolo de Referência: As imagens dentro do SVG gerado devem utilizar o atributo xlink:href (ou href no SVG 2.0) apontando para caminhos absolutos locais no sistema de arquivos hermético definido no Volume I (ex: file:///AutoTabloide_System_Root/assets/store/a1b2c3d4.png).
+Isso mantém o arquivo XML leve (apenas alguns kilobytes de texto) e delega o carregamento do bitmap pesado para o motor de rasterização (Cairo) apenas no momento final da exportação.
+
+
+6.2. O Cofre de Imagens (The Image Vault) e Hashing
+
+
+Conforme detalhado no Volume I 1, o sistema utiliza um protocolo de segurança onde o nome do arquivo é o Hash MD5 do seu conteúdo.
+Durante a renderização do Slot, o motor:
+   * Lê o img_hash_ref da tabela produtos.
+   * Verifica a existência física do arquivo em /assets/store/{hash}.png.
+   * Se o arquivo não existir (inconsistência de dados), injeta uma imagem de placeholder ("Imagem Indisponível") para não quebrar o layout e loga um aviso de integridade.
+   * Calcula a matriz de transformação (Aspect Fit) discutida no Capítulo 1.
+
+
+6.3. Máscaras de Recorte (Clipping Paths)
+
+
+Designs modernos frequentemente utilizam formas não-retangulares para as fotos (círculos, formas orgânicas, blobs). O Autotabloide utiliza <clipPath>.
+O retângulo #ALVO_IMAGEM original desenhado pelo designer é convertido em uma definição de recorte.
+Estrutura do XML Gerado:
+
+
+XML
+
+
+
+
+<defs>
+ <clipPath id="clip_slot_01_unique">
+   <path d="..." /> </clipPath>
+</defs>
+<image 
+   xlink:href="..." 
+   width="..." height="..." 
+   transform="..." 
+   clip-path="url(#clip_slot_01_unique)" 
+/>
+
+Isso garante que, se a imagem do produto tiver arestas indesejadas ou se o design exigir uma foto circular, o corte será aplicado em tempo de renderização, sem necessidade de editar o arquivo PNG original.
+________________
+
+
+PARTE IV: EXPORTAÇÃO, CORES E FINALIZAÇÃO
+
+
+
+
+CAPÍTULO 7: O MOTOR DE RENDERIZAÇÃO FINAL (OUTPUT ENGINE)
+
+
+O passo final é a conversão da árvore DOM manipulada em um arquivo estático para distribuição.
+
+
+7.1. CairoSVG e a Ponte C
+
+
+Utilizamos o CairoSVG como a engine principal de rasterização. Ele atua como uma ponte para a biblioteca gráfica Cairo (escrita em C), oferecendo performance nativa.
+Configurações Críticas:
+   * unsafe=True: Necessário para permitir que o renderizador leia arquivos do disco local (file://). Sem isso, as imagens dos produtos seriam bloqueadas por segurança padrão de SVG.
+   * output_width e output_height: Devem ser definidos explicitamente para controlar a resolução de saída. O SVG não tem DPI intrínseco; o renderizador deve impor a densidade de pixels.
+
+
+7.2. Ciência de Cores: O Desafio CMYK
+
+
+O Python e a maioria das bibliotecas de tela operam em RGB. Impressoras gráficas operam em CMYK (Ciano, Magenta, Amarelo, Preto). A conversão ingênua de RGB para CMYK frequentemente resulta em pretos "lavados" ou acinzentados (o problema do "Rich Black" vs "True Black").
+O Autotabloide mitiga isso através de um pós-processamento com Ghostscript.
+O fluxo é:
+   4. CairoSVG gera um PDF em espaço de cor RGB ou misto.
+   5. O sistema invoca o binário gs (Ghostscript) via subprocesso.
+   6. O Ghostscript aplica um perfil de cor ICC profissional (como Coated FOGRA39 ou SWOP) para converter o documento para CMYK.
+   7. Black Preservation: Uma flag específica é enviada para garantir que todo texto #000000 (Preto RGB) seja mapeado para C=0 M=0 Y=0 K=100 (Preto Puro CMYK). Isso é vital para a nitidez do texto impresso; texto preto composto por 4 cores tende a ficar borrado se houver um mícron de desalinhamento nas chapas da gráfica.
+7.3 Refinamento da Ciência das Cores (RGB/CMYK) (Refinamento)
+
+
+A diferenciação da saída de cores deve ser estritamente controlada com base no tipo de mídia (digital vs. impresso), com o objetivo de oferecer o melhor resultado de cor para o destino final.
+   1. Padrão para Tabloides Digitais (RGB) (Refinamento):
+   * Regra: Para o tipo_midia = 'TABLOIDE' ou qualquer classificação destinada a visualização em tela (WhatsApp, redes sociais, email), o padrão de exportação deve ser o espaço de cores RGB (sRGB).
+   * Justificativa: O RGB oferece uma gama de cores maior e é o padrão dos dispositivos digitais, garantindo que as cores vibrantes do produto sejam exibidas corretamente sem a compressão desnecessária do CMYK.
+   2. Padrão para Cartazes Impressos (CMYK Mandatório) (Refinamento):
+   * Regra: Para tipo_midia = 'CARTAZ_A4', 'CARTAZ_GIGANTE', 'ETIQUETA' ou qualquer outro formato destinado à impressão em gráficas (offset ou laser), a conversão para CMYK é MANDATÓRIA.
+   * Conversão: O motor de exportação deve utilizar perfis de cores ICC (Iniciativa Internacional de Cores), com o perfil padrão (ex: SWOP Coated v2) sendo definido nas configurações do sistema (/config/settings.json) e aplicado durante a rasterização/vetorização final.
+   3. Toggle na Exportação (Adição): O sistema deve apresentar, na tela de exportação (Tela 4 - Fábrica de Cartazes), um toggle claro e visível que permita ao usuário sobrescrever o padrão automático.
+   * Opções do Toggle: [Automático (Padrão)] / [Forçar RGB] / [Forçar CMYK].
+   * Função: Esta opção manual é crucial para casos atípicos, como um tabloide que precisa ser impresso ou um cartaz que será exibido apenas em monitores digitais de alta fidelidade.
+
+
+
+
+CAPÍTULO 8: PERFORMANCE E CONCORRÊNCIA
+
+
+
+
+8.1. Integração com Flet e SQLite WAL
+
+
+A interface gráfica do Autotabloide é construída em Flet.1 A renderização é um processo pesado (CPU-bound) que pode congelar a interface se executada na thread principal.
+O Motor Gráfico roda em um multiprocessing.Process separado ou em uma Thread dedicada (para I/O bound).
+Graças ao modo WAL (Write-Ahead Logging) ativado no SQLite 1, o processo de renderização pode ler dados massivos do banco (SELECT * FROM produtos) simultaneamente enquanto o operador continua editando outros produtos na interface, sem bloqueios de tabela (Database Locks).
+
+
+8.2. Caching de Fontes e Assets
+
+
+O carregamento de arquivos de fonte (.ttf) e o parsing inicial de templates SVG são operações custosas. O sistema implementa um cache LRU (Least Recently Used) na memória para manter os objetos de fonte e as árvores XML dos templates mais usados já parseados. Isso reduz o tempo de geração do segundo cartaz de 500ms para 50ms, permitindo a geração de milhares de itens por minuto.
+________________
+
+
+
+
+VOLUME III: PROTOCOLOS DE OPERAÇÃO CONTÍNUA, RESILIÊNCIA SISTÊMICA E GOVERNANÇA ALGORÍTMICA
+
+
+Classificação: CONFIDENCIAL
+Nível: EXECUÇÃO CRÍTICA (Deep Dive Implementation)
+Autor: Otaviano Vesz
+Versão: 3.0.0 (Definitiva)
+Volume: III de III
+________________
+
+
+PREFÁCIO DO VOLUME III: A DOUTRINA DA ESTABILIDADE E PERMANÊNCIA
+
+
+A concepção de um sistema de software, em sua fase de arquitetura (Volume I) e implementação tática (Volume II), reside frequentemente em um vácuo idealizado — um ambiente estéril onde a latência de rede é zero, os discos rígidos nunca falham e os usuários operam com a precisão de cirurgiões. O Volume III rompe com essa fantasia. Este documento consagra a Dinâmica de Sobrevivência e Escala do sistema Autotabloide AI.
+Um sistema de engenharia não termina quando o código compila ou quando os testes unitários passam. Ele começa a existir de verdade quando é submetido à entropia do mundo real: planilhas Excel corrompidas com codificação Windows-1252 em vez de UTF-8, conexões de internet intermitentes durante operações de scraping massivo, operadores impacientes que clicam repetidamente em botões de processamento e bases de dados locais crescendo para dezenas de milhares de registros fragmentados.
+Este volume define as leis irrevogáveis que governam o sistema em movimento. Não há margem para interpretação criativa ou desvios estilísticos. A estabilidade do runtime é inegociável. A interface gráfica (GUI), construída sobre o framework Flet, nunca deve congelar, mantendo uma taxa de atualização visual fluida, independentemente da carga de trabalho subjacente. O banco de dados SQLite nunca deve entrar em deadlock devido a concorrência mal gerenciada. A renderização vetorial deve ser pixel-perfect, imunizando a saída final contra a variabilidade caótica dos dados de entrada.
+Este manual detalha os mecanismos de concorrência assíncrona, a virtualização de dados para performance de interface extrema, os algoritmos matemáticos de imposição de página para impressão industrial e a imunidade do sistema contra dados hostis. Aqui, transformamos o código em uma infraestrutura perene.
+________________
+
+
+PARTE I: O NÚCLEO DINÂMICO E GERENCIAMENTO DE CONCORRÊNCIA
+
+
+
+
+CAPÍTULO 1: ARQUITETURA DE LOOP DE EVENTOS E NÃO-BLOQUEIO (ASYNC CORE)
+
+
+O Autotabloide AI opera sobre o ecossistema Flet, que encapsula o motor Flutter para renderização de UI, mas cuja lógica de negócios reside inteiramente em Python. O Python, por design, possui o Global Interpreter Lock (GIL), o que torna o gerenciamento de threads um desafio crítico para aplicações de interface gráfica. O maior risco operacional em aplicações GUI Python é o "bloqueio da thread principal" (Main Thread Blocking).
+Se a thread principal — responsável por desenhar pixels na tela e escutar cliques do mouse — for ocupada por um cálculo síncrono pesado (ex: redimensionar uma matriz de 500 imagens de alta resolução) ou uma operação de Entrada/Saída (I/O) lenta (ex: baixar um catálogo de ofertas de um servidor remoto instável), a interface congela imediatamente.1 O cursor do mouse se transforma em um indicador de carregamento, a janela pode ser marcada pelo sistema operacional como "Não Respondendo" e a percepção de qualidade do software colapsa irreversivelmente.
+Para garantir fluidez absoluta (alvo de 60 FPS na UI), implementamos um protocolo rígido de segregação de threads e assincronicidade.
+
+
+1.1. O Protocolo async/await Mandatório e o Ciclo de Vida do Event Loop
+
+
+Todas as interações de UI que envolvem chamadas de rede, manipulação de sistema de arquivos ou transações de banco de dados devem, obrigatoriamente, ser declaradas como async. O Python 3.12+ e o Flet suportam nativamente corrotinas, permitindo que o Event Loop suspenda a execução de uma função que está aguardando dados externos e ceda o controle para outras tarefas, como a atualização da barra de progresso ou a resposta a um botão de "Cancelar".1
+A Regra de Ouro da Assincronicidade:
+   * Handlers de UI (Eventos de Usuário): Todo manipulador de evento (on_click, on_change, on_submit) deve ser definido como async def. Isso sinaliza ao framework que a função pode ser pausada sem travar a GUI.
+   * Operações de I/O (Non-blocking I/O): Leituras de disco, requisições HTTP e queries SQL devem ser aguardadas explicitamente com a palavra-chave await. Isso libera o Event Loop durante a latência do hardware ou da rede.
+   * Proibição Absoluta de Sleep Síncrono: É estritamente proibido usar time.sleep() em qualquer ponto do código-fonte. O uso dessa função bloqueia a thread inteira, paralisando todas as animações e inputs. O único substituto permitido e mandatório é await asyncio.sleep(), que cria uma pausa não-bloqueante.1
+Tabela 1.1: Comparativo de Impacto de Execução no Event Loop
+Tipo de Operação
+	Implementação Síncrona (Proibida)
+	Implementação Assíncrona (Obrigatória)
+	Impacto na UI (Síncrono)
+	Impacto na UI (Assíncrono)
+	Delay / Timer
+	time.sleep(5)
+	await asyncio.sleep(5)
+	Congelamento total por 5s.
+	Fluidez total; UI interativa.
+	Request HTTP
+	requests.get(url)
+	await httpx.get(url)
+	Congela até receber bytes.
+	UI ativa durante o download.
+	Leitura de Arquivo
+	open(f).read()
+	await aiofiles.open(f).read()
+	Micro-travamento perceptível em arquivos grandes.
+	Imperceptível.
+	Query SQL
+	cursor.execute(sql)
+	await db.execute(sql)
+	Bloqueia se o disco estiver ocupado.
+	Libera processador para animações.
+	
+
+1.2. O Desvio de Processamento Pesado (CPU-Bound Offloading)
+
+
+Enquanto o padrão async/await resolve o bloqueio por espera (I/O-Bound), ele não resolve o bloqueio por processamento intensivo (CPU-Bound). O processamento de imagens — recorte, aplicação de máscaras alfa, remoção de fundo com redes neurais (rembg), conversão de espaço de cor CMYK — exige ciclos de CPU contínuos. Se executado no Event Loop principal, mesmo dentro de uma função async, a interface travará porque o Python não pode trocar de contexto enquanto a CPU está mastigando matrizes de pixels.4
+Protocolo de Execução Paralela:
+Utilizaremos estritamente asyncio.to_thread() (para Python 3.9+) ou loop.run_in_executor() para despachar essas tarefas para um ThreadPoolExecutor ou ProcessPoolExecutor dedicado. Isso move a carga de trabalho para fora da thread da UI.2
+   * Renderização de PDF (CairoSVG): Deve ocorrer em um processo separado para evitar que vazamentos de memória na biblioteca C afetem o processo principal.
+   * Processamento de Imagem (OpenCV/Rembg): Deve ocorrer em threads de background. O usuário verá um spinner de progresso, mas a janela permanecerá movível e redimensionável.
+   * Cálculos de Layout (Bin Packing): Se o número de itens exceder 100, o cálculo de posições ótimas deve ser isolado.
+
+
+CAPÍTULO 2: GESTÃO DE ESTADO E OTIMIZAÇÃO DE UI (VIRTUALIZAÇÃO)
+
+
+O Autotabloide não é apenas um visualizador passivo; é um manipulador de dados em massa. O usuário tem a prerrogativa de carregar uma lista de inventário contendo 5.000, 10.000 ou 50.000 produtos. Renderizar 5.000 linhas em uma estrutura de coluna padrão (ft.Column) causará um colapso imediato de memória e performance, pois o framework tentará criar, medir e desenhar 5.000 widgets simultaneamente, mesmo que apenas 20 estejam visíveis na tela.5
+
+
+2.1. Virtualização de Listas e Grids (The Infinite Scroll Pattern)
+
+
+O sistema adotará estritamente controles virtualizados para qualquer exibição de dados que exceda 50 itens. O princípio da virtualização dita que não renderizamos o que o olho humano não vê. O sistema deve manter na memória de renderização (Widget Tree) apenas os itens visíveis no viewport atual, mais um pequeno buffer de segurança (conhecido como overscan) para garantir rolagem suave.5
+O Mandato da Virtualização:
+   8. Componente Obrigatório: Substituição total de ft.Column (dentro de ScrollViews) por ft.ListView ou ft.GridView para listagens de produtos. Esses componentes implementam a lógica de renderização sob demanda nativamente.
+   9. Definição de Extensão (Item Extent): Para maximizar a performance da GPU, sempre que possível, definiremos a propriedade item_extent (altura fixa da linha). Isso permite que o motor de renderização calcule a posição da barra de rolagem e o tamanho total da lista sem precisar inspecionar o conteúdo de milhares de linhas não renderizadas.5
+   10. Técnica de Paginação Sob Demanda (Lazy Loading): Para a Tabela de Inventário Mestre (Tela 2), não carregaremos todos os registros do banco de dados SQL para a memória RAM de uma única vez. Implementaremos o padrão de "Carregamento Infinito" 7:
+   * Inicialização: O sistema carrega os primeiros 100 registros (SELECT... LIMIT 100 OFFSET 0).
+   * Detecção de Borda: Conforme o usuário rola a lista (on_scroll), o sistema detecta quando a posição de rolagem se aproxima do final (ex: pixels max_scroll - 200).
+   * Injeção de Dados: Esse evento dispara uma nova query assíncrona (LIMIT 100 OFFSET 100), e os dados resultantes são anexados à lista existente.
+   * Benefício: Isso mantém o consumo de RAM do processo Python baixo e estável, independentemente do tamanho total do banco de dados
+11. Descarte (Unmounting) (Refinado): Para evitar vazamento de memória RAM (Memory Leak) e sobrecarga do dispositivo, os itens/registros que saem da área visível da tela (Viewport) (rolagem para cima) devem ser ativamente descartados da memória de renderização (unmounted), mantendo apenas um pequeno buffer de itens acima e abaixo da área visível para garantir a fluidez da rolagem.
+Buffer: O sistema manterá apenas as referências (IDs) dos itens no buffer lógico da tabela, com o dado completo sendo descartado da memória de renderização quando fora da vista.
+
+
+2.2. O Padrão de Atualização Otimista (Optimistic UI)
+
+
+Na "Tela 3 - Montador de Tabloides", a interatividade é a prioridade absoluta. Quando o usuário arrasta um produto para um slot ou altera um preço manualmente, a confirmação visual deve ser instantânea. Esperar pelo round-trip do banco de dados (mesmo que seja um SQLite local rápido) introduz uma micro-latência perceptível que quebra a sensação de manipulação direta.9
+Fluxo de Execução Otimista:
+   * Ação do Usuário: O operador altera o preço de um produto de "R$ 10,00" para "R$ 9,90" em um input de texto.
+   * Mutação Local Imediata: O estado da UI (a variável Python vinculada ao controle) é atualizado instantaneamente. O campo de texto exibe "9,90" e, opcionalmente, pisca uma borda verde sutil para indicar sucesso percebido.
+   * Disparo Assíncrono: Em segundo plano (Fire-and-Forget), uma tarefa é lançada para persistir a alteração: await db.execute('UPDATE produtos SET preco = 9.90 WHERE id =?', produto_id).
+   * Reconciliação e Rollback:
+   * Caminho Feliz (Sucesso): A operação de banco completa silenciosamente. O ícone de "salvando" desaparece.
+   * Caminho de Falha (Erro): Se o banco estiver bloqueado ou ocorrer um erro de validação, o sistema captura a exceção.
+   * Ação Corretiva: Um "Toast" (SnackBar) vermelho aparece: "Falha ao salvar preço". Criticamente, o valor na tela reverte automaticamente para "R$ 10,00" para garantir que o usuário não acredite em uma mentira.11
+________________
+
+
+PARTE II: ENGENHARIA DE DADOS E PERSISTÊNCIA AVANÇADA
+
+
+
+
+CAPÍTULO 3: A HIGIENIZAÇÃO DE DADOS EM TEMPO REAL
+
+
+O maior inimigo da automação em varejo não é o erro de código, é a má qualidade dos dados de entrada ("Garbage In"). Planilhas legadas, exportações de ERPs antigos e digitação manual introduzem inconsistências fatais. O Autotabloide deve assumir, por padrão, que todo dado externo é hostil, mal formatado e perigoso até prova em contrário.
+
+
+3.1. O Pipeline de Purificação (The Scrubbing Pipeline)
+
+
+Antes de qualquer registro tocar a tabela Inventory do banco de dados core.db, ele deve atravessar uma "Câmara de Descontaminação" algorítmica.
+Algoritmo de Normalização de Texto (Regex + Heurística Determinística):
+Utilizaremos expressões regulares compiladas para alta performance na limpeza de strings.
+   1. Normalização de Caixa e Espaços: Conversão forçada para Title Case. Isso significa que a primeira letra de cada palavra será maiúscula, e as restantes minúsculas (ex: "Arroz Parboilizado 5 Kg"). A conversão forçada para CAIXA ALTA (tudo maiúsculo) é vetada e remoção de espaços duplos ou trailing spaces (" CERVEJA SKOL " -> "CERVEJA SKOL").
+   2. Remoção de Ruído de Caracteres: Eliminação de caracteres não-ASCII que não sejam acentos latinos (emojis, símbolos de controle, quebras de linha ocultas).
+   3. Padronização de Unidades de Medida: As unidades de medida (gramas, litros, mililitros, etc.) devem ser padronizadas, utilizando a norma padrão (minúscula) para símbolos (ex: "g", "ml") e respeitando a diferenciação tipográfica para legibilidade (ex: a letra 'l' de Litro pode ser capitalizada ('L') para evitar confusão visual com o número '1'). Esta definição de caso das unidades deve ser configurável no arquivo ```/config/settings.json```.
+   4. Detecção e Extração de Marcas: Comparar tokens da string de entrada contra uma tabela auxiliar indexada marcas_conhecidas. Se o token "COCA COLA" ou "NESTLÉ" for detectado no início ou meio da string, ele deve ser movido para a coluna marca e removido da descricao para evitar redundância visual no cartaz (ex: evitar "Coca Cola Refri Coca Cola").
+
+
+3.2 Estratégia de Deduplicação e Correlação (Refinado)
+
+
+A desduplicação e a gestão de ativos devem ir além da simples verificação de Hash MD5 do conteúdo binário, estendendo-se à correlação semântica entre nomes de produtos.
+
+
+Mecanismo de Desduplicação de Dados (Refinado):
+   1. Correlação de Hash (Imagens): O Hash MD5 exato (conforme Capítulo 3, Vol. I) continua sendo o protocolo para a garantia de que a mesma imagem binária não seja armazenada duas vezes.
+   2. Correlação de Nomenclatura (Produtos) (Refinado): A IA ou algoritmos de Fuzzy Logic (ex: ```
+FuzzyWuzzy
+```) devem ser utilizados para correlacionar o novo ```
+sku_origem
+``` (descrição bruta) com o ```
+nome_sanitizado
+``` já existente no banco de dados (```
+Tabela produtos
+```).
+      * Objetivo: Evitar a criação de registros duplicados no inventário para itens que são semanticamente os mesmos, mas possuem grafias ligeiramente diferentes (ex: "Cerveja Skol Lata" vs. "Cerv. Skol 350ml").
+      * Limiar: Um limiar de proximidade (ex: 90%) deve ser configurável. Se a correlação ultrapassar o limiar, o sistema deve sugerir o ```
+id
+``` existente para o operador, em vez de criar um novo registro.
+
+
+
+
+CAPÍTULO 4: A ARQUITETURA DE ARMAZENAMENTO DE IMAGENS (THE VAULT 2.0)
+
+
+No Volume I, definimos o hash MD5 para nomes de arquivos para garantir desduplicação física. No Volume III, definimos o ciclo de vida, o cache e a recuperação eficiente desses ativos visuais. Carregar imagens de 4000x4000 pixels (necessárias para impressão de alta qualidade) na grade da galeria de seleção (Tela 2) é suicídio de memória. O Flet tentará decodificar texturas enormes para exibir em quadrados de 50px, saturando a VRAM.
+
+
+4.1. Cache Hierárquico e Protocolo de Miniaturas
+
+
+O sistema deve manter duas versões físicas de cada ativo visual aprovado.
+O Protocolo de Ingestão de Mídia:
+Sempre que uma imagem é aprovada e entra no diretório /store/:
+         * Imagem Mestre (Alta Fidelidade): Salva intacta, preferencialmente em PNG Lossless, nomeada como [hash_md5].png. Esta versão é "intocável" e só é lida pelo motor de renderização final de PDF.
+         * Geração de Proxy (Thumbnail): O sistema dispara uma thread de background (OpenCV/Pillow) para gerar imediatamente uma versão [hash_md5]_thumb.jpg:
+         1. Resolução: Redimensionada para caber em uma caixa de 300x300px.
+         2. Compressão: JPEG com Fator de Qualidade 80.
+         3. Metadata: Remoção completa de tags EXIF para economizar bytes.
+         * Binding na Interface: A interface gráfica (DataGrid, Galeria, Seletores) está proibida em nível de código de carregar os arquivos .png da pasta mestre. Todos os controles de imagem (ft.Image) devem apontar exclusivamente para os arquivos _thumb.jpg.
+Esta estratégia reduz o consumo de memória da aplicação em até 90% durante a navegação, garantindo rolagem fluida mesmo em galerias com milhares de fotos, enquanto preserva a qualidade máxima para o momento crítico da impressão.
+________________
+
+
+PARTE III: O MOTOR DE RENDERIZAÇÃO, GEOMETRIA E IMPOSIÇÃO (THE FACTORY)
+
+
+Esta é a alma do Autotabloide. A capacidade de transformar dados abstratos e relacionais em arquivos vetoriais prontos para a indústria gráfica, respeitando restrições físicas e geométricas complexas.
+
+
+CAPÍTULO 5: ALGORITMOS DE GEOMETRIA VETORIAL E LAYOUT
+
+
+O sistema não pode operar como um editor de imagens simples que apenas "cola" bitmaps. Ele deve entender a geometria do slot SVG, calcular proporções e ajustar tipografia dinamicamente para garantir que o produto seja o herói da oferta, sem distorções amadoras.
+
+
+5.1. O Algoritmo de Encaixe Geométrico (Aspect Fit Logic)
+
+
+Quando injetamos uma imagem de produto — que pode ter qualquer formato, desde uma garrafa alta e magra até uma caixa de pizza larga e baixa — dentro do retângulo de destino #ALVO_IMAGEM definido no template SVG, é imperativo evitar a distorção (stretching).
+Fórmula de Renderização e Centralização:
+O algoritmo deve calcular o fator de escala $k$ que permite que a imagem preencha a máxima área possível do slot sem exceder seus limites e sem alterar a proporção original.
+Sejam:
+         * $W_s, H_s$: Largura e Altura do Slot (Retângulo alvo no SVG).
+         * $W_i, H_i$: Largura e Altura da Imagem (Arquivo Original).
+O fator de escala $k$ é determinado por:
+
+
+
+
+$$k = \min \left( \frac{W_s}{W_i}, \frac{H_s}{H_i} \right)$$
+As novas dimensões de renderização tornam-se:
+
+
+
+
+$$W_{new} = W_i \times k, \quad H_{new} = H_i \times k$$
+Para garantir a centralização estética, calculamos os offsets de translação:
+
+
+
+
+$$X_{offset} = \frac{W_s - W_{new}}{2}, \quad Y_{offset} = \frac{H_s - H_{new}}{2}$$
+A imagem é então injetada no XML do SVG final aplicando uma matriz de transformação que combina essa escala e translação, ancorada no canto superior esquerdo do grupo do slot.
+
+
+5.2. Autosizing de Tipografia e Busca Binária de Fonte
+
+
+Nomes de produtos no varejo brasileiro variam drasticamente em comprimento, de "PÃO FRANCÊS" (11 caracteres) a "LIMP. MULTI USO VEJA FRAGRÂNCIA LAVANDA LEVE 500ML PG 400ML" (55+ caracteres). O texto não pode vazar da caixa delimitadora (bounding box) nem ficar tão pequeno a ponto de ser ilegível.
+Algoritmo de Busca Binária de Fonte:
+Implementaremos um algoritmo iterativo para encontrar o tamanho de fonte ótimo ($F_{opt}$).
+         * Estado Inicial: Ler o tamanho de fonte "ideal" ($F_{max}$) e a caixa de texto alvo definidos no template SVG original.
+         * Medição: Utilizar as bibliotecas de renderização de fonte (como freetype ou as métricas do cairosvg) para calcular a largura exata que a string ocuparia com o tamanho $F_{curr}$.
+         * Loop de Decisão:
+         * Se largura_texto > largura_caixa: O texto estourou. Reduzir fonte.
+         * Se largura_texto < largura_caixa: O texto cabe. aceitar.
+         * Limites de Segurança:
+         * O algoritmo nunca deve reduzir a fonte abaixo de 60% do tamanho original ($F_{min}$). Se esse limite for atingido e o texto ainda não couber, o sistema deve acionar a lógica de truncamento (adicionar "...") ou, se o design permitir, a lógica de quebra de linha (multiline split), dividindo o texto na fronteira de palavra mais próxima do meio.
+
+
+CAPÍTULO 6: ALGORITMOS DE LAYOUT DINÂMICO (BIN PACKING)
+
+
+Em cenários onde o usuário deseja criar um cartaz composto por múltiplos produtos de tamanhos variados sem um template rígido pré-definido, o sistema deve empregar algoritmos de otimização combinatória. Simplesmente preencher slots sequencialmente (First Fit) é ineficiente e visualmente pobre.
+
+
+6.1. Otimização de Espaço com Bin Packing 2D
+
+
+Utilizaremos variações do algoritmo de Bin Packing (Empacotamento de Caixas) para organizar ofertas em uma página em branco.13
+Lógica de "First Fit Decreasing" (FFD):
+         8. Ordenação: O sistema ordena todos os blocos de oferta (cartões de produto) por altura, do maior para o menor.
+         9. Alocação: Tenta colocar o primeiro item na posição (0,0).
+         10. Iteração: Para cada item subsequente, o algoritmo tenta encaixá-lo no primeiro espaço livre disponível na "linha" atual (nível) que tenha altura suficiente.
+         11. Nova Linha: Se não houver espaço horizontal, cria-se um novo nível abaixo do item mais alto da linha anterior.
+         12. Resultado: Isso gera layouts densos, organizados e esteticamente agradáveis, maximizando o uso da área imprimível e minimizando espaços em branco (whitespace) desperdiçados.
+
+
+CAPÍTULO 7: IMPOSIÇÃO DE PÁGINA E OTIMIZAÇÃO INDUSTRIAL
+
+
+Para a "Fábrica de Cartazes" (Tela 4), o sistema deve otimizar o uso de papel da gráfica ou da impressora laser local. Imprimir um único cartaz A4 no centro de uma folha A3 é um desperdício financeiro inaceitável de 50% do substrato.16
+
+
+7.1 Otimização de Impressão (Simplificação)
+
+
+O motor de imposição de página deve focar na eficiência do caso de uso mais comum, que é a impressão direta em impressoras convencionais de varejo.
+
+
+Prioridade de Exportação (Simplificado):
+         1. Prioridade Máxima (Simplificação): A funcionalidade prioritária e o default do sistema é a impressão direta no tamanho de papel designado. Se um layout for classificado como 'CARTAZ_A4', a exportação deve gerar um PDF pronto para ser impresso diretamente em uma folha A4. O sistema não deve tentar otimizar o uso de papel de impressoras gráficas complexas (ex: imprimir um cartaz A4 em uma folha A3 para corte posterior).
+         2. Lógica N-Up (Imposição Industrial Complexa) (Simplificação): A lógica N-Up (vários cartazes por folha) é considerada uma funcionalidade de baixa prioridade e raramente utilizada no varejo. Embora o motor deva ser capaz de aplicar margens de corte e bleed para fins de gráfica, a ênfase excessiva em algoritmos complexos de sheet optimization é desnecessária e deve ser removida do foco do desenvolvimento inicial.
+         3. Saída Final: O sistema deve gerar PDFs/PNGs no tamanho exato do layout, deixando a imposição (se for necessária) para softwares de pré-impressão especializados.
+________________
+
+
+PARTE IV: RESILIÊNCIA, SEGURANÇA E PROTOCOLOS DE CRISE
+
+
+
+
+CAPÍTULO 8: O COFRE DE SEGURANÇA E INTEGRIDADE (DATA SAFETY)
+
+
+Em um software classificado como "Nível: Execução Crítica", a perda de dados é inaceitável. Embora o SQLite seja extremamente robusto, o sistema de arquivos do Windows e o hardware do usuário final não são infalíveis.
+
+
+8.1. O Protocolo de Snapshot Atômico (Hot Backup)
+
+
+Um backup simples de cópia de arquivo (shutil.copy) é arriscado em um banco de dados ativo, pois pode ocorrer durante uma operação de escrita, resultando em um arquivo corrompido.
+Procedimento de Backup Seguro:
+         * Checkpoint WAL: O sistema executa o comando SQL PRAGMA wal_checkpoint(TRUNCATE);. Isso força que todas as transações pendentes no arquivo de log (-wal) sejam consolidadas no arquivo de banco principal (.db), garantindo que o arquivo físico esteja atualizado.
+         * Lock de Aplicação: O sistema pausa brevemente (questão de milissegundos) o início de novas transações de escrita na thread de background.
+         * Stream Copy via API: Utilizar a API de backup online nativa do SQLite (sqlite3_backup_init exposta via Python). Isso permite copiar o banco página por página para um arquivo de destino em /snapshots/ sem bloquear leituras concorrentes na interface.
+         * Encapsulamento Zip: O arquivo .db resultante é comprimido em um arquivo .zip junto com um manifesto JSON contendo metadados cruciais (Versão do Software, Hash do último commit, Data/Hora, Usuário). Nomes de arquivo devem seguir o padrão ISO 8601: backup_YYYY-MM-DD_HH-mm.zip.
+
+
+8.2. O Modo de Recuperação (Safe Mode)
+
+
+O Autotabloide deve possuir um sistema imunológico. Se o software falhar ao iniciar (crash durante o boot) por 3 vezes consecutivas — detectado pela presença persistente de um arquivo de flag boot_attempt.log que não foi limpo no encerramento normal — ele deve iniciar automaticamente em Safe Mode.
+Comportamento do Safe Mode:
+         * Desabilitação de Extensões: Plugins ou scripts de usuário não são carregados.
+         * Galeria Fantasma: Não carrega as imagens pesadas na galeria, exibindo apenas placeholders cinzas para poupar memória e disco.
+         * Verificação de Integridade: Executa automaticamente um PRAGMA integrity_check no banco de dados SQLite. Se o banco estiver corrompido, o sistema apresenta um diálogo de emergência ao usuário: "Banco de Dados Corrompido. Deseja restaurar o Snapshot válido mais recente de?".
+
+
+CAPÍTULO 9: TELEMETRIA E AUDITORIA (LOGGING)
+
+
+O sistema deve ser transparente para o desenvolvedor, mas opaco para o erro. A depuração de problemas em campo exige logs detalhados, mas o log não pode consumir todo o disco do cliente.
+Estrutura de Logs (/logs/system.log):
+Utilizaremos a biblioteca logging do Python configurada com RotatingFileHandler.
+         * Limite: Arquivos de log limitados a 5MB. Manter no máximo os últimos 3 arquivos.
+         * Níveis de Severidade:
+         1. DEBUG: Registra cada query SQL e path de arquivo (Ativo apenas em desenvolvimento).
+         2. INFO: Eventos de negócio. "Usuário [Otaviano] iniciou renderização do Layout".
+         3. ERROR: Stack traces completos de exceções Python não tratadas.
+         4. CRITICAL: Falhas de disco, permissão negada em pastas do sistema, corrupção de banco.
+Auditoria de Preços (Accountability):
+Toda alteração de preço feita manualmente (Override) deve ser registrada em uma tabela oculta audit_log contendo: timestamp, produto_id, preco_antigo, preco_novo, origem_mudanca (Importação Planilha vs. Manual UI). Isso permite rastrear a origem de erros de precificação (ex: "quem colocou a Picanha a R$ 1,00?").
+________________
+
+
+PARTE V: EXPANSIBILIDADE E INTEGRAÇÃO DE I.A. (THE BRAIN)
+
+
+
+
+CAPÍTULO 10: INTEGRAÇÃO AVANÇADA DE SCRAPING E LLM
+
+
+A Inteligência Artificial no Autotabloide não é um adorno; é um agente operacional. Ela não serve apenas para limpar nomes, mas deve atuar como um agente de busca autônomo para popular o banco de imagens.
+
+
+10.1. O Agente de Busca de Imagens (The Hunter)
+
+
+A utilização de bibliotecas antigas de requisição HTTP simples (google_images_download) é obsoleta e falha frequentemente devido a proteções anti-bot e renderização via JavaScript (Single Page Applications).18 A abordagem moderna exige a simulação de um navegador real.
+Arquitetura do Scraper Moderno com Playwright 20:
+         * Engine: Playwright (Python) operando sobre o motor Chromium.
+         * Modo: Headless (sem interface gráfica visível), para operar em background sem perturbar o usuário.
+         * Evasão e Rotatividade: Implementação de rotação de User-Agents e headers para simular navegação humana legítima e evitar bloqueios de IP (Erros 429).
+         * Lógica de Interação Dinâmica: O Google Images carrega resultados via rolagem infinita ("Lazy Loading"). O scraper não pode apenas carregar a página; ele deve simular a rolagem da roda do mouse (scroll events) e aguardar (await page.wait_for_load_state('networkidle')) para garantir que os elementos DOM das imagens sejam hidratados com as URLs reais.
+         * Extração Cirúrgica: A extração não deve pegar a miniatura em base64 (baixa qualidade). O script deve clicar na miniatura para abrir o painel lateral de visualização e extrair a URL de alta resolução (src) da imagem principal.
+Pipeline de Filtragem Visual:
+Não basta baixar qualquer imagem. O sistema baixa os top 5 candidatos e aplica um algoritmo de seleção:
+         * Detecção de Fundo: Usar rembg para tentar remover o fundo. Se o resultado for uma imagem vazia ou muito fragmentada, descarta-se a opção.
+         * Centralização: Analisar o histograma da imagem. Preferir imagens onde o objeto principal (pixels não transparentes/não brancos) esteja centralizado e ocupe a maior parte do quadro.
+         * Descarte de Ruído: Evitar imagens que contenham muito texto (usando OCR rápido ou densidade de arestas) para não baixar cartazes promocionais antigos em vez da foto do produto limpo.
+
+
+10.2. Fine-Tuning do Prompt LLM para Estruturação JSON
+
+
+Para garantir consistência absoluta na extração de dados de strings de produtos caóticas, o prompt do sistema (System Prompt) para a LLM (OpenAI/Local LLaMA) deve ser rigorosamente estruturado e protegido contra alucinações.
+Prompt de Engenharia Reversa (Template):
+"Você é um parser ETL determinístico especializado em varejo brasileiro.
+Entrada: '{input_string_crua}'
+Tarefa: Analise a string e extraia as entidades para um objeto JSON estrito.
+Regras:
+         * 'produto': O substantivo principal (ex: 'Arroz', 'Sabão Liq'). Capitalizado.
+         * 'marca': A marca fabricante. Se não houver, use null.
+         * 'variacao': Detalhes como Sabor, Fragrância ou Tipo (ex: 'Tipo 1', 'Lavanda').
+         * 'peso_liquido': O valor numérico padronizado.
+         * 'unidade': A unidade de medida ('KG', 'G', 'L', 'ML', 'UN').
+         * 'oferta_especial': Detecte padrões como 'L4P3' (Leve 4 Pague 3) ou '500ml PG 400ml'. Se existir, extraia o texto completo da promoção.
+IMPORTANTE: Não adicione adjetivos subjetivos. Não corrija a ortografia de marcas desconhecidas a menos que tenha 100% de certeza. Retorne APENAS o JSON."
+Este prompt força a LLM a atuar como um componente de software previsível, integrando-se perfeitamente ao pipeline de dados em Python.23
+________________
+
+
+APÊNDICE TÉCNICO: MAPA DE DEPENDÊNCIAS CRÍTICAS (POETRY)
+
+
+Para garantir a reprodutibilidade e estabilidade do ambiente de execução, o arquivo pyproject.toml deve travar as seguintes versões de bibliotecas essenciais, evitando o "Dependency Hell".
+Tabela de Dependências do Core Stack:
+Biblioteca
+	Versão Mínima
+	Função Crítica no Sistema
+	Justificativa Técnica
+	python
+	^3.12
+	Runtime
+	Suporte a melhorias de performance no asyncio e tipagem forte.
+	flet
+	^0.21.0
+	GUI Framework
+	Controls virtuais (ListView) e suporte a Drag&Drop estável.
+	sqlalchemy
+	^2.0.0
+	ORM
+	Mapeamento seguro de dados e prevenção de SQL Injection.
+	aiosqlite
+	^0.19.0
+	DB Driver
+	Permite acesso assíncrono real ao SQLite (non-blocking).
+	lxml
+	^5.1.0
+	XML Parser
+	Manipulação de árvores SVG com performance C nativa.
+	cairosvg
+	^2.7.0
+	Renderização
+	Conversão fiel de SVG para PDF (CMYK support).
+	rembg
+	^2.0.50
+	IA / Visão
+	Remoção de fundo de imagens (U2-Net) com alta precisão.
+	opencv-python-headless
+	^4.9.0
+	Proc. Imagem
+	Operações geométricas e análise de histograma (sem GUI QT).
+	playwright
+	^1.40.0
+	Scraping
+	Automação de browser robusta para coleta de imagens dinâmica.
+	pydantic
+	^2.6.0
+	Validação
+	Garantia de integridade de tipos nos modelos de dados JSON/SQL.
+	VOLUME IV: ARQUITETURA DE INTELIGÊNCIA ARTIFICIAL LOCAL (EDGE AI), PIPELINE DE VISÃO COMPUTACIONAL E ENGENHARIA DE EXPORTAÇÃO INDUSTRIAL
+Classificação: CONFIDENCIAL Nível: EXECUÇÃO CRÍTICA (Deep Tech Implementation) Autor: Otaviano Vesz Versão: 4.0.0 (Definitiva) Referência: Consolidação dos Volumes I, II e III com a Camada de Inteligência Autônoma.
+PREFÁCIO TÉCNICO E ESCOPO DO VOLUME IV: A SOBERANIA DA INTELIGÊNCIA
+O Volume IV, que agora se apresenta, transcende a automação mecânica para adentrar o domínio da computação cognitiva. Este documento não é apenas uma especificação de funcionalidades; é um manifesto técnico sobre a implementação de Inteligência Artificial Local (Local-First AI). A premissa central rejeita a dependência de APIs de nuvem externas (como OpenAI, Google Cloud Vision ou AWS Rekognition) para as operações críticas do sistema. A latência de rede introduzida por chamadas HTTP, os custos variáveis por token processado e, crucialmente, a exposição de dados estratégicos de precificação e inventário a terceiros constituem vetores de risco inaceitáveis para uma aplicação que almeja robustez industrial.
+Neste volume, detalharemos a arquitetura necessária para executar Modelos de Linguagem de Grande Escala (LLMs) e Redes Neurais Convolucionais (CNNs) diretamente no hardware do cliente ("na borda" ou Edge), utilizando quantização agressiva e otimização de baixo nível. Além disso, aprofundaremos a engenharia do "Mecanismo de Saída" (Output Engine), detalhando como converter vetores matemáticos e previsões neurais em arquivos físicos prontos para a litografia industrial, abordando a ciência da colorimetria e a conformidade com normas ISO gráficas.
+PARTE I: INFRAESTRUTURA DE INFERÊNCIA NEURAL LOCAL (THE EDGE BRAIN)
+A inteligência do Autotabloide AI não reside na nuvem; ela habita o silício local. Esta decisão arquitetural impõe restrições severas de memória e processamento, exigindo uma engenharia de software de precisão cirúrgica para viabilizar inferências complexas em hardware de consumo.
+CAPÍTULO 1: ARQUITETURA DE MODELOS DE LINGUAGEM (LLM) E QUANTIZAÇÃO
+A tarefa de normalização de dados (ETL) descrita preliminarmente no Volume III exige uma compreensão semântica que ultrapassa a capacidade de Expressões Regulares (Regex). O sistema deve entender que "Lava Roupas Po Omo Lv Pg 800g" contém uma marca ("Omo"), um tipo ("Em Pó"), uma condição comercial ("Leve Pague") e um peso ("800g"). Para isso, integramos um LLM embutido.
+1.1 Flexibilidade de Quantização e Modelos (Adição)
+
+
+Para otimizar o uso do hardware local e permitir futuras melhorias de performance, a arquitetura de IA deve ser flexível:
+         1. Configuração de Quantização (Adição): A parametrização do motor deve ser exposta na área de configurações do usuário (```
+
+/config/settings.json
+
+```), permitindo a escolha entre Quantização 4-bit (padrão mandatório para compatibilidade máxima) e Quantização 8-bit (opcional, para hardware mais robusto). Esta configuração permite que o usuário realize um upgrade futuro na qualidade do processamento caso troque sua placa de vídeo (GPU).
+         2. Modelos de Linguagem Dinâmicos (Adição): O sistema deve adotar um modelo de alternância inteligente entre modelos:
+            * LLM (Large Language Model): Modelo principal e mais pesado, reservado para tarefas complexas que exigem alta perplexidade (ex: sanitização de nomes de produtos complexos ou fuzzy matching de baixa certeza).
+            * SLM (Small Language Model): Modelo mais leve e rápido, a ser utilizado para tarefas de baixa complexidade (ex: validação de formato de preço, extração simples de unidade de medida) e para manter a interface fluida durante as operações em segundo plano.
+
+
+1.2. O Motor de Inferência: Llama.cpp e o Formato GGUF
+Para contornar as limitações de VRAM (Memória de Vídeo) típicas de estações de trabalho de design (frequentemente equipadas com GPUs de classe média como NVIDIA RTX 3060 ou 4060), o Autotabloide padroniza o uso do formato GGUF (GPT-Generated Unified Format).
+Diferente de formatos como PyTorch (.pt) ou SafeTensors, que exigem o carregamento integral do modelo na memória antes da execução, o GGUF permite o mapeamento de memória (mmap). Isso significa que o sistema operacional pode carregar apenas as camadas (layers) necessárias sob demanda, permitindo uma inicialização quase instantânea e um gerenciamento de memória muito mais eficiente.
+Especificação da Stack Tecnológica:
+            * Binding de Baixo Nível: A biblioteca llama-cpp-python é mandatória. Ela atua como uma interface Python de alto nível para o backend escrito em C/C++ puro, compilado com otimizações específicas para conjuntos de instruções de CPU (AVX2, AVX-512) e aceleração de GPU (cuBLAS para NVIDIA, Metal para Apple Silicon).
+            * Seleção de Modelo: O sistema deve vir embarcado com uma versão finetuned do Llama-3-8B-Instruct ou Mistral-7B-Instruct-v0.3. Modelos na faixa de 7 a 8 bilhões de parâmetros representam o "ponto doce" (sweet spot) entre capacidade de raciocínio lógico e performance em tempo real.
+            * Estratégia de Quantização: A precisão de ponto flutuante de 16 bits (FP16) é proibida para implantação devido ao seu peso (aprox. 16GB de VRAM). O Autotabloide impõe o uso da quantização Q4_K_M (4-bit quantization with medium complexity).
+            * Justificativa Técnica: Testes empíricos demonstram que a degradação de perplexidade (o erro do modelo) entre FP16 e Q4_K_M é inferior a 3% para tarefas de extração de dados, enquanto a redução de memória é da ordem de 70% (caindo para aprox. 4.8GB). Isso permite que o modelo coexista na memória com o sistema operacional Windows e a interface gráfica Flet sem causar swapping de disco.
+Tabela 1.1: Comparativo de Impacto de Quantização no Hardware Local
+Método de Quantização
+	Tamanho do Modelo (7B)
+	VRAM Necessária (Mínima)
+	Latência de Inferência (Tokens/s)
+	Perda de Precisão (Perplexidade)
+	Status no Autotabloide
+	FP16 (Half Precision)
+	~14.5 GB
+	16 GB
+	Baixa (10-20 t/s)
+	Referência (0%)
+	PROIBIDO (Custo de Hardware)
+	Q8_0 (8-bit)
+	~7.7 GB
+	10 GB
+	Média (30-40 t/s)
+	Negligível (<0.1%)
+	Permitido (High-End PCs)
+	Q4_K_M (4-bit)
+	~4.8 GB
+	6 GB
+	Alta (50-80 t/s)
+	Baixa (~2.5%)
+	PADRÃO MANDATÓRIO
+	Q2_K (2-bit)
+	~2.8 GB
+	4 GB
+	Muito Alta (>100 t/s)
+	Crítica (>15%)
+	PROIBIDO (Alucinação Elevada)
+	1.3. Protocolo de Isolamento de Processos (Multiprocessing Architecture)
+Conforme identificado no Volume III , o Python possui o Global Interpreter Lock (GIL). Executar a inferência de um LLM — uma operação intensiva de CPU/GPU — na thread principal ou mesmo em uma thread secundária dentro do mesmo processo da interface Flet causará o congelamento da UI ("Application Not Responding").
+A arquitetura do Volume IV exige o isolamento total do "Cérebro" em um processo independente.
+Implementação do Processo Sentinela: Durante o boot da aplicação, o script main.py deve instanciar um multiprocessing.Process dedicado, denominado NeuralEngine.
+            11. Comunicação Inter-Processos (IPC): A troca de dados entre a UI (Flet) e o NeuralEngine deve ocorrer exclusivamente via multiprocessing.Queue ou Pipe.
+            12. Gerenciamento de Estado: O modelo é carregado na memória do processo filho apenas uma vez. Solicitações de inferência são enviadas para a fila de entrada (input_queue), e resultados são lidos da fila de saída (output_queue). Isso elimina o overhead de carregar os 5GB do modelo do disco a cada requisição.
+# Pseudo-código da Arquitetura de Processo Neural Isolado
+import multiprocessing
+from llama_cpp import Llama
+
+def neural_worker(input_queue, output_queue, model_path):
+   # Inicialização pesada ocorre apenas aqui, isolada da UI
+   llm = Llama(
+       model_path=model_path,
+       n_gpu_layers=-1, # Offload total para GPU se disponível
+       n_ctx=4096,
+       verbose=False
+   )
+   
+   while True:
+       task = input_queue.get()
+       if task == "SHUTDOWN": break
+       
+       # Execução da inferência (CPU/GPU bound)
+       response = llm.create_chat_completion(...)
+       output_queue.put(response)
+
+1.4. Decodificação Restritiva via Gramáticas (GBNF)
+O maior risco na utilização de LLMs em sistemas industriais é o não-determinismo, popularmente conhecido como "alucinação". Se o sistema solicitar um JSON estruturado e o modelo responder com texto conversacional ("Aqui está o JSON que você pediu:..."), o parser subsequente falhará, quebrando o pipeline de automação.
+O Autotabloide implementa a tecnologia de Gramáticas GBNF (Grammar-Based Normalization Form). Em vez de confiar na "sorte" ou na obediência do modelo ao prompt, nós restringimos matematicamente o espaço de amostragem de tokens.
+Mecanismo de Controle: Ao invocar a geração, passamos um arquivo de definição gramatical (schema.gbnf) para o motor llama.cpp. Este arquivo define a estrutura exata permitida (ex: "A saída deve começar com {, seguida de uma chave produto que é uma string, etc."). Durante a inferência, para cada token a ser gerado, o motor verifica quais tokens no vocabulário de 32.000 palavras são válidos segundo a gramática atual. A probabilidade de qualquer token inválido é forçada a zero (masking) antes da seleção. Isso garante Determinismo Sintático Absoluto. É matematicamente impossível para o modelo gerar uma saída que não seja um JSON válido conforme o esquema definido.
+Definição da Gramática de Produto (schema.gbnf):
+root   ::= object
+object ::= "{" space pair_list "}" space
+pair_list ::= pair ("," space pair)*
+pair ::= string ":" space value
+string ::= "\"" [a-zA-Z0-9_ -]+ "\""
+value ::= string | number | "null" | boolean
+boolean ::= "true" | "false"
+number ::= [0-9]+ ("." [0-9]*)?
+space ::= [ \t\n]*
+
+CAPÍTULO 2: MEMÓRIA INSTITUCIONAL E RAG LOCAL
+A IA não deve apenas limpar dados baseada em regras gerais; ela deve aprender com a idiossincrasia operacional da loja específica onde está instalada. Se o operador corrige consistentemente "CERV" para "Cerveja" e "REFR" para "Refrigerante", o sistema deve internalizar esse padrão sem re-treinamento do modelo base.
+2.1 O Pipeline de Importação de Dados (Novo Fluxo)
+
+
+A IA não deve apenas limpar dados baseados em regras gerais; ela deve atuar como uma gateway de conciliação durante a importação de planilhas Excel/CSV (```
+Importação em Massa
+```).
+            1. Passo 1: Leitura e Pré-Sanitização: O sistema lê o arquivo Excel/CSV, aplica a limpeza básica (remoção de caracteres inválidos, etc.) e extrai a coluna de identificação (descrição bruta).
+            2. Passo 2: Verificação de Existência (Correlação) (Novo Fluxo): Para cada item da planilha, a IA deve consultar o banco de dados mestre (```
+Tabela produtos
+```) para verificar se um item já existe, utilizando a Fuzzy Logic ou correlação de IA mencionada no Volume III.
+            3. Passo 3: Decisão de Uso (Novo Fluxo):
+               * Se o item já existe no DB (correlação positiva acima do limiar): O sistema deve utilizar o ```
+id
+``` e todos os campos já sanitizados (nome, marca, hash da imagem) do cadastro existente, evitando duplicação e garantindo consistência.
+               * Se o item não existe no DB: A IA deve criar um novo cadastro, aplicando a rotina completa de sanitização de nome e extração de marca, antes de persistir o novo registro na ```
+Tabela produtos
+```.
+                  4. Objetivo: A IA garante que o banco de dados cresça de forma coesa, internalizando padrões de nomenclatura, e não crie registros duplicados apenas por uma grafia diferente na planilha de entrada.
+
+
+2.2. Vector Store Embeddings no SQLite
+Rejeitamos o uso de bancos de dados vetoriais pesados (como Milvus ou Pinecone) que exigiriam contêineres Docker adicionais. O Autotabloide utiliza a extensão sqlite-vss (Vector Similarity Search) ou uma implementação nativa de distância de cosseno via NumPy, integrada ao banco de dados core.db já existente (descrito no Volume I e III ).
+Pipeline de Memória (Retrieval-Augmented Generation):
+                  3. Ingestão de Histórico: Periodicamente, o sistema varre a tabela produtos em busca de itens com status_qualidade = 3 (Validados Manualmente).
+                  4. Geração de Embeddings: Utilizamos um modelo codificador (Encoder) ultraleve, como o all-MiniLM-L6-v2 (aprox. 80MB, inferência em milissegundos na CPU). Este modelo converte a string de entrada bruta (ex: "SAB OMO 500") em um vetor numérico denso de 384 dimensões.
+                  5. Armazenamento: O vetor é serializado e armazenado na tabela auxiliar knowledge_vectors.
+                  6. Consulta Semântica: Quando um novo dado "sujo" chega (ex: "SABONETE OMO"), o sistema gera seu vetor e busca no banco os 3 vetores mais próximos (Vizinhos Mais Próximos - KNN).
+                  7. Engenharia de Prompt Dinâmica: Os exemplos recuperados são injetados no prompt do sistema como "Few-Shot Examples".
+                  * Prompt: "Baseado nestes exemplos históricos da loja: 'SAB OMO 500 -> Sabão em Pó Omo 500g', normalize a entrada: 'SABONETE OMO'."
+Esta abordagem cria um sistema que se adapta ao vocabulário regional e às abreviações específicas do ERP do cliente, tornando-se mais preciso a cada uso.
+PARTE II: PIPELINE DE VISÃO COMPUTACIONAL AVANÇADA (THE EYE)
+O Volume III introduziu o conceito de "Image Handler" com remoção de fundo básica. O Volume IV expande essa funcionalidade para um "Laboratório de Restauração Digital" autônomo. No varejo real, as imagens chegam via WhatsApp, prints de tela ou fotos tiradas em gôndolas escuras. O sistema deve ter a capacidade de "curar" esses ativos visualmente.
+CAPÍTULO 3: RESTAURAÇÃO E SUPER-RESOLUÇÃO (UPSCALING)
+A renderização de um cartaz A3 (297x420mm) a 300 DPI exige uma imagem de aproximadamente 3500x4900 pixels. Imagens baixadas da web frequentemente possuem 500x500 pixels. A interpolação bicúbica tradicional resulta em borrões inaceitáveis.
+3.1. Redes Adversariais Generativas (GANs) para Super-Resolução
+O Autotabloide incorpora o modelo Real-ESRGAN (x4 Plus). Diferente de algoritmos matemáticos simples, esta rede neural foi treinada para "alucinar" detalhes plausíveis de textura (como o grão do papel ou o brilho do plástico) ao ampliar uma imagem.
+Integração do Binário: Para máxima performance e independência de bibliotecas Python pesadas (como PyTorch completo), o sistema deve utilizar a implementação compilada em C++ realesrgan-ncnn-vulkan, empacotada na pasta /bin/ do sistema de arquivos (conforme Vol I). Esta versão utiliza a API Vulkan para aceleração de hardware, compatível com GPUs AMD, NVIDIA e até gráficos integrados Intel, garantindo universalidade.
+Lógica de Gatilho (Trigger Logic): O upscaling é uma operação custosa (segundos). Não deve ser aplicado indiscriminadamente.
+# Lógica de Decisão para Upscaling
+def process_image_quality(image_path):
+   img = cv2.imread(image_path)
+   h, w = img.shape[:2]
+   
+   # Critério 1: Resolução Absoluta
+   if min(h, w) < 1000:
+       # Imagem muito pequena para impressão média/grande -> Upscale Obrigatório
+       execute_realesrgan(image_path, scale=4)
+       
+   # Critério 2: Densidade de Informação (Entropia)
+   # Imagens com muito texto pequeno precisam de nitidez extra
+   elif calculate_entropy(img) > threshold and min(h, w) < 2000:
+        execute_realesrgan(image_path, scale=2)
+
+3.2. Avaliação Automática de Qualidade (No-Reference IQA)
+Como o sistema pode saber se uma imagem é "boa" sem um humano olhando? Implementamos métricas de Avaliação de Qualidade de Imagem Sem Referência (NR-IQA), especificamente o algoritmo BRISQUE (Blind/Referenceless Image Spatial Quality Evaluator).
+O BRISQUE analisa as estatísticas de luminância natural da cena. Imagens com distorções artificiais (como artefatos de compressão JPEG, desfoque ou ruído ISO alto) desviam dessas estatísticas naturais. O sistema calcula um score de 0 a 100 para cada imagem ingerida.
+                  10. Score < 30: Qualidade Excelente (Verde).
+                  11. 30 < Score < 60: Qualidade Aceitável (Amarelo).
+                  12. Score > 60: Qualidade Ruim/Rejeitada (Vermelho).
+Este score é gravado na coluna status_qualidade da tabela produtos. Se o score for vermelho, o sistema pode proativamente disparar o agente de scraping (Vol III ) para buscar uma alternativa melhor, sem esperar que o usuário note o problema na impressão final.
+CAPÍTULO 4: RECORTE INTELIGENTE E SALIÊNCIA
+A simples remoção de fundo (via rembg) pode deixar muito "espaço vazio" transparente ao redor do produto, fazendo com que ele pareça pequeno quando inserido no Slot SVG. O recorte deve ser "conteúdo-ciente".
+4.1. Detecção de Saliência (Saliency Maps)
+Para recortar corretamente, o sistema precisa entender "onde está o produto". Utilizamos algoritmos de Detecção de Saliência (cv2.saliency.StaticSaliencySpectralResidual) para gerar um mapa de calor das áreas da imagem que mais atraem a atenção visual humana.
+Algoritmo de Reenquadramento (Smart Crop):
+                  5. Geração do Mapa: Cria-se o mapa de saliência em escala de cinza.
+                  6. Limiarização (Thresholding): Converte-se o mapa em binário (Preto/Branco) para isolar a região de interesse (ROI).
+                  7. Cálculo de Bounding Box: Encontra-se o retângulo mínimo que envolve a ROI.
+                  8. Expansão de Margem (Padding): Adiciona-se uma margem de segurança de 5% para evitar cortar rótulos na borda.
+                  9. Centralização Geométrica: Ao injetar a imagem no SVG (conforme Vol II , Capítulo 1.2), as coordenadas de transformação são ajustadas para que o centro óptico (baseado na saliência) coincida com o centro geométrico do Slot, e não apenas o centro do arquivo de imagem. Isso evita que uma garrafa posicionada no canto da foto original fique descentralizada no cartaz final.
+PARTE III: O MOTOR DE EXPORTAÇÃO INDUSTRIAL (THE FACTORY)
+A capacidade de gerar um PDF não é suficiente. A indústria gráfica opera com padrões rigorosos de cor e formatação. O Autotabloide deve atuar como um RIP (Raster Image Processor) simplificado, garantindo que o que se vê na tela (RGB) seja o que sai na impressora (CMYK).
+CAPÍTULO 5: CIÊNCIA DE CORES E GERENCIAMENTO ICC
+Conforme mencionado no Volume II , o CairoSVG gera saídas em espaço de cor misto. O Volume IV formaliza o pipeline de conversão colorimétrica obrigatório utilizando o motor Ghostscript.
+5.1. A Pipeline de Conversão RGB para CMYK
+A conversão de cores não é uma simples transformação linear. O "Azul Royal" brilhante da tela (sRGB) pode estar fora do gamut (alcance) de uma impressora offset (CMYK). Sem gerenciamento, essa cor seria "clipada" para o ciano mais próximo, resultando em uma aparência lavada e sem vida.
+O sistema utiliza Perfis ICC (International Color Consortium) para realizar a conversão perceptual, que tenta preservar a relação visual entre as cores, mesmo que os valores exatos mudem.
+Estrutura de Perfis: O sistema deve manter na pasta /assets/profiles/ os perfis padrão da indústria:
+                  1. sRGB_v4_ICC_preference.icc: Perfil de entrada (Source).
+                  2. CoatedFOGRA39.icc: Perfil de saída (Target) padrão para papel couché brilhante (padrão europeu/brasileiro).
+                  3. USWebCoatedSWOP.icc: Perfil de saída alternativo para papel jornal/fosco.
+Comando de Processamento Ghostscript: O Autotabloide invoca o binário gswin64c.exe via subprocesso com flags de pré-impressão específicas. A string de comando deve ser construída dinamicamente:
+gswin64c.exe 
+ -dSAFER -dBATCH -dNOPAUSE 
+ -dPDFSETTINGS=/prepress           # Configuração de alta qualidade para impressão
+ -sDEVICE=pdfwrite 
+ -sColorConversionStrategy=CMYK    # Força conversão total
+ -sProcessColorModel=DeviceCMYK 
+ -sOutputICCProfile="assets/profiles/CoatedFOGRA39.icc" 
+ -sOutputFile="output/final_print_ready.pdf" 
+ "input/temp_render.pdf"
+
+5.2. O Problema do "Rich Black" e a Solução de Overprint
+Texto preto (#000000 RGB) convertido ingenuamente para CMYK resulta frequentemente em "Rich Black" (ex: C=70, M=60, Y=50, K=100). Isso causa dois problemas graves:
+                  * Custo: Gasta-se 280% de tinta para imprimir algo que deveria usar apenas 100% (K).
+                  * Registro: Em impressoras offset, se as 4 chapas de cor não estiverem alinhadas com precisão de micrômetros, o texto preto ficará borrado, com halos coloridos ao redor (erro de registro).
+Algoritmo de Preservação de Preto (True Black Preservation): O Autotabloide intervém na etapa de geração do SVG (lxml) antes da rasterização.
+                  * Detecção: O parser varre a árvore DOM em busca de textos ou formas cujo preenchimento seja #000000 ou rgb(0,0,0).
+                  * Substituição Semântica: O sistema substitui a cor RGB por uma definição de cor especial CMYK: cmyk(0%, 0%, 0%, 100%). No SVG, isso pode ser feito usando propriedades de device-cmyk se suportado, ou marcando o objeto para pós-processamento.
+                  * Overprint Tagging: Crucialmente, o sistema deve instruir o renderizador a aplicar Overprint (Sobreimpressão) a esses elementos pretos. O Overprint dita que a tinta preta deve ser impressa sobre as tintas de fundo, sem "vazar" (knockout) o fundo branco. Isso garante que o texto permaneça nítido mesmo com pequenos erros de registro na impressora.
+CAPÍTULO 6: PADRÕES PDF/X E CONFORMIDADE
+Para garantir que o arquivo seja aceito por qualquer gráfica profissional sem erros de preflight, o sistema exporta arquivos em conformidade com a norma ISO 15930.
+6.1. Dualidade de Exportação: PDF/X-1a vs. PDF/X-4
+A interface do Autotabloide (Volume III) deve oferecer duas opções de exportação, pois o parque gráfico brasileiro é misto:
+Modo Compatibilidade (PDF/X-1a:2001):
+                  * Alvo: Gráficas com RIPs (Raster Image Processors) mais antigos ou jornais.
+                  * Técnica: Aplainamento de Transparências (Flattening). O sistema deve rasterizar todas as sombras, degradês e efeitos de transparência em bitmaps de alta resolução, deixando apenas vetores sólidos e imagens opacas. Isso elimina o risco de erros de interpretação de transparência na impressora, mas aumenta o tamanho do arquivo.
+                  * Implementação: Flag -dTransparency=false no Ghostscript.
+Modo Moderno (PDF/X-4:2010):
+                  * Alvo: Impressão digital moderna, plotters e gráficas atualizadas.
+                  * Técnica: Live Transparency. Mantém as camadas de transparência e modos de mistura (multiply, screen) vivos no arquivo. Permite melhor qualidade de renderização e arquivos menores.
+                  * Vantagem: Permite que o RIP da impressora faça o gerenciamento de cor final, aproveitando o gamut máximo daquela máquina específica.
+6.2. Imposição e Marcas de Impressão Vetoriais
+O Volume III introduziu a lógica de N-Up (vários cartazes por folha). O Volume IV detalha a geração das marcas técnicas ("Printer's Marks"). O sistema não usa imagens prontas (jpegs de marcas de corte); ele desenha essas marcas vetorialmente via código Python/SVG para precisão absoluta.
+                  * Sangria (Bleed): O sistema expande o ViewBox lógico em 3mm para fora das margens de corte. A imagem de fundo e elementos que tocam a borda são extrapolados para esta área.
+                  * Marcas de Corte (Crop Marks): Linhas sólidas de 0.25pt desenhadas na cor Registration (100% C+M+Y+K), situadas fora da área de sangria, indicando onde a guilhotina deve descer.
+                  * Barras de Controle (Color Bars): Uma sequência de quadrados de 5x5mm com 100% C, 100% M, 100% Y, 100% K e tons médios (50%), desenhados na margem do papel (Slug Area). Isso permite ao impressor usar um densitômetro para calibrar a carga de tinta durante a tiragem.
+PARTE IV: SEGURANÇA, TELEMETRIA E APRENDIZADO CONTÍNUO
+CAPÍTULO 8: O CICLO DE APRENDIZADO AUTO-CORRETIVO (SHADOW DB)
+O sistema de IA Local descrito na Parte I não é estático. Ele deve evoluir. No entanto, re-treinar um modelo Llama de 8 bilhões de parâmetros na máquina do cliente é inviável. A solução é o Aprendizado via Contexto (In-Context Learning) persistente.
+O Banco de Dados Sombra (learning.db): Sempre que o usuário rejeita uma sugestão da IA na interface e digita uma correção manual, o sistema intercepta esse evento e o registra em um banco de dados separado (learning.db), isolado do banco transacional (core.db).
+Tabela: human_corrections
+Coluna
+	Descrição Técnica
+	input_hash
+	Hash da string original "suja".
+	ai_prediction
+	O JSON que a IA sugeriu e foi rejeitado.
+	human_correction
+	O dado final aprovado pelo humano.
+	confidence_delta
+	A diferença semântica entre a previsão e a correção.
+	Mecanismo de Feedback Loop: Semanalmente (ou no boot), o sistema analisa este banco. As correções humanas são convertidas em vetores e inseridas na tabela de RAG com prioridade máxima (boost de similaridade). Na próxima vez que um dado semelhante aparecer, o sistema recuperará a correção humana como exemplo de contexto para o LLM. Isso cria um efeito prático de "treinamento" sem o custo computacional de backpropagation. O sistema não altera os pesos da rede neural, mas altera a "memória" que alimenta a rede.
+CAPÍTULO 9: PROTEÇÃO DE ATIVOS (ASSET SCRAMBLING)
+O sistema deve equilibrar a proteção do código-fonte com a necessidade de portabilidade e facilidade de uso em ambientes de varejo.
+
+
+9.1 Portabilidade e Gestão de Ativos (Simplificação)
+
+
+A criptografia pesada (Asset Scrambling) e mecanismos de ofuscação que impedem a cópia simples de arquivos (como o bloqueio do banco de dados) devem ser REMOVIDOS ou SIMPLIFICADOS (Remover/Simplificar).
+
+
+Justificativa (Motivo): A necessidade de portabilidade e a realidade operacional (o usuário precisa conseguir copiar a pasta do programa para outro PC para continuar o trabalho) têm precedência. O sistema deve funcionar de forma aberta ao ser movido.
+                  1. Banco de Dados Aberto (Substituição): O ```
+
+core.db
+
+``` e os arquivos ```
+
+core.db-shm
+
+``` e ```
+
+core.db-wal
+
+``` devem ser arquivos abertos e simplesmente gerenciados pelo SQLite, sem camadas de criptografia que impeçam a cópia de container para container (PC para PC).
+                  2. "Pacote de Exportação" (Novo Recurso de Segurança e Portabilidade): A função Empacotar para Transporte (descrita no Volume V) passa a ser a solução oficial e crítica para a portabilidade. Ela deve criar um arquivo comprimido (```
+
+.zip
+CONCLUSÃO GERAL E ROTEIRO DE DEPLOY
+A especificação do Volume IV completa a arquitetura do Autotabloide AI. Transformamos um conceito de automação de design em uma plataforma de engenharia robusta, soberana e industrial. O sistema é capaz de:
+                     13. Pensar: Inferência neural local com gramáticas estritas.
+                     14. Ver: Visão computacional com restauração e análise de saliência.
+                     15. Produzir: Renderização com fidelidade colorimétrica e conformidade ISO.
+                     16. Aprender: Adaptação contínua baseada em correções humanas.
+Ordem de Execução Recomendada para Implementação do Volume IV:
+                     1. Fundação Neural: Compilar llama.cpp e integrar o processo isolado de inferência (Cap. 1).
+                     2. Pipeline de Visão: Integrar binários realesrgan e implementar lógica de saliência/crop (Cap. 3 e 4).
+                     3. Motor de Saída: Configurar Ghostscript e perfis ICC, implementando a detecção de preto (Cap. 5).
+                     4. Loop de Feedback: Implementar o learning.db e a lógica de RAG (Cap. 8).
+Esta documentação encerra a fase de planejamento. A integridade do sistema depende agora da adesão estrita a estes manuais durante a codificação.
+FIM DO VOLUME IV.
+Referências Cruzadas na Documentação:
+                     1. Volume II: Motor Gráfico (SVG Engine) e Lógica de Renderização.
+                     2. Volume III: Interface e Fluxos de Trabalho (Async/UI).
+                     3. Autotabloide AI: Documentação Técnica Detalhada (Visão Geral/Schema).
+
+
+
+
+
+
+VOLUME V: INTERFACE HUMANO-COMPUTADOR, ERGONOMIA COGNITIVA E INTEGRAÇÃO FRONTEND-BACKEND
+Classificação: CONFIDENCIAL Nível: EXECUÇÃO CRÍTICA Referência: Continuação dos Volumes I (Arquitetura), II (Motor Gráfico), III (Fluxos e Resiliência) e Especificação Técnica Geral. Escopo: Definição da Camada de Apresentação, Lógica de Estado do Cliente, Gestão de Projetos (Workspaces) e Auditoria Histórica.
+PREFÁCIO TÉCNICO: A DOUTRINA DA GOVERNANÇA COGNITIVA
+A engenharia de software para ambientes industriais e de varejo de alta frequência exige uma ruptura fundamental com os paradigmas de design centrados no entretenimento ou na navegação casual. O operador do Autotabloide AI não é um usuário passivo; é um piloto de um sistema complexo de manufatura digital. Ele opera sob pressão temporal, gerenciando milhares de SKUs (Stock Keeping Units), precificações voláteis e prazos de impressão inadiáveis. Neste contexto, a Interface Humano-Computador (IHC) deixa de ser uma mera camada estética para se tornar um instrumento de Governança Cognitiva.
+A missão deste Volume V é detalhar a construção de uma interface que atue como uma prótese intelectual. O sistema deve reduzir ativamente a carga mental (cognitive load) necessária para realizar tarefas complexas, transformando processos abstratos de banco de dados e cálculos vetoriais em representações visuais imediatas e tangíveis. A premissa central é que o erro humano em operações críticas — como precificar uma televisão a R$ 10,00 em vez de R$ 1.000,00 — é, frequentemente, um sintoma de falha de design na interface, não de incompetência do operador. Portanto, a arquitetura visual do Autotabloide AI deve implementar barreiras de segurança perceptivas e mecanismos de feedback que tornem o erro difícil e o acerto inevitável.
+Este documento estabelece a integração rigorosa entre o frontend, construído sobre o framework Flet (uma abstração Python para o motor Flutter), e o backend de processamento pesado detalhado nos volumes anteriores. Focaremos com exaustividade técnica nos subsistemas de "Memória Institucional" da aplicação: o Módulo de Projetos Salvos (Workspaces), que permite a persistência e retomada de estados complexos de trabalho, e o Módulo de Histórico e Auditoria (Timeline), que garante a rastreabilidade forense e a reversibilidade de cada ação executada no sistema. A estabilidade da interface gráfica não é negociável; ela deve permanecer fluida a 60 quadros por segundo (FPS), independentemente da carga de processamento de dados subjacente, exigindo uma orquestração magistral de threads, eventos assíncronos e virtualização de renderização.
+PARTE I: FUNDAMENTOS DE ERGONOMIA E ARQUITETURA VISUAL
+A eficácia operacional do Autotabloide reside na sua capacidade de comunicar o estado do sistema de forma instantânea e inequívoca. Para tal, rejeitamos as convenções de design web "clean" baseadas em espaços em branco excessivos e baixo contraste, adotando em seu lugar a estética funcional de "Consoles de Comando", otimizada para longas jornadas de trabalho e ambientes com iluminação controlada.
+CAPÍTULO 1: O PARADIGMA DE INTERFACE ESCURA E A FISIOLOGIA DA VISÃO
+A determinação normativa de utilizar o ThemeMode.DARK como padrão imutável, conforme estabelecido na Especificação Técnica , transcende a preferência estética. Ela fundamenta-se na fisiologia ocular e na ergonomia do trabalho digital contínuo. Operadores de pré-impressão e analistas de trade marketing frequentemente fixam a visão em monitores por períodos que excedem oito horas diárias. Interfaces de alta luminância (fundo branco, emissão total de luz) provocam a contração constante da íris e a fadiga dos músculos ciliares, resultando em "Computer Vision Syndrome" (CVS).
+1.1. Calibração Cromática e Contraste Semântico
+O Autotabloide AI não utiliza um fundo preto absoluto (#000000), pois o contraste extremo com textos brancos gera halação e astigmatismo visual, dificultando a leitura de precisão. O sistema adota uma base cromática de Cinza Chumbo (#1A1A1A), que preserva a legibilidade e reduz a emissão de luz azul. Sobre esta base neutra, a cor assume uma função estritamente semântica. Não há cores decorativas no Autotabloide; cada pixel colorido transmite um dado de estado crítico.
+A hierarquia visual é construída para explorar o processamento pré-atentivo do cérebro — a capacidade de identificar anomalias visuais antes mesmo do processamento consciente da leitura. Um operador pode não ler o texto "Erro de Validação", mas seu córtex visual registrará instantaneamente um bloco vermelho em uma lista de itens cinzas.
+Categoria Semântica
+	Código Hexadecimal
+	Aplicação e Significado Cognitivo
+	Comportamento Esperado do Operador
+	Superfície Base
+	#1A1A1A
+	Fundo da aplicação (Canvas). Absorção de luz para conforto visual.
+	N/A
+	Superfície Elevada
+	#2C2C2C
+	Cartões, Paineis, Modais. Define áreas de agrupamento lógico.
+	Identificação de limites de conteúdo.
+	Ação Primária
+	#007AFF (Azul Royal)
+	Botões de confirmação, links ativos, seleção. A única cor que convida ao clique.
+	Execução de tarefas e navegação.
+	Estado Seguro
+	#34C759 (Verde)
+	Validação positiva (imagem presente, preço atualizado). Sinaliza "Caminho Feliz".
+	Prosseguimento sem interrupção.
+	Estado de Alerta
+	#FFCC00 (Amarelo)
+	Avisos não-bloqueantes (baixa resolução, preço estagnado >7 dias).
+	Verificação visual recomendada.
+	Erro Crítico
+	#FF3B30 (Vermelho)
+	Falhas de integridade (preço zerado, ativo ausente). Bloqueia a renderização final.
+	Intervenção corretiva imediata.
+	Esta tabela de cores deve ser implementada como constantes globais no código Python (ex: colors.ERROR_CRITICAL), proibindo-se o uso de valores hexadecimais hardcoded dispersos pelos widgets, garantindo consistência absoluta em todas as telas.
+1.2. Aplicação da Lei de Fitts e Zonas de Interação
+A ergonomia da interface deve obedecer à Lei de Fitts, que modela matematicamente o tempo necessário para apontar para um alvo em função de seu tamanho e distância. Em um ambiente de produção, a velocidade de aquisição do alvo é diretamente proporcional à produtividade.
+O Autotabloide posiciona seus controles críticos — como o botão de "Salvar Projeto" ou "Gerar Renderização" — nas bordas ou cantos da tela ("Magic Pixels"). Ao ancorar botões nos cantos, a largura do alvo torna-se virtualmente infinita em uma direção, pois o usuário pode "jogar" o cursor do mouse para o canto sem a necessidade de desaceleração fina. Similarmente, nas grades de dados (DataGrids) da Tela de Histórico, embora a tipografia possa ser compacta para maximizar a densidade de informação, a área clicável (hitbox) de cada linha deve possuir uma altura mínima generosa (48px) e responder ao evento de clique em toda a sua extensão horizontal, não apenas sobre o texto. Isso permite que o operador selecione registros com movimentos gestuais rápidos e imprecisos, reduzindo a tensão muscular no pulso e acelerando o fluxo de trabalho.
+CAPÍTULO 2: INTEGRAÇÃO FRONTEND-BACKEND E O CICLO DE VIDA FLET
+A escolha do Flet como framework de UI define a topologia da aplicação: uma arquitetura cliente-servidor local onde o "Frontend" (Flutter engine) e o "Backend" (Python script) comunicam-se via WebSocket em localhost. Compreender e gerenciar essa ponte é vital, pois a latência ou o bloqueio nesse canal resulta na percepção de lentidão ou congelamento ("Freezing") da interface.
+2.1. O Imperativo da Assincronicidade e o Event Loop
+Conforme detalhado no Volume III, o Python opera sob o Global Interpreter Lock (GIL). Uma operação síncrona pesada na thread principal (Main Thread) — como calcular o hash MD5 de uma imagem de 50MB ou realizar uma query complexa no SQLite — interrompe o heartbeat da interface gráfica. O cursor do mouse transforma-se em uma ampulheta, e o sistema operacional marca a janela como "Não Respondendo".
+Para evitar esse colapso, a integração Flet-Python no Autotabloide deve seguir estritamente o padrão async/await para todas as interações de I/O (Entrada/Saída). Os manipuladores de eventos da interface (handlers como on_click, on_change) devem ser definidos como async def. Quando uma operação de banco de dados é necessária, o sistema deve utilizar drivers assíncronos (aiosqlite) para liberar o controle ao Event Loop enquanto aguarda a resposta do disco.
+Para operações puramente computacionais (CPU-bound), como a renderização vetorial do motor gráfico detalhado no Volume II ou a sanitização de strings via IA, o uso de async não é suficiente, pois a CPU ainda está ocupada. Nestes casos, o Autotabloide deve despachar a execução para um ProcessPoolExecutor ou ThreadPoolExecutor separado, mantendo a thread da UI livre para renderizar animações de carregamento (spinners) e responder a comandos de cancelamento.
+2.2. Estratégias de Atualização de UI (page.update())
+No Flet, as alterações no estado dos objetos Python não se refletem automaticamente na tela; é necessário invocar o método page.update() ou control.update(). O uso indiscriminado deste método é a causa primária de degradação de performance em aplicações complexas.
+Considere a renderização da tabela de Histórico com 500 registros. Uma implementação ingênua iteraria sobre a lista de dados, criaria um controle para cada linha e chamaria page.update() a cada iteração. Isso forçaria o motor de renderização a redesenhar a tela 500 vezes em frações de segundo, saturando o canal de comunicação e causando um efeito visual de cintilação (flicker) extremamente desagradável.
+A engenharia do Autotabloide impõe o Protocolo de Atualização em Lote (Batch Update). As árvores de controles devem ser construídas inteiramente na memória do Python e injetadas na página em uma única transação.
+                     * Procedimento Correto: Instanciar uma lista vazia novos_controles =. Iterar sobre os dados populando esta lista. Atribuir a lista ao contêiner pai list_view.controls = novos_controles. Invocar page.update() uma única vez. Esta abordagem reduz a sobrecarga de comunicação em ordens de magnitude, garantindo que a tela transicione do estado "Vazio" para "Preenchido" em um único frame imperceptível.
+PARTE II: ENGENHARIA DO MÓDULO DE PROJETOS SALVOS (WORKSPACES)
+O Módulo de Projetos Salvos é o coração da continuidade de negócios. Ele permite que o operador interrompa uma tarefa complexa — como a montagem de um tabloide de 12 páginas — e a retome posteriormente com fidelidade absoluta de estado. Um "Projeto" no Autotabloide não é apenas uma lista de produtos; é um snapshot relacional que preserva a intenção de design, as customizações manuais e o contexto temporal.
+CAPÍTULO 3: ESTRUTURA DE DADOS E PERSISTÊNCIA (JSON SCHEMA)
+A persistência dos projetos é realizada através de arquivos JSON armazenados no diretório /workspace/projects/, conforme definido na topologia de arquivos do sistema. A escolha de JSON sobre um formato binário proprietário garante a legibilidade humana para fins de debug e facilita a migração de dados futura. Contudo, a estrutura deste JSON deve ser rigorosa para garantir a integridade referencial ao ser recarregado.
+
+
+Conceito Crítico do Projeto Salvo: (Correção Conceitual)
+
+
+O conceito de um projeto salvo (```
+
+
+Tabela projetos_salvos
+
+
+```) é o de um Snapshot Imutável. O sistema não deve depender do estado atual da ```
+
+
+Tabela produtos
+
+
+``` para renderizar projetos antigos.
+                     * Princípio da Fidelidade Histórica: Ao abrir um tabloide ou cartaz de 6 meses atrás, ele deve renderizar com o preço, nome, e referência de imagem vigentes no momento em que o projeto foi salvo, independentemente de o preço ter mudado no banco de dados mestre.
+                     * Uso do DB: O banco de dados principal (```
+
+Tabela produtos
+
+```) é a "Fonte da Verdade" apenas para criar novos projetos.
+3.1. Anatomia do Arquivo de Projeto (.atproj)
+Cada arquivo de projeto deve conter quatro seções fundamentais: Metadados, Contexto, Mapeamento de Slots e Overrides.
+Esquema de Serialização Canônico:
+{
+ "meta": {
+   "format_version": "3.1.0",
+   "created_at_utc": "2023-11-15T14:30:00Z",
+   "last_modified_utc": "2023-11-15T16:45:12Z",
+   "author_id": "user_hash_xh52",
+   "project_uuid": "550e8400-e29b-41d4-a716-446655440000"
+ },
+ "context": {
+   "project_name": "Ofertas Fim de Semana - Black Friday",
+   "layout_source_file": "tabloide_a3_v2_12slots.svg",
+   "layout_integrity_hash": "a1b2c3d4e5f6..." 
+ },
+ "slots_mapping": {
+   "SLOT_01": { "product_id": 1045, "locked": false },
+   "SLOT_02": { "product_id": 2099, "locked": true },
+   "SLOT_03": null
+ },
+ "overrides": {
+   "SLOT_01": {
+     "manual_price_display": "9.99",
+     "manual_name_display": "Cerv. Brahma Duplo Malte",
+     "visual_tag_injection": "OFERTAÇO"
+   }
+ }
+}
+
+Análise Crítica dos Campos:
+                        * layout_integrity_hash: Este campo é vital para a segurança do design. Ao carregar um projeto, o sistema deve calcular o hash MD5 do arquivo SVG de template atualmente presente na pasta /library/svg_source/ e compará-lo com este valor armazenado. Se houver divergência (ex: um designer alterou a posição do preço no template original), o sistema deve bloquear o carregamento e emitir um alerta de "Divergência de Template", prevenindo erros visuais silenciosos onde o preço poderia ser renderizado sobre a imagem do produto.
+                        * slots_mapping: Este objeto mapeia os IDs dos grupos SVG (#SLOT_01) aos IDs de banco de dados dos produtos (core.db). Note-se que não salvamos os dados do produto (nome, preço original) aqui, apenas a referência. Isso garante que o projeto sempre reflita o estado atual do banco de dados (Single Source of Truth). Se o preço do produto mudar no cadastro mestre, o projeto abrirá com o preço novo automaticamente.
+                        * overrides: A exceção à regra anterior. Se o usuário aplicou uma modificação manual específica para este cartaz (ex: abreviar um nome longo ou aplicar um preço promocional único), esses dados são salvos aqui. Durante a renderização, o motor gráfico verifica a existência de uma entrada em overrides para o slot; se existir, ela tem precedência sobre o dado mestre do banco de dados.
+3.2. Mecanismo de Autosave e Estado "Dirty"
+A perda de dados por falha de energia ou erro do operador é inaceitável. O sistema deve implementar uma lógica de salvamento automático transparente.
+A interface mantém uma variável de estado volátil is_dirty. Qualquer interação que modifique o modelo de dados do projeto (arrastar um produto para um slot, editar um texto) define is_dirty = True. Um timer de debounce é reiniciado a cada interação. Se o sistema permanecer em estado "Dirty" por mais de 3 segundos sem novas interações, o processo de save_project_async() é disparado em background.
+Visualmente, a interface deve comunicar este estado sutilmente: o ícone de "Disquete" ou o status na barra de título muda de "Cinza" (Sincronizado) para "Azul/Amarelo" (Alterações Pendentes) e retorna para "Cinza" após a conclusão do salvamento. Se o usuário tentar fechar a aplicação enquanto is_dirty for verdadeiro e o salvamento ainda não tiver ocorrido, um diálogo modal bloqueante ("Modo de Proteção") deve interceptar o fechamento.
+3.3 Ferramentas de Edição Contextual (Adição)
+
+
+Para garantir a melhor experiência do usuário em uma aplicação desktop de design, a funcionalidade de reversibilidade é mandatória.
+                        * Funcionalidade Undo/Redo: O sistema deve implementar uma pilha de estados para suportar a reversão de ações no canvas de edição (```
+
+Tela 3 - A Mesa
+
+```).
+                        * Atalhos: A funcionalidade deve ser mapeada para os atalhos de teclado padrão:
+                           * Ctrl+Z (Undo): Reverte a última ação do usuário (ex: reposicionamento de item, alteração de preço em override, preenchimento de slot).
+                           * Ctrl+Shift+Z (Redo): Reaplica a ação desfeita.
+                           * Limite: O histórico de estados (pilha de Undo/Redo) deve ter um limite de entradas (ex: 20 ações) para evitar consumo excessivo de memória RAM e sobrecarga na manipulação do JSON de estado.
+CAPÍTULO 4: A GALERIA DE PROJETOS E VISUALIZAÇÃO DE THUMBNAILS
+A tela de "Projetos Salvos" não deve ser uma lista textual de arquivos. A identificação cognitiva de um layout visual ("Aquele cartaz vermelho da Coca-Cola") é muito mais rápida do que a leitura de nomes de arquivos ("projeto_final_v2_coca.json"). Portanto, esta tela deve operar como uma galeria visual rica.
+4.1. Pipeline de Geração de Miniaturas (Renderização Headless)
+Como um arquivo JSON é apenas texto, o sistema precisa gerar uma representação visual do projeto. Este processo utiliza o Motor Gráfico (Volume II) de forma "Headless" (sem exibição em tela).
+Sempre que um projeto é salvo, uma thread secundária é instanciada para:
+                           13. Carregar o template SVG referenciado.
+                           14. Injetar os dados dos produtos e os overrides definidos no JSON, aplicando todas as transformações matriciais e algoritmos de text-fitting.
+                           15. Rasterizar o resultado não para um PDF de alta resolução, mas para uma imagem PNG leve (ex: 300px de largura).
+                           16. Salvar esta imagem no cache oculto /workspace/projects/.thumbnails/{project_uuid}.png.
+Na tela de galeria, o componente GridView carrega estas imagens. O uso de imagens cacheadas em disco em vez de renderização em tempo real é crucial para manter a performance da rolagem na galeria, especialmente quando há centenas de projetos arquivados. O componente de imagem do Flet deve ser configurado com gapless_playback=True para evitar cintilação branca ao atualizar a miniatura de um projeto que acabou de ser editado.
+4.2. Interações Contextuais e Gestão de Ciclo de Vida
+Cada cartão de projeto na galeria deve oferecer um menu de contexto (acionado por botão direito ou ícone de "três pontos") que expõe operações avançadas de gestão:
+                           8. Duplicar (Fork): Cria uma cópia profunda (Deep Copy) do arquivo JSON e da miniatura, atribuindo um novo UUID e anexando o sufixo "(Cópia)" ao nome. Isso permite que o usuário crie variações de um design ("Versão A" e "Versão B") sem medo de perder o original.
+                           9. Empacotar para Transporte (Export): Uma função crítica para equipes distribuídas. O sistema cria um arquivo comprimido .atpkg (AutoTabloide Package) que contém o JSON do projeto E cópias físicas de todas as imagens de produtos (/assets/store/hash.png) utilizadas naquele projeto. Isso permite que o projeto seja aberto em outra máquina que não possua as mesmas imagens em seu cofre local, garantindo a portabilidade total.
+                           10. Travar (Lock): Define a flag locked: true no metadado do projeto. Projetos travados abrem em modo "Somente Leitura", prevenindo edições acidentais em materiais que já foram enviados para a gráfica.
+4.3 Exportação e Portabilidade (Empacotar para Transporte)
+
+
+Empacotar para Transporte (já existente) é uma função crítica para equipes distribuídas. O sistema cria um arquivo comprimido (```
+
+
+.zip
+
+
+```) que contém o JSON do projeto (```
+
+
+Tabela projetos_salvos
+
+
+```) e cópias físicas de todas as imagens de produtos utilizadas naquele projeto, garantindo a portabilidade total.
+
+
+4.4 Protocolo de Importação de Pacote (Adição)
+
+
+Para complementar o recurso de exportação, a funcionalidade de importação é essencial.
+                           * Função: ```
+
+Importar Pacote
+
+```
+                           * Comportamento: O sistema deve abrir um modal de diálogo para seleção de arquivo e descompactar o conteúdo do ```
+
+.zip
+
+``` de projeto:
+                              * JSON: O arquivo JSON do projeto é lido, e um novo registro é criado na ```
+
+Tabela projetos_salvos
+
+```.
+                              * Imagens: As imagens contidas no pacote são movidas para a pasta ```
+
+/staging/
+
+``` e passam pelo protocolo de Hashing Criptográfico (Vol. I) para serem armazenadas no Cofre (```
+
+/assets/store/
+
+```).
+                                 * Integridade: O sistema deve garantir que o projeto seja aberto na máquina de destino com todos os ativos necessários e a fidelidade histórica do snapshot de dados original.
+
+
+
+
+Tabela 4.5: Definição da Tabela Projetos Salvos (Revisada)
+Coluna
+	Tipo SQL
+	Descrição Técnica
+	estado_slots
+	JSON
+	O coração do projeto. Um objeto JSON mapeando chaves de slot para snapshots de dados de produtos (incluindo ``` nome_sanitizado ```, ``` preco_venda_atual ``` e ``` img_hash_ref ```) no momento do salvamento, em vez de apenas o ID. Ex: ``` {"slot_1": {"produto_id": 50, "preco": 19.90, ...}, "slot_2": ...} ```.
+	overrides_json
+	JSON
+	Armazena exceções e edições manuais que se aplicam apenas a este projeto. Ex: mudar o preço de um produto só neste cartaz sem alterar o banco global. Estes dados têm precedência sobre os dados do snapshot em ``` estado_slots ```.
+	
+
+PARTE III: ENGENHARIA DA TELA DE HISTÓRICO E AUDITORIA (TIMELINE)
+Em sistemas corporativos, a rastreabilidade ("Quem fez o quê e quando?") é tão importante quanto a funcionalidade. A tela de Histórico do Autotabloide não é um simples log de texto; é uma ferramenta de auditoria forense estruturada e um mecanismo de "Time Machine" para reversão de erros.
+CAPÍTULO 5: ARQUITETURA DE LOG E SCHEMA DE AUDITORIA
+O armazenamento de logs em arquivos de texto (system.log) é útil para depuração de desenvolvedores, mas inadequado para apresentação ao usuário final ou para consultas complexas. O Autotabloide implementa uma tabela dedicada audit_log no banco de dados SQLite, permitindo consultas relacionais rápidas.
+5.1. Definição da Tabela audit_log
+Esta tabela deve capturar a granularidade das ações de negócio.
+Coluna
+	Tipo SQL
+	Descrição Técnica e Função
+	id
+	INTEGER PK
+	Identificador sequencial único do evento.
+	timestamp
+	DATETIME
+	Data e hora exata do evento (UTC), essencial para ordenação cronológica.
+	user_ref
+	TEXT
+	Hash ou identificador do operador que executou a ação.
+	entity_type
+	TEXT
+	Categoria do objeto afetado: 'PRODUTO', 'PROJETO', 'SISTEMA'.
+	entity_id
+	INTEGER
+	Chave estrangeira lógica apontando para o ID do item afetado.
+	action_type
+	TEXT
+	Verbo da ação: 'CREATE', 'UPDATE', 'DELETE', 'IMPORT', 'PRINT'.
+	diff_payload
+	JSON
+	O "Delta" da mudança. Armazena o estado anterior e o novo. Vital para "Undo".
+	severity
+	INTEGER
+	Nível de impacto: 1 (Info), 2 (Warning), 3 (Critical/Override).
+	O Conceito de diff_payload e Reversibilidade: Para permitir a funcionalidade de "Desfazer" (Undo), o sistema deve registrar não apenas que algo mudou, mas o que mudou. O campo diff_payload armazena um JSON estruturado com os valores antigos e novos. Exemplo de Payload para uma alteração de preço manual:
+{
+ "field": "preco_venda",
+ "old_value": 10.50,
+ "new_value": 9.90,
+ "source_context": "manual_override_ui"
+}
+
+Este payload permite que a interface reconstrua a narrativa ("Preço alterado de R$ 10,50 para R$ 9,90") e fornece os dados necessários para reverter a ação.
+5.2. Visualização Cronológica e Virtualização
+A visualização de milhares de registros de log exige técnicas de virtualização de interface para manter a performance. Carregar 50.000 linhas de histórico na memória do Flet causaria um travamento imediato.
+A tela de Histórico implementa o padrão de Infinite Scroll (Rolagem Infinita) com carregamento sob demanda (Lazy Loading):
+                                 * Query Inicial: Ao abrir a tela, o sistema busca apenas os 50 eventos mais recentes: SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 50.
+                                 * Monitoramento de Scroll: Um listener monitora a posição da barra de rolagem da ListView.
+                                 * Gatilho de Paginação: Quando o scroll atinge 80% da altura do conteúdo renderizado, uma nova query assíncrona é disparada com OFFSET 50, OFFSET 100, e assim por diante.
+                                 * Injeção de Dados: Os novos registros são anexados à lista existente de forma transparente.
+Para melhorar a ergonomia cognitiva, a lista não deve ser um fluxo contínuo monótono. O renderizador deve injetar Cabeçalhos Temporais (Sticky Headers) que agrupam os eventos por dia ("Hoje", "Ontem", "Semana Passada"). Isso cria marcos visuais que facilitam a busca mental de eventos específicos.
+CAPÍTULO 6: FERRAMENTAS FORENSES E MECANISMO DE "TIME MACHINE"
+A funcionalidade mais poderosa da tela de Histórico é a capacidade de reverter o estado do sistema para um ponto anterior no tempo, mitigando erros catastróficos.
+6.1. Lógica de Rollback Atômico
+Cada cartão de log na interface deve apresentar um botão "Desfazer" (se a ação for reversível). Ao clicar, o sistema executa um protocolo de reversão:
+                                 13. Lê o diff_payload do registro selecionado.
+                                 14. Extrai o old_value e o entity_id.
+                                 15. Executa uma instrução SQL de atualização: UPDATE produtos SET preco_venda = :old_value WHERE id = :entity_id.
+                                 16. Auditoria Recursiva: A própria ação de desfazer é um evento novo. O sistema gera um novo registro no log com action_type='ROLLBACK', referenciando o ID do evento original. Isso garante a integridade linear do histórico; o passado nunca é apagado, apenas compensado por novas ações.
+6.2. Filtros de Investigação
+Para responder a perguntas de negócio críticas, a tela de Histórico deve possuir uma barra lateral de filtragem avançada (Faceted Search). Isso permite que um gerente audite operações específicas sem navegar por milhares de logs irrelevantes.
+                                 10. Filtro de Origem: "Mostrar apenas alterações manuais" (exclui importações em massa via planilha). Isso isola erros humanos de digitação. Query: json_extract(diff_payload, '$.source_context') = 'manual_override_ui'.
+                                 11. Filtro de Entidade: "Mostrar todo o histórico do Produto X". Permite visualizar a curva de preço de um item específico ao longo do tempo.
+                                 12. Filtro de Ação: "Quem deletou projetos hoje?". Query: action_type='DELETE' AND entity_type='PROJETO'.
+PARTE IV: INTERFACE DE DADOS AVANÇADA E FEEDBACK VISUAL
+Além das telas dedicadas de Projeto e Histórico, a integração frontend-backend exige componentes transversais que comuniquem a qualidade e o estado dos dados em toda a aplicação.
+CAPÍTULO 7: O SEMÁFORO DE QUALIDADE DE DADOS (DATA QUALITY SEMAPHORE)
+A qualidade do material impresso depende diretamente da qualidade dos dados de entrada. Um produto com preço desatualizado ou imagem em baixa resolução não deve ser utilizado silenciosamente. O Autotabloide implementa um sistema visual de "Semáforo" (Traffic Light System) integrado a cada representação de produto na interface.
+7.1. Cálculo do Índice de Qualidade
+No backend, o campo status_qualidade na tabela de produtos é calculado com base em regras de negócio rigorosas (Volume III). A interface mapeia este inteiro para indicadores visuais:
+                                 4. Verde (Qualidade 3 - Perfeito): O produto possui nome sanitizado, preço atualizado há menos de 7 dias e uma imagem de alta resolução (>800x800px) no cofre.
+                                 5. Amarelo (Qualidade 2 - Atenção): O produto possui dados completos, mas a imagem tem resolução marginal (entre 400px e 800px) ou o preço não sofre alteração há mais de 30 dias (risco de defasagem).
+                                 6. Laranja (Qualidade 1 - Incompleto): Falta o cadastro de peso/unidade ou a imagem é uma miniatura de baixa qualidade (<400px).
+                                 7. Vermelho (Qualidade 0 - Crítico): Produto sem imagem associada (hash nulo) ou preço igual a 0.00.
+7.2. Manifestação na UI
+Este indicador não é apenas um ícone estático. Na grade de seleção de produtos, ele aparece como um "Badge" circular sobre a miniatura. Ao passar o mouse sobre um indicador não-verde, um Tooltip Rico deve explicar a razão técnica da degradação: "Imagem de Baixa Resolução (350x350px). Recomendado substituir antes da impressão em A3.". Isso educa o operador e incentiva a manutenção preventiva do cadastro.
+CAPÍTULO 8: PADRÕES DE ATUALIZAÇÃO OTIMISTA (OPTIMISTIC UI)
+Na tela de montagem de tabloides, a latência de rede ou disco não pode atrapalhar a fluidez da criação. Quando o usuário altera um preço na interface de "Override", o sistema não deve esperar a confirmação do banco de dados SQLite para atualizar o número na tela.
+O Autotabloide adota o padrão de Interface Otimista:
+                                 * Ação do Usuário: Operador digita "9,90" e pressiona Enter.
+                                 * Mutação Local Imediata: O valor na tela muda instantaneamente para "R$ 9,90". O campo de texto perde o foco e ganha uma borda verde sutil.
+                                 * Disparo Assíncrono: Em background, a requisição UPDATE é enviada ao banco de dados.
+                                 * Reconciliação:
+                                 1. Sucesso: A borda verde desaparece suavemente.
+                                 2. Falha (Erro de Banco): O sistema captura a exceção, exibe um SnackBar de erro ("Falha ao salvar preço") e reverte o valor no campo de texto para o original, garantindo que o usuário não acredite em uma mentira (dado não salvo).
+PARTE V: RESILIÊNCIA E GESTÃO DE ERROS NA CAMADA DE APRESENTAÇÃO
+A robustez de um sistema crítico define-se pela sua elegância em situações de falha. A interface nunca deve "crashar" para o desktop ou exibir stack traces de Python para o usuário final.
+CAPÍTULO 9: SISTEMA DE NOTIFICAÇÕES E MODAIS
+A ergonomia cognitiva dita que interrupções modais (popups que bloqueiam a tela) devem ser reservadas para situações de vida ou morte do dado. Para todo o resto, utilizam-se notificações passivas.
+9.1. O Sistema de "Toast" (SnackBar)
+Para feedback de operações cotidianas ("Projeto Salvo", "Cópia Criada", "Imagem Atualizada"), utiliza-se o componente ft.SnackBar.
+                                 * Posicionamento: Inferior central, sobrepondo o conteúdo mas sem bloquear a navegação.
+                                 * Codificação de Cores: Verde (#34C759) para sucesso, Vermelho (#FF3B30) para erros de sistema, Azul (#007AFF) para informações neutras.
+                                 * Interatividade: Deve conter um botão de ação contextual quando aplicável (ex: "Projeto Salvo.").
+9.2. Diálogos de Decisão Destrutiva
+Para ações irreversíveis, como "Excluir Projeto" ou "Restaurar Backup" (que sobrescreve dados atuais), o uso de ft.AlertDialog é mandatório.
+                                 * Design de Segurança: O botão de foco padrão (que responde ao Enter) deve ser sempre o "Cancelar". O usuário deve mover intencionalmente o foco para o botão "Confirmar/Excluir" para executar a ação. Isso previne cliques acidentais baseados em reflexo muscular ("muscle memory").
+                                 * Isolamento Visual: A exibição do diálogo deve acionar um efeito de desfoque (blur) e escurecimento (opacity) em toda a interface de fundo, forçando a atenção total do usuário para a decisão em questão.
+CAPÍTULO 10: MODO DE SEGURANÇA VISUAL (SAFE MODE UI)
+Conforme descrito no Volume III, o sistema possui um "Modo de Segurança" ativado após falhas consecutivas de boot. A interface deve refletir este estado de forma óbvia. Quando em Safe Mode:
+                                 * Indicador Global: Uma barra laranja persistente no topo da janela exibe: "MODO DE SEGURANÇA - Extensões desativadas. Renderização gráfica limitada.".
+                                 * Limitação de Recursos: A Galeria de Projetos não carrega as imagens de thumbnails (exibindo placeholders cinzas) para poupar memória e evitar que uma imagem corrompida cause novo crash.
+                                 * Acesso Prioritário: A tela de Histórico e a função de Restauração de Backup ganham destaque na navegação, guiando o usuário para a resolução do problema em vez da operação normal.
+VOLUME VI: ESPECIFICAÇÃO MATEMÁTICA DA INTERFACE GRÁFICA E ERGONOMIA DE DETALH
+Classificação: CONFIDENCIAL
+Nível: EXECUÇÃO CRÍTICA (Pixel-Perfect Specification)
+Autoridade: Fonte da Verdade (Single Source of Truth)
+Referência: Consolidação da Camada de Apresentação sobre a Infraestrutura dos Volumes I a V.
+Stack Tecnológica: Flet (Python Wrapper para Flutter Engine), SQLite WAL, Llama.cpp, OpenCV.
+________________
+
+
+PREFÁCIO TÉCNICO: A GEOMETRIA DA INTERAÇÃO HUMANO-MÁQUINA
+Este documento, designado como Volume VI, constitui a camada final e mais visível do ecossistema Autotabloide AI. Enquanto os volumes precedentes estabeleceram a fundação monolítica, os protocolos de integridade de dados, a matemática vetorial do motor gráfico e a inteligência artificial local, este volume define estritamente como essas tecnologias complexas se manifestam sensorialmente e funcionalmente para o operador humano. A interface aqui descrita não é um exercício estético; é um painel de controle industrial desenhado para a governança de dados em ambientes de varejo de alta frequência.
+A premissa central que rege este volume é a Governança Cognitiva. O operador do Autotabloide AI gerencia ativos críticos — preços de venda ao consumidor — onde um erro de digitação ou uma interpretação visual equivocada pode resultar em prejuízos financeiros massivos ou penalidades legais. Portanto, a Interface Gráfica (GUI) deve atuar como uma prótese intelectual, reduzindo a carga mental necessária para a tomada de decisão e impondo barreiras perceptivas contra o erro.
+A especificação técnica detalhada a seguir deve ser implementada utilizando o framework Flet, respeitando rigorosamente o paradigma de "Single Page Application" (SPA) desktop.1 A arquitetura exige um gerenciamento de estado assíncrono para garantir que a interface permaneça fluida a 60 quadros por segundo (FPS), mesmo quando processos pesados de renderização vetorial ou inferência neural estejam ocorrendo em background. A adesão ao tema escuro (ThemeMode.DARK) e à paleta de cores semântica definida nos volumes anteriores é mandatória e não sujeita a preferências subjetivas.
+________________
+
+
+PARTE I: A FUNDAÇÃO DO SHELL DE APLICAÇÃO E NAVEGAÇÃO
+O "Shell" da aplicação não é apenas uma moldura; é o contêiner de estado persistente que encapsula todas as funcionalidades do sistema. Ele é responsável pela identidade visual, pela estabilidade da janela no sistema operacional e pelo feedback global de saúde do sistema (CPU, I.A., Banco de Dados).
+CAPÍTULO 1: ARQUITETURA DA JANELA MESTRE (APP WINDOW)
+A inicialização da janela principal (main.py) estabelece as restrições físicas e lógicas dentro das quais o operador irá trabalhar. A configuração do objeto ft.Page deve seguir parâmetros rígidos para garantir a imersão e o aproveitamento máximo da área de trabalho, vital para a manipulação de layouts gráficos complexos em monitores de alta resolução.
+1.0.1 O Menu de Configurações (Preferências Locais) (Adição)
+O sistema deve incluir um menu de Configurações/Preferências acessível no shell da aplicação (barra lateral ou menu hamburger) sem a necessidade de login ou conta de usuário. Estas configurações devem ser persistidas localmente no arquivo ```
+
+
+/config/settings.json
+
+
+``` e governar comportamentos globais.
+                                 * Finalidade: Centralizar as regras de tipografia e segurança que podem variar por operador ou filial.
+                                 * Itens de Configuração:
+                                 * Padrão de Nomenclatura: Ajuste fino da regra de Title Case (Capítulo 3, Vol. III) e definição do case para as unidades de medida (ex: "ml" minúsculo vs. "ML" maiúsculo).
+                                 * Regras de Segurança: Definição da categoria de produtos que exigem a injeção automática do ícone "+18" (ex: "Bebida Alcoólica", "Cigarro").
+                                 * Caminhos de Pastas: Permitir a redefinição da raiz do sistema (```
+
+/AutoTabloide_System_Root/
+
+```) em casos de migração de disco ou sistemas multiusuário.
+                                 * Configuração da IA: Seleção do modelo de quantização (4-bit vs. 8-bit) e limiar de fuzzy matching (Capítulo 1, Vol. IV).
+1.1 Parâmetros de Inicialização e Ciclo de Vida
+A função main(page: ft.Page) atua como o ponto de entrada e orquestrador. As propriedades abaixo devem ser configuradas de forma imutável no momento do boot:
+Propriedade Flet
+	Valor Mandatório
+	Justificativa Ergonômica e Técnica
+	page.title
+	Autotabloide AI v[Versão] -
+	Identificação clara da instância para suporte remoto e auditoria.
+	page.theme_mode
+	ft.ThemeMode.DARK
+	Redução da emissão de luz azul e fadiga ocular em turnos > 8 horas. Melhora o contraste de layouts coloridos.1
+	page.padding
+	0
+	Controle total das margens pelos contêineres internos. Evita "sangramento" de luz nas bordas da janela.
+	page.window_min_width
+	1280
+	Garante que a interface complexa de 3 colunas (Nav, Lista, Canvas) nunca colapse ou quebre.
+	page.window_min_height
+	720
+	Assegura altura suficiente para a visualização de listas virtualizadas.
+	page.fonts
+	{'Roboto': '/assets/fonts/Roboto-Regular.ttf', 'JetBrains': '/assets/fonts/JetBrainsMono.ttf'}
+	Padronização tipográfica. JetBrains usada exclusivamente para dados numéricos, logs e JSON para alinhamento vertical preciso.
+	Lógica de Gerenciamento de Scroll:
+A propriedade page.scroll deve ser definida estritamente como ft.ScrollMode.HIDDEN. A rolagem da janela principal é proibida. Toda e qualquer rolagem deve ser gerenciada localmente por componentes ft.ListView ou ft.GridView dentro de suas respectivas áreas de conteúdo. Isso preserva a estabilidade da Barra de Navegação e da Barra de Status, que devem permanecer fixas na tela em todos os momentos (Sticky Layout).
+1.2 A Engenharia da Barra de Navegação Lateral (Rail Navigation)
+Diferente de aplicações web tradicionais que utilizam barras superiores (Topbars), o Autotabloide adota uma ft.NavigationRail vertical ancorada à esquerda. A justificativa matemática baseia-se na proporção dos monitores modernos (Widescreen 16:9); o espaço vertical é o recurso mais escasso, necessário para exibir longas listas de produtos, enquanto o espaço horizontal é abundante e pode ser sacrificado para controles de navegação.
+Especificação Geométrica e Comportamental:
+                                    * Largura Expandida: 250px. Espaço suficiente para rótulos descritivos legíveis sem truncamento (ex: "Configuração e Histórico").
+                                    * Largura Colapsada: 72px. Modo de "Foco" ativado automaticamente na Tela 3 (Montagem), maximizando a área do canvas gráfico.
+                                    * Cor de Fundo: #111111 (Super Dark Grey). Cria um contraste sutil de profundidade com o Canvas principal (#1A1A1A), estabelecendo hierarquia visual.
+                                    * Divisor Vertical: Uma linha sólida de 1px (ft.VerticalDivider) na cor #333333 separa a navegação do conteúdo.
+Tabela de Destinos de Roteamento:
+Índice
+	Rótulo
+	Ícone Material (Filled)
+	Função Arquitetural
+	0
+	Dashboard
+	ft.icons.DASHBOARD
+	Visão executiva e status de produção.
+	1
+	Layouts
+	ft.icons.GRID_VIEW
+	Gestão de templates vetoriais e validação SVG.
+	2
+	Estoque
+	ft.icons.INVENTORY_2
+	Higienização de dados, IA e pipeline de imagens.
+	3
+	Montagem
+	ft.icons.DESIGN_SERVICES
+	Drag & Drop e edição fina de vetores.
+	4
+	Produção
+	ft.icons.PRINT
+	Configuração de imposição, cor e renderização PDF.
+	5
+	Cofre
+	ft.icons.SETTINGS
+	Logs de auditoria, backups e configuração de sistema.
+	Lógica de Transição de Estado:
+A alteração do selected_index na NavigationRail não deve disparar um recarregamento da página. A arquitetura exige o uso de um ft.AnimatedSwitcher no contêiner principal de conteúdo. Este componente deve gerenciar a transição suave (fade-in de 200ms) entre os controles de usuário (ft.UserControl) que representam cada tela. Criticamente, o estado da memória de cada tela deve ser preservado sempre que possível; se o usuário filtrar o estoque por "Bebidas" na Tela 2, navegar para a Tela 4 e retornar, o filtro "Bebidas" deve permanecer ativo.
+1.3 A Barra de Status Inferior: Telemetria em Tempo Real
+Ancorada na base da janela (ft.Page.bottom_app_bar), uma barra de 24px de altura na cor #000000 (Black) fornece feedback contínuo sobre a saúde invisível do sistema. Em um ambiente "Offline-First", o operador precisa saber se os subsistemas locais estão funcionais.
+Indicadores Críticos e Lógica de Feedback:
+                                    1. Sentinela do Banco de Dados (SQLite WAL):
+                                    * Componente: ft.Icon + ft.Text.
+                                    * Ícone: ft.icons.STORAGE.
+                                    * Lógica de Cor: O sistema monitora a latência da última transação de escrita.
+                                    * Verde (#34C759): Latência < 10ms (Operação normal em memória/WAL).
+                                    * Amarelo (#FFCC00): Latência > 100ms (Sinal de checkpointing pesado ou disco lento).
+                                    * Vermelho (#FF3B30): Bloqueio (Database Locked) ou Erro de I/O.
+                                    * Tooltip: Ao passar o mouse, exibe o tamanho físico dos arquivos core.db e core.db-wal.1
+                                    2. Monitor do Motor Neural (Llama.cpp):
+                                    * Componente: ft.Row com Ícone ft.icons.PSYCHOLOGY e Texto de Estado.
+                                    * Estados: "Idle" (Cinza), "Loading Model" (Amarelo), "Inferencing" (Azul Neon).
+                                    * Animação: Durante o estado "Inferencing", o ícone deve pulsar (Opacidade 1.0 $\rightarrow$ 0.5 em loop de 800ms) para indicar que o processo isolado de IA está consumindo ciclos de CPU, justificando eventuais lentidões.1
+                                    3. Fila de Renderização (Job Queue):
+                                    * Texto: "Jobs: X".
+                                    * Função: Contador incremental de tarefas de exportação PDF pendentes no spooler do Ghostscript.
+________________
+
+
+PARTE II: ESPECIFICAÇÃO DA TELA 1 - O ATELIÊ (GESTÃO DE LAYOUTS VETORIAIS)
+A "Tela 1" atua como o portal criativo do sistema. Sua função primária é a visualização, validação técnica e instanciação dos templates SVG. Dada a natureza abstrata do código XML por trás dos vetores, esta interface deve traduzir código em representação visual imediata.
+CAPÍTULO 2: A GRID DE LAYOUTS E A INSPEÇÃO ESTRUTURAL
+A visualização principal deve ser implementada através de uma ft.GridView responsiva, capaz de refluir os cartões de layout conforme a largura da janela varia (runs_count dinâmico ou max_extent fixo).
+2.1 Anatomia do Cartão de Layout (Layout Card)
+Cada template SVG armazenado no sistema de arquivos é representado por um contêiner interativo complexo.
+Dimensões Físicas:
+                                    * Largura: 280px (Fixo).
+                                    * Altura: 360px (Fixo).
+                                    * Espaçamento (Gap): 20px.
+Composição Hierárquica Interna:
+                                    1. Header (Metadados de Classificação): Faixa superior de 30px.
+                                    * Título: Nome amigável do layout (truncamento com reticências se > 25 caracteres).
+                                    * Badge de Categoria: Um chip colorido no canto superior direito indicando o tipo de mídia, derivado da análise de tags do parser lxml (Volume I).
+                                    * "Tabloide" (Azul Royal) - Layouts multiproduto.
+                                    * "Cartaz" (Roxo) - Layouts de produto único ou destaque.
+                                    * "Etiqueta" (Cinza) - Pequenos formatos de gôndola.
+                                    2. Corpo (Visualização de Thumbnail):
+                                    * Componente: ft.Image.
+                                    * Fonte: Caminho local /library/thumbnails/{layout_hash}.png gerado no momento da ingestão.1
+                                    * Ajuste: ft.ImageFit.CONTAIN para garantir que a proporção do layout seja respeitada integralmente dentro da área do cartão.
+                                    * Micro-interação: on_hover dispara uma transição de estado que aplica uma borda sólida de 2px na cor #007AFF e elevação (box-shadow) para indicar foco de seleção.
+                                    3. Footer (Capacidade e Ação):
+                                    * Informação Técnica: Texto discreto "12 Slots | A3 | CMYK".
+                                    * Ação Primária: Botão "Criar Projeto" (Ícone ft.icons.ADD) alinhado à direita.
+2.2 O Modo de Inspeção "Raio-X" (X-Ray Overlay)
+Uma das inovações críticas do Autotabloide AI é a capacidade de "depurar" design. Designers frequentemente cometem erros na nomeação de camadas no Illustrator (ex: esquecendo de agrupar o preço com o produto). Para mitigar isso, a interface implementa o "Modo Raio-X".
+Mecânica de Ativação:
+Um controle ft.Switch posicionado na barra de ferramentas superior da tela, rotulado "Modo Raio-X".
+Comportamento Visual e Lógica de Renderização:
+Ao ativar este modo, o sistema substitui a imagem src de todos os thumbnails na grid por uma versão renderizada alternativa (pré-cacheada com sufixo _xray.png ou gerada on-the-fly). Nesta visualização técnica, a arte "bonita" é suprimida e substituída pela estrutura lógica do DOM:
+                                    * Zonas de Imagem (#ALVO_IMAGEM): Renderizadas como retângulos preenchidos em Verde Neon semitransparente (Alpha 0.4). Isso permite verificar se a área de drop da imagem está correta.
+                                    * Zonas de Texto (#TXT_...): Renderizadas como caixas Vermelhas semitransparentes. Permite verificar se os campos de preço e descrição foram identificados pelo parser.
+                                    * Identificação de Slots: O número do slot (01, 02, etc.) é desenhado em Amarelo grande sobre cada grupo, permitindo verificar a ordenação lógica de leitura (Z-Index).
+Esta funcionalidade transfere a responsabilidade da validação técnica para o operador visual, permitindo identificar templates defeituosos antes de iniciar um projeto.
+2.3 Área de Dropzone e Ingestão de Novos Templates
+Acima da grid, um contêiner tracejado (border=ft.border.all(2, ft.colors.GREY_700, ft.border.BorderSide.DASHED)) atua como área de upload.
+Estados de Feedback:
+                                    * Idle: Texto "Arraste arquivos.SVG aqui". Ícone cinza desbotado.
+                                    * Hover (Com arquivo na mão): O fundo escurece para #1A1A1A mais claro e a borda torna-se Azul Sólida, indicando prontidão.
+                                    * Processamento (On Drop):
+                                    1. Exibe uma ft.ProgressBar indeterminada.
+                                    2. Invoca o parser lxml em uma thread secundária para validar a estrutura XML.
+                                    3. Sucesso: Emite um ft.SnackBar verde: "Template importado. 12 Slots detectados." e atualiza a grid.
+                                    4. Falha de Estrutura: Exibe um ft.AlertDialog vermelho modal listando os erros específicos (ex: "Grupo #SLOT_04 duplicado", "Fonte Helvetica-Bold ausente no sistema"). O sistema recusa o arquivo para evitar corrupção do repositório /library/svg_source.1
+________________
+
+
+PARTE III: ESPECIFICAÇÃO DA TELA 2 - O ALMOXARIFADO (ESTOQUE E DADOS)
+Esta tela representa o maior desafio de engenharia de performance da interface. O operador deve ser capaz de rolar e manipular listas com dezenas de milhares de produtos sem engasgos visuais.
+CAPÍTULO 3: VIRTUALIZAÇÃO DE DADOS E ERGONOMIA DE LINHA
+A utilização do componente padrão ft.DataTable para datasets massivos (> 100 linhas) é proibida devido à sobrecarga de renderização. A implementação deve utilizar uma ft.ListView virtualizada, onde apenas os itens visíveis no viewport são renderizados no DOM.
+3.1 Anatomia da Linha de Produto (The Product Row Widget)
+Cada linha da lista é um ft.Container customizado com altura fixa de 60px. A rigidez da altura é crucial para o cálculo matemático da barra de rolagem virtual.
+Distribuição de Colunas (Layout Flex):
+Elemento
+	Largura / Flex
+	Componente e Comportamento
+	Avatar (Semáforo)
+	60px (Fixo)
+	ft.Stack. Fundo: Miniatura da imagem (_thumb.jpg). Sobreposição: Círculo de 12px no canto superior direito indicando a qualidade do dado (Verde/Amarelo/Vermelho).1
+	SKU
+	100px (Fixo)
+	Texto na fonte JetBrains Mono, cor cinza claro. Garante alinhamento numérico perfeito.
+	Descrição
+	Flex 3
+	ft.TextField sem borda (modo leitura). Ao clicar, ganha borda e foco (modo edição). TextOverflow.ELLIPSIS para nomes longos.
+	Marca
+	Flex 1
+	ft.Dropdown ou Texto simples.
+	Preço Venda
+	120px (Fixo)
+	ft.TextField. Alinhamento à direita. Cor: #34C759 (Verde Dinheiro) e peso FontWeight.BOLD. Validação de input permitindo apenas números e vírgula.
+	Ações
+	100px (Fixo)
+	Botão "Magic Wand" (ft.icons.AUTO_FIX_HIGH) para acionamento de IA.
+	3.2 O Gatilho de IA (Sanitização e ETL)
+A interação com a Inteligência Artificial Local (Volume IV) ocorre aqui. Se o sistema detecta, via Regex, que a descrição do produto está "suja" (ex: contém "CX", "UN", ou caixa alta excessiva), o botão "Magic Wand" pulsa sutilmente para sugerir a correção.
+Fluxo de Interação:
+                                    1. Clique: O operador clica na varinha mágica.
+                                    2. Bloqueio: O campo de descrição entra em estado read_only=True e exibe um pequeno spinner à direita.
+                                    3. Processamento: O texto bruto é enviado via fila IPC para o processo NeuralEngine (Llama.cpp).
+                                    4. Streaming: A resposta limpa ("Arroz Branco Tipo 1") substitui o texto original. O efeito visual deve ser de "digitação rápida" ou substituição instantânea.
+                                    5. Side-Effects: Campos ocultos ou secundários como "Peso" (5kg) e "Unidade" (UN) são preenchidos automaticamente com base na extração estruturada do JSON da IA.
+                                    6. Confirmação: Um flash verde suave no fundo da linha (ft.Container.animate) confirma o sucesso da operação ETL.
+3.3 O Laboratório de Imagem (Modal "The Image Doctor")
+Ao clicar no Avatar do produto, o sistema não abre apenas a imagem; ele abre o "Image Handler", um ft.AlertDialog de tela cheia ou ft.BottomSheet expandido que atua como centro de comando de visão computacional.
+Layout do Modal:
+                                    * Painel Esquerdo (Preview): Exibe a imagem atual em alta resolução.
+                                    * Overlay de Saliência: Um toggle "Mostrar Recorte Inteligente" sobrepõe o retângulo calculado pelo algoritmo de saliência (OpenCV), mostrando exatamente como a imagem será cortada para caber em slots quadrados ou retangulares.1
+                                    * Painel Direito (Ferramentas):
+                                    * Aba 1: Busca Web (The Hunter): Interface para o scraper Playwright. Exibe um grid de resultados da web. Ao clicar, baixa, remove fundo e apresenta o preview.
+                                    * Aba 2: Upload Local: Área de drag & drop tradicional.
+                                    * Comandos de Processamento Neural:
+                                    * Botão "Remover Fundo" (Invoca rembg).
+                                    * Botão "Upscale 4x" (Invoca realesrgan-ncnn-vulkan). Este botão deve ter um aviso de latência: "Processamento Pesado (~5s)".
+                                    * Indicador BRISQUE: Uma barra de progresso colorida de 0 a 100 indicando a qualidade técnica da imagem. Se Score < 30, exibe rótulo verde "Qualidade de Estúdio".
+________________
+
+
+PARTE IV: ESPECIFICAÇÃO DA TELA 3 - A MESA (MONTAGEM DE TABLOIDES)
+A "Mesa" é o coração da operação criativa. A interface deve facilitar a manipulação espacial de dados. A tela é dividida em dois painéis verticais (ft.Row com dois contêineres expansíveis): a "Estante" (Produtos) e o "Papel" (Canvas). A Mesa é o coração da operação criativa, projetada para a montagem visual e interativa de tabloides multiprodutos. É a tela onde a composição é realizada.
+4.0. Objetivo e Filosofia
+
+
+A Tela 3 - A Mesa é o coração da operação criativa, projetada exclusivamente para a montagem visual e interativa de tabloides e layouts multiprodutos. Esta é a interface onde a composição de slots e a aplicação de overrides contextuais são realizadas. Seu foco é a alta produtividade através da manipulação de dados em tempo real.
+
+
+4.1. Fluxo de Inicialização e Seleção de Projeto
+
+
+A interface de edição deve impor um fluxo de trabalho claro antes de permitir a interação com o canvas.
+                                    1. Interface de Bloqueio: Ao acessar a Tela 3, o canvas principal (área de edição) deve estar bloqueado e exibindo um fundo neutro, aguardando a seleção de um projeto base.
+                                    2. Pop-up Inicial de Seleção (Novo Fluxo): Um Pop-up modal de "Seleção de Layout ou Projeto Salvo" é aberto automaticamente em primeiro plano.
+                                    * Opção 1: Novo Projeto (Seleção de Layout): O modal exibe a galeria (Grid Visual) de miniaturas e nomes dos layouts disponíveis (Tabela layouts_meta), permitindo ao usuário escolher o template SVG de base.
+                                    * Opção 2: Carregar Projeto Salvo: Permite que o usuário selecione um registro da Tabela projetos_salvos para continuar um trabalho anterior, carregando o snapshot de dados imutável.
+                                    3. Liberação do Canvas: Somente após a confirmação do layout (ou projeto salvo), o Pop-up é fechado, e a interface principal é liberada, carregando o SVG base e a Estante de Produtos (painel lateral de inventário).
+4.2. O Painel de Inventário e Importação de Dados
+
+
+O painel lateral (Estante de Produtos) serve como o pool de produtos prontos para serem arrastados para o canvas.
+                                    1. Botão "Importar Dados": Um botão proeminente aciona o fluxo de alimentação de dados, com as seguintes opções:
+                                    * Opção A: Importação do Banco de Dados: Abre um Pop-up com um DataGrid virtualizado do Tabela produtos. O usuário pode usar a Busca Imediata (filtragem conforme digita) e o Multi-Select para selecionar vários produtos de uma só vez. A seleção envia os produtos diretamente para a Estante.
+                                    * Opção B: Importação de Tabela (Excel/CSV) e Conciliação (Novo Fluxo Crítico):
+                                    * Disparo: O sistema solicita o upload de um arquivo externo.
+                                    * Pop-up de Conciliação ("O Juiz"): Esta é a interface crítica que executa a IA/Lógica Fuzzy para conciliar dados brutos com o inventário.
+                                    * Estrutura de Duas Colunas:
+                                    * Coluna Esquerda (Dados Brutos): Exibe a descrição original do produto na planilha externa (o sku_origem).
+                                    * Coluna Direita (Sugestão do Sistema): Exibe o nome_sanitizado e o id do produto que o sistema sugere como par correspondente, com base na IA.
+                                    * Feedback Semafórico (Visualização Imediata):
+                                    * Verde (Casou Perfeito): Correlação com altíssima certeza (ex: >99%). O sistema assume o item existente no DB. Ação: Nenhuma.
+                                    * Amarelo (Sugestão da IA): Correlação de média/alta certeza. Ação Obrigatória: O usuário deve aprovar a sugestão da IA ou corrigir a correlação manualmente, escolhendo outro item do DB ou forçando a criação de um novo.
+                                    * Vermelho (Novo Item): Nenhuma correlação satisfatória encontrada. O item será criado como um novo registro no DB, usando a sanitização da IA. Ação Obrigatória: O usuário deve aprovar a criação do novo registro.
+                                    * Regra de Bloqueio: O botão "Confirmar Importação" só é habilitado quando todos os registros na lista de conciliação estiverem marcados como Verde ou tiverem suas ações (Aprovação/Criação) confirmadas.
+4.3. Interação no Canvas e Auto-Preenchimento
+                                    1. Drag and Drop: O usuário arrasta os cards da Estante de Produtos diretamente para o slot desejado no canvas de edição (#SLOT_XX).
+                                    2. Botão "Auto-Preencher" (Adição):
+                                    * Localização: Posicionado de forma proeminente na barra de ferramentas do canvas.
+                                    * Lógica: Ao ser acionado, o sistema percorre a Estante de Produtos de cima para baixo e aloca sequencialmente cada item no primeiro slot vazio (#SLOT_01, #SLOT_02, etc.) do layout, parando quando todos os produtos tiverem sido distribuídos ou todos os slots tiverem sido preenchidos.
+4.4. Edição Rápida e Fidelidade Histórica (Override)
+                                    1. Modal de Edição (Override) (Reforço): Um duplo clique em um item (ou no slot preenchido) no canvas deve abrir um modal de edição contextual.
+                                    * Função: Este modal permite que o usuário sobrescreva manualmente o snapshot de dados do produto apenas para este projeto.
+                                    * Campos Chave: O modal deve permitir a alteração clara e separada do Preço De (preco_referencia) e Preço Por (preco_venda_atual), além do nome_sanitizado e detalhe_peso.
+                                    * Persistência: Os dados alterados são salvos exclusivamente no overrides_json da Tabela projetos_salvos e têm precedência sobre qualquer outro dado durante a renderização.
+                                    2. Fidelidade Histórica (Correção Conceitual Crítica):
+                                    * Snapshot Imutável: O estado_slots da Tabela projetos_salvos deve armazenar um snapshot completo e copiado dos dados do produto (incluindo preço, nome, e hash da imagem) no momento em que o projeto é salvo.
+                                    * Regra de Abertura: Ao carregar um projeto salvo, o sistema deve usar os dados do snapshot no estado_slots e não consultar o estado atual da Tabela produtos. O preço de 6 meses atrás será preservado, garantindo a fidelidade do histórico.
+4.5. Funcionalidade Avançada: Kits e Múltiplos Ativos (Adição)
+                                    1. Alocação de Múltiplos Produtos (Kits): O slot na Estante de Produtos deve permitir que o usuário arraste e solte múltiplos produtos diferentes para o mesmo #SLOT_XX no canvas (Ex: "Leite" e "Biscoito" no mesmo slot).
+                                    * Lógica de Injeção de Texto: O motor de renderização deve concatenar os nome_sanitizado dos produtos alocados com conectivos (ex: "e" ou "/") para o campo #TXT_NOME_PRODUTO.
+                                    2. Seleção de Múltiplos Sabores/Imagens: O modal de edição deve permitir ao usuário selecionar múltiplos hashes de imagem do Cofre (img_hash_ref) para um único produto (Ex: "Iogurte Sabor Morango e Coco").
+                                    * Lógica de Renderização: Se o slot tiver múltiplos hashes em sua referência, o motor de vetorização (Vol. II) deve acionar a Lógica de Grid/Composição, dividindo o #ALVO_IMAGEM e diagramando as múltiplas imagens em um mini-grid automático (ex: 2x2, 1x2, etc.) dentro da área permitida.
+4.6. Reversibilidade (Undo/Redo)
+                                    1. Pilha de Estados (Adição): O canvas deve implementar uma pilha de estados que armazena o JSON de estado da sessão.
+                                    2. Atalhos de Teclado:
+                                    * Ctrl+Z (Undo): Reverte a última ação (Ex: reposicionamento de item, aplicação de override).
+                                    * Ctrl+Shift+Z (Redo): Reaplica a ação desfeita.
+                                    3. Limite: A pilha de Undo/Redo deve ser limitada (ex: 20 a 30 ações) para evitar consumo excessivo de RAM.
+________________
+
+
+PARTE V: ESPECIFICAÇÃO DA TELA 4 - A FÁBRICA (PRODUÇÃO E SAÍDA)
+Esta tela é focada na configuração de parâmetros industriais e no feedback de processos de longa duração.
+5.0. Objetivo e Filosofia
+
+
+A Tela 4 - A Fábrica de Cartazes é uma ferramenta de produção em lote e renderização data-driven, não um editor visual interativo. Seu objetivo é gerar centenas de cartazes e etiquetas de item único a partir de uma lista de dados, resultando em um único PDF multipáginas pronto para a impressão.
+
+
+5.1. Conceito e Tipologia (Reescrita)
+                                    1. Natureza Data-Driven: Esta interface é otimizada para a eficiência. O usuário fornece uma lista, e o sistema automatiza o processo de "preencher N slots em N páginas/cartazes".
+                                    2. Layout Exigido: A Fábrica de Cartazes só aceita layouts classificados como CARTAZ_A4, CARTAZ_GIGANTE ou ETIQUETA (Tabela layouts_meta), que são projetados para renderizar um único produto por frame ou página.
+5.2. Fluxo de Geração em Lote (Reescrita)
+                                    1. Seleção de Layout de Cartaz (Novo Fluxo): A primeira ação é a seleção do template SVG de cartaz.
+                                    2. Importação de Lista (Novo Fluxo): O usuário deve importar uma lista de dados (via Excel/CSV ou Multi-Select do Banco de Dados) que contém os itens a serem impressos.
+                                    3. Estrutura Crítica da Lista (Regra Mandatória): Para que o sistema possa gerar cartazes em conformidade com o PROCON, a lista de input deve ser validada para as seguintes colunas de dados essenciais:
+                                    * Descrição: Nome do produto (nome_sanitizado).
+                                    * Preço De (Obrigatório): O preço anterior/referência (preco_referencia).
+                                    * Preço Por (Obrigatório): O preço vigente/oferta (preco_venda_atual).
+                                    * Gramatura: (Opcional, mas exigido se o layout tiver #TXT_UNIDADE).
+                                    4. Tabela de Processamento: Os dados importados são exibidos em uma tabela na lateral esquerda, que atua como a Lista de Geração.
+                                    5. Pré-visualização Dinâmica (Preview): Ao clicar em qualquer item da Lista de Geração (na tabela da esquerda), a área de visualização (direita) dispara uma renderização em tempo real daquele cartaz específico. Isso permite a auditoria visual do resultado final antes da exportação.
+                                    6. Exportação (Geração em Lote): O botão "Exportar" aciona a rotina de renderização final.
+                                    * Lógica de Exportação: O sistema executa um loop que itera sobre cada linha da Lista de Geração, tratando cada linha como um frame de saída (Capítulo 1, Vol. II).
+                                    * Saída Final: Gera um único arquivo PDF multipáginas, onde cada página é um cartaz completo, ou um conjunto de cartazes N-Up.
+                                    * Ajuste de Cor: O toggle de exportação RGB/CMYK (Vol. II) é obrigatório, com CMYK como o padrão para impressão.
+5.3. Regras de Negócio do Preço (Diferenciação de Slots)
+
+
+O motor de renderização deve utilizar a distinção das tags SVG para garantir a injeção correta dos preços:
+                                    1. Preço De: O dado de preco_referencia é injetado exclusivamente na tag #TXT_PRECO_DE do template. Esta tag deve ser estilizada com texto menor e com a linha de risco (strikethrough).
+                                    2. Preço Por: O dado de preco_venda_atual é quebrado e injetado nas tags #TXT_PRECO_INT e #TXT_PRECO_DEC (ou na tag completa #TXT_PRECO_COMPLETO), com fontes de destaque (maiores e mais pesadas).
+                                    3. Consistência: Essa diferenciação é crítica e garante que a lógica de front-end respeite a modelagem de dados do back-end (preco_referencia e preco_venda_atual).
+________________
+Capítulo 6: Cofre e Timeline
+
+
+6.1. Acesso ao Histórico e Restauração de Backup
+                                    1. Tela de Histórico: O Dashboard atua como a tela de histórico, listando todos os snapshots zipados (/snapshots/) com data e hora.
+                                    2. Processo de Restauração (Adição): Ao selecionar um snapshot e clicar em "Restaurar", o sistema executa o seguinte fluxo:
+                                    * Backup Imediato: Cria um novo snapshot do estado ATUAL antes de qualquer alteração, garantindo que o usuário possa reverter a restauração.
+                                    * Substituição: Descompacta o arquivo core.db do snapshot selecionado e o substitui no diretório /database/.
+                                    * Reinicialização Forçada: A aplicação deve exigir a reinicialização (ou forçar o reload do motor ORM) para que o novo banco de dados seja lido. Um aviso claro deve ser emitido ao usuário sobre a natureza irreversível do estado atual (sem o backup).
+6.2. Saída do Modo de Segurança (Safe Mode) (Adição)
+                                    1. Finalidade: O Safe Mode é uma tela de diagnóstico, acionada em caso de erro fatal de boot (ex: permissão negada, corrupção do DB, dependency hell).
+                                    2. Retorno à Versão Padrão: O Pop-up do Safe Mode deve incluir um botão ou opção de menu "Voltar à Versão Padrão".
+                                    * Lógica: Ao ser acionado, o sistema tenta rodar uma rotina de auto-reparo e validação de integridade.
+                                    * Saída: Se o auto-reparo for bem-sucedido, o sistema exige uma reinicialização da aplicação para sair do Safe Mode e retornar à operação normal.
+________________
+
+
+PARTE VI: ESPECIFICAÇÃO DA TELA 5 - O COFRE (HISTÓRICO E SEGURANÇA)
+CAPÍTULO 6: TIMELINE FORENSE E TIME MACHINE
+A tabela audit_log (Volume V) é visualizada aqui para garantir rastreabilidade total.
+6.1 Timeline Infinita e Headers Temporais
+                                    * Componente: ft.ListView com carregamento sob demanda (Trigger a 80% do scroll).
+                                    * Sticky Headers: A lista deve ser agrupada visualmente por datas ("Hoje", "Ontem", "Novembro 2023").
+                                    * Cartão de Evento:
+                                    * Ícone: Varia conforme a ação (Lápis para Edição, Impressora para Exportação, Lixeira para Deleção).
+                                    * Cor Lateral (Strip): Verde (Criação), Azul (Edição), Vermelho (Deleção).
+                                    * Conteúdo: Descrição humana da ação gerada a partir do JSON de diff: "Preço da Picanha alterado de R$ 50,00 para R$ 45,00".
+                                    * Metadados: Hash do Usuário e Timestamp exato.
+6.2 Funcionalidade de Rollback (Time Machine)
+Para eventos do tipo UPDATE ou DELETE, o cartão exibe um botão "Desfazer".
+                                    * Mecânica de Reversão:
+                                    1. Clique em "Desfazer".
+                                    2. Diálogo de Confirmação: "Isso reverterá o preço da Picanha para o valor de ontem. Confirmar?"
+                                    3. O sistema executa a query SQL inversa (usando os valores antigos armazenados no payload do log).1
+                                    4. Um novo evento de tipo ROLLBACK é inserido no topo da timeline, preservando a integridade histórica (o erro não é apagado, é compensado).
+6.3 A Função de Restauração (Adição)
+O controle de versão e o snapshot de segurança (Capítulo 9, Vol. I) exigem um protocolo claro de restauração.
+                                    * Tela de Histórico: Acessada via navegação, a tela de histórico/dashboard deve listar todos os snapshots zipados (```
+
+/snapshots/
+
+```).
+                                    * Processo de Restauração (Adição): Ao selecionar um snapshot e clicar em "Restaurar", o sistema executa o seguinte fluxo:
+                                       1. Backup Imediato: Cria um novo snapshot do estado ATUAL antes de qualquer alteração.
+                                       2. Substituição: Descompacta o arquivo ```
+
+core.db
+
+``` do snapshot selecionado e o substitui no diretório ```
+
+/database/
+
+```.
+                                       3. Reinicialização Forçada: A aplicação deve ser reiniciada (ou forçar o reload do ORM) para que o banco de dados restaurado seja lido, e um aviso claro deve ser emitido ao usuário.
+6.4 Modo de Segurança (Safe Mode)
+
+
+O Modo de Segurança é acionado em caso de falha catastrófica de boot (ex: permissão negada na pasta ```
+
+
+/database/
+
+
+``` ou corrupção de schema).
+
+
+Saída do Modo de Segurança (Adição): O Pop-up de aviso do Safe Mode deve incluir um botão ou opção de menu "Voltar à Versão Padrão". Ao ser clicado, o sistema tenta rodar uma rotina de auto-reparo e, se for bem-sucedida, exige a reinicialização da aplicação para sair do Modo de Segurança e retornar à operação normal.
+CAPÍTULO 7: CONFIGURAÇÕES DE SISTEMA
+                                          * Caminhos de Biblioteca: Inputs de texto para definir onde residem as pastas /library/svg_source e /assets/store.
+                                          * Modo Seguro: Um Switch que, se ativado, força a próxima inicialização a pular o carregamento de extensões ou texturas pesadas (útil para debug).
+                                          * Gestão de Backup: Botão "Criar Snapshot Agora". Invoca o comando VACUUM INTO do SQLite ou realiza a cópia segura dos arquivos WAL, gerando um arquivo ZIP datado na pasta /snapshots.1
+________________
+
+
+PARTE VII: ERGONOMIA COGNITIVA E MICRO-INTERAÇÕES
+A robustez percebida do sistema deriva de como ele lida com latência, erros e feedback.
+CAPÍTULO 8: ESTADOS DE CARREGAMENTO E RESILIÊNCIA A ERROS
+8.1 Padrão Skeleton vs. Spinners
+                                          * Listas de Dados (Estoque/Histórico): O uso de spinners gigantes bloqueando a tela é desencorajado. Deve-se usar o padrão "Skeleton Loading" (retângulos cinzas pulsantes que mimetizam o layout do texto) enquanto a query SQL é processada. Isso reduz a ansiedade de espera e mantém a estrutura visual estável.
+                                          * Ações Pontuais: Para botões como "Salvar" ou "Processar IA", utiliza-se um spinner circular pequeno dentro do próprio botão, mantendo o contexto da ação.
+8.2 Tratamento de Erros e Notificações
+                                          * Erros Transientes: Falhas que não comprometem a integridade do sistema (ex: falha de rede ao buscar uma imagem no Google) devem ser comunicadas via ft.SnackBar (Toast) vermelho no rodapé. Isso informa o erro sem bloquear o fluxo de trabalho do operador.
+                                          * Erros de Integridade: Falhas críticas (ex: Template SVG corrompido, Banco de Dados travado) exigem um ft.AlertDialog modal. Este diálogo deve bloquear a interface até que o usuário reconheça o problema ("OK"), prevenindo que o erro se propague para etapas subsequentes.
+8.3 Feedback Sonoro (Opcionalidade Industrial)
+Em ambientes de varejo barulhentos, o feedback visual pode passar despercebido. O sistema pode implementar feedback sonoro opcional:
+                                          * Sucesso (Drop no Slot): Som curto de alta frequência (agradável).
+                                          * Erro (Bloqueio de Validação): Som grave e curto ("Bonk").
+________________
+
+
+CONCLUSÃO E DIRETRIZES DE IMPLEMENTAÇÃO
+A especificação contida neste Volume VI encerra o ciclo de engenharia do Autotabloide AI. A interface aqui detalhada não é meramente uma "skin" sobre o código; é a materialização das regras de negócio, segurança e performance definidas nos volumes anteriores.
+A implementação deve seguir rigorosamente a arquitetura de componentes do Flet/Flutter. Recomenda-se a criação de classes Python encapsuladas para cada componente visual (ex: class ProductRow(ft.UserControl)), mantendo o código limpo e manutenível.
+A separação estrita entre a Lógica de UI (apresentação) e a Lógica de Negócios (backend/SQL) deve ser preservada através de padrões de controle ou BLoC. A UI nunca deve executar queries SQL diretamente; ela deve solicitar dados aos Repositórios definidos no Volume I e reagir às mudanças de estado.
+A adesão a este manual garante que o sistema final não será apenas funcional, mas resiliente, ergonômico e capaz de operar nos ambientes mais exigentes do varejo moderno.
+FIM DA ESPECIFICAÇÃO - VOLUME VI

@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "autotabloide-ai"
+version = "0.1.0"
+description = "Offline-first AI-powered tabloid generation system."
+authors = ["Antigravity <antigravity@deepmind.google>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "~3.12"
+flet = "0.21.2"
+sqlalchemy = "2.0.25"
+aiosqlite = "0.19.0"
+lxml = "5.1.0"
+cairosvg = "2.7.1"
+llama-cpp-python = "0.2.23"
+pillow = "10.2.0"
+pypdf = "4.0.1"
+loguru = "0.7.2"
+pydantic = "2.6.0"
+rapidfuzz = "^3.6.0"
+playwright = "1.41.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

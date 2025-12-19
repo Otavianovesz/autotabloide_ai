@@ -1,0 +1,1172 @@
+﻿AUTOTABLOIDE AI: CODEX INDUSTRIALIS
+ESPECIFICAÇÃO DE ENGENHARIA E GOVERNANÇA ARQUITETURAL UNIFICADA
+Classificação: EXECUÇÃO CRÍTICA (Nível 0)
+Status: DEFINITIVO
+Autoridade: Fonte Única da Verdade (Single Source of Truth)
+PREFÁCIO: A DOUTRINA DA SOBERANIA E EXECUÇÃO CRÍTICA
+Este documento estabelece a especificação técnica normativa e inviolável para o sistema Autotabloide AI. A natureza deste projeto transcende a trivialidade de um software de design assistido; trata-se da engenharia de uma Engine de Automação Gráfica Varejista de alta frequência. Em um ambiente operacional onde erros de precificação resultam em passivos legais imediatos e a latência impacta diretamente a receita, a estabilidade do sistema não é uma feature, mas um requisito existencial.
+A arquitetura aqui delineada rejeita a fragilidade das dependências em nuvem em favor de uma filosofia de Soberania Cognitiva Local (Local-First AI) e Operação Offline-First. O sistema deve operar como um bunker digital: capaz de ingerir dados caóticos, higienizá-los através de redes neurais locais, manipular vetores matemáticos complexos e renderizar saídas industriais (CMYK) sem depender de conectividade externa ou APIs de terceiros.
+As diretrizes contidas nestas páginas constituem a "Lei do Sistema". Desvios arquiteturais não autorizados — seja na escolha de bibliotecas, na gestão de memória ou na modelagem de dados — resultarão inevitavelmente em dívida técnica e falha sistêmica. A integridade do Autotabloide AI reside na adesão estrita a este manual.
+CAPÍTULO 1: O NÚCLEO TECNOLÓGICO (CORE STACK) E AMBIENTE DE EXECUÇÃO
+A estabilidade de um sistema de automação gráfica depende de um ambiente de execução previsível e controlado. Rejeitamos a volatilidade dos frameworks web modernos baseados em JavaScript/Electron para o core logic, favorecendo a robustez, a tipagem estrita e a capacidade de processamento matemático de uma aplicação desktop nativa.
+1.1. O Motor de Execução (Runtime Environment)
+O núcleo do sistema será construído sobre Python 3.12+. Esta escolha não é arbitrária, mas estratégica, fundamentada na exclusiva capacidade do Python de atuar como "cola" entre a manipulação de estruturas vetoriais de baixo nível e o estado da arte em Inteligência Artificial.
+* Racional Técnico: O Python atua como orquestrador de bibliotecas de ligação com C (C-bindings) de alta performance (como lxml e numpy). Nenhuma outra linguagem oferece a interseção necessária para unir o parsing XML de alta velocidade com inferência de Deep Learning (PyTorch/Llama.cpp) no mesmo ciclo de memória.
+* Governança de Dependências (Poetry): Para mitigar o "Dependency Hell", o uso do gerenciador Poetry é mandatório. O arquivo pyproject.toml atua como um contrato imutável. A regra de ouro é o Travamento de Versões (Version Pinning): bibliotecas críticas (SQLAlchemy, Flet, OpenCV) devem ter suas versões fixadas exatas para garantir reprodutibilidade bit-a-bit entre desenvolvimento e produção.
+* Isolamento: Cada instância deve operar em um ambiente virtual (.venv) hermético, isolado do sistema operacional host.
+1.2. A Interface Gráfica (GUI Framework): Flet e a Rejeição do DOM
+Para a interface de usuário, adota-se o framework Flet (baseado na engine Flutter/Skia). A decisão de evitar interfaces baseadas em navegador (HTML/DOM) é crítica para a performance.
+* Renderização Direta (Skia): O sistema desenha cada pixel diretamente na GPU, ignorando as camadas de abstração do navegador. Isso permite que a lógica de frontend e backend residam no mesmo processo, eliminando a latência de APIs REST e garantindo uma taxa de atualização de 60 FPS, essencial para a manipulação ergonômica de grids com milhares de SKUs.
+* Estética Funcional: O sistema impõe o ThemeMode.DARK como padrão imutável. Em ambientes de design, o fundo escuro (#1A1A1A) reduz a fadiga ocular e maximiza a percepção de contraste das cores dos produtos e layouts. Cores semânticas são estritas: Azul (#007AFF) para ação, Vermelho (#FF3B30) para erro de bloqueio, Verde (#34C759) para integridade.
+1.3. A Camada de Persistência: SQLite WAL e Concorrência
+A integridade dos dados é governada por um banco de dados relacional SQLite 3, configurado obrigatoriamente no modo WAL (Write-Ahead Logging).
+* Modelo de Concorrência: O modo WAL habilita a semântica "Leitores não bloqueiam Escritores". Isso é vital para permitir que a interface Flet leia o banco continuamente (renderização reativa) enquanto processos de IA em background ("O Juiz") realizam escritas massivas de importação simultaneamente, sem congelar a UI.
+* Abstração Assíncrona: O acesso direto via SQL puro na thread principal é proibido. Todo acesso deve ser mediado pelo SQLAlchemy Async (driver aiosqlite), garantindo que operações de I/O não bloqueiem o Event Loop da interface.
+1.4. Arquitetura de Processos: O Padrão Sidecar
+Para viabilizar a execução de tarefas pesadas (Inferência Neural, Renderização Vetorial) sem comprometer a fluidez da interface, adota-se o Padrão Sidecar via multiprocessing.
+* Processo Principal (UI): Leve, gerencia apenas o Event Loop e interação do usuário.
+* Processo Sentinela (AI/Vector): Processos isolados que carregam os modelos de IA e engines de renderização. A comunicação ocorre via filas tipadas, garantindo que o "pensamento" da máquina (CPU-bound) nunca cause engasgos na resposta do mouse do operador.
+1.5. O Motor Vetorial e Neural (Specs Preliminares)
+* Parsing Vetorial: Uso mandatório de lxml.etree (baseado em C libxml2) para manipulação de DOM SVG. O uso de xml.etree padrão é vedado por performance insuficiente.
+* Rasterização: CairoSVG para conversão precisa de vetores em instruções de impressão, com suporte a espaço de cor CMYK.
+* Inferência Local: Llama.cpp (via llama-cpp-python) com quantização GGUF para execução de LLMs em hardware de consumo, garantindo privacidade total dos dados de precificação.
+Fim do Capítulo 1.
+
+
+CAPÍTULO 2: TOPOLOGIA DO SISTEMA DE ARQUIVOS E GOVERNANÇA DE ATIVOS
+A robustez de um sistema de automação industrial não pode depender da organização de arquivos do usuário, que é inerentemente entrópica. O Autotabloide AI institui um Ecossistema de Arquivos Hermético, agindo como um Estado soberano dentro do sistema operacional hospedeiro.
+A arquitetura de arquivos foi desenhada para atender a dois requisitos não-funcionais críticos:
+1. Portabilidade Total (Portable App): A capacidade de mover a pasta raiz (/AutoTabloide_System_Root/) entre diferentes máquinas (ex: do escritório central para uma filial sem internet) sem quebrar caminhos de banco de dados ou links de imagens.
+2. Imutabilidade de Ativos: A garantia de que uma imagem, uma vez ingerida, jamais será alterada ou corrompida por processos de sobrescrita acidental.
+2.1. A Árvore de Diretórios Mestre (System Root)
+No momento do boot (inicialização via main.py), uma rotina de integridade (IntegrityCheck) deve escanear a existência da estrutura abaixo. A ausência de qualquer diretório crítico deve desencadear sua recriação imediata ou, no caso de falha de permissão de escrita (Fatal Error), o aborto seguro da inicialização.
+Tabela 2.1: Estrutura Canônica do Sistema de Arquivos
+Diretório (Caminho Relativo)
+	Classificação & Permissão
+	Função Crítica e Conteúdo Normativo
+	/bin/
+	Somente Leitura (Sistema)
+	Executáveis Externos. Armazena binários compilados (Ghostscript, ffmpeg, realesrgan-ncnn-vulkan) e DLLs necessárias para processamento de mídia e IA. Isolado do PATH do Windows para garantir versões determinísticas.
+	/config/
+	Leitura/Escrita
+	Preferências. Arquivos JSON (settings.json) contendo configurações locais (ex: caminhos de backup, chaves de API opcionais, preferências de tema).
+	/database/
+	Bloqueio Exclusivo (Driver)
+	O Santuário. Contém core.db (Dados Relacionais), core.db-wal (Log de Escrita) e learning.db (Vetores da IA). O acesso direto por outros softwares é proibido enquanto a aplicação roda.
+	/snapshots/
+	Append-Only (Sequencial)
+	Máquina do Tempo. Armazena backups atômicos zipados (yyyy-mm-dd_hh-mm.zip) gerados via VACUUM INTO. Permite reversão catastrófica.
+	/assets/store/
+	Imutável (Write-Once)
+	O Cofre (The Vault). Repositório plano (flat directory) contendo as imagens mestre em alta resolução (PNG Lossless), nomeadas exclusivamente pelo seu Hash MD5.
+	/assets/profiles/
+	Somente Leitura
+	Ciência de Cor. Armazena perfis ICC mandatórios (ex: CoatedFOGRA39.icc, sRGB_v4.icc) para a conversão precisa de cores RGB $\to$ CMYK.
+	/staging/
+	Volátil (Quarentena)
+	Zona de Ingestão. Área temporária para downloads brutos (Scraping/Upload) antes da validação de integridade e hashing. Limpeza automática periódica.
+	/temp_render/
+	Efêmero (Lixo)
+	A Forja. Armazena artefatos intermediários de renderização (PDFs de frames, previews). Deve ser purgada a cada reinicialização (Clean Boot) para evitar vazamento de disco.
+	/library/svg_source/
+	Somente Leitura
+	Fonte da Verdade Visual. Repositório de templates .svg originais importados. O sistema nunca edita estes arquivos; trabalha apenas com cópias em memória.
+	/library/thumbnails/
+	Cache Gerenciado
+	Proxy de UI. Miniaturas leves (JPG 300px) geradas a partir dos mestres para exibição performática na Galeria. Regerado automaticamente se deletado.
+	/workspace/projects/
+	Leitura/Escrita
+	Sessões. Arquivos de projeto (.atproj) contendo snapshots de dados e metadados de layout.
+	/logs/
+	Append-Only
+	Caixa Preta. Logs de sistema (system.log) e auditoria (audit.log) para análise forense de falhas e rastreabilidade de alterações de preço.
+	2.2. O Protocolo de Segurança de Imagens (The Image Vault)
+A gestão de ativos digitais é o ponto de falha mais comum em sistemas de marketing (duplicidade, links quebrados, nomenclatura caótica). O Autotabloide AI resolve isso abolindo o conceito de "Nome de Arquivo" para imagens.
+2.2.1. Desduplicação via Hashing Criptográfico
+O nome do arquivo físico no disco dentro de /assets/store/ JAMAIS deve refletir a intenção humana (ex: oferta_final_v2.png é proibido).
+* Algoritmo: MD5 (Suficiente para prevenção de colisão em escopo local e altamente performático).
+* Mecanismo de Ingestão:
+   1. A imagem chega em /staging/.
+   2. O sistema calcula o hash MD5 do stream de bytes.
+   3. Verifica-se a existência de /assets/store/{hash}.png.
+   4. Hit (Existe): O arquivo novo é descartado silenciosamente. O sistema usa a referência existente.
+   5. Miss (Novo): O arquivo é processado (convertido para PNG), renomeado para {hash}.png e movido para o Cofre.
+Este protocolo garante Desduplicação Física Automática. Se o usuário baixar a mesma foto de "Cerveja Skol" 50 vezes para 50 campanhas diferentes, o sistema armazenará apenas 1 arquivo físico, economizando gigabytes de armazenamento.
+2.2.2. Estratégia de Proxy (Visualização vs. Renderização)
+Carregar imagens de alta resolução (4k+) em grades de dados na interface causa saturação de VRAM e engasgos na rolagem. O sistema adota uma estratégia estrita de Proxy:
+* Frontend (Flet): É proibido vincular componentes ft.Image diretamente aos arquivos do Cofre (/assets/store/). A UI deve apontar exclusivamente para /library/thumbnails/, onde residem versões otimizadas (300x300px).
+* Backend (Render Engine): O motor de geração de PDF (CairoSVG) ignora as thumbnails e acessa exclusivamente os arquivos mestres no Cofre para garantir qualidade máxima de impressão.
+2.3. Portabilidade e Caminhos Relativos
+Para viabilizar a operação "Office-to-Store" (criar no escritório, imprimir na loja), o banco de dados NUNCA deve armazenar caminhos absolutos do sistema operacional (ex: C:\Users\Admin\Autotabloide\...).
+* Regra de Path: Todos os caminhos armazenados no SQLite devem ser relativos à raiz do sistema (ex: assets/store/a1b2c3...png).
+* Resolução em Tempo de Execução: Ao iniciar, a aplicação detecta seu diretório de execução atual (os.getcwd()) e o prefixa dinamicamente aos caminhos relativos. Isso permite que a pasta inteira da aplicação seja movida de um drive C: para um Pen Drive E: e executada imediatamente sem quebra de links ("Broken Links").
+2.4. Protocolo de Transporte (.atpkg)
+Para transferências parciais (enviar apenas um projeto, não o sistema todo), define-se o padrão .atpkg (Autotabloide Package).
+* Estrutura: Um arquivo ZIP contendo:
+   1. project.json: O descritor do projeto.
+   2. /assets/: Cópia física de todas as imagens referenciadas naquele projeto.
+   3. manifest.sha256: Checksums de integridade.
+* Comportamento de Importação: Ao abrir um .atpkg em uma máquina destino, o sistema verifica se as imagens já existem no Cofre local (via Hash). Se não existirem, elas são "hidratadas" (copiadas) automaticamente. Isso garante que o projeto seja Autocontido e imune à falta de arquivos na máquina de destino.
+Fim do Capítulo 2.
+CAPÍTULO 3: O MOTOR DE DADOS E A LÓGICA DE CONCILIAÇÃO
+O coração do Autotabloide AI não é o seu motor gráfico, mas sim o seu Modelo de Governança de Dados. Em um ambiente de varejo de alta frequência, a integridade da informação (preço, descrição, validade) tem precedência sobre a estética. Um cartaz bonito com o preço errado não é um ativo de marketing; é um passivo jurídico.
+Este capítulo define a engenharia da "Fonte da Verdade" (Single Source of Truth), estabelecendo os esquemas de banco de dados, os protocolos de sanitização (ETL) e a lógica de arbitragem para importação de dados externos.
+3.1. Filosofia de Persistência: A Dicotomia Vivo/Imutável
+A arquitetura de dados deve resolver o paradoxo temporal do varejo:
+1. O Inventário Vivo (core.db): Reflete o estado atual da loja. Se o preço do leite muda hoje, o banco deve refletir isso imediatamente para novos cartazes.
+2. O Projeto Histórico (.atproj): Reflete o estado passado. Se abrirmos um tabloide criado há 6 meses, ele deve exibir o preço de 6 meses atrás, não o atual.
+Portanto, o sistema rejeita a normalização excessiva (3ª Forma Normal) no armazenamento de projetos. Adotamos o padrão Snapshotting: ao salvar um projeto, os dados não são apenas referenciados por ID; eles são copiados por valor (Deep Copy) para dentro do arquivo do projeto, garantindo a Reversibilidade Temporal.
+3.2. O Schema Relacional Mestre (Inventory)
+A tabela produtos é a espinha dorsal do sistema. Ela não armazena apenas dados; ela armazena o estado de qualidade do dado.
+Tabela 3.1: Definição Canônica da Tabela produtos
+Coluna
+	Tipo SQL
+	Constraints & Indexação
+	Lógica de Engenharia e Governança
+	id
+	INTEGER
+	PK, AUTOINCREMENT
+	Identificador interno imutável. Nunca exposto ao operador. Usado apenas para integridade referencial (FKs).
+	sku_origem
+	TEXT
+	INDEX
+	A Entrada Suja. Armazena a descrição bruta original vinda do ERP/Excel (ex: "CERV SKOL LATA"). Vital para o algoritmo de reconciliação futura.
+	nome_sanitizado
+	TEXT
+	NOT NULL, INDEX
+	A Saída Limpa. O nome processado pela IA. Deve seguir a regra estrita de Title Case e expansão de abreviações (ex: "Cerveja Skol Pilsen Lata").
+	marca_normalizada
+	TEXT
+	INDEX
+	Extraída isoladamente (ex: "Skol"). Permite filtros de campanha na UI e agrupamento visual inteligente.
+	detalhe_peso
+	TEXT
+	NULLABLE
+	Unidade padronizada (ex: "350ml", "1kg"). Separado do nome para permitir tipografia distinta (fonte menor) no layout vetorial.
+	preco_venda_atual
+	DECIMAL(10,2)
+	NOT NULL
+	O Preço "Por". O uso de DECIMAL é mandatório. FLOAT é proibido para evitar erros de arredondamento financeiro IEEE 754.
+	preco_referencia
+	DECIMAL(10,2)
+	NULLABLE
+	O Preço "De". Obrigatório para cartazes de oferta (Compliance PROCON).
+	img_hash_ref
+	TEXT
+	JSON Validated
+	Suporte a Kits. Armazena um array JSON de hashes (ex: ["hash1", "hash2"]). Permite que um único produto (ex: "Cesta Básica") renderize múltiplas imagens em grid.
+	status_qualidade
+	INTEGER
+	DEFAULT 0
+	O Semáforo. Score de integridade (0-3) que dita se o produto está pronto para automação (ver Seção 3.4).
+	last_modified
+	DATETIME
+	DEFAULT CURRENT
+	Timestamp UTC para sincronização incremental e auditoria.
+	3.2.1. Tabela produto_aliases (Memória de Aprendizado)
+Para suportar o aprendizado contínuo ("Fuzzy Matching"), o sistema mantém uma tabela de sinônimos aprendidos com o usuário.
+* Estrutura: id, produto_id (FK), alias_raw (ex: "REF COCA 2L"), confidence_score.
+* Função: Se o usuário ensina ao sistema que "REF COCA" é "Refrigerante Coca-Cola", essa relação é gravada aqui, evitando perguntas repetitivas em importações futuras.
+3.3. O Motor de Reconciliação: "O Juiz" (The Judge)
+A importação de planilhas externas (Excel/CSV) é o vetor primário de corrupção de dados. O Autotabloide AI implementa um pipeline de arbitragem denominado "O Juiz", que atua como um firewall semântico. Nenhuma linha de Excel entra no core.db sem veredito.
+O Fluxo de Julgamento:
+1. Match Exato (Fast Path): O sistema busca a string de entrada na coluna sku_origem e na tabela produto_aliases.
+   * Resultado: Vínculo imediato. (Verde)
+2. Match Fuzzy (AI Path): Se falhar, utiliza-se busca vetorial (Embeddings no learning.db) e distância de Levenshtein para encontrar candidatos.
+   * Resultado: Apresenta sugestão com % de confiança. Requer aprovação humana. (Amarelo)
+3. Novo Item (Creation Path): Sem correspondência.
+   * Resultado: Marca para criação. Aciona a IA Generativa (LLM) para sanitizar o nome e o Scraper para buscar imagens. (Vermelho)
+A interface gráfica deve bloquear a finalização da importação até que todos os itens "Amarelos" e "Vermelhos" sejam resolvidos pelo operador.
+3.4. Pipeline de Sanitização e Qualidade (ETL)
+A integridade do dado visual depende da padronização do texto. O sistema aplica regras determinísticas antes da persistência:
+* Padronização de Unidades: Regex rigorosa.
+   * /(?i)(\d+)\s*(gr?s?|gramas?)/ $\to$ $1g (Ex: "500 GR" $\to$ "500g").
+   * /(?i)(\d+)\s*(ml?s?|mili?)/ $\to$ $1ml.
+   * Exceção do Litro: "L" deve ser sempre maiúsculo ("2L") para legibilidade tipográfica frente ao número "1".
+* O Semáforo de Qualidade (status_qualidade):
+   * 0 (Crítico): Preço zerado OU Imagem ausente. Invisível para automação.
+   * 1 (Incompleto): Falta unidade de medida ou imagem de baixa resolução (<500px).
+   * 2 (Atenção): Dados completos, mas preço estagnado há >30 dias (Risco de prejuízo).
+   * 3 (Perfeito): Imagem High-Res, Preço recente, Validação manual.
+3.5. Estrutura de Projeto e Imutabilidade (.atproj)
+O arquivo de projeto é um contêiner JSON que encapsula o estado visual e os dados no momento da criação.
+Schema Normativo do Objeto slots_state:
+"SLOT_01": {
+  "type": "product",
+  "data_snapshot": {
+    "db_origin_id": 1024,
+    "sku_origem": "ARR CAMIL 5KG",
+    "nome_frozen": "Arroz Branco Camil Tipo 1",
+    "preco_por_frozen": 19.90,  // Valor LITERAL da época
+    "preco_de_frozen": 24.50,
+    "img_hashes_frozen": ["a1b2c3d4..."], // Hash da imagem no Cofre
+    "overrides": {
+      "manual_price": null,
+      "manual_name": "Arroz Camil (Ofertaço)" // Customização local
+    }
+  }
+}
+
+
+Diretriz de Renderização: O Motor Visual (Capítulo 4) deve ler exclusivamente o objeto data_snapshot. Ele é proibido de consultar a tabela produtos em tempo de execução para projetos salvos. Isso garante que a "verdade histórica" do cartaz seja preservada, mesmo que o preço do produto mude no banco de dados minutos depois.
+Fim do Capítulo 3.
+CAPÍTULO 4: O MOTOR VISUAL E A MATEMÁTICA DE RENDERIZAÇÃO
+Enquanto o Motor de Dados (Capítulo 3) governa a verdade da informação, o Motor Visual governa a sua representação espacial. A premissa central deste subsistema é o Design Determinístico: dado um conjunto de dados e um template, o resultado deve ser pixel-a-pixel idêntico, independentemente da máquina onde foi gerado.
+O sistema rejeita a abordagem de "pintura de pixels" (Canvas Bitmap) em favor da Manipulação Vetorial Direta (DOM Manipulation). O template .svg não é tratado como uma imagem, mas como código-fonte XML compilável.
+4.1. Arquitetura do SVG Engine (lxml)
+A manipulação de arquivos SVG em escala industrial exige performance extrema. A biblioteca padrão do Python (xml.etree) é inadequada. O uso da biblioteca lxml (baseada em C libxml2) é mandatório para garantir o throughput necessário para gerar milhares de cartazes por hora.
+4.1.1. O Protocolo de Sandbox (Isolamento de Slots)
+Para evitar o "vazamento visual" — onde o preço de um produto invade a área do vizinho — o motor implementa uma lógica de isolamento estrita.
+* Identificação: O parser busca grupos identificados por IDs sequenciais: #SLOT_01, #SLOT_02, etc.
+* Contexto Hermético: Cada operação de injeção de dados ocorre exclusivamente dentro do nó XML do slot. O código que processa o Slot 1 não possui "visão" nem permissão de escrita no Slot 2.
+* Clipping Automático: O motor deve injetar ou respeitar máscaras de recorte (clipPath) nas fronteiras do slot, garantindo que elementos transbordantes sejam truncados matematicamente antes da rasterização.
+4.2. Geometria e Sistema de Coordenadas
+O Autotabloide AI não opera com "pixels de tela" (DPI dependente), mas com Unidades de Usuário Abstratas (User Units) definidas pelo viewBox do SVG.
+4.2.1. O Algoritmo de "Aspect-Fit" (Imagens)
+A injeção de imagens de produtos (rasters) em slots vetoriais deve obedecer à preservação absoluta da proporção. É estritamente proibido "esticar" (stretch) a imagem para caber no slot.
+Fórmula Normativa de Escala ($S$):
+Dadas as dimensões do Slot ($W_s, H_s$) e da Imagem ($W_i, H_i$):
+$$S = \min \left( \frac{W_s}{W_i}, \frac{H_s}{H_i} \right)$$
+Matriz de Transformação:
+A imagem deve ser centralizada geometricamente através de uma matriz de transformação afim:
+matrix(S, 0, 0, S, Offset_X, Offset_Y)
+Onde $Offset_X = (W_s - (W_i \cdot S)) / 2$. Isso garante que tanto uma garrafa longa quanto uma caixa larga sejam apresentadas com a máxima área possível, centralizadas, sem distorção.
+4.2.2. Grid Recursivo (Kits e Composições)
+Para atender à exigência de "Kits" (ex: Cesta Básica com 5 itens) ou produtos com múltiplas variantes, o motor implementa o Particionamento Espacial Dinâmico.
+* Gatilho: Se o campo img_hash_ref contiver um array de múltiplos hashes.
+* Execução: O retângulo original #ALVO_IMAGEM é subdividido em células virtuais (Split Vertical para 2 itens, Grid 2x2 para 4 itens).
+* Recursividade: O algoritmo de Aspect-Fit é executado independentemente para cada sub-célula.
+4.3. O Motor de Tipografia Elástica (Text-Fitting)
+A variabilidade dos nomes de produtos no varejo brasileiro (de "Pão" a "Limpador Multiuso Lavanda 500ml") é o maior desafio de automação. O texto deve preencher o espaço sem estourar e sem ficar ilegível.
+4.3.1. Busca Binária de Fonte
+O sistema rejeita a redução linear de fonte (lenta, $O(N)$). Adota-se a Busca Binária ($O(\log N)$) para encontrar o tamanho ideal.
+1. Define-se um intervalo: $Min = 6pt$, $Max = TamanhoOriginal$.
+2. Renderiza-se o texto virtualmente (headless) com o tamanho médio.
+3. Se a largura do texto > largura do slot, o novo teto é a média. Caso contrário, o novo piso é a média.
+4. Repete-se até a convergência (precisão de 0.5pt).
+4.3.2. Lógica de Preços e Conformidade
+A renderização de preços deve obedecer a regras de hierarquia visual e legal (PROCON).
+* Decomposição Atômica: O preço não é uma string única. Ele é injetado em nós separados: #TXT_PRECO_INT (Inteiro), #TXT_PRECO_DEC (Centavos) e #TXT_MOEDA.
+* Ocultação Condicional: Se o layout for de "Oferta" e o produto não tiver preço "De" (preco_referencia), o elemento #TXT_PRECO_DE e seu rótulo devem ser removidos do DOM para evitar poluição visual (ex: "De R$ 0,00").
+* Injeção de Unidade: Se o layout não tiver o slot #TXT_UNIDADE, a unidade (ex: "500g") deve ser concatenada automaticamente ao final do #TXT_NOME_PRODUTO.
+4.4. Paginação Vetorial (Virtual Paper)
+Para suportar a geração de tabloides multipáginas (ex: Jornal de Ofertas de 4 páginas) a partir de um único arquivo de projeto, o sistema utiliza a abstração de Virtual Paper.
+* Estrutura do Template: O SVG mestre contém grupos de camadas identificados como #PAGE_01, #PAGE_02, etc.
+* Renderização Sequencial: O motor não renderiza o SVG inteiro de uma vez. Ele itera sobre os grupos de página. Para cada iteração, torna visível apenas o grupo alvo (display: inline), oculta os demais, injeta os dados e renderiza o frame.
+* Concatenação: Os frames resultantes são unidos em um único PDF multipáginas no estágio de pós-processamento.
+Fim do Capítulo 4.
+CAPÍTULO 5: O NÚCLEO COGNITIVO E A INFERÊNCIA LOCAL (THE BRAIN)
+A transição da computação algorítmica para a computação cognitiva representa o ponto de inflexão na arquitetura do Autotabloide AI. Rejeitamos a dependência de APIs de nuvem (SaaS) para operações críticas. A latência de rede, os custos por token e a exposição de dados estratégicos de precificação são vetores de risco inaceitáveis.
+O Autotabloide AI adota a Soberania Cognitiva Local (Local-First AI). A inteligência não é um serviço consumido; é um componente biológico do software, residindo no silício local, operando sob um regime de Determinismo Sintático Rigoroso.
+5.1. Arquitetura de Processos: O Sentinela Neural
+A execução de LLMs (Large Language Models) é uma operação intensiva que compete por ciclos de CPU e largura de banda de memória. No Python, devido ao GIL (Global Interpreter Lock), executar inferência na thread principal congelaria a interface gráfica.
+5.1.1. O Padrão Sidecar (Multiprocessing)
+O subsistema de IA deve residir em um Processo Sentinela hermeticamente isolado (multiprocessing.Process), separado do processo da UI.
+* Inicialização: O Sentinela carrega os pesos do modelo (GGUF) na memória (VRAM/RAM) durante o boot, mantendo-o em estado "quente" (warm state).
+* Comunicação (IPC): A troca de dados ocorre exclusivamente via Filas Tipadas (Queue). A UI envia payloads de tarefa (ex: "Sanitizar String") e recebe resultados, sem jamais bloquear seu Event Loop.
+* Resiliência: Se o motor de IA falhar (ex: Out of Memory), o processo principal detecta a morte do filho e o reinicia transparentemente, sem derrubar a aplicação.
+5.2. Inteligência Textual: LLMs e Gramáticas
+A função da IA textual não é conversar, mas atuar como um Parser Probabilístico. Ela deve converter entradas sujas ("CERV SKOL LATA") em JSON estruturado.
+5.2.1. Engine e Quantização (llama.cpp)
+Para viabilizar a execução em hardware de consumo (ex: PCs com 8GB/16GB RAM), padroniza-se o uso da biblioteca llama.cpp (via bindings Python).
+* Formato: GGUF (GPT-Generated Unified Format).
+* Quantização Mandatória: Q4_K_M (4-bit Medium). Esta configuração reduz o tamanho de um modelo de 7B parâmetros para ~4.8GB, mantendo a perda de perplexidade abaixo de 2% em comparação ao FP16. É o "ponto doce" entre performance e precisão.
+5.2.2. O Mandato da Gramática GBNF (Determinismo)
+A "alucinação estrutural" (o modelo responder com texto em vez de JSON) é proibida. O sistema não pede JSON; ele obriga matematicamente o JSON.
+* Tecnologia: Gramáticas GBNF (Grammar-Based Normalization Form).
+* Mecanismo: O motor de inferência intercepta a amostragem de logits. Se a gramática exige uma aspa ", a probabilidade de qualquer outro token é forçada a zero.
+* Resultado: É tecnicamente impossível o modelo gerar uma saída que não obedeça rigorosamente ao schema JSON definido no Capítulo 3.
+5.3. Pipeline de Visão Computacional ("The Eye")
+O sistema incorpora um laboratório de tratamento de imagens autônomo para corrigir a baixa qualidade dos ativos do varejo.
+5.3.1. Aquisição: "The Hunter" (Scraping)
+Um agente autônomo (baseado em Playwright) busca imagens no Google.
+* Lógica de Query: A IA reescreve a busca. Em vez de buscar por "Arroz Camil 5kg" (que traz receitas), busca por "Arroz Camil 5kg embalagem fundo branco filetype:png".
+* Filtragem: Descarta imagens com baixa variância de cor (brancas demais) ou excesso de texto (cartazes antigos).
+5.3.2. Processamento: "The Image Doctor"
+Cada imagem ingerida passa por uma esteira de restauração:
+1. Remoção de Fundo: Uso da rede neural U2-Net (via rembg) para gerar máscaras alfa precisas.
+2. Saliência e Recorte: Uso de algoritmos de Saliência Espectral (OpenCV) para identificar onde está o produto na imagem e calcular o Bounding Box real, eliminando bordas vazias excessivas.
+3. Super-Resolução (Condicional): Se a imagem for pequena (<1000px) e destinada a cartaz gigante, aciona-se o Real-ESRGAN (via binário Vulkan) para upscaling 4x, restaurando texturas perdidas.
+5.4. Memória Institucional e Aprendizado (RAG Local)
+O sistema deve aprender com as idiossincrasias do operador (ex: "Nesta loja, 'CX' significa 'Caxias', não 'Caixa'").
+5.4.1. Vector Store Embutido (sqlite-vec)
+Rejeitam-se bancos vetoriais externos. Utiliza-se a extensão sqlite-vec para armazenar embeddings dentro do core.db.
+* O Loop de Feedback: Quando o usuário corrige uma sugestão da IA (na tela de Conciliação), o sistema captura o par {entrada_suja, saida_corrigida}.
+* Vetorização: Um modelo encoder leve converte a entrada em vetor.
+* Inferência Futura: Antes de chamar o LLM, o sistema busca vetores similares. Se encontrar, injeta a correção passada como exemplo (Few-Shot Learning) no prompt. O sistema torna-se mais inteligente a cada uso, sem re-treinamento.
+Fim do Capítulo 5.
+CAPÍTULO 6: A INTERFACE HUMANO-COMPUTADOR E GOVERNANÇA COGNITIVA (THE SKIN)
+A Interface Gráfica (GUI) do Autotabloide AI não é um exercício estético; é uma ferramenta de Governança Cognitiva. O operador deste sistema gerencia ativos de alto risco (preços), onde um erro de digitação ou interpretação visual pode resultar em prejuízo financeiro imediato. Portanto, a interface deve atuar como uma prótese intelectual, reduzindo a carga mental necessária para a tomada de decisão e impondo barreiras perceptivas contra o erro.
+Utilizando o framework Flet (Python wrapper para Flutter Engine), a interface opera sob o paradigma de Single Page Application (SPA) desktop, desenhando pixels diretamente na GPU (Skia) para garantir 60 FPS estáveis, independentemente da carga de dados.
+6.1. O Shell de Aplicação e Navegação
+O "Shell" é o contêiner persistente que encapsula o estado da sessão.
+6.1.1. Diretrizes Ergonômicas Imutáveis
+* Modo Escuro Mandatório (ThemeMode.DARK): A interface opera permanentemente em fundo cinza chumbo (#1A1A1A). Isso reduz a fadiga ocular em turnos longos e maximiza o contraste cromático dos produtos e layouts, evitando que a interface "brigue" pela atenção do operador com o "papel branco" do tabloide.
+* Semântica de Cores: Cores não são decorativas; são sinais de estado.
+   * Azul (#007AFF): Ação Primária (Botões).
+   * Verde (#34C759): Integridade/Sucesso.
+   * Vermelho (#FF3B30): Bloqueio/Erro Crítico.
+   * Amarelo (#FFCC00): Atenção/Incerteza da IA.
+6.1.2. Barra de Status e Telemetria (Rodapé)
+Em um sistema "Offline-First" complexo, o operador precisa saber se os motores invisíveis estão funcionando. O rodapé (BottomAppBar) exibe telemetria em tempo real:
+1. Sentinela do DB (SQLite WAL): Monitora a latência de escrita. Se >100ms (checkpoint pesado), fica amarelo. Se travado, vermelho.
+2. Monitor Neural (IA): Pulsa em azul neon quando o Processo Sentinela (Capítulo 5) está inferindo, justificando eventuais lentidões de CPU.
+3. Fila de Renderização: Contador de jobs de PDF pendentes no spooler do Ghostscript.
+6.2. Tela 1: O Ateliê (Gestão de Layouts)
+Esta tela gerencia os templates SVG vetoriais. A inovação crítica aqui é o Modo de Inspeção (Raio-X).
+* Problema: Designers frequentemente erram a hierarquia de camadas no Illustrator (ex: preço fora do grupo do slot).
+* Solução (X-Ray Overlay): Um toggle na interface substitui a renderização "bonita" do thumbnail por uma visão técnica da estrutura DOM.
+   * Verde Neon: Zonas de Imagem (#ALVO_IMAGEM).
+   * Vermelho: Zonas de Texto (#TXT_...).
+   * Amarelo: Identificadores de Slot (#SLOT_01).
+Isso permite validar tecnicamente um template antes de iniciar um projeto.
+6.3. Tela 2: O Almoxarifado (Dados e Estoque)
+O desafio de engenharia é renderizar listas com 50.000 produtos sem travar a UI.
+6.3.1. Virtualização de Listas (ListView)
+O uso de componentes DataTable padrão é proibido para datasets massivos. O sistema implementa Virtualização: apenas as linhas visíveis no viewport (mais um buffer de segurança) existem na memória de renderização. Conforme o usuário rola, as células são recicladas e re-hidratadas com novos dados, mantendo o consumo de RAM constante.
+6.3.2. O Semáforo de Qualidade e "Image Doctor"
+Cada linha de produto exibe um Badge Semafórico (derivado do status_qualidade do Capítulo 3).
+   * Interação: Clicar no avatar do produto abre o modal "The Image Doctor".
+   * Painel de Visão: Permite acionar manualmente as ferramentas de IA do Capítulo 5 (Scraper, Remove BG, Upscale) para "curar" um ativo defeituoso (Vermelho -> Verde).
+6.4. Tela 3: A Mesa (Montagem Criativa)
+O coração da operação. Uma interface Split Screen: Estante (Esquerda) vs Papel/Canvas (Direita).
+6.4.1. Drag & Drop e Auto-Preenchimento
+   * Manual: O usuário arrasta produtos da Estante para os Slots.
+   * Automático: O botão "Auto-Preencher" (Magic Wand) preenche sequencialmente os slots vazios com os produtos visíveis na Estante (respeitando filtros), acelerando a produção em 90%.
+6.4.2. Padrão Optimistic UI (Atualização Otimista)
+Na edição de preços ("Override"), a latência de disco é inaceitável.
+   1. Ação: Usuário digita "9,90".
+   2. Mutação Local: O valor na tela muda instantaneamente e ganha uma borda verde sutil.
+   3. Async Commit: Em background, a query SQL é enviada.
+   4. Reconciliação: Se o banco confirmar, a borda verde some. Se falhar, o valor reverte e um Toast de erro aparece. O usuário nunca espera o banco para continuar trabalhando.
+6.5. Tela 4: A Fábrica (Produção em Lote)
+Diferente da Mesa (visual), a Fábrica é uma Máquina de Estado Data-Driven.
+   * Função: Ingerir uma lista Excel, aplicar um layout de Cartaz Unitário e gerar um PDF multipáginas.
+   * Preview Dinâmico: Um painel lateral exibe a renderização em tempo real do item selecionado na lista, permitindo auditoria visual rápida (ex: verificar se o preço "De/Por" está correto) antes do processamento em massa.
+6.6. Tela 5: O Cofre (Gestão e Segurança)
+A central de governança do sistema.
+   * Timeline Forense: Visualização da tabela audit_log. Permite rastrear "Quem mudou o preço da Picanha?".
+   * Time Machine (Rollback): Cada log de alteração possui um botão "Desfazer". O sistema aplica a transação inversa baseada no diff JSON armazenado, revertendo o dado ao estado anterior.
+   * Snapshot Manager: Interface para criar backups manuais (VACUUM INTO) antes de operações arriscadas.
+Fim do Capítulo 6.
+CAPÍTULO 7: O MOTOR DE PRODUÇÃO INDUSTRIAL E RESILIÊNCIA SISTÊMICA (THE FACTORY & THE VAULT)
+O ciclo de vida do dado no Autotabloide AI encerra-se na sua transubstanciação: de vetores matemáticos em memória para artefatos físicos (tinta no papel) ou distribuições digitais. Este capítulo governa o Motor de Produção ("A Fábrica"), desenhado para alta vazão (throughput) e fidelidade colorimétrica absoluta.
+Paralelamente, definimos aqui a Engenharia de Sobrevivência. O sistema deve operar sob a premissa de "Paranóia Construtiva", assumindo que falhas de hardware, erros humanos e requisitos legais (PROCON/ANVISA) são inevitáveis e devem ser mitigados autonomamente.
+7.1. A Fábrica: Arquitetura de Processamento em Lote
+Diferente da "Mesa" (Tela 3), que é interativa e exploratória, a "Fábrica" (Tela 4) é uma Máquina de Estado Determinística. Sua função é ingerir uma lista de dados (Payload) e iterar sobre um gabarito mestre, gerando saídas em escala industrial sem intervenção humana.
+7.1.1. O Loop de Renderização Sequencial (Frame-by-Frame)
+O sistema rejeita a tentativa de renderizar um documento gigante de uma vez (o que saturaria a memória). Adota-se o processamento sequencial:
+   1. Iteração: O motor isola o Produto N da lista.
+   2. Injeção Atômica: Carrega uma cópia limpa do template SVG e injeta os dados de N.
+   3. Rasterização de Frame: Gera um PDF de página única em memória (BytesIO).
+   4. Descarte: Libera os recursos do passo anterior.
+   5. Concatenação: Ao final do lote, une todos os frames em um único arquivo PDF multipáginas.
+Esta abordagem garante que o consumo de RAM permaneça constante (O(1)), seja para gerar 10 cartazes ou 10.000.
+7.1.2. Abstração de "Virtual Paper"
+Para layouts que exigem múltiplas páginas nativas (ex: Jornal de Ofertas com Capa e Miolo), o motor reconhece grupos SVG identificados como #PAGE_01, #PAGE_02. Durante a iteração, ele alterna a visibilidade (display: inline/none) desses grupos, renderizando cada "folha" virtual como um frame físico distinto antes da concatenação.
+7.2. Ciência de Cores e o Pipeline de Saída (RIP)
+A distinção entre tela (luz) e papel (tinta) é absoluta. O sistema implementa um Processador de Imagem Raster (RIP) embutido via Ghostscript.
+7.2.1. Bifurcação de Saída
+   * Canal Digital (RGB): Para WhatsApp/Redes Sociais. Exportação direta em sRGB.
+   * Canal Impresso (CMYK): Para Gráficas/Offset. Conversão mandatória para DeviceCMYK utilizando perfis ICC (Padrão: CoatedFOGRA39.icc).
+7.2.2. Preservação de Preto Verdadeiro (True Black)
+Um erro crítico em softwares não especializados é converter preto RGB (0,0,0) em "Preto Rico" CMYK (C70 M50 Y30 K100), causando borrões em textos finos.
+   * A Solução: O Autotabloide intercepta elementos pretos e força o mapeamento para K=100 (C0 M0 Y0) puro.
+   * Overprint: Habilita-se a Sobreimpressão para textos pretos, garantindo que sejam impressos sobre o fundo colorido, sem "recortar" o fundo, evitando filetes brancos por erro de registro na impressora.
+7.2.3. Geometria de Corte (Bleed & Crop)
+Para impressão profissional, o sistema expande matematicamente o viewBox do SVG em 3mm (Sangria), extrapolando elementos de fundo. Marcas de corte vetoriais (linhas de 0.25pt em cor Registration) são injetadas fora da área de sangria para guiar a guilhotina.
+7.3. Engenharia de Resiliência (The Vault)
+O sistema deve ser imune à perda de dados por falha de energia ou corrupção de disco.
+7.3.1. Backup Atômico a Quente (VACUUM INTO)
+Backups tradicionais falham se o banco estiver em uso. O Autotabloide utiliza o comando SQLite VACUUM INTO 'backup.db'.
+   * Atomicidade: Cria uma cópia bit-a-bit consistente do banco em um novo arquivo, mesmo durante escritas pesadas.
+   * Snapshot: O arquivo gerado é zipado com um manifesto JSON e armazenado em /snapshots/, criando pontos de restauração imutáveis.
+7.3.2. Time Machine e Auditoria Forense
+A tabela audit_log não é apenas um registro passivo; é a base da reversão.
+   * Mecanismo: Ao clicar em "Desfazer" na Timeline (Tela 5), o sistema lê o diff_payload do log (estado anterior do dado) e executa uma transação inversa, restaurando o preço ou nome ao valor prévio com precisão cirúrgica.
+7.3.3. Modo de Segurança (Safe Mode)
+Para evitar Boot Loops (o software falhar ao iniciar repetidamente):
+   * Sentinela de Boot: Se o sistema falhar 3 vezes consecutivas na inicialização, entra em Safe Mode.
+   * Comportamento: Desabilita a aceleração de GPU (Skia), desliga o motor neural (Llama.cpp) e oferece ao usuário apenas a interface de Restauração de Backup, permitindo recuperar o sistema para um estado saudável anterior.
+7.4. Conformidade Automatizada (Compliance Officer)
+O software atua como um agente de conformidade legal autônomo.
+7.4.1. Injeção de Segurança (+18)
+   * Detecção: A IA analisa a taxonomia do produto (ex: "Whisky", "Cerveja", "Cigarro").
+   * Ação: Se positivo, o motor injeta programaticamente o vetor do ícone "+18" no canto superior esquerdo do slot, com Z-Index forçado sobre qualquer imagem. Isso garante que a advertência legal nunca seja ocultada, protegendo o varejista de multas.
+7.4.2. Validação de Oferta (De/Por)
+Para cartazes de "Oferta", o sistema valida a lógica Preço Por < Preço De. Se a condição falhar (ou se o desconto for irrisório), o sistema bloqueia a renderização ou remove automaticamente o elemento visual "De", prevenindo propaganda enganosa por erro de cadastro.
+Fim do Codex Industrialis.
+APÊNDICE TÉCNICO: MAPA DE DEPENDÊNCIAS E DIRETRIZES DE IMPLEMENTAÇÃO
+Este apêndice constitui o Contrato de Ambiente. A estabilidade do Autotabloide AI depende não apenas do código escrito, mas das bibliotecas sobre as quais ele opera. As versões abaixo devem ser travadas no pyproject.toml (Poetry) para evitar o "Dependency Hell".
+A.1. Mapa de Dependências Críticas (Poetry)
+Biblioteca
+	Versão Restritiva
+	Função Crítica no Sistema
+	Justificativa de Engenharia
+	python
+	>=3.12,<3.13
+	Runtime
+	Otimizações de asyncio e suporte a subinterpretadores.
+	flet
+	==0.21.0
+	GUI Framework
+	Versão estável com suporte a Canvas (Skia) e DragTarget sem regressões de memória.
+	sqlalchemy
+	^2.0.0
+	ORM
+	Mapeamento seguro e suporte nativo a asyncio (Greenlet).
+	aiosqlite
+	^0.19.0
+	DB Driver
+	Permite acesso não-bloqueante ao SQLite. Vital para o modo WAL.
+	lxml
+	^5.1.0
+	XML Parser
+	Manipulação de DOM SVG com performance C (libxml2). Única capaz de lidar com XPath complexo.
+	cairosvg
+	^2.7.0
+	Renderização
+	Conversão fiel de SVG para PDF com suporte a CMYK.
+	rembg
+	^2.0.50
+	Visão Computacional
+	Remoção de fundo (U2-Net). Exige onnxruntime.
+	opencv-python-headless
+	^4.9.0
+	Proc. Imagem
+	Operações geométricas e Saliência. Versão headless para não conflitar com a GUI do Flet.
+	llama-cpp-python
+	^0.2.20
+	Inferência LLM
+	Binding para execução de modelos GGUF. Deve ser compilado com CUBLAS=on se GPU disponível.
+	playwright
+	^1.40.0
+	Scraping
+	Automação de browser para coleta de imagens ("The Hunter").
+	pydantic
+	^2.6.0
+	Validação
+	Garantia de integridade de tipos nos modelos JSON e configurações.
+	A.2. Diretrizes de Arquitetura de Código (Clean Code)
+Para garantir a manutenibilidade de longo prazo, a implementação deve obedecer aos seguintes padrões:
+   1. Repository Pattern (Camada de Dados):
+   * Proibido: Executar db.execute("SELECT...") dentro de componentes visuais.
+   * Mandatório: A UI chama ProductRepository.get_all(). O Repositório encapsula a query SQL. Isso permite alterar o banco de dados no futuro sem quebrar a interface.
+   2. Imutabilidade de Objetos de Valor (Domain):
+   * Preços e quantidades devem ser tratados como Value Objects imutáveis, não primitivos soltos. Use a classe Decimal do Python para tudo que for monetário. Float é estritamente proibido para dinheiro.
+   3. Tratamento de Erros Ofensivo:
+   * O sistema não deve falhar silenciosamente. Se um template SVG estiver corrompido, o parser deve lançar uma TemplateIntegrityError explícita, que é capturada pela UI para exibir um diálogo modal amigável, impedindo a propagação de dados sujos.
+A.3. Encerramento e Validação
+Esta especificação define um sistema de Execução Crítica. A "IA Posterior" encarregada da codificação deve tratar este documento não como um guia, mas como uma especificação formal.
+   * Não invente features: Implemente estritamente o descrito.
+   * Não simplifique a segurança: O isolamento de processos (Sidecar) e a validação de esquema (The Judge) são mais importantes que a estética.
+   * Priorize a integridade: Em caso de conflito entre performance e correção de dados, a correção vence.
+AUTOTABLOIDE AI: CODEX INDUSTRIALIS — VOLUME II
+MANUAL DE IMPLEMENTAÇÃO TÁTICA E LÓGICA ALGORÍTMICA
+Classificação: EXECUÇÃO TÁTICA (Nível 1) Status: NORMATIVO Referência: Subordinado ao Volume I (Arquitetura)
+PREFÁCIO DO VOLUME II: DA ABSTRAÇÃO AO SILÍCIO
+Enquanto o Volume I estabeleceu a Constituição do Autotabloide AI — suas leis de dados, soberania e resiliência —, o Volume II desce às trincheiras do código. A arquitetura mais robusta falha se a implementação dos algoritmos de baixo nível for ingênua.
+Este volume é o guia de campo para o Engenheiro de Software Sênior encarregado de materializar a visão. Ele detalha os parâmetros de compilação dos motores de inferência, a lógica matemática exata dos grids recursivos de layout e os byte-streams esperados na manipulação de PDFs. Aqui, a ambiguidade é eliminada através de pseudo-código estrito e definições de configuração de ambiente que garantem que a "Soberania Local" funcione na prática, não apenas na teoria.
+CAPÍTULO 1: O PROTOCOLO DE COMPILAÇÃO E BOOTSTRAP DO AMBIENTE
+O Autotabloide AI não é um script Python padrão; é um híbrido de Python, C++ (Llama.cpp) e Binários de Sistema (Ghostscript). A configuração do ambiente de desenvolvimento (e produção) exige um rigor cirúrgico para evitar falhas de DLL ou incompatibilidade de drivers CUDA.
+1.1. O Manifesto de Inicialização (bootstrap.ps1)
+O sistema não pode depender de instalação manual. Um script de bootstrap (PowerShell para Windows) deve garantir a idempotência do ambiente.
+Lógica de Execução Sequencial:
+   1. Validação de Hardware:
+   * Detectar presença de GPU NVIDIA (nvidia-smi).
+   * Se presente: Definir flag de ambiente CMAKE_ARGS="-DLLAMA_CUBLAS=on". Isso força o llama-cpp-python a compilar com suporte a CUDA, essencial para a performance da IA.
+   * Se ausente: Definir CMAKE_ARGS="-DLLAMA_BLAS=on -DLLAMA_OPENBLAS=on" para otimização de CPU (AVX2).
+   2. Injeção de Binários Estáticos (/bin/):
+   * O script não deve baixar ferramentas da internet em tempo de execução. Ele deve verificar a integridade (SHA256) dos binários pré-empacotados na pasta /bin/ do repositório:
+   * gswin64c.exe (Ghostscript 10.02+).
+   * realesrgan-ncnn-vulkan.exe (Upscaler).
+   * ffmpeg.exe (Processamento de Mídia).
+   * Ação Crítica: Adicionar temporariamente /bin/ ao PATH da sessão do processo, mas NÃO ao PATH global do Windows (para evitar conflitos com outras instalações do usuário).
+   3. Hidratação do Poetry:
+   * Executar poetry install --no-root --sync. A flag --sync é vital: ela remove qualquer pacote no ambiente virtual que não esteja no poetry.lock, garantindo um ambiente estéril.
+1.2. Configuração do Motor Neural (llama_config)
+A instancialização do LLM local não é trivial. O código deve calcular dinamicamente quantos layers (camadas) da rede neural podem ser movidos para a GPU sem causar Out of Memory (OOM), o que travaria o vídeo do usuário.
+Algoritmo de Alocação de VRAM (auto_offload.py):
+def calculate_gpu_layers(model_size_gb: float) -> int:
+    """
+    Determina o n_gpu_layers seguro para o Llama.cpp.
+    """
+    vram_total = get_gpu_total_memory() # via pynvml
+    vram_used = get_gpu_used_memory()
+    vram_buffer = 1.5 # GB reservados para Windows + Flet Render
+
+
+    vram_available = vram_total - vram_used - vram_buffer
+
+
+    if vram_available < 1.0:
+        return 0 # Fallback para CPU puro
+
+
+    # Lógica Heurística para Llama-3-8B (Q4_K_M ~ 4.8GB)
+    # Total de layers: 33
+    bytes_per_layer = model_size_gb / 33
+    safe_layers = int(vram_available / bytes_per_layer)
+
+
+    return min(safe_layers, 33) # Clamp no máximo
+
+
+Diretriz: Este cálculo deve rodar a cada boot do Processo Sentinela, pois o usuário pode ter aberto um jogo ou Photoshop antes de abrir o Autotabloide.
+CAPÍTULO 2: ALGORITMOS DE LAYOUT VETORIAL AVANÇADO
+O "Motor Visual" descrito no Volume I opera sob regras geométricas. Este capítulo define a matemática exata dessas regras.
+2.1. O Algoritmo de Grid Recursivo (The Recursive Tiler)
+Para renderizar "Kits" ou "Múltiplos Sabores" dentro de um único slot #ALVO_IMAGEM sem distorção, o sistema utiliza uma árvore de decisão geométrica.
+Entrada:
+   * Rect: O retângulo original do slot (x, y, w, h).
+   * Assets: Lista de $N$ imagens.
+Lógica de Particionamento ($k$-d tree simplificada):
+   1. Caso Base ($N=1$):
+   * Retorna [Rect]. Aplica-se Aspect-Fit direto.
+   2. Divisão Binária ($N=2$):
+   * Divide Rect verticalmente no meio.
+   * R1 = (x, y, w/2, h)
+   * R2 = (x + w/2, y, w/2, h)
+   * Ajuste de Padding: Aplica-se um gutter (margem interna) de 2% entre R1 e R2 para estética.
+   3. Tríade Assimétrica ($N=3$):
+   * A primeira imagem é a "Hero".
+   * R1 (Hero) = (x, y, w/2, h)
+   * SubRect = (x + w/2, y, w/2, h)
+   * Divide SubRect horizontalmente.
+   * R2 = (x + w/2, y, w/2, h/2)
+   * R3 = (x + w/2, y + h/2, w/2, h/2)
+   4. Quad Grid ($N=4$):
+   * Divisão cartesiana simples.
+   * $x_mid = w/2$, $y_mid = h/2$.
+   * Gera 4 quadrantes iguais.
+Pós-Processamento de Coordenadas: Após o cálculo dos sub-retângulos, o motor deve traduzir essas coordenadas abstratas em transformações SVG:
+   * Para cada imagem $i$ no sub-retângulo $R_i$:
+   * Calcular nova matriz de escala $S_i$ baseada nas dimensões de $R_i$ (não do slot original).
+   * Criar um grupo <g> com clip-path definido exatamente por $R_i$.
+   * Inserir a imagem dentro desse grupo.
+2.2. Lógica de Traversal para "True Black" (Otimização CMYK)
+A conversão de preto RGB para CMYK Puro (K100) não pode ser cega. Ela deve percorrer a árvore DOM do SVG antes da rasterização.
+Algoritmo de Substituição Profunda (dfs_black_replacement):
+   1. Traversal: Executar uma busca em profundidade (DFS) em todos os nós do XML.
+   2. Identificação de Alvo:
+   * Nós: <text>, <path>, <rect>.
+   * Atributos: fill, stroke.
+   3. Critério de Cor:
+   * Se valor for #000000, #000, rgb(0,0,0) ou rgba(0,0,0,1).
+   4. Mutação:
+   * Não alterar para cmyk(0,0,0,1) diretamente (o CairoSVG pode não interpretar bem dependendo da versão).
+   * Estratégia: Adicionar um atributo de classe ou metadado data-print-color="process-black".
+   * No passo de pós-processamento do Ghostscript, usar a flag -dKPreserve=2 (definida no Vol I), que confia na intenção do preto RGB puro como K100.
+   * Overprint: Para textos identificados como pretos, injetar o estilo CSS inline: style="mix-blend-mode: multiply;" (simulação de overprint visual) ou atributos de extensão proprietários se o renderizador suportar.
+CAPÍTULO 3: PROTOCOLO DE CONCILIAÇÃO DE DADOS (IMPLEMENTAÇÃO DO "JUIZ")
+A lógica de "O Juiz" (reconciliação de Excel) exige um pipeline de correspondência fuzzy que não gere falsos positivos catastróficos.
+3.1. O Algoritmo de Score Híbrido
+Para decidir se "LEITE PARMALAT" (Excel) é "Leite UHT Parmalat Integral" (Banco), usamos um score composto ponderado.
+$$Score = (S_{text} \cdot 0.4) + (S_{vec} \cdot 0.4) + (S_{brand} \cdot 0.2)$$
+Onde:
+   * $S_{text}$: Distância de Jaro-Winkler (melhor que Levenshtein para prefixos iguais).
+   * $S_{vec}$: Similaridade de Cosseno dos vetores (embeddings).
+   * $S_{brand}$: Booleano (1.0 ou 0.0). Se a marca extraída (via IA) em ambos for igual (ex: "Parmalat"), ganha boost. Se forem diferentes (ex: "Nestlé" vs "Parmalat"), aplica penalidade veto (Score = 0).
+Limiares de Decisão (Thresholds):
+   * > 0.92: Match Automático (Verde).
+   * 0.75 - 0.91: Sugestão para Revisão (Amarelo).
+   * < 0.75: Novo Produto (Vermelho).
+Fim da Parte 1 do Volume II.
+CAPÍTULO 4: PADRÕES DE IMPLEMENTAÇÃO DE INTERFACE REATIVA (FLET)
+O Flet abstrai a complexidade do Flutter, mas introduz o desafio do GIL (Global Interpreter Lock) do Python. Uma implementação incorreta resultará em uma interface que "engasga" (jank) durante operações de I/O. Este capítulo define os padrões de design obrigatórios para garantir os 60 FPS estipulados no Volume I.
+4.1. O Padrão de Componente Assíncrono (AsyncComponent)
+É proibido instanciar controles Flet e manipulá-los proceduralmente no script principal. Todo widget complexo (ex: Card de Produto, Linha de Tabela) deve ser uma classe isolada.
+Diretriz de Implementação:
+   1. Herança: Todos os componentes customizados devem herdar de ft.UserControl.
+   2. Método did_mount: Usado para iniciar listeners ou assinaturas de eventos.
+   3. Isolamento de Estado: Variáveis de estado (ex: is_loading, price_value) devem ser atributos da classe (self._state), nunca globais.
+Pseudo-código Normativo (Optimistic Toggle):
+class OptimisticSwitch(ft.UserControl):
+    def __init__(self, initial_value: bool, on_change_callback):
+        super().__init__()
+        self.value = initial_value
+        self.callback = on_change_callback
+        self.switch = ft.Switch(value=initial_value, on_change=self._handle_change)
+
+
+    def build(self):
+        return self.switch
+
+
+    async def _handle_change(self, e):
+        # 1. Mutação Otimista (Instantânea)
+        previous_value = not self.switch.value
+        # A UI já mudou visualmente pelo framework, não precisamos forçar update ainda.
+        
+        try:
+            # 2. Execução Assíncrona (Side Effect)
+            # Await garante que a UI não trave enquanto o banco responde
+            await self.callback(self.switch.value)
+            
+            # 3. Confirmação Visual (Opcional: Piscar verde)
+            self._flash_success()
+            
+        except DatabaseError:
+            # 4. Rollback em caso de falha (A Mentira é desfeita)
+            self.switch.value = previous_value
+            self.switch.update() # Força redesenho
+            show_error_toast("Falha ao persistir alteração.")
+
+
+4.2. Virtualização de Listas (O Desafio dos 50k Itens)
+Carregar 50.000 instâncias de ProductRow na memória causará um estouro de RAM e travamento da GPU Skia.
+Implementação da VirtualListView:
+   * Não use: ft.Column(scroll=True) para listas dinâmicas > 100 itens.
+   * Use Mandatoriamente: ft.ListView ou ft.GridView com as propriedades:
+   * item_extent: Altura fixa da linha (ex: 60px). Isso permite ao motor calcular a barra de rolagem sem renderizar os itens.
+   * first_item_prototype: Define o modelo para reciclagem de memória.
+Lógica de Paginação Infinita (OnScroll):
+A interface não deve carregar todo o banco de dados. Ela deve implementar um cursor deslizante.
+   1. Query Inicial: SELECT * FROM produtos LIMIT 50.
+   2. Listener: Monitorar on_scroll_interval.
+   3. Trigger: Se pixels_scrolled >= max_scroll_extent - 200:
+   * Disparar asyncio.create_task(load_next_page()).
+   * Appender os novos dados à lista existente.
+   * Importante: Manter um spinner rodando no rodapé da lista (last_child) para feedback visual.
+CAPÍTULO 5: PIPELINE DE SEGURANÇA E CONFORMIDADE AUTOMATIZADA
+O sistema atua como um "Agente de Conformidade". Ele não sugere segurança; ele a impõe. Este capítulo detalha a implementação das regras de negócio legais (PROCON/ANVISA) diretamente no motor de renderização.
+5.1. O Middleware de Taxonomia (+18)
+A injeção do ícone de "Proibido para Menores" não depende da vontade do designer. É uma regra de injeção de dependência no grafo de cena (SVG DOM).
+Algoritmo de Detecção e Injeção (inject_compliance_assets):
+Entrada:
+   * ProductData: Objeto contendo nome, categoria e NCM (se disponível).
+   * SlotNode: O elemento XML do slot no SVG.
+Lógica:
+   1. Classificação Taxonômica:
+   * Lista de palavras-chave de risco (Regex compilada): r"(?i)\b(whisky|vodk|cachaça|cerveja|gin|cigarro|tabaco|vape)\b"
+   * Verificação: Se Regex.search(ProductData.name) for verdadeiro.
+   2. Carregamento do Ativo:
+   * Ler o vetor /assets/system/warning_18.svg.
+   3. Cálculo de Posicionamento (Z-Index Force):
+   * Não basta adicionar ao grupo. O ícone deve ser o último filho do nó #SLOT_XX para garantir que seja renderizado sobre a imagem do produto.
+   * Geometria: Ancorar em (x + 10, y + 10) (Canto superior esquerdo com padding).
+   * Escala: O ícone deve ocupar no mínimo 15% da largura do slot para legibilidade legal.
+Pseudo-código (LXML):
+if is_restricted_product(product):
+    icon_tree = lxml.etree.parse("assets/system/warning_18.svg")
+    icon_root = icon_tree.getroot()
+    
+    # Força posição e escala
+    icon_root.set("x", str(slot_x + margin))
+    icon_root.set("y", str(slot_y + margin))
+    icon_root.set("width", str(slot_width * 0.15))
+    
+    # Append como último elemento (Highest Z-Index)
+    slot_node.append(icon_root)
+
+
+5.2. Validador Lógico de Ofertas (Anti-Fraude)
+Para evitar multas do PROCON por "Maquiagem de Preço" (aumentar para depois dar desconto), o sistema valida matematicamente a relação De/Por.
+Regra de Ouro:
+Se o layout possui #TXT_PRECO_DE (Cartaz de Oferta), a seguinte asserção deve ser verdadeira:
+$$Preco_{De} > Preco_{Por} + (Preco_{Por} \times 0.05)$$
+Interpretação: O desconto deve ser real e superior a 5% (margem de erro/flutuação).
+Ação Corretiva Automática:
+Se a validação falhar (ex: De: 10,00 Por: 10,00):
+   1. Log de Auditoria: Registrar "Tentativa de oferta inválida no Produto ID X".
+   2. Sanitização Visual: O motor remove (drop) o nó #TXT_PRECO_DE e seu rótulo do DOM.
+   3. Resultado: O cartaz é renderizado apenas com o preço atual, transformando-se de um "Cartaz de Oferta" para um "Cartaz de Preço Comum" silenciosamente, garantindo a segurança jurídica da loja.
+CAPÍTULO 6: O MOTOR DE FÁBRICA (BATCH PROCESSING ENGINE)
+A geração de 1.000 cartazes não pode ser feita carregando 1.000 SVGs na memória. O Autotabloide implementa um pipeline de streaming.
+6.1. O Gerador de PDFs (PDFStreamer)
+A arquitetura usa o padrão Generator do Python (yield) para processar a lista de entrada item a item.
+Fluxo de Implementação:
+   1. Iterador: def batch_generator(product_list, template):
+   2. Ciclo de Vida do Frame:
+   * Instanciar lxml tree (cópia fresca).
+   * Injetar Dados.
+   * Renderizar para BytesIO (Memória RAM).
+   * yield pdf_bytes
+   * del tree (Coleta de Lixo imediata).
+Concatenação Eficiente (pypdf):
+O consumidor do gerador recebe os bytes e os anexa a um PdfWriter único.
+merger = PdfWriter()
+for pdf_frame in batch_generator(items, template):
+    reader = PdfReader(pdf_frame)
+    merger.add_page(reader.pages[0])
+    
+# Só escreve no disco no final
+with open("output.pdf", "wb") as f:
+    merger.write(f)
+
+
+6.2. O Construtor de Comando Ghostscript (RIP)
+A conversão de cor final não é feita em Python, mas delegada ao binário. O código deve construir a string de argumentos de forma segura.
+Mapeamento de Flags:
+   * -sDEVICE=pdfwrite: Driver de saída.
+   * -dPDFSETTINGS=/prepress: Configurações de alta qualidade (300 DPI, compressão baixa).
+   * -sColorConversionStrategy=CMYK: Força o espaço de cor.
+   * -dOverrideICC=true: Dá prioridade ao perfil ICC fornecido sobre os embutidos.
+   * -sOutputICCProfile="assets/profiles/CoatedFOGRA39.icc": O perfil alvo.
+Tratamento de Erros de Subprocesso:
+O subprocess.run deve capturar stderr. Se o Ghostscript retornar código != 0, o sistema deve:
+   1. Não apagar o arquivo temporário RGB (para debug).
+   2. Lançar RenderingEngineError com o log do Ghostscript.
+Fim da Parte 2 do Volume II.
+CAPÍTULO 7: O PROCESSO SENTINELA (ARQUITETURA DE MULTIPROCESSAMENTO IA)
+A execução de modelos de Deep Learning (LLMs e Redes de Visão) no mesmo espaço de memória da Interface Gráfica é um erro arquitetural fatal. O "Processo Sentinela" é um daemon independente que carrega os modelos na memória VRAM e aguarda ordens, garantindo que a UI permaneça fluida (60fps) mesmo durante inferências pesadas.
+7.1. O Protocolo de Mensageria (IPC)
+A comunicação entre o processo principal (MainUI) e o sentinela (SentinelProcess) não ocorre por chamadas de função, mas por troca de mensagens serializadas através de multiprocessing.Queue.
+Estrutura do Payload (Contrato de Interface):
+@dataclass
+class SentinelTask:
+    task_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    action: str  # "SANITIZE_TEXT", "REMOVE_BG", "VECTOR_SEARCH"
+    payload: dict
+    priority: int = 1  # 0=Crítico (UI Block), 1=Normal, 2=Batch
+
+
+@dataclass
+class SentinelResult:
+    task_id: str
+    status: str  # "SUCCESS", "ERROR"
+    data: Any
+    processing_time_ms: float
+
+
+Diretriz de Implementação:
+O Sentinela deve implementar um loop infinito que consome a fila. É mandatório o uso de queue.get(timeout=1.0) para permitir que o processo verifique periodicamente um sinal de desligamento (shutdown_event).
+7.2. Gestão de Estado dos Modelos (Warm-Start)
+Carregar o modelo Llama-3 (4GB+) demora cerca de 15 segundos. O sistema não pode fazer isso a cada requisição.
+Padrão Singleton no Processo Filho:
+class SentinelWorker:
+    def __init__(self):
+        self.llm = None
+        self.rembg_session = None
+
+
+    def _lazy_load_llm(self):
+        if not self.llm:
+            # Carrega apenas na primeira necessidade
+            from llama_cpp import Llama
+            self.llm = Llama(
+                model_path="bin/models/llama-3-8b-q4_k_m.gguf",
+                n_gpu_layers=33, # Calculado no Boot (Cap. 1)
+                verbose=False
+            )
+
+
+    def process_task(self, task: SentinelTask):
+        if task.action == "SANITIZE_TEXT":
+            self._lazy_load_llm()
+            return self._run_inference(task.payload)
+        # ... outros handlers
+
+
+Isso garante que, se o usuário nunca usar a IA na sessão, a memória RAM não será ocupada inutilmente.
+CAPÍTULO 8: O LABORATÓRIO DE IMAGEM (COMPUTER VISION PIPELINE)
+Este capítulo substitui o Photoshop. Definimos aqui a sequência algorítmica exata para transformar uma foto crua ("raw") em um ativo de marketing polido.
+8.1. Pipeline de Remoção de Fundo (rembg)
+A biblioteca rembg (baseada na rede U2-Net) é o padrão ouro. Contudo, sua execução padrão é ineficiente para processamento em lote.
+Otimização de Sessão:
+A classe rembg.new_session("u2net") deve ser instanciada uma única vez dentro do Processo Sentinela (ver 7.2) e reutilizada. Criar uma nova sessão para cada imagem adiciona 2-3 segundos de latência por item.
+Algoritmo de Refinamento de Máscara:
+A saída da rede neural muitas vezes deixa "fantasmas" (pixels semitransparentes).
+   1. Limiarização (Thresholding): Aplicar um filtro no canal Alpha. Se Alpha < 10 (de 255), forçar para 0. Isso limpa a "sujeira" invisível que atrapalha o design.
+   2. Erosão Morfológica: Se a borda estiver serrilhada, aplicar uma erosão leve (kernel 3x3) para suavizar o recorte.
+8.2. Algoritmo de Saliência e Auto-Crop
+Após remover o fundo, a imagem geralmente sobra com margens transparentes enormes. O sistema deve calcular o "Bounding Box" visual real.
+Lógica Matemática (NumPy):
+def get_tight_bbox(image_array):
+    # image_array: RGBA numpy array
+    alpha_channel = image_array[:, :, 3]
+    
+    # Encontra coordenadas onde Alpha > 0
+    non_empty_columns = np.where(alpha_channel.max(axis=0) > 0)[0]
+    non_empty_rows = np.where(alpha_channel.max(axis=1) > 0)[0]
+    
+    if len(non_empty_rows) == 0:
+        return None # Imagem vazia
+        
+    y_min, y_max = non_empty_rows[0], non_empty_rows[-1]
+    x_min, x_max = non_empty_columns[0], non_empty_columns[-1]
+    
+    return (x_min, y_min, x_max, y_max)
+
+
+Margem de Respiro:
+Após o crop matemático, adicionar obrigatoriamente um padding de 5% transparente ao redor. Isso evita que o produto toque as bordas do slot no design final.
+8.3. Upscaling Condicional (Super-Resolução)
+Imagens baixadas do Google Images frequentemente têm baixa resolução (ex: 300x300).
+Regra de Decisão:
+Se (width * height) < 500_000 pixels (aprox 700x700):
+   1. Invocar binário /bin/realesrgan-ncnn-vulkan.exe.
+   2. Argumentos: -s 4 (Escala 4x), -n realesrgan-x4plus (Modelo genérico de alta fidelidade).
+   3. Fallback: Se não houver GPU dedicada, pular esta etapa para evitar travamento de 2 minutos na CPU.
+CAPÍTULO 9: TELEMETRIA E MONITORAMENTO DE SAÚDE (THE PULSE)
+Para um sistema de Nível Crítico, "silêncio" é indistinguível de "travamento". A interface deve comunicar sua saúde interna ativamente.
+9.1. O Watchdog do Banco de Dados
+O modo WAL do SQLite é robusto, mas pode degradar se o arquivo -wal crescer infinitamente sem checkpoint.
+Monitor de Latência:
+Uma thread leve (TelemetryThread) deve rodar a cada 5 segundos:
+   1. Executar SELECT 1 no banco.
+   2. Medir tempo de resposta ($\Delta t$).
+   3. Lógica Semafórica:
+   * $\Delta t < 10ms$: Verde (Saudável).
+   * $\Delta t > 100ms$: Amarelo (Checkpoint em andamento).
+   * $\Delta t > 2000ms$: Vermelho (Deadlock potencial).
+   * Ação: Se vermelho, forçar um log de erro crítico e notificar o usuário para reiniciar.
+9.2. Indicador Visual de Atividade Neural
+Usuários não entendem porque o software "parou" enquanto a IA pensa.
+Implementação do "Cérebro Pulsante":
+   1. Quando a UI envia uma tarefa para o Sentinela (Cap. 7), incrementa um contador atômico global pending_ai_tasks += 1.
+   2. Um componente Flet Icon(ft.icons.PSYCHOLOGY) monitora esse contador.
+   3. Se > 0: O ícone anima opacidade (pulsa) e muda para cor Ciano Neon.
+   4. Quando o resultado volta, pending_ai_tasks -= 1.
+   5. Se == 0: Ícone volta a cinza estático.
+EPÍLOGO DO VOLUME II
+Com a conclusão deste volume, a implementação tática do Autotabloide AI está codificada. Definimos como o sistema nasce (Bootstrap), como ele desenha (Vetores), como ele pensa (IA Sentinela) e como ele se protege (Compliance e Telemetria).
+O próximo e último passo lógico — caso autorizado — seria o Volume III: Manual de Operação e Procedimentos de Desastre, focado não no código, mas no humano que opera a máquina: manuais de recuperação de falhas, rotinas de backup físico e glossário de erros.
+FIM DO VOLUME II.
+AUTOTABLOIDE AI: CODEX INDUSTRIALIS — VOLUME III
+PROTOCOLOS DE OPERAÇÃO, GOVERNANÇA DE DADOS E LÓGICA VISUAL AVANÇADA
+Classificação: EXECUÇÃO CRÍTICA (Nível 0)
+Status: DEFINITIVO (Revisão Pós-Auditoria)
+Referência: Consolidação das Regras de Negócio e Motor Lógico.
+PREFÁCIO DO VOLUME III: A DOUTRINA DA ESTABILIDADE E PERMANÊNCIA
+Um sistema de engenharia não termina quando o código compila. Ele começa a existir de verdade quando é submetido à entropia do mundo real: planilhas Excel corrompidas, operadores impacientes e a necessidade de conformidade legal estrita.
+Este volume define as leis irrevogáveis que governam o sistema em movimento. Detalharemos aqui o funcionamento do "Juiz" (o motor de importação e correlação), as regras de Sanitização Tipográfica (que rejeitam o caixa alta indiscriminado) e a Matemática de Renderização que permite kits, sabores múltiplos e paginação vetorial.
+CAPÍTULO 1: O NÚCLEO DINÂMICO E GERENCIAMENTO DE CONCORRÊNCIA
+O Autotabloide AI opera sobre o framework Flet. Para garantir fluidez absoluta (alvo de 60 FPS na UI) enquanto processa milhares de dados, implementamos um protocolo rígido de segregação de threads.
+1.1. O Protocolo Async/Await Mandatório
+Todas as interações de UI que envolvem chamadas de rede, manipulação de sistema de arquivos ou transações de banco de dados devem, obrigatoriamente, ser declaradas como async.
+   * Proibição Absoluta de Sleep Síncrono: É estritamente proibido usar time.sleep() em qualquer ponto do código-fonte. O uso dessa função bloqueia a thread inteira (congelamento da UI). O único substituto permitido é await asyncio.sleep().
+1.2. Gestão de Estado e Virtualização (Otimização de UI)
+O sistema deve suportar listas de inventário com 50.000 produtos sem colapso de memória.
+   * O Mandato da Virtualização: Substituição total de ft.Column (dentro de ScrollViews) por ft.ListView ou ft.GridView com a propriedade item_extent definida. O sistema renderiza apenas o que o olho vê.
+   * Reciclagem de Memória (Unmounting): Respondendo à diretriz de engenharia sobre vazamento de memória: Itens que saem do viewport (rolagem para cima) devem ser ativamente descartados da memória de renderização, mantendo apenas seus dados leves (IDs) no buffer lógico.
+CAPÍTULO 2: ENGENHARIA DE DADOS E "O JUIZ" (THE JUDGE)
+A importação de dados externos é o vetor primário de caos. O Autotabloide implementa um pipeline de arbitragem denominado "O Juiz", que atua como um firewall semântico.
+2.1. O Pipeline de Importação e Correlação (Excel/CSV)
+Ao importar uma planilha, o sistema não cria produtos cegamente. Ele executa um algoritmo de Correlação Semântica.
+Fluxo de Julgamento:
+   1. Leitura: O sistema lê a coluna de descrição da planilha (o input sujo).
+   2. Busca no Inventário (Match Exato): Verifica se essa descrição já existe na tabela de aliases (sku_origem). Se sim $\to$ Vínculo Imediato (Verde).
+   3. Busca Fuzzy/IA (Match Provável): Se não houver match exato, a IA (ou algoritmo de distância Levenshtein/Jaccard) varre o banco de dados existente em busca de produtos similares.
+   * Cenário: Planilha diz "CERV SKOL LATA". Banco tem "Cerveja Skol Pilsen 350ml".
+   * Ação: O sistema sugere a correlação com confiança percentual.
+   * Estado: Aprovação Necessária (Amarelo). O usuário deve confirmar se são o mesmo item.
+   4. Novo Item (No Match): Se a correlação for baixa (<70%), o sistema marca para criação.
+   * Estado: Criação (Vermelho). A IA sanitiza o nome e prepara o novo registro.
+Regra de Ouro da Importação: A IA deve ter consciência do banco de dados atual. Ela não deve criar um "Arroz Camil" novo se já existir um "Arroz Branco Camil" correlacionável. Isso evita a duplicação de cadastros e fragmentação do histórico.
+2.2. Regras de Sanitização Tipográfica (O Padrão Estético)
+Atendendo à revisão estética, o sistema rejeita a conversão forçada para CAIXA ALTA. Adota-se o padrão Title Case Inteligente e respeito à norma culta de unidades.
+   * Padrão de Nome: Tipo do Item + Marca + Sabor/Variação + Peso.
+   * Ex: "Sabonete Dove Original 90g".
+   * Capitalização: Primeira letra maiúscula, restantes minúsculas. Preposições (de, da, com, para) sempre minúsculas, exceto no início da frase.
+   * Normalização de Unidades:
+   * Gramas: Sempre g minúsculo, sem espaço do número. (Ex: 500g, não 500 GR ou 500 G).
+   * Mililitros: Sempre ml minúsculo. (Ex: 350ml).
+   * Litros: Exceção visual. Sempre L maiúsculo ou Litro (configurável) para evitar confusão com o número "1". (Ex: 2L).
+   * Separador Decimal: Uso mandatório de vírgula para visualização brasileira (Ex: 1,5kg).
+Nota: Estas regras de casing devem estar expostas no arquivo /config/settings.json para personalização do usuário, mas o padrão de fábrica é o descrito acima.
+CAPÍTULO 3: O MOTOR VISUAL E A LÓGICA DE RENDERIZAÇÃO AVANÇADA
+Este capítulo atualiza a matemática vetorial para suportar as novas demandas de complexidade visual (Kits, Múltiplas Páginas, Compliance).
+3.1. Arquitetura de Paginação Vetorial (Virtual Paper)
+O sistema deve suportar layouts com mais de uma página (ex: Jornal de Ofertas). Como o SVG não tem conceito nativo de páginas, implementa-se a abstração de Virtual Paper.
+   * Estrutura: O template SVG contém grupos mestres com IDs reservados: #PAGE_01, #PAGE_02, etc.
+   * Edição (A Mesa): O sistema oferece um paginador na UI. Apenas o grupo da página ativa é visível (display: inline), os outros são ocultos (display: none), garantindo performance.
+   * Exportação: O motor de renderização itera sobre os grupos. Gera um PDF para o grupo 01, outro para o 02, e usa uma biblioteca (pypdf) para concatená-los em um único arquivo final.
+3.2. Lógica de Preços e Tags Expandidas
+A renderização de preços deve ser flexível para atender diferentes designs de varejo.
+   * Tag #TXT_PRECO_COMPLETO (Novo): Para layouts onde o preço é uma string única (ex: "R$ 19,90") e não separado em inteiro/decimal. O sistema detecta essa tag e injeta o valor formatado completo.
+   * Lógica De/Por (Obrigatório em Cartazes):
+   * Cartazes: Exigem rigorosamente #TXT_PRECO_DE e #TXT_PRECO_POR para conformidade com o PROCON. O sistema valida se Preço De > Preço Por. Se a tag #TXT_PRECO_DE existir no SVG mas o produto não tiver preço de referência, o elemento visual inteiro (incluindo o rótulo "De") é ocultado (display: none) para não mostrar "De R$ 0,00".
+   * Unidade Condicional: Se o slot não possuir a tag #TXT_UNIDADE, a unidade (ex: "500g") deve ser concatenada automaticamente ao final do #TXT_NOME_PRODUTO. O operador não precisa digitar isso no nome; o sistema funde os dados na renderização.
+3.3. Composição Visual Avançada: Kits e Sabores
+Para atender à demanda de "Múltiplos Sabores" (ex: "Suco Tang Diversos Sabores") ou "Kits" no mesmo slot.
+   * Grid Recursivo: Se o campo img_hash_ref contiver uma lista de múltiplos hashes de imagem:
+   * O motor subdivide a área do #ALVO_IMAGEM original.
+   * 2 Imagens: Split Vertical (50/50).
+   * 3 Imagens: Layout assimétrico ou 3 colunas.
+   * 4 Imagens: Grid 2x2.
+   * Cada sub-imagem roda o algoritmo de Aspect-Fit independentemente.
+   * Concatenação de Nomes: Se houver dois produtos distintos no mesmo slot (ex: "Arroz Camil e Arroz Rei"), o sistema concatena os nomes: "Arroz Tipo 1 Camil / Rei", evitando repetições como "Arroz Camil e Arroz Rei".
+3.4. Injeção de Conformidade Legal (+18 e Avisos)
+O software atua como agente de conformidade.
+   * Ícone Bebida Alcoólica (+18): O sistema verifica a categoria do produto. Se for "Bebida Alcoólica" ou "Tabaco", o motor injeta programaticamente um vetor SVG do ícone "Proibido para Menores" no canto superior esquerdo do slot.
+   * Z-Index Forçado: Este ícone é inserido como o último elemento do grupo XML, garantindo que fique sobre qualquer imagem ou fundo.
+   * Texto Legal Dinâmico (#TXT_LEGAL): O sistema deve permitir a edição de um texto legal global (ex: "Ofertas válidas até...") que se replica para todos os slots ou para o rodapé da página, sem necessidade de editar um por um.
+CAPÍTULO 4: GESTÃO DE ATIVOS E CACHE (THE VAULT 2.0)
+4.1. Estratégia de Imagens
+Atendendo à preferência do usuário, o foco principal é o Web Scraping (Google Images), não fotos manuais.
+   * The Hunter (Scraper): O agente autônomo deve contornar proteções básicas e baixar imagens.
+   * Upscale Condicional: Imagens da web geralmente têm baixa resolução. O sistema deve aplicar o filtro de decisão: Se a imagem for para um Cartaz Grande (>A3) E a resolução original < 1000px, aciona-se o Real-ESRGAN (IA de Super-Resolução) para aumentar a qualidade antes da impressão.
+   * Histórico de Imagens: O sistema deve manter um log das últimas 3 imagens usadas para um produto. Se a IA baixar uma imagem errada hoje, o usuário pode reverter rapidamente para a imagem usada na semana passada com um clique ("Rollback de Ativo").
+Fim do Volume III. A engenharia lógica e operacional está definida. O próximo passo lógico é detalhar a Interface Gráfica (Volume V/VI) e a reformulação completa da "Fábrica" (Tela 4).
+AUTOTABLOIDE AI: CODEX INDUSTRIALIS — VOLUME V
+ESPECIFICAÇÃO MATEMÁTICA DA INTERFACE GRÁFICA, ERGONOMIA COGNITIVA E FLUXOS DE INTERAÇÃO
+Classificação: EXECUÇÃO CRÍTICA (Nível 0)
+Status: DEFINITIVO (Pós-Revisão de Áudio)
+Referência: Consolidação da Camada de Apresentação (Frontend Flet).
+PREFÁCIO DO VOLUME V: A GEOMETRIA DA INTERAÇÃO
+A interface do Autotabloide AI não é uma "pele" estética; é um Painel de Controle Industrial. O operador deste sistema gerencia ativos de risco (preços), onde um erro de digitação ou interpretação visual resulta em prejuízo financeiro. Portanto, a interface deve atuar como uma prótese intelectual, reduzindo a carga cognitiva e impondo barreiras perceptivas contra o erro.
+Este volume detalha a implementação pixel-perfeita de cada tela, a estrutura lógica de cada Pop-up (Modal), e os algoritmos de interação que governam a "Mesa" (Criação) e a "Fábrica" (Produção).
+CAPÍTULO 1: O SHELL DE APLICAÇÃO E NAVEGAÇÃO
+O "Shell" é o contêiner persistente que encapsula o estado da sessão. Ele deve prover estabilidade visual absoluta.
+1.1. Arquitetura da Janela Mestre (Flet Page)
+   * Tema: ThemeMode.DARK (Mandatório). Fundo #1A1A1A. Justificativa: Redução de fadiga ocular e maximização do contraste cromático dos layouts.
+   * Dimensões: min_width=1280, min_height=720.
+   * Scroll Global: ScrollMode.HIDDEN. A janela principal nunca rola; a rolagem ocorre apenas dentro dos contêineres de conteúdo (Listas/Grids), mantendo as barras de navegação fixas.
+1.2. Barra de Navegação Lateral (Rail)
+   * Largura: 72px (Colapsada/Foco) a 250px (Expandida).
+   * Destinos de Roteamento:
+   1. Dashboard/Histórico: Visão geral e acesso a snapshots.
+   2. Ateliê (Layouts): Gestão de templates SVG.
+   3. Almoxarifado (Estoque): Banco de dados e curadoria de imagens.
+   4. A Mesa (Montagem): Editor visual de Tabloides.
+   5. A Fábrica (Produção): Processador em lote de Cartazes.
+   6. Configurações: Preferências locais (sem login).
+1.3. Barra de Status e Telemetria (Rodapé)
+Feedback contínuo da saúde dos processos invisíveis (Volumes II, III, IV).
+   * Sentinela DB: Ícone de cilindro. Verde (<10ms latência), Amarelo (>100ms), Vermelho (Bloqueado).
+   * Monitor Neural (IA): Ícone de cérebro. Pulsa em Ciano Neon quando o processo Llama.cpp está inferindo (sanitizando nomes).
+   * Fila de Renderização: "Jobs: X". Contador de PDFs na fila do Ghostscript.
+CAPÍTULO 2: TELA 2 - O ALMOXARIFADO (GESTÃO DE DADOS)
+O desafio: Manipular 50.000 produtos sem travar a UI.
+2.1. A Grid Virtualizada
+   * Componente: ft.ListView com item_extent=60 (Altura fixa).
+   * Colunas:
+   * Avatar: Miniatura com "Semáforo de Qualidade" (Badge circular Verde/Amarelo/Vermelho no canto).
+   * SKU/ID: Fonte monoespaçada (JetBrains Mono).
+   * Descrição: Editável. Botão "Varinha Mágica" ao lado para invocar sanitização via IA (Volume IV).
+   * Preço: TextField verde, negrito.
+2.2. Modal "The Image Doctor" (Gestão de Ativos)
+Ao clicar no Avatar do produto, abre-se este modal crítico.
+   * Estrutura: Diálogo de tela cheia.
+   * Painel Esquerdo (Preview): Mostra a imagem atual. Toggle "Ver Recorte Saliência" (sobrepõe o retângulo de corte calculado pela IA).
+   * Painel Direito (Ferramentas):
+   * Aba "The Hunter" (Web): Grid de resultados do Google Images (via Scraper). Ao clicar numa imagem, ela é baixada, processada (remove fundo) e exibida no preview.
+   * Aba "Local": Upload manual.
+   * Ações: "Remover Fundo (U2-Net)", "Upscale 4x (Real-ESRGAN)".
+CAPÍTULO 3: TELA 3 - A MESA (MONTAGEM DE TABLOIDES)
+O coração criativo. Interface Split Screen: Estante (Esquerda) vs Papel/Canvas (Direita).
+3.1. Fluxo de Inicialização (O Bloqueio de Contexto)
+Ao entrar na tela, o Canvas está bloqueado (Cinza). Um Modal de Seleção abre automaticamente:
+   * Opção A: "Novo Projeto" -> Abre grid de Layouts (Ateliê) para escolher o template base.
+   * Opção B: "Carregar Projeto" -> Abre lista de arquivos .atproj salvos (com thumbnails).
+   * Apenas após essa seleção o Canvas é liberado.
+3.2. A Estante de Produtos (Painel Esquerdo)
+Não é apenas uma lista; é um buffer de importação. Inicialmente vazia.
+   * Botão "Importar (+)": Abre um Menu Dropdown com duas vias críticas:
+3.2.1. Via A: Importar do Banco de Dados (Database Picker)
+   * Modal: Janela flutuante com barra de busca e Grid de produtos.
+   * Interação:
+   * Busca: "Coca Cola".
+   * Seleção: O usuário clica em vários itens (Multi-select). Eles ganham borda azul.
+   * Ação: Botão "Adicionar à Estante (5 itens)".
+   * Resultado: Os itens aparecem na Estante lateral prontos para uso.
+3.2.2. Via B: Importar de Excel/Tabela ("O Juiz")
+Este é o fluxo mais complexo e vital.
+   * Input: Upload de arquivo .xlsx ou .csv.
+   * Processamento: O sistema lê a tabela e exibe o Modal de Conciliação.
+   * Estrutura do Modal de Conciliação:
+   * Tabela de 3 colunas:
+   1. Entrada (Excel): O texto sujo (ex: "CERV SKOL LT").
+   2. Veredito (IA):
+   * Verde: "Match Exato" (Produto ID 505 - Cerveja Skol Lata).
+   * Amarelo: "Sugestão" (IA achou 90% similaridade). Mostra Dropdown para o usuário confirmar ou trocar.
+   * Vermelho: "Novo Item". A IA sugere o nome sanitizado e avisa que será criado.
+   3. Ação: Checkbox de confirmação.
+   * Regra de Bloqueio: O botão "Importar Tabela" fica desabilitado (Cinza) até que todas as linhas Vermelhas/Amarelas sejam resolvidas pelo operador. Isso impede a entrada de lixo no sistema.
+3.3. O Canvas de Montagem (Painel Direito)
+Representação visual do SVG.
+   * Interação Drag & Drop: Arrastar card da Estante $\to$ Soltar no Slot Verde (#SLOT_01).
+   * Botão "Auto-Preencher" (Varinha):
+   * Lógica: Itera sobre a Estante (de cima para baixo) e preenche sequencialmente os slots vazios do layout.
+   * Economia de cliques: Transforma 12 arrastes em 1 clique.
+3.4. Modal de Edição Contextual (Override & Kits)
+Ao dar duplo-clique em um produto já posicionado no slot, abre-se o Modal de Override.
+   * Finalidade: Alterar dados apenas para este cartaz, sem mudar o banco de dados.
+   * Campos:
+   * Nome: Editável (ex: Abreviar para caber).
+   * Preço De / Preço Por: Campos numéricos separados.
+   * Peso/Unidade: Editável.
+   * Seletor de Múltiplos Ativos (Kits/Sabores):
+   * Seção "Imagens do Produto".
+   * Lista com Checkboxes mostrando todas as imagens vinculadas àquele produto (ou produtos agrupados).
+   * Lógica: Se o usuário marcar 3 imagens (ex: Morango, Uva, Limão), o Motor Visual (Volume III) ativará automaticamente o Grid Recursivo dentro do slot, dividindo a área para mostrar as 3 imagens.
+   * Botão "Salvar Alterações": Atualiza o JSON do projeto e re-renderiza o slot instantaneamente.
+CAPÍTULO 4: TELA 4 - A FÁBRICA (PRODUÇÃO DE CARTAZES)
+Refatoração Total: Esta tela não é visual/criativa. É uma Esteira de Processamento de Dados.
+   * Conceito: 1 Item da Lista = 1 Página do PDF.
+4.1. Layout da Tela
+Dividida verticalmente:
+   * Esquerda (30%): Configuração de Lote (Input).
+   * Centro (50%): Lista de Processamento (Grid de Dados).
+   * Direita (20%): Painel de Preview e Saída.
+4.2. Fluxo de Trabalho (Pipeline)
+   1. Seleção de Gabarito: Dropdown para escolher o layout base (ex: "Cartaz A4 Amarelo"). Nota: Só aparecem layouts do tipo CARTAZ ou ETIQUETA.
+   2. Alimentação de Dados:
+   * Botão "Carregar Lista" (Mesma lógica do "Juiz" da Tela 3).
+   * A tabela central é populada com: Produto | Preço De | Preço Por | Status Imagem.
+   3. Validação Lógica (Pre-Flight):
+   * O sistema varre a lista. Se encontrar Preço Por > Preço De (Erro lógico de oferta), pinta a linha de Vermelho.
+   * Se faltar imagem, pinta de Amarelo.
+   4. Preview Dinâmico:
+   * Ao clicar em qualquer linha da tabela central, o painel da direita renderiza aquele cartaz específico em tempo real. Permite conferência visual rápida ("O preço ficou muito grande?").
+4.3. Motor de Exportação
+   * Botão "Gerar Lote (PDF)":
+   * Abre modal de configuração de saída.
+   * Toggle de Cor: [RGB (Digital)] vs [CMYK (Impressão)]. Padrão: CMYK.
+   * Toggle de Ordenação: "Ordenar por Setor" ou "Ordem Alfabética".
+   * Processo: O sistema gera um PDF multipáginas. Não há imposição complexa (N-UP) por padrão; cada item é uma página do tamanho do layout selecionado.
+CAPÍTULO 5: TELA 5 - COFRE E CONFIGURAÇÕES
+5.1. Dashboard e Histórico (Timeline)
+   * Lista Infinita: ListView com Sticky Headers por data.
+   * Cartões de Evento:
+   * Ícone de Ação (Impressora, Edição, Lixeira).
+   * Descrição Humana ("Preço do Arroz alterado de 10 para 9").
+   * Botão "Desfazer" (Ctrl+Z Global): Reverte a transação no banco de dados.
+   * Snapshots:
+   * Botão "Criar Ponto de Restauração".
+   * Lista de Backups Zipados. Botão "Restaurar": Substitui o DB atual pelo backup (exige reinicialização).
+5.2. Painel de Configurações (Preferences)
+Acessível via ícone de engrenagem na Navegação. Arquivo físico: settings.json.
+   * Seção Tipografia:
+   * "Casing de Unidades": Opções [kg, g, l, ml] (Padrão) ou [KG, G, L, ML].
+   * "Casing de Nome": [Title Case] (Padrão) ou [UPPER CASE].
+   * Seção Segurança (+18):
+   * Input de Tags: Lista de palavras-chave que disparam o ícone +18. Ex: ["Whisky", "Cerveja", "Vinho", "Tabaco"].
+   * Upload do Ícone +18: Permite trocar o vetor padrão do alerta.
+   * Seção Sistema:
+   * Caminho da Pasta Raiz (Para migração de disco).
+   * Seletor de Modelo de IA: [Rápido (4-bit)] vs [Preciso (8-bit)].
+APÊNDICE: LISTA DE ALTERAÇÕES NECESSÁRIAS NO CÓDIGO (TO-DO LIST)
+Para a "IA Programadora" que lerá este documento, estas são as diretrizes de implementação imediatas baseadas na revisão de áudio:
+   1. Refatorar ProductModel: Adicionar suporte a sku_origem como relacionamento 1:N (Aliases).
+   2. Motor Visual: Implementar a lógica de img_hash_ref aceitando Listas de strings (para o Grid Recursivo de Sabores).
+   3. Tela 3: Criar o componente OverrideModal com checklist de imagens.
+   4. Tela 4: Remover lógica de Drag&Drop desta tela. Implementar lógica de Lista -> Render Loop.
+   5. Sanitização: Ajustar regex para forçar unidades minúsculas (ex: 500g) exceto Litro (1L).
+Fim do Volume V.
+AUTOTABLOIDE AI: CODEX INDUSTRIALIS — VOLUME V
+ESPECIFICAÇÃO DE INTERFACE ULTRA-REALISTA, FLUXOS DE MICRO-INTERAÇÃO E LÓGICA DE DECISÃO
+Classificação: EXECUÇÃO CRÍTICA (Nível 0)
+Status: DEFINITIVO (Pós-Revisão Visionária)
+Referência: Manual de Implementação Pixel-Perfect da Camada de Apresentação.
+PREFÁCIO DO VOLUME V: A MATEMÁTICA DA IMERSÃO
+Este volume transcende a definição funcional de software. Ele descreve a construção de um ambiente de trabalho digital onde a fricção cognitiva é reduzida a zero. O operador não deve "lutar" contra a interface; ele deve fluir através dela.
+Aqui, detalhamos a Tela 3 (A Mesa) como um estúdio de design assistido por inteligência, onde arrastar um produto não é apenas mover pixels, mas invocar algoritmos de geometria vetorial. E detalhamos a Tela 4 (A Fábrica) não como um editor, mas como uma linha de montagem industrial, onde dados brutos entram e PDFs prontos para impressão saem, validados por leis de conformidade e integridade.
+Cada modal, cada tooltip, cada transição de estado descrita abaixo é mandatória. A "IA Programadora" deve implementar exatamente esta coreografia.
+CAPÍTULO 1: O SHELL DE APLICAÇÃO E NAVEGAÇÃO (A MOLDURA)
+O Shell deve prover estabilidade visual absoluta. Ele nunca recarrega; ele transita.
+1.1. Arquitetura da Janela Mestre
+   * Tema: ThemeMode.DARK (#1A1A1A). Não é preto absoluto (#000), mas um cinza chumbo profundo que evita o cansaço visual e faz as cores dos produtos "saltarem".
+   * Fontes: JetBrains Mono para dados numéricos (alinhamento tabular perfeito) e Inter ou Roboto para interface.
+   * Scroll: Hidden. A janela principal é imutável.
+1.2. Barra de Navegação Lateral (Rail)
+   * Comportamento: Retrátil. 72px (Ícones) <-> 250px (Texto).
+   * Itens:
+   1. Dashboard: O "Cofre" e Histórico.
+   2. Ateliê: Gestão de Layouts SVG.
+   3. Almoxarifado: Banco de Dados e Curadoria.
+   4. A Mesa: Montagem de Tabloides (Foco Criativo).
+   5. A Fábrica: Produção em Lote de Cartazes.
+   6. Configurações: Preferências (Sem login).
+CAPÍTULO 2: TELA 3 - A MESA (O ESTÚDIO DE CRIAÇÃO)
+Esta é a tela mais complexa do sistema. Ela exige uma orquestração perfeita entre o Banco de Dados, a IA e o Motor Vetorial.
+2.1. O Estado Zero e o Modal de Inicialização
+Ao entrar na Tela 3, o usuário não vê um canvas em branco. Ele é interceptado por um Modal de Decisão Obrigatória (Bloqueante). O fundo da tela fica desfocado (Blur: 5px) e escurecido (Opacity: 0.5).
+2.1.1. Estrutura do Modal "Iniciar Projeto"
+   * Título: "O que vamos criar hoje?"
+   * Opção A (Card Grande Esquerda): "Novo Tabloide"
+   * Ícone: GridOn.
+   * Ação: Abre um sub-modal com a Galeria de Layouts (filtrada apenas por tipo TABLOIDE). O usuário clica no layout desejado (ex: "Ofertas Fim de Semana - 12 Slots").
+   * Opção B (Card Grande Direita): "Carregar Rascunho"
+   * Ícone: History.
+   * Ação: Lista os últimos 5 arquivos .atproj editados, com miniaturas e data ("Há 2 horas").
+   * Lógica: O Canvas e a Estante lateral permanecem inativos e ocultos até que uma dessas escolhas seja feita. Isso garante que o motor de renderização nunca tente desenhar "nada".
+2.2. A Anatomia da Tela de Trabalho (Split Screen)
+Após a seleção, a tela se divide:
+   * Esquerda (30% - Redimensionável): A Estante de Produtos (Fonte de Dados).
+   * Direita (70%): O Canvas de Montagem (Visualização WYSIWYG).
+2.3. Painel Esquerdo: A Estante de Produtos
+Não é apenas uma lista; é um Buffer de Importação. Inicialmente, ela pode estar vazia ou conter produtos residuais.
+2.3.1. O Botão "Importar (+)" e seus Caminhos
+No topo da estante, um botão primário [+ Importar] abre um Menu Dropdown com duas vias críticas:
+Via A: "Do Banco de Dados" (Seleção Rápida)
+   * Modal: Janela flutuante sobre a estante.
+   * Interface: Barra de busca focada automaticamente. Grid de produtos virtualizada.
+   * Micro-interação: O usuário digita "Coca". A lista filtra em tempo real (<50ms). Ele clica em 5 variações diferentes. Elas ficam com borda azul (Selected State).
+   * Ação: Ao clicar "Confirmar", o modal fecha e os 5 itens "voam" para a Estante lateral.
+Via B: "De Tabela/Excel" (O Fluxo do Juiz)
+Este é o fluxo mais visionário. O usuário sobe uma planilha crua e o sistema a digere.
+   1. Upload: Seleção de .xlsx ou .csv.
+   2. O Modal "O Juiz" (Conciliação):
+   * Este modal é uma tabela de 3 colunas.
+   * Coluna 1 (Entrada): O que estava no Excel (ex: "CERV SKOL LATA").
+   * Coluna 2 (Sugestão do Sistema): Onde a mágica acontece.
+   * Cenário Verde: O sistema achou match exato no DB. Mostra: "Cerveja Skol 350ml (ID 50)".
+   * Cenário Amarelo: A IA achou algo parecido. Mostra um Dropdown: "Você quis dizer 'Cerveja Skol'?".
+   * Cenário Vermelho: Novo produto. A IA mostra o nome sanitizado ("Cerveja Skol Lata") e avisa "Criar Novo".
+   * Coluna 3 (Ação): Checkbox de confirmação.
+   3. Travamento: O botão "Importar para a Estante" fica Cinza (Desabilitado) enquanto houver linhas Vermelhas não resolvidas. O usuário é obrigado a validar a entrada. Isso impede a poluição da estante.
+2.4. Painel Direito: O Canvas e a Lógica de Drop
+O SVG é renderizado aqui. As zonas de drop (#SLOT_01, #SLOT_02) são invisíveis, mas ganham um contorno Verde Neon quando o usuário arrasta um produto sobre elas.
+2.4.1. O Botão "Varinha Mágica" (Auto-Preencher)
+No topo do Canvas, um botão [Auto-Preencher].
+   * Lógica: O sistema pega a lista da Estante (na ordem visual) e a lista de Slots vazios (na ordem numérica do SVG).
+   * Ação: Em um loop instantâneo, ele aloca: Produto 1 -> Slot 1, Produto 2 -> Slot 2.
+   * Feedback: Uma animação em cascata preenche os slots visualmente. Economiza centenas de cliques.
+2.5. O Modal de Edição Contextual (Override Profundo)
+Ao dar duplo-clique em um produto já posicionado no slot (ex: Slot 5), abre-se o Modal de Override. Este não é um editor comum; é onde a lógica de "Kits" e "Sabores" reside.
+2.5.1. Estrutura do Modal
+   * Cabeçalho: "Editando Slot 05" (Mostra o produto original: "Suco Tang").
+   * Seção 1: Dados de Texto (Override Local)
+   * Nome: Input de texto. O usuário pode mudar "Suco em Pó Tang Laranja" para "Suco Tang (Todos os Sabores)".
+   * Preço: Input numérico. O sistema formata automaticamente (R$ 0,00).
+   * Seção 2: Imagens e Sabores (A Lógica de Grid)
+   * Aqui reside a inovação. Uma lista com checkboxes mostra todas as imagens vinculadas àquele produto ou àquela família.
+   * Exemplo: O usuário marca [x] Laranja, [x] Uva, [x] Morango.
+   * Lógica Visual: Ao marcar 3 opções, o preview ao lado mostra o slot se dividindo automaticamente (Layout de 3 fatias) para acomodar as 3 imagens. O usuário não precisa diagramar; o sistema calcula a geometria.
+   * Botão: "Aplicar". O modal fecha e o slot no Canvas é atualizado instantaneamente.
+CAPÍTULO 3: TELA 4 - A FÁBRICA (ESTEIRA DE PRODUÇÃO DE CARTAZES)
+Esqueça o Canvas criativo. Esta tela é uma máquina industrial. O objetivo é transformar uma lista de 50 ofertas em um PDF de 50 páginas pronto para a guilhotina.
+3.1. O Conceito de Fluxo Linear
+A tela é dividida em 3 colunas rígidas (Esquerda -> Direita), representando o fluxo do dado.
+3.2. Coluna 1: Entrada (Configuração do Lote)
+   * Seletor de Gabarito: Um Dropdown robusto.
+   * Filtro: Mostra apenas layouts do tipo CARTAZ ou ETIQUETA.
+   * Preview: Ao selecionar "Cartaz A4 Amarelo", uma miniatura aparece abaixo.
+   * Alimentação de Dados:
+   * Botão [Carregar Lista]. Abre o mesmo fluxo do "Juiz" da Tela 3, mas com uma exigência extra crítica: Colunas de Preço De / Preço Por.
+   * Validação: Se o Excel não tiver a coluna "Preço De" (Preço Antigo), o sistema emite um alerta: "Para cartazes de oferta, o Preço de Referência é obrigatório. Deseja prosseguir sem ele (arriscado) ou corrigir a planilha?".
+3.3. Coluna 2: A Fila de Processamento (Grid de Validação)
+Aqui os dados importados são listados antes da renderização.
+   * Grid de Validação:
+   * Colunas: Item | Preço De | Preço Por | Status.
+   * Lógica de Erro Lógico: O sistema varre a lista. Se Preço Por >= Preço De (ou seja, não há desconto real), a linha fica Vermelha. O sistema impede a impressão desse item para evitar fraude/erro.
+   * Lógica de Imagem: Se falta imagem, linha Amarela.
+3.4. Coluna 3: Saída e Conferência
+   * Preview Dinâmico: Ao clicar em qualquer linha da Coluna 2 (ex: "Arroz"), o painel da Coluna 3 renderiza aquele cartaz específico em tempo real. O operador pode ver: "O preço 19,90 coube no círculo amarelo?".
+   * O Botão "Exportar Lote":
+   * Abre o Modal de Renderização.
+   * Opção de Cor: Toggle [RGB (Tela)] vs [CMYK (Impressão)]. Padrão é CMYK.
+   * Ação: Ao confirmar, uma barra de progresso mostra a geração: "Renderizando página 1 de 50...".
+   * Resultado: O sistema abre a pasta onde o PDF único (multipáginas) foi salvo.
+CAPÍTULO 4: CONFIGURAÇÕES E PREFERÊNCIAS (O AJUSTE FINO)
+Acessível via ícone de engrenagem, sem login. Salva em settings.json.
+4.1. Aba "Tipografia e Padrões"
+   * Casing de Unidades:
+   * Opção: [Padrão (kg, g, l, ml)] vs [Maiúsculas (KG, G, L, ML)].
+   * Check: "Forçar 'L' maiúsculo para Litros (ex: 2L)".
+   * Casing de Nome:
+   * Opção: [Title Case Inteligente] vs [UPPER CASE (Caixa Alta)].
+4.2. Aba "Segurança e Compliance"
+   * Lista de Gatilhos +18:
+   * Input de Tags onde o usuário digita palavras-chave: Whisky, Vodka, Cigarro.
+   * Sempre que um produto contiver essas palavras, o ícone +18 será injetado.
+   * Upload de Ícone: Permite que o usuário suba seu próprio vetor de "Proibido para Menores" caso a legislação local exija um símbolo diferente.
+APÊNDICE: LISTA DE VERIFICAÇÃO PARA A IA DE CÓDIGO
+   1. Tela 3: Implementar o bloqueio inicial (Modal de Escolha).
+   2. Tela 3: Implementar o "Grid Recursivo" no Modal de Override (seleção múltipla de imagens).
+   3. Tela 4: Implementar a lógica de validação Preço De > Preço Por na grid.
+   4. Backend: Garantir que o img_hash_ref suporte Listas JSON para os Kits.
+   5. Geral: Implementar o arquivo settings.json e fazer com que os sanitizadores de texto leiam dele.
+Fim do Volume V.
