@@ -1,3 +1,4 @@
+import os
 import math
 import re
 from typing import Dict, Optional, Tuple, List, Union
@@ -59,17 +60,30 @@ class VectorEngine:
         """
         Mede a largura real do texto em pixels usando PIL (Headless).
         Isso substitui a heurística falha por precisão determinística.
+        
+        CRÍTICO: Não há fallback para fonte padrão. Se a fonte não existir,
+        o sistema falhará explicitamente para evitar cartazes ilegíveis.
         """
-        # Fallback para fonte padrão se o caminho não for fornecido ou inválido
-        # Em produção, apontar para as fontes reais do projeto (ex: Roboto-Bold.ttf)
         cache_key = (font_path, size)
         
         if cache_key not in self._font_cache:
+            if not font_path:
+                raise FileNotFoundError(
+                    f"ERRO CRÍTICO: Caminho de fonte não especificado. "
+                    "O sistema requer fontes explícitas para garantir fidelidade visual."
+                )
+            if not os.path.exists(font_path):
+                raise FileNotFoundError(
+                    f"ERRO CRÍTICO: Fonte não encontrada: '{font_path}'. "
+                    "Verifique se a fonte existe em 'assets/fonts/' ou ajuste o caminho."
+                )
             try:
-                # Tenta carregar a fonte real. Se falhar, usa default (o que é ruim, mas não crasha)
-                font = ImageFont.truetype(font_path, size) if font_path and font_path != "arial.ttf" else ImageFont.load_default()
-            except IOError:
-                font = ImageFont.load_default()
+                font = ImageFont.truetype(font_path, size)
+            except IOError as e:
+                raise FileNotFoundError(
+                    f"ERRO CRÍTICO: Falha ao carregar fonte '{font_path}': {e}. "
+                    "O sistema não pode operar com fontes inválidas."
+                ) from e
             self._font_cache[cache_key] = font
         
         font = self._font_cache[cache_key]
