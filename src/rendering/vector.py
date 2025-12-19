@@ -1,11 +1,27 @@
-import os
-import math
-import re
-from typing import Dict, Optional, Tuple, List, Union
-from lxml import etree
-from PIL import ImageFont, Image  # Mandatório para medição precisa offline e leitura de imagem
+"""
+AutoTabloide AI - Motor de Vetorização de Alta Fidelidade
+==========================================================
+Manipulação de SVG via DOM (lxml) conforme Vol. II.
+Responsável por injeção de dados em templates sem quebrar estrutura.
+"""
 
-# Namespaces que poluem o SVG gerado pelo Inkscape/Illustrator
+import os
+import re
+import math
+import hashlib
+from typing import Dict, Optional, Tuple, List, Union
+from pathlib import Path
+from lxml import etree
+from PIL import ImageFont, Image
+
+# Tentativa de importar Pyphen para hifenização (opcional)
+try:
+    import pyphen
+    HAS_PYPHEN = True
+except ImportError:
+    HAS_PYPHEN = False
+
+# Namespaces SVG comuns
 NAMESPACES = {
     'svg': 'http://www.w3.org/2000/svg',
     'inkscape': 'http://www.inkscape.org/namespaces/inkscape',
@@ -13,239 +29,431 @@ NAMESPACES = {
     'xlink': 'http://www.w3.org/1999/xlink'
 }
 
+
 class VectorEngine:
     """
     Motor de Manipulação Vetorial de Alta Fidelidade.
-    Responsável por injetar dados e imagens no DOM do SVG sem quebrar a estrutura.
+    Interpreta SVG como árvore DOM XML e injeta dados com precisão.
+    
+    Conforme Vol. II: 
+    - Aspect Fit para imagens (nunca distorce)
+    - Busca binária para ajuste de fonte
+    - Quebra de linha automática com hifenização
+    - Suporte a tags de preço De/Por
     """
     
-    def __init__(self):
+    # Caminho padrão para fontes (pode ser sobrescrito)
+    DEFAULT_FONTS_PATH = Path(__file__).parent.parent.parent / "AutoTabloide_System_Root" / "assets" / "fonts"
+    
+    def __init__(self, strict_fonts: bool = True):
+        """
+        Args:
+            strict_fonts: Se True, falha sem fallback quando fonte não existe.
+                         Conforme Vol. II, Cap. 3.3 - Não há fallback para fonte padrão.
+        """
         self.tree: Optional[etree._ElementTree] = None
         self.root: Optional[etree._Element] = None
         self.slots: Dict[str, etree._Element] = {}
-        # Cache de fontes para evitar I/O repetitivo durante processamento em lote
-        self._font_cache = {} 
+        self.strict_fonts = strict_fonts
+        
+        # Cache de fontes (LRU seria ainda melhor)
+        self._font_cache: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
+        
+        # Hifenizador PT-BR
+        self._hyphenator = pyphen.Pyphen(lang='pt_BR') if HAS_PYPHEN else None
+
+    # ==========================================================================
+    # CARREGAMENTO E INDEXAÇÃO
+    # ==========================================================================
 
     def load_template(self, template_path: str):
-        """Carrega e higieniza o template SVG (Remoção de lixo do Inkscape)"""
+        """
+        Carrega e higieniza template SVG.
+        Remove metadados proprietários (Inkscape/Illustrator) que poluem o XML.
+        """
         parser = etree.XMLParser(remove_blank_text=True)
         self.tree = etree.parse(template_path, parser)
         self.root = self.tree.getroot()
         
         self._purge_namespaces()
         self._index_slots()
+    
+    def load_from_string(self, svg_content: Union[str, bytes]):
+        """Carrega SVG a partir de string/bytes."""
+        if isinstance(svg_content, str):
+            svg_content = svg_content.encode('utf-8')
+        self.root = etree.fromstring(svg_content)
+        self.tree = etree.ElementTree(self.root)
+        
+        self._purge_namespaces()
+        self._index_slots()
 
     def _purge_namespaces(self):
-        """Remove atributos proprietários que não afetam a renderização final"""
+        """Remove atributos proprietários que não afetam renderização."""
         for elem in self.root.iter():
-            # Remove atributos indesejados (ex: inkscape:label)
             for key in list(elem.attrib.keys()):
-                if any(ns in key for ns in ['inkscape', 'sodipodi', 'adobe']):
+                if any(ns in key for ns in ['inkscape', 'sodipodi', 'adobe', 'pgf']):
                     del elem.attrib[key]
 
     def _index_slots(self):
         """
-        Mapeamento O(1) de Slots.
-        Busca por elementos cujos IDs começam com padrões conhecidos.
+        Cria índice O(1) para acesso rápido a elementos por ID.
+        Mapeia todos os elementos com IDs relevantes (SLOT_, TXT_, ALVO_, etc).
         """
         self.slots = {}
-        # Otimização: XPath restrito para IDs relevantes
         for elem in self.root.xpath('//*[@id]'):
             id_val = elem.get('id')
-            # Mapeia slots de Produto (SLOT_), Texto (TXT_) e Alvos de Imagem (ALVO_)
-            if id_val.startswith(('SLOT_', 'TXT_', 'ALVO_')):
-                self.slots[id_val] = elem
+            # Indexa padrões conhecidos + qualquer ID para flexibilidade
+            self.slots[id_val] = elem
 
-    def _measure_text_width(self, text: str, font_path: str, size: int) -> float:
+    def get_viewbox(self) -> Tuple[float, float, float, float]:
+        """Retorna dimensões do ViewBox (min-x, min-y, width, height)."""
+        viewbox = self.root.get('viewBox', '0 0 1000 1000')
+        parts = [float(x) for x in viewbox.split()]
+        return tuple(parts[:4]) if len(parts) >= 4 else (0, 0, 1000, 1000)
+
+    # ==========================================================================
+    # MEDIÇÃO DE TEXTO
+    # ==========================================================================
+
+    def _load_font(self, font_path: str, size: int) -> ImageFont.FreeTypeFont:
         """
-        Mede a largura real do texto em pixels usando PIL (Headless).
-        Isso substitui a heurística falha por precisão determinística.
-        
-        CRÍTICO: Não há fallback para fonte padrão. Se a fonte não existir,
-        o sistema falhará explicitamente para evitar cartazes ilegíveis.
+        Carrega fonte com cache. Falha ruidosamente se não existir.
+        Conforme Vol. II, Cap. 3.3 - Sem fallback para fonte padrão.
         """
         cache_key = (font_path, size)
         
-        if cache_key not in self._font_cache:
-            if not font_path:
-                raise FileNotFoundError(
-                    f"ERRO CRÍTICO: Caminho de fonte não especificado. "
-                    "O sistema requer fontes explícitas para garantir fidelidade visual."
-                )
-            if not os.path.exists(font_path):
-                raise FileNotFoundError(
-                    f"ERRO CRÍTICO: Fonte não encontrada: '{font_path}'. "
-                    "Verifique se a fonte existe em 'assets/fonts/' ou ajuste o caminho."
-                )
-            try:
-                font = ImageFont.truetype(font_path, size)
-            except IOError as e:
-                raise FileNotFoundError(
-                    f"ERRO CRÍTICO: Falha ao carregar fonte '{font_path}': {e}. "
-                    "O sistema não pode operar com fontes inválidas."
-                ) from e
-            self._font_cache[cache_key] = font
+        if cache_key in self._font_cache:
+            return self._font_cache[cache_key]
         
-        font = self._font_cache[cache_key]
-        # getlength é mais preciso que getbbox para layout de texto corrido
+        # Resolve caminho
+        resolved_path = font_path
+        if not os.path.isabs(font_path):
+            resolved_path = str(self.DEFAULT_FONTS_PATH / font_path)
+        
+        if not os.path.exists(resolved_path):
+            if self.strict_fonts:
+                raise FileNotFoundError(
+                    f"ERRO CRÍTICO: Fonte não encontrada: '{resolved_path}'. "
+                    "O sistema requer fontes explícitas para fidelidade visual. "
+                    "Coloque a fonte em 'assets/fonts/' ou desative strict_fonts."
+                )
+            else:
+                # Fallback para fonte padrão do sistema (não recomendado)
+                resolved_path = "arial.ttf"
+        
+        try:
+            font = ImageFont.truetype(resolved_path, size)
+            self._font_cache[cache_key] = font
+            return font
+        except IOError as e:
+            raise FileNotFoundError(
+                f"ERRO CRÍTICO: Falha ao carregar fonte '{resolved_path}': {e}"
+            ) from e
+
+    def _measure_text_width(self, text: str, font_path: str, size: int) -> float:
+        """Mede largura exata do texto usando PIL."""
+        font = self._load_font(font_path, size)
+        
         if hasattr(font, 'getlength'):
             return font.getlength(text)
         else:
-            return font.getsize(text)[0] # Fallback old PIL
+            bbox = font.getbbox(text)
+            return bbox[2] - bbox[0] if bbox else 0
 
-    def fit_text(self, 
-                 node_id: str, 
-                 text: str, 
-                 max_width_px: float, 
-                 font_family_path: str = "arial.ttf") -> bool:
+    def _get_text_height(self, font_path: str, size: int) -> float:
+        """Retorna altura da linha para a fonte."""
+        font = self._load_font(font_path, size)
+        if hasattr(font, 'getbbox'):
+            bbox = font.getbbox("Ágjpy")  # Caracteres com ascendentes e descendentes
+            return bbox[3] - bbox[1] if bbox else size * 1.2
+        return size * 1.2
+
+    # ==========================================================================
+    # ALGORITMO DE QUEBRA DE LINHA (Vol. II, Cap. 3.4)
+    # ==========================================================================
+
+    def _hyphenate_word(self, word: str) -> List[str]:
+        """Retorna possíveis pontos de hifenização de uma palavra."""
+        if not self._hyphenator or len(word) < 5:
+            return [word]
+        
+        pairs = self._hyphenator.inserted(word)
+        return pairs.split('-') if pairs else [word]
+
+    def _wrap_text(
+        self, 
+        text: str, 
+        font_path: str, 
+        font_size: int, 
+        max_width: float,
+        allow_hyphenation: bool = True
+    ) -> List[str]:
+        """
+        Quebra texto em múltiplas linhas respeitando largura máxima.
+        Implementa lógica de hifenização opcional para PT-BR.
+        """
+        words = text.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            test_width = self._measure_text_width(test_line, font_path, font_size)
+            
+            if test_width <= max_width:
+                current_line = test_line
+            else:
+                # Palavra não cabe - tenta hifenização
+                if allow_hyphenation and self._hyphenator:
+                    # Tenta quebrar a palavra
+                    syllables = self._hyphenate_word(word)
+                    
+                    if len(syllables) > 1:
+                        # Tenta encaixar sílabas uma a uma
+                        word_part = ""
+                        remaining_syllables = []
+                        
+                        for i, syllable in enumerate(syllables):
+                            test_part = f"{current_line} {word_part}{syllable}-".strip()
+                            
+                            if self._measure_text_width(test_part, font_path, font_size) <= max_width:
+                                word_part += syllable
+                            else:
+                                remaining_syllables = syllables[i:]
+                                break
+                        
+                        if word_part and remaining_syllables:
+                            current_line = f"{current_line} {word_part}-".strip()
+                            lines.append(current_line)
+                            current_line = "".join(remaining_syllables)
+                            continue
+                
+                # Se não conseguiu hifenizar, quebra normal
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines
+
+    # ==========================================================================
+    # AJUSTE DINÂMICO DE FONTE (Vol. II, Cap. 3.2)
+    # ==========================================================================
+
+    def fit_text(
+        self, 
+        node_id: str, 
+        text: str, 
+        max_width_px: float,
+        font_path: str = "Roboto-Regular.ttf",
+        allow_shrink: bool = True,
+        min_size_ratio: float = 0.6
+    ) -> bool:
         """
         Algoritmo de Busca Binária para Ajuste de Texto.
-        Encontra o maior font-size possível que caiba no max_width_px.
+        
+        REGRA DE OURO (Vol. II, Cap. 3.4):
+        - JAMAIS aumenta fonte além do tamanho original do template
+        - Prioriza quebra de linha antes de reduzir fonte
+        - Limite mínimo de 60% do tamanho original
+        
+        Args:
+            node_id: ID do elemento de texto no SVG
+            text: Texto a ser inserido
+            max_width_px: Largura máxima permitida
+            font_path: Caminho da fonte (relativo a assets/fonts)
+            allow_shrink: Permite redução de fonte se necessário
+            min_size_ratio: Proporção mínima do tamanho original (default 60%)
         """
         node = self.slots.get(node_id)
         if node is None:
             return False
 
-        # Sanitização básica para XML
+        # Extrai tamanho original do template (MÁXIMO permitido)
+        current_style = node.get('style', '')
+        match = re.search(r'font-size:\s*([\d.]+)', current_style)
+        original_size = float(match.group(1)) if match else 24.0
+        
+        min_size = int(original_size * min_size_ratio)
+        
+        # Define texto
         node.text = text
         
-        if not max_width_px or max_width_px <= 0:
-            return False
-
-        # Limites da busca binária
-        min_size = 6
-        max_size = 300 # Tamanho arbitrário grande inicial
+        if max_width_px <= 0:
+            return True
         
-        # Tenta ler o tamanho atual do SVG como ponto de partida
-        current_style = node.get('style', '')
-        # Extração regex simples de font-size
-        match = re.search(r'font-size:\s*(\d+(\.\d+)?)px', current_style)
-        if match:
-            max_size = float(match.group(1))
+        # Verifica se cabe com tamanho original
+        current_width = self._measure_text_width(text, font_path, int(original_size))
         
-        # Se max_size for muito pequeno, bump para tentar achar algo melhor se possível ou trust
-        if max_size < min_size: max_size = 30.0
-
+        if current_width <= max_width_px:
+            # Já cabe! Mantém tamanho original (Regra de Ouro)
+            return True
+        
+        # Não cabe - precisa ajustar
+        if not allow_shrink:
+            # Trunca com reticências se não pode reduzir
+            truncated = text
+            while self._measure_text_width(truncated + "...", font_path, int(original_size)) > max_width_px:
+                truncated = truncated[:-1]
+                if len(truncated) < 3:
+                    break
+            node.text = truncated + "..."
+            return True
+        
+        # Busca binária para encontrar tamanho ótimo
+        low, high = min_size, int(original_size)
         best_size = min_size
         
-        # Loop de Busca Binária (Precisão vs Performance)
-        low, high = min_size, int(max_size)
         while low <= high:
             mid = (low + high) // 2
-            width = self._measure_text_width(text, font_family_path, mid)
+            width = self._measure_text_width(text, font_path, mid)
             
             if width <= max_width_px:
                 best_size = mid
                 low = mid + 1
             else:
                 high = mid - 1
-
-        # Aplica o novo tamanho
+        
+        # Aplica novo tamanho
         self._update_style(node, 'font-size', f'{best_size}px')
         return True
 
-    def _update_style(self, node: etree._Element, property_name: str, value: str):
-        """Atualiza uma propriedade CSS inline preservando as outras"""
-        style = node.get('style', '')
-        if property_name in style:
-            # Substituição regex segura
-            style = re.sub(f'{property_name}:[^;]+', f'{property_name}:{value}', style)
-        else:
-            if style and not style.endswith(';'):
-                style += ';'
-            style += f'{property_name}:{value}'
-        node.set('style', style.strip(';'))
-
-    def place_image(self, 
-                    target_id: str, 
-                    img_path: str, 
-                    slot_w: float, 
-                    slot_h: float) -> bool:
+    def fit_text_multiline(
+        self,
+        node_id: str,
+        text: str,
+        max_width: float,
+        max_height: float,
+        font_path: str = "Roboto-Regular.ttf",
+        line_height_ratio: float = 1.2
+    ) -> bool:
         """
-        Calcula Matriz de Transformação Afim para posicionar imagem.
-        Modo: 'ASPECT FIT' (Contém a imagem dentro do slot sem distorção).
+        Ajuste de texto com quebra de linha automática.
+        Conforme Vol. II, Cap. 3.4 - Prioriza quebra antes de redução.
         """
-        node = self.slots.get(target_id)
+        node = self.slots.get(node_id)
         if node is None:
             return False
-
-        # Linka a imagem (XLink href é padrão SVG 1.1, href é 2.0. Usamos ambos por segurança)
-        node.set('{http://www.w3.org/1999/xlink}href', img_path)
-        # Nota: O path deve ser absoluto ou relativo à pasta de execução do renderizador
         
-        # Obter dimensões da imagem real (Headless via PIL)
-        try:
-            with Image.open(img_path) as img:
-                w_img, h_img = img.size
-        except Exception as e:
-            # Fallback para auditoria ou se imagem não existir
-            w_img, h_img = 1000, 1000 
-
-        # Cálculo da Escala (Aspect Fit)
-        scale = min(slot_w / w_img, slot_h / h_img)
+        # Extrai tamanho original
+        current_style = node.get('style', '')
+        match = re.search(r'font-size:\s*([\d.]+)', current_style)
+        original_size = int(float(match.group(1)) if match else 24)
+        min_size = int(original_size * 0.6)
         
-        # Cálculo da Translação (Centralizar)
-        tx = (slot_w - w_img * scale) / 2
-        ty = (slot_h - h_img * scale) / 2
+        current_size = original_size
         
-        # Aplica Transformação Matrix: matrix(scale_x, skew_y, skew_x, scale_y, trans_x, trans_y)
-        # SVG Matrix padrão: [a c e]
-        #                    [b d f]
-        # Onde a=sx, d=sy, e=tx, f=ty
-        matrix_str = f"matrix({scale:.4f},0,0,{scale:.4f},{tx:.2f},{ty:.2f})"
-        node.set('transform', matrix_str)
+        # Loop de ajuste: primeiro tenta quebrar, depois reduz se necessário
+        while current_size >= min_size:
+            lines = self._wrap_text(text, font_path, current_size, max_width)
+            line_height = current_size * line_height_ratio
+            total_height = len(lines) * line_height
+            
+            if total_height <= max_height:
+                # Cabe! Aplica as linhas
+                self._apply_multiline(node, lines, current_size, line_height)
+                return True
+            
+            # Não cabe - reduz fonte
+            current_size -= 1
         
-        # Reseta x, y, width, height para não conflitarem com a matrix
-        node.set('x', '0')
-        node.set('y', '0')
-        node.set('width', str(w_img)) # A matrix cuida da escala
-        node.set('height', str(h_img))
+        # Último recurso: trunca
+        lines = self._wrap_text(text, font_path, min_size, max_width)
+        max_lines = int(max_height / (min_size * line_height_ratio))
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            lines[-1] = lines[-1].rstrip() + "..."
         
+        self._apply_multiline(node, lines, min_size, min_size * line_height_ratio)
         return True
 
-    def save(self, output_path: str):
-        self.tree.write(output_path, pretty_print=False, encoding='utf-8')
+    def _apply_multiline(
+        self, 
+        node: etree._Element, 
+        lines: List[str], 
+        font_size: int,
+        line_height: float
+    ):
+        """Aplica múltiplas linhas a um elemento tspan ou text."""
+        self._update_style(node, 'font-size', f'{font_size}px')
+        
+        # Remove tspans existentes
+        for child in list(node):
+            if child.tag.endswith('tspan'):
+                node.remove(child)
+        
+        node.text = None
+        
+        # Obtém posição X do nó
+        x = node.get('x', '0')
+        base_y = float(node.get('y', '0'))
+        
+        # Cria tspan para cada linha
+        for i, line in enumerate(lines):
+            tspan = etree.SubElement(node, '{http://www.w3.org/2000/svg}tspan')
+            tspan.text = line
+            tspan.set('x', x)
+            tspan.set('dy', f'{line_height if i > 0 else 0}')
 
-    # --- Price & Business Logic ---
+    # ==========================================================================
+    # LÓGICA DE PREÇOS (Vol. II, Cap. 4)
+    # ==========================================================================
 
     def _format_currency(self, value: Optional[float]) -> str:
-        """
-        Formatação determinística para BRL.
-        Evita dependência de locale do SO (que pode ser instável em threads).
-        """
+        """Formatação BRL determinística (evita locale do SO)."""
         if value is None:
             return ""
-        # Formata com 2 casas, troca ponto por vírgula, trata milhares
         return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    def handle_price_logic(self, 
-                           group_id: str, # ID do grupo ou sufixo onde estão os textos
-                           preco_atual: float, 
-                           preco_ref: Optional[float] = None):
+    def _split_price(self, price_str: str) -> Tuple[str, str]:
+        """Separa parte inteira e centavos."""
+        parts = price_str.split(',')
+        if len(parts) == 2:
+            return parts[0], ',' + parts[1]
+        return price_str, ''
+
+    def handle_price_logic(
+        self, 
+        slot_suffix: str,
+        preco_atual: float, 
+        preco_ref: Optional[float] = None,
+        font_path: str = "Roboto-Bold.ttf"
+    ):
         """
         Lógica de Negócio para Precificação Visual (De/Por).
-        Manipula visibilidade e conteúdo baseada na existência de desconto.
+        Suporta múltiplos formatos de tag conforme Vol. II, Cap. 4.4.
+        
+        Tags suportadas:
+        - TXT_PRECO_POR_{slot}: Preço atual formatado
+        - TXT_PRECO_INT_{slot}: Parte inteira
+        - TXT_PRECO_DEC_{slot}: Centavos
+        - TXT_PRECO_DE_{slot}: Preço de referência (oculto se não houver)
+        - TXT_PRECO_COMPLETO_{slot}: Preço completo em string única
         """
+        suf = f"_{slot_suffix}" if slot_suffix else ""
+        
         # Formatação
         str_atual = self._format_currency(preco_atual)
         str_ref = self._format_currency(preco_ref) if preco_ref else ""
-
-        # IDs esperados dentro do template (Convenção do Codex)
-        # Assumindo busca global por ID único ou padrão prefixado
-        # Se group_id for vazio, assume IDs globais sem sufixo
-        suf = f"_{group_id}" if group_id else ""
+        int_part, dec_part = self._split_price(str_atual)
         
-        # 1. Preço POR (Sempre visível)
-        # Tenta formatos comuns: TXT_PRECO_POR, TXT_PRECO_BIG, etc.
-        self.fit_text(f"TXT_PRECO_POR{suf}", str_atual, 300) 
+        # 1. Preço POR / Atual
+        self._safe_set_text(f"TXT_PRECO_POR{suf}", str_atual)
+        self._safe_set_text(f"TXT_PRECO_BIG{suf}", int_part)
         
-        # Separação Big/Cents (R$ 19 , 90)
-        parts = str_atual.split(',')
-        if len(parts) == 2:
-            self.fit_text(f"TXT_PRECO_BIG{suf}", parts[0], 300) 
-            self.fit_text(f"TXT_PRECO_CENTS{suf}", "," + parts[1], 100) 
-
-        # 2. Preço DE (Condicional)
+        # 2. Separação Inteiro/Centavos
+        self._safe_set_text(f"TXT_PRECO_INT{suf}", int_part)
+        self._safe_set_text(f"TXT_PRECO_DEC{suf}", dec_part)
+        self._safe_set_text(f"TXT_PRECO_CENTS{suf}", dec_part)
+        
+        # 3. Preço Completo (alternativa)
+        self._safe_set_text(f"TXT_PRECO_COMPLETO{suf}", f"R$ {str_atual}")
+        self._safe_set_text(f"TXT_PRECO_COM{suf}", f"R$ {str_atual}")
+        
+        # 4. Preço DE (Condicional)
         de_id = f"TXT_PRECO_DE{suf}"
         node_de = self.slots.get(de_id)
         
@@ -253,76 +461,203 @@ class VectorEngine:
             if preco_ref and preco_ref > preco_atual:
                 # Tem desconto: Mostra e preenche
                 self._update_style(node_de, 'display', 'inline')
-                self.fit_text(de_id, f"De R$ {str_ref}", 200)
+                self._update_style(node_de, 'visibility', 'visible')
+                node_de.text = f"De R$ {str_ref}"
             else:
-                # Não tem desconto: Oculta
+                # Sem desconto: Oculta
                 self._update_style(node_de, 'display', 'none')
+                self._update_style(node_de, 'visibility', 'hidden')
 
-        # 3. Preço COM (Ex: "R$ 19,90") - Texto completo formatado
-        self.fit_text(f"TXT_PRECO_COM{suf}", f"R$ {str_atual}", 300)
+    def _safe_set_text(self, node_id: str, text: str):
+        """Define texto de um nó se existir."""
+        node = self.slots.get(node_id)
+        if node is not None:
+            node.text = text
 
-    # --- High Level Logic (Kits / Units) ---
-    def handle_smart_slot(self, slot_id: str, product_data: dict):
+    # ==========================================================================
+    # LÓGICA DE SLOTS INTELIGENTES (Vol. I, Cap. 5)
+    # ==========================================================================
+
+    def handle_smart_slot(
+        self, 
+        slot_id: str, 
+        product_data: dict,
+        font_path: str = "Roboto-Regular.ttf"
+    ):
         """
-        Orquestra a renderização inteligente do slot (Unidades, Multi-imagem).
-        product_data: {'nome_sanitizado': str, 'detalhe_peso': str, 'images': [path], ...}
+        Orquestra renderização inteligente do slot.
+        
+        product_data: {
+            'nome_sanitizado': str,
+            'detalhe_peso': str,
+            'categoria': str,  # Para lógica +18
+            'images': [path, ...],
+            'preco_venda_atual': float,
+            'preco_referencia': float
+        }
         """
-        # Como o index agora indexa tudo, pegamos o g do slot para contexto se precisar, 
-        # mas fit_text agora usa o ID global direto.
-        # Precisamos saber IDs esperados dentro do slot.
-        # Assumiremos convenção: TXT_NOME_PRODUTO, TXT_UNIDADE, ALVO_IMAGEM
-        # Mas IDs em SVG devem ser únicos globalmente. 
-        # Se temos multiplos slots, IDs deveriam ser TXT_NOME_PRODUTO_1 etc?
-        # O modelo atual assume templates de 1 produto ou IDs fixos?
-        # Codex Industrialis implica template de item único ou sistema que gera IDs únicos.
-        # Vamos assumir IDs fixos para este contexto de "renderizar 1 item" ou que o slot_id ajuda a achar filhos.
-        # PORÉM, self.slots é global.
-        # Se o template tem SLOT_01, ele deve ter filhos com IDs únicos ou indexados.
-        # O código anterior fit_text usava (parent_id, element_id) para contexto.
-        # O novo código usa node_id direto.
-        # Adaptação: Vamos procurar filhos no elemento slot se não acharmos no map global ou se for ambiguo.
-        # Mas `_index_slots` mapeia tudo globalmente. 
-        # Vamos assumir que os IDs das targets são conhecidos ou passados.
-        # Simplificação: Usar TXT_NOME_PRODUTO direto se existir.
+        # Extrai sufixo do slot (ex: SLOT_01 -> 01)
+        suffix = slot_id.replace('SLOT_', '')
         
-        # 1. Unidade
-        # Verifica se TXT_UNIDADE existe no map
-        unit_id = "TXT_UNIDADE" 
-        nome_id = "TXT_NOME_PRODUTO"
-        
-        has_unit = unit_id in self.slots
-        nome_final = product_data.get('nome_sanitizado', '')
+        # 1. Nome do Produto
+        nome = product_data.get('nome_sanitizado', '')
         peso = product_data.get('detalhe_peso', '')
-
-        if not has_unit and peso:
-            nome_final = f"{nome_final} {peso}"
-        elif has_unit and peso:
-            self.fit_text(unit_id, peso, max_width_px=50) # Assumindo 50px
-
-        # 2. Nome
-        self.fit_text(nome_id, nome_final, max_width_px=200) # Assumindo 200px
-
-        # 3. Imagens (Grid)
-        images = product_data.get('images', [])
-        if not images: return
         
-        target_id = "ALVO_IMAGEM"
+        # Verifica se existe campo separado para unidade
+        unit_id = f"TXT_UNIDADE_{suffix}"
+        has_unit = unit_id in self.slots
+        
+        if not has_unit and peso:
+            # Concatena peso ao nome se não há campo separado
+            nome = f"{nome} {peso}"
+        elif has_unit and peso:
+            self._safe_set_text(unit_id, peso)
+        
+        # Aplica nome
+        nome_id = f"TXT_NOME_PRODUTO_{suffix}"
+        if nome_id not in self.slots:
+            nome_id = "TXT_NOME_PRODUTO"  # Fallback global
+        
+        if nome_id in self.slots:
+            self.fit_text(nome_id, nome, max_width_px=200, font_path=font_path)
+        
+        # 2. Preços
+        preco_atual = product_data.get('preco_venda_atual')
+        preco_ref = product_data.get('preco_referencia')
+        
+        if preco_atual:
+            self.handle_price_logic(suffix, preco_atual, preco_ref)
+        
+        # 3. Imagens
+        images = product_data.get('images', [])
+        if images:
+            self._handle_slot_images(suffix, images)
+        
+        # 4. Ícone +18 (Vol. I, Cap. 5.3)
+        categoria = product_data.get('categoria', '')
+        if self._is_restricted_category(categoria):
+            self._inject_age_restriction_icon(slot_id)
+
+    def _is_restricted_category(self, categoria: str) -> bool:
+        """Verifica se categoria requer ícone +18."""
+        if not categoria:
+            return False
+        restricted = [
+            "bebida alcoólica", "alcoolica", "alcoólico",
+            "cigarro", "tabaco", "tabacaria",
+            "cerveja", "vinho", "vodka", "whisky", "cachaça"
+        ]
+        return categoria.lower() in restricted
+
+    def _inject_age_restriction_icon(self, slot_id: str):
+        """
+        Injeta ícone de +18 no slot.
+        Conforme Vol. I, Cap. 5.3 - Z-Index alto para ficar sobre outros elementos.
+        """
+        slot_node = self.slots.get(slot_id)
+        if slot_node is None:
+            return
+        
+        # Obtém posição do slot
+        x = float(slot_node.get('x', '0'))
+        y = float(slot_node.get('y', '0'))
+        
+        # Cria grupo para o ícone (será adicionado por último = Z-Index alto)
+        icon_group = etree.SubElement(slot_node, '{http://www.w3.org/2000/svg}g')
+        icon_group.set('id', f'ICON_18_{slot_id}')
+        
+        # Círculo vermelho
+        circle = etree.SubElement(icon_group, '{http://www.w3.org/2000/svg}circle')
+        circle.set('cx', str(x + 15))
+        circle.set('cy', str(y + 15))
+        circle.set('r', '12')
+        circle.set('fill', '#FF3B30')
+        
+        # Texto +18
+        text = etree.SubElement(icon_group, '{http://www.w3.org/2000/svg}text')
+        text.set('x', str(x + 15))
+        text.set('y', str(y + 19))
+        text.set('text-anchor', 'middle')
+        text.set('fill', 'white')
+        text.set('style', 'font-size:10px;font-weight:bold;font-family:sans-serif')
+        text.text = '+18'
+
+    def _handle_slot_images(self, slot_suffix: str, images: List[str]):
+        """Processa imagens do slot (única ou múltiplas)."""
+        target_id = f"ALVO_IMAGEM_{slot_suffix}"
+        if target_id not in self.slots:
+            target_id = "ALVO_IMAGEM"  # Fallback
+        
+        if target_id not in self.slots:
+            return
+        
+        target = self.slots[target_id]
+        w = float(target.get('width', '100'))
+        h = float(target.get('height', '100'))
+        
         if len(images) == 1:
-            # Precisa ler dimensões do slot para passar para place_image
-            t_node = self.slots.get(target_id)
-            if t_node is not None:
-                w = float(t_node.get('width', '100'))
-                h = float(t_node.get('height', '100'))
-                self.place_image(target_id, images[0], w, h)
+            self.place_image(target_id, images[0], w, h)
         else:
             self._apply_recursive_grid(target_id, images)
 
-    def _apply_recursive_grid(self, target_id: str, images: List[str]):
-        """Divisão matemática do alvo."""
-        target = self.slots.get(target_id)
-        if target is None: return
+    # ==========================================================================
+    # POSICIONAMENTO DE IMAGENS (Vol. II, Cap. 1.2)
+    # ==========================================================================
+
+    def place_image(
+        self, 
+        target_id: str, 
+        img_path: str, 
+        slot_w: float, 
+        slot_h: float
+    ) -> bool:
+        """
+        Posiciona imagem com Aspect Fit (nunca distorce).
+        Calcula matriz de transformação afim para centralização.
+        """
+        node = self.slots.get(target_id)
+        if node is None:
+            return False
+
+        # Link da imagem
+        node.set('{http://www.w3.org/1999/xlink}href', img_path)
+        node.set('href', img_path)  # SVG 2.0 compatibility
         
-        # Lê BBOX original
+        # Dimensões da imagem real
+        try:
+            with Image.open(img_path) as img:
+                w_img, h_img = img.size
+        except Exception:
+            w_img, h_img = 500, 500  # Fallback
+        
+        # Cálculo Aspect Fit (Vol. II, Cap. 1.2)
+        scale = min(slot_w / w_img, slot_h / h_img)
+        
+        # Centralização
+        tx = (slot_w - w_img * scale) / 2
+        ty = (slot_h - h_img * scale) / 2
+        
+        # Matriz de transformação
+        matrix_str = f"matrix({scale:.4f},0,0,{scale:.4f},{tx:.2f},{ty:.2f})"
+        node.set('transform', matrix_str)
+        
+        # Reset x/y/width/height
+        node.set('x', '0')
+        node.set('y', '0')
+        node.set('width', str(w_img))
+        node.set('height', str(h_img))
+        
+        return True
+
+    def _apply_recursive_grid(self, target_id: str, images: List[str]):
+        """
+        Divide área do alvo para múltiplas imagens (grid).
+        Conforme Vol. I, Cap. 5.1 - Suporte a kits e múltiplos sabores.
+        """
+        target = self.slots.get(target_id)
+        if target is None:
+            return
+        
         x = float(target.get('x', '0'))
         y = float(target.get('y', '0'))
         w = float(target.get('width', '100'))
@@ -331,27 +666,78 @@ class VectorEngine:
         
         # Remove target original
         parent.remove(target)
-        if target_id in self.slots: del self.slots[target_id] # Clean index
+        if target_id in self.slots:
+            del self.slots[target_id]
         
-        # Split Horizontal
+        # Calcula grid layout
         count = len(images)
-        sub_w = w / count 
+        cols = math.ceil(math.sqrt(count))
+        rows = math.ceil(count / cols)
+        
+        sub_w = w / cols
+        sub_h = h / rows
         
         for i, img_path in enumerate(images):
+            row = i // cols
+            col = i % cols
+            
             new_id = f"{target_id}_{i}"
             new_img = etree.Element("{http://www.w3.org/2000/svg}image")
             new_img.set('id', new_id)
             
-            new_x = x + (i * sub_w)
+            new_x = x + (col * sub_w)
+            new_y = y + (row * sub_h)
             new_img.set('x', str(new_x))
-            new_img.set('y', str(y))
+            new_img.set('y', str(new_y))
             new_img.set('width', str(sub_w))
-            new_img.set('height', str(h))
+            new_img.set('height', str(sub_h))
             
             parent.append(new_img)
-            self.slots[new_id] = new_img # Re-index dynamic
+            self.slots[new_id] = new_img
             
-            self.place_image(new_id, img_path, sub_w, h)
+            self.place_image(new_id, img_path, sub_w, sub_h)
+
+    # ==========================================================================
+    # TEXTOS LEGAIS (Vol. I, Cap. 5.3)
+    # ==========================================================================
+
+    def inject_legal_text(self, text: str, global_slot: bool = True):
+        """
+        Injeta texto legal no layout.
+        
+        Args:
+            text: Texto legal (validade, disclaimers, etc)
+            global_slot: Se True, usa TXT_LEGAL_GLOBAL; senão TXT_LEGAL
+        """
+        slot_id = "TXT_LEGAL_GLOBAL" if global_slot else "TXT_LEGAL"
+        self._safe_set_text(slot_id, text)
+
+    # ==========================================================================
+    # UTILITÁRIOS
+    # ==========================================================================
+
+    def _update_style(self, node: etree._Element, property_name: str, value: str):
+        """Atualiza propriedade CSS inline preservando outras."""
+        style = node.get('style', '')
+        
+        if property_name in style:
+            style = re.sub(f'{property_name}:[^;]+', f'{property_name}:{value}', style)
+        else:
+            if style and not style.endswith(';'):
+                style += ';'
+            style += f'{property_name}:{value}'
+        
+        node.set('style', style.strip(';'))
 
     def to_string(self) -> bytes:
-        return etree.tostring(self.tree, pretty_print=True)
+        """Exporta SVG manipulado como bytes."""
+        return etree.tostring(self.tree, pretty_print=True, encoding='utf-8')
+
+    def save(self, output_path: str):
+        """Salva SVG manipulado em arquivo."""
+        self.tree.write(output_path, pretty_print=True, encoding='utf-8')
+
+    def calculate_hash(self) -> str:
+        """Calcula hash MD5 do SVG atual (para verificação de integridade)."""
+        content = self.to_string()
+        return hashlib.md5(content).hexdigest()

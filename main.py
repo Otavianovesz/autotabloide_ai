@@ -1,14 +1,18 @@
+"""
+AutoTabloide AI - Entry Point Principal
+=========================================
+Conforme Vol. VI, Cap. 1 - Shell de Aplicação.
+Orquestra inicialização, navegação e ciclo de vida.
+"""
+
 import os
 import sys
 import platform
-import subprocess
+import asyncio
 from pathlib import Path
 
 # ==============================================================================
 # CONFIGURAÇÃO DE AMBIENTE (BOOTSTRAP)
-# ==============================================================================
-# Executa ANTES de qualquer outro import para garantir que DLLs sejam carregadas
-# conforme especificado no Codex Industrialis (Local-First).
 # ==============================================================================
 
 ROOT_DIR = Path(__file__).parent.resolve()
@@ -16,41 +20,48 @@ SYSTEM_ROOT = ROOT_DIR / "AutoTabloide_System_Root"
 BIN_DIR = SYSTEM_ROOT / "bin"
 
 def setup_environment():
-    """Configura o ambiente de execução, injetando caminhos de DLLs."""
+    """Configura ambiente de execução com DLLs e paths."""
     if not BIN_DIR.exists():
-        print(f"[BOOT ERROR] Diretório de binários não encontrado: {BIN_DIR}")
-        print("Execute 'python setup.py' ou verifique a instalação.")
+        print(f"[BOOT ERROR] Diretorio de binarios nao encontrado: {BIN_DIR}")
+        print("Execute 'python setup.py' ou verifique a instalacao.")
         sys.exit(1)
 
-    # Adiciona bin ao PATH do sistema (para subprocessos e carregamento padrão)
+    # Adiciona bin ao PATH
     os.environ["PATH"] = str(BIN_DIR) + os.pathsep + os.environ["PATH"]
     
-    # Adiciona dll_directory para Python 3.8+ no Windows (Crítico para CairoSVG/GTK)
+    # Windows 3.8+ - DLL directories
     if platform.system() == "Windows" and hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(str(BIN_DIR))
-            # print(f"[BOOT] DLLs carregadas de: {BIN_DIR}")
         except Exception as e:
-            print(f"[BOOT WARNING] Falha ao adicionar diretório de DLLs: {e}")
+            print(f"[BOOT WARNING] Falha ao adicionar DLLs: {e}")
 
 def check_integrity():
-    """Verificação rápida de integridade antes do boot da UI."""
+    """Verificação de integridade antes do boot."""
     try:
         from src.infrastructure.integrity import IntegrityChecker
         checker = IntegrityChecker()
         checker.run()
     except ImportError:
-        print("[BOOT] Módulo de integridade não encontrado ou erro de importação. Pulando check detalhado.")
+        print("[BOOT] Modulo de integridade nao encontrado. Pulando check.")
     except Exception as e:
-        print(f"[BOOT ERROR] Falha na verificação de integridade: {e}")
-        sys.exit(1)
+        print(f"[BOOT ERROR] Falha na verificacao: {e}")
+
+async def init_database():
+    """Inicializa banco de dados de forma assíncrona."""
+    try:
+        from src.core.database import init_db
+        await init_db()
+        print("[SYSTEM] Banco de dados inicializado.")
+    except Exception as e:
+        print(f"[BOOT ERROR] Falha ao inicializar DB: {e}")
 
 # ==============================================================================
 # ENTRY POINT
 # ==============================================================================
 
 if __name__ == "__main__":
-    # 1. Configurar Ambiente (DLLs, Paths)
+    # 1. Configurar Ambiente
     setup_environment()
     
     # 2. Verificar Integridade
@@ -59,134 +70,207 @@ if __name__ == "__main__":
     # 3. Iniciar Aplicação
     try:
         print("\n[SYSTEM] Inicializando AutoTabloide AI...")
-        print("[SYSTEM] Todos os sistemas operacionais.")
         
-        # Imports tardios para garantir DLL loading
         import flet as ft
         import multiprocessing
         from src.ai.sentinel import SentinelProcess
+        
+        # Views
+        from src.ui.views.dashboard import DashboardView
+        from src.ui.views.estoque import EstoqueView
         from src.ui.views.atelier import AtelierView
         from src.ui.views.factory import FactoryView
+        from src.ui.views.cofre import CofreView
         
-        # Configuração do Sidecar (Sentinel)
-        # Em prod, config viria de arquivo/db
+        # Configuração do Sentinel (AI Sidecar)
         sentinel_config = {
             "model_path": str(SYSTEM_ROOT / "bin" / "Llama-3-8B-Instruct.Q4_K_M.gguf"),
             "temp_dir": str(SYSTEM_ROOT / "staging" / "downloads")
         }
         
-        # Queues de Comunicação
+        # Queues IPC
         sentinel_in_q = multiprocessing.Queue()
         sentinel_out_q = multiprocessing.Queue()
         
-        # Inicializa Processo em Background
+        # Inicializa Processo Sentinel
         sentinel = SentinelProcess(sentinel_in_q, sentinel_out_q, sentinel_config)
         sentinel.start()
         print(f"[SYSTEM] Sentinel Sidecar PID: {sentinel.pid}")
 
         def main(page: ft.Page):
+            # === Configuração da Página (Vol. VI, Cap. 1.1) ===
             page.title = "AutoTabloide AI - Codex Industrialis"
             page.theme_mode = ft.ThemeMode.DARK
+            page.padding = 0
+            page.scroll = ft.ScrollMode.HIDDEN  # Rolagem gerenciada por componentes
+            
+            # Dimensões mínimas (Vol. VI, Tab. 1.1)
+            page.window_min_width = 1280
+            page.window_min_height = 720
             page.window_width = 1400
             page.window_height = 900
-            page.padding = 0
             
-            # State Management simples para navegação
+            # Fontes customizadas (se disponíveis)
+            page.fonts = {
+                "Roboto": "/assets/fonts/Roboto-Regular.ttf",
+                "JetBrains": "/assets/fonts/JetBrainsMono.ttf"
+            }
+            
+            # Inicializa DB de forma assíncrona
+            page.run_task(init_database)
+            
+            # Cache de views para preservar estado
+            view_cache = {}
+            
+            def get_view(index: int):
+                """Retorna view cacheada ou cria nova."""
+                if index not in view_cache:
+                    if index == 0:
+                        view_cache[index] = DashboardView(page)
+                    elif index == 1:
+                        view_cache[index] = EstoqueView(page)
+                    elif index == 2:
+                        view_cache[index] = AtelierView(page)
+                    elif index == 3:
+                        view_cache[index] = FactoryView(page)
+                    elif index == 4:
+                        view_cache[index] = CofreView(page)
+                return view_cache.get(index)
+            
             def change_view(e):
-                selected_index = e.control.selected_index
-                if selected_index == 0:
+                """Handler de navegação."""
+                idx = e.control.selected_index
+                view = get_view(idx)
+                
+                if view:
+                    body.content = view
+                else:
                     body.content = ft.Container(
-                        content=ft.Text("Dashboard / Visão Geral (Em Breve)", size=30),
+                        content=ft.Text("Tela nao implementada", size=24),
                         alignment=ft.alignment.center
                     )
-                elif selected_index == 1: # Estoque (Mock)
-                     body.content = ft.Container(
-                        content=ft.Text("Gestão de Estoque & Juiz (Em Breve)", size=30),
-                        alignment=ft.alignment.center
-                    )
-                elif selected_index == 2: # Ateliê
-                    body.content = AtelierView(page)
-                elif selected_index == 3: # Fábrica
-                    body.content = FactoryView(page)
+                
+                # Colapsa nav rail na tela de Montagem (Vol. VI, Cap. 1.2)
+                if idx == 2:  # Ateliê/Montagem
+                    rail.extended = False
+                else:
+                    rail.extended = True
                 
                 body.update()
+                rail.update()
 
-            # Navigation Rail (Menu Lateral)
+            # === Navigation Rail (Vol. VI, Cap. 1.2) ===
             rail = ft.NavigationRail(
                 selected_index=0,
                 label_type=ft.NavigationRailLabelType.ALL,
-                min_width=100,
+                min_width=72,
                 min_extended_width=200,
+                extended=True,
                 group_alignment=-0.9,
+                bgcolor="#111111",
                 destinations=[
                     ft.NavigationRailDestination(
-                        icon=ft.icons.DASHBOARD_OUTLINED, 
-                        selected_icon=ft.icons.DASHBOARD, 
-                        label="Geral"
+                        icon=ft.icons.DASHBOARD_OUTLINED,
+                        selected_icon=ft.icons.DASHBOARD,
+                        label="Dashboard"
                     ),
                     ft.NavigationRailDestination(
-                        icon=ft.icons.INVENTORY_2_OUTLINED, 
-                        selected_icon=ft.icons.INVENTORY_2, 
+                        icon=ft.icons.INVENTORY_2_OUTLINED,
+                        selected_icon=ft.icons.INVENTORY_2,
                         label="Estoque"
                     ),
                     ft.NavigationRailDestination(
-                        icon_content=ft.Icon(ft.icons.BRUSH_OUTLINED),
-                        selected_icon_content=ft.Icon(ft.icons.BRUSH),
-                        label="Ateliê"
+                        icon=ft.icons.BRUSH_OUTLINED,
+                        selected_icon=ft.icons.BRUSH,
+                        label="Atelie"
                     ),
                     ft.NavigationRailDestination(
-                        icon=ft.icons.FACTORY_OUTLINED, 
-                        selected_icon=ft.icons.FACTORY, 
-                        label="Fábrica"
+                        icon=ft.icons.FACTORY_OUTLINED,
+                        selected_icon=ft.icons.FACTORY,
+                        label="Fabrica"
+                    ),
+                    ft.NavigationRailDestination(
+                        icon=ft.icons.SHIELD_OUTLINED,
+                        selected_icon=ft.icons.SHIELD,
+                        label="Cofre"
                     ),
                 ],
                 on_change=change_view
             )
 
-            # Corpo Principal
+            # === Corpo Principal ===
             body = ft.Container(
-                content=ft.Container(
-                    content=ft.Text("Bem-vindo ao AutoTabloide AI", size=30),
-                    alignment=ft.alignment.center
-                ),
+                content=DashboardView(page),  # View inicial
                 expand=True,
-                bgcolor=ft.colors.BACKGROUND,
-                padding=20
+                bgcolor="#1A1A1A",
+                padding=0
             )
 
-            page.add(
-                ft.Row(
+            # === Barra de Status Inferior (Vol. VI, Cap. 1.3) ===
+            status_bar = ft.Container(
+                content=ft.Row(
                     [
-                        rail,
-                        ft.VerticalDivider(width=1),
-                        body
+                        ft.Icon(ft.icons.STORAGE, size=14, color=ft.colors.GREEN),
+                        ft.Text("DB: OK", size=11, color=ft.colors.GREY_400),
+                        ft.VerticalDivider(width=1, color=ft.colors.GREY_800),
+                        ft.Icon(ft.icons.PSYCHOLOGY, size=14, color=ft.colors.GREY_500),
+                        ft.Text("IA: Idle", size=11, color=ft.colors.GREY_400),
+                        ft.Container(expand=True),
+                        ft.Text("v1.0.0", size=11, color=ft.colors.GREY_600)
+                    ],
+                    spacing=10,
+                    alignment=ft.MainAxisAlignment.START
+                ),
+                height=24,
+                bgcolor="#000000",
+                padding=ft.padding.symmetric(horizontal=15)
+            )
+
+            # === Layout Principal ===
+            page.add(
+                ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                rail,
+                                ft.VerticalDivider(width=1, color="#333333"),
+                                body
+                            ],
+                            expand=True,
+                            spacing=0
+                        ),
+                        status_bar
                     ],
                     expand=True,
+                    spacing=0
                 )
             )
             
-            # Cleanup no fechamento da janela
+            # === Cleanup no Fechamento ===
             def on_window_event(e):
                 if e.data == "close":
                     print("[SYSTEM] Encerrando Sentinel...")
                     sentinel_in_q.put({"type": "STOP"})
-                    # Dá um tempo para o processo morrer
                     sentinel.join(timeout=2)
                     page.window_destroy()
             
             page.window_prevent_close = True
             page.on_window_event = on_window_event
 
+        # Inicia aplicação Flet
         ft.app(target=main)
         
     except ImportError as e:
-        print(f"\n[CRITICAL ERROR] Falha ao importar dependências: {e}")
-        print("Verifique se ativou o ambiente virtual (poetry shell) ou instalou as dependências.")
+        print(f"\n[CRITICAL ERROR] Falha ao importar: {e}")
+        print("Verifique se ativou o ambiente virtual (poetry shell).")
         if 'sentinel' in locals() and sentinel.is_alive():
-             sentinel.terminate()
+            sentinel.terminate()
         input("Pressione ENTER para sair...")
+        
     except Exception as e:
-        print(f"\n[CRITICAL ERROR] Erro não tratado na execução: {e}")
+        print(f"\n[CRITICAL ERROR] Erro fatal: {e}")
+        import traceback
+        traceback.print_exc()
         if 'sentinel' in locals() and sentinel.is_alive():
-             sentinel.terminate()
+            sentinel.terminate()
         input("Pressione ENTER para sair...")

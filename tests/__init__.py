@@ -1,0 +1,1 @@
+# AutoTabloide AI - Test Suite
