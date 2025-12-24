@@ -177,6 +177,175 @@ class ProductRepository:
         )
         await self.session.execute(stmt)
         await self.session.commit()
+    
+    async def add_image_to_product(self, produto_id: int, img_hash: str):
+        """Adiciona uma imagem ao produto e recalcula qualidade."""
+        produto = await self.get_by_id(produto_id)
+        if not produto:
+            return
+        
+        # Adiciona hash à lista existente
+        current_hashes = produto.get_images() if hasattr(produto, 'get_images') else []
+        if img_hash not in current_hashes:
+            current_hashes.append(img_hash)
+            await self.update_images(produto_id, current_hashes)
+        
+        # Recalcula qualidade
+        await self.recalculate_quality_status(produto_id)
+    
+    async def recalculate_quality_status(self, produto_id: int) -> int:
+        """
+        Recalcula status de qualidade automaticamente.
+        
+        Semáforo de Qualidade (Vol. I, Cap. 2.1):
+        - 0 (CRÍTICO): Sem preço ou sem nome
+        - 1 (INCOMPLETO): Sem imagem associada
+        - 2 (ATENÇÃO): Dados completos mas precisa revisão
+        - 3 (PERFEITO): Todos os campos completos e validados
+        
+        Returns:
+            Novo status calculado
+        """
+        produto = await self.get_by_id(produto_id)
+        if not produto:
+            return 0
+        
+        # Critérios de avaliação
+        has_price = produto.preco_venda_atual is not None and float(produto.preco_venda_atual) > 0
+        has_name = produto.nome_sanitizado is not None and len(produto.nome_sanitizado) > 3
+        has_images = len(produto.get_images()) > 0 if hasattr(produto, 'get_images') else False
+        has_brand = produto.marca_normalizada is not None and len(produto.marca_normalizada) > 0
+        
+        # Calcula status
+        if not has_price or not has_name:
+            status = StatusQualidade.CRITICO.value  # 0
+        elif not has_images:
+            status = StatusQualidade.INCOMPLETO.value  # 1
+        elif not has_brand:
+            status = StatusQualidade.ATENCAO.value  # 2
+        else:
+            status = StatusQualidade.PERFEITO.value  # 3
+        
+        # Atualiza no banco
+        await self.update_quality_status(produto_id, status)
+        return status
+    
+    async def recalculate_all_quality(self) -> Dict[int, int]:
+        """
+        Recalcula qualidade de todos os produtos.
+        Útil para migração ou auditoria em massa.
+        
+        Returns:
+            Dict de {produto_id: novo_status}
+        """
+        stmt = select(Produto)
+        result = await self.session.execute(stmt)
+        produtos = result.scalars().all()
+        
+        results = {}
+        for produto in produtos:
+            new_status = await self.recalculate_quality_status(produto.id)
+            results[produto.id] = new_status
+        
+        return results
+
+    # ==========================================================================
+    # PROTOCOLO MEMÓRIA VIVA: Aprendizado de Correções
+    # ==========================================================================
+
+    async def learn_correction(
+        self, 
+        raw_input: str, 
+        produto_id: int,
+        corrected_field: str, 
+        final_value: str
+    ):
+        """
+        PROTOCOLO MEMÓRIA VIVA: Quando o usuário corrige manualmente 
+        um campo na UI, o sistema grava essa correção como uma 
+        'regra de ouro' para o futuro.
+        
+        Exemplo: O usuário corrigiu nome de 'CERV SKOL' para 'Cerveja Skol LATA'
+        
+        Args:
+            raw_input: Texto original (como veio do Excel/input)
+            produto_id: ID do produto associado
+            corrected_field: Campo corrigido (nome_sanitizado, marca, etc)
+            final_value: Valor final depois da correção humana
+        """
+        from datetime import datetime
+        
+        # Busca alias existente
+        stmt = select(ProdutoAlias).where(ProdutoAlias.alias_raw == raw_input)
+        result = await self.session.execute(stmt)
+        alias = result.scalar_one_or_none()
+
+        if alias:
+            # Atualiza override existente
+            current_overrides = alias.get_overrides()
+            current_overrides[corrected_field] = final_value
+            alias.set_overrides(current_overrides)
+            alias.usage_count = (alias.usage_count or 0) + 1
+            alias.last_confirmed = datetime.now()
+            alias.confidence = Decimal("1.0")  # Confirmação humana = 100%
+        else:
+            # Cria novo aprendizado
+            new_alias = ProdutoAlias(
+                alias_raw=raw_input,
+                produto_id=produto_id,
+                override_data=json.dumps({corrected_field: final_value}),
+                confidence=Decimal("1.0"),
+                usage_count=1,
+                last_confirmed=datetime.now()
+            )
+            self.session.add(new_alias)
+        
+        await self.session.commit()
+
+    async def get_learned_value(self, raw_input: str, field: str) -> Optional[str]:
+        """
+        Consulta se existe uma correção aprendida para este input/campo.
+        O Sentinel deve chamar ANTES de invocar a LLM.
+        
+        Returns:
+            Valor aprendido ou None se não houver correção
+        """
+        stmt = select(ProdutoAlias).where(ProdutoAlias.alias_raw == raw_input)
+        result = await self.session.execute(stmt)
+        alias = result.scalar_one_or_none()
+        
+        if alias:
+            overrides = alias.get_overrides()
+            if field in overrides:
+                # Incrementa uso
+                alias.usage_count = (alias.usage_count or 0) + 1
+                await self.session.commit()
+                return overrides[field]
+        
+        return None
+
+    async def get_best_match_alias(self, raw_input: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca o melhor alias com overrides para um input.
+        Retorna dict com produto_id e todos os overrides aprendidos.
+        """
+        stmt = (
+            select(ProdutoAlias)
+            .where(ProdutoAlias.alias_raw == raw_input)
+            .order_by(ProdutoAlias.confidence.desc(), ProdutoAlias.usage_count.desc())
+        )
+        result = await self.session.execute(stmt)
+        alias = result.scalar_one_or_none()
+        
+        if alias:
+            return {
+                "produto_id": alias.produto_id,
+                "overrides": alias.get_overrides(),
+                "confidence": float(alias.confidence) if alias.confidence else 1.0,
+                "usage_count": alias.usage_count or 0
+            }
+        
+        return None
 
 
 # ==============================================================================

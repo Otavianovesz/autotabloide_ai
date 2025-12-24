@@ -115,6 +115,14 @@ class Produto(Base):
     last_modified: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, server_default=func.now(), onupdate=func.now()
     )
+    
+    # Filtro "Já Impresso" - Rastreia último preço impresso para detectar alterações
+    ultimo_preco_impresso: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2, asdecimal=True), nullable=True
+    )
+    data_ultima_impressao: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
 
     # Relacionamentos
     aliases: Mapped[List["ProdutoAlias"]] = relationship(
@@ -149,6 +157,23 @@ class Produto(Base):
         if self.categoria:
             return self.categoria.lower() in restricted_categories
         return False
+    
+    def price_changed_since_print(self) -> bool:
+        """
+        Verifica se o preço mudou desde a última impressão.
+        Retorna True se nunca foi impresso ou se preço mudou.
+        """
+        if self.ultimo_preco_impresso is None:
+            return True  # Nunca impresso = preço "mudou"
+        return self.preco_venda_atual != self.ultimo_preco_impresso
+    
+    def mark_as_printed(self):
+        """
+        Marca produto como impresso com preço atual.
+        Deve ser chamado após exportação de PDF contendo este produto.
+        """
+        self.ultimo_preco_impresso = self.preco_venda_atual
+        self.data_ultima_impressao = datetime.now()
 
     def __repr__(self):
         return f"<Produto(id={self.id}, sku='{self.sku_origem}', nome='{self.nome_sanitizado}')>"
@@ -163,6 +188,9 @@ class ProdutoAlias(Base):
     """
     Tabela de aprendizado para o 'Juiz'.
     Permite correlacionar 'Cerveja X 350ml' com 'Cerv. X LATA'.
+    
+    PROTOCOLO MEMÓRIA VIVA: override_data armazena correções humanas
+    que sobrescrevem a lógica da IA no futuro.
     """
     __tablename__ = "produto_aliases"
 
@@ -175,11 +203,40 @@ class ProdutoAlias(Base):
         Numeric(3, 2, asdecimal=True), default=1.0
     )
     
+    # NOVO: Override data para correções aprendidas (Protocolo Memória Viva)
+    # Formato: {"nome_sanitizado": "Cerveja Skol LATA", "marca": "Skol", ...}
+    override_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="{}")
+    
+    # Quantas vezes este alias foi usado com sucesso
+    usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Última vez que foi confirmado pelo usuário
+    last_confirmed: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, server_default=func.now()
     )
 
     produto: Mapped["Produto"] = relationship("Produto", back_populates="aliases")
+
+    def get_overrides(self) -> dict:
+        """Retorna overrides aprendidos."""
+        if not self.override_data:
+            return {}
+        try:
+            return json.loads(self.override_data)
+        except json.JSONDecodeError:
+            return {}
+    
+    def set_overrides(self, overrides: dict):
+        """Define overrides aprendidos."""
+        self.override_data = json.dumps(overrides, ensure_ascii=False)
+    
+    def add_override(self, field: str, value: str):
+        """Adiciona um override específico."""
+        overrides = self.get_overrides()
+        overrides[field] = value
+        self.set_overrides(overrides)
 
     def __repr__(self):
         return f"<Alias(raw='{self.alias_raw}', produto_id={self.produto_id})>"

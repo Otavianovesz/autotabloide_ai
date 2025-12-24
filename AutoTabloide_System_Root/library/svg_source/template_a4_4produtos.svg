@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842" viewBox="0 0 595 842">
+  <!-- A4 Portrait Template - AutoTabloide AI -->
+  <!-- Slot 1 -->
+  <g id="SLOT_1">
+    <!-- Imagem do Produto -->
+    <rect id="#ALVO_IMAGEM_1" x="50" y="50" width="200" height="200" fill="#E8E8E8"/>
+    <!-- Nome do Produto -->
+    <text id="#TXT_NOME_1" x="50" y="280" font-family="Roboto" font-size="18" fill="#333333">Nome do Produto</text>
+    <!-- Marca -->
+    <text id="#TXT_MARCA_1" x="50" y="305" font-family="Roboto" font-size="12" fill="#666666">Marca</text>
+    <!-- Preço Inteiro -->
+    <text id="#TXT_PRECO_INT_1" x="50" y="360" font-family="Roboto" font-size="48" font-weight="bold" fill="#FF0000">R$ 0</text>
+    <!-- Preço Centavos -->
+    <text id="#TXT_PRECO_CENT_1" x="180" y="340" font-family="Roboto" font-size="24" fill="#FF0000">,00</text>
+  </g>
+  
+  <!-- Slot 2 -->
+  <g id="SLOT_2">
+    <rect id="#ALVO_IMAGEM_2" x="300" y="50" width="200" height="200" fill="#E8E8E8"/>
+    <text id="#TXT_NOME_2" x="300" y="280" font-family="Roboto" font-size="18" fill="#333333">Nome do Produto</text>
+    <text id="#TXT_MARCA_2" x="300" y="305" font-family="Roboto" font-size="12" fill="#666666">Marca</text>
+    <text id="#TXT_PRECO_INT_2" x="300" y="360" font-family="Roboto" font-size="48" font-weight="bold" fill="#FF0000">R$ 0</text>
+    <text id="#TXT_PRECO_CENT_2" x="430" y="340" font-family="Roboto" font-size="24" fill="#FF0000">,00</text>
+  </g>
+  
+  <!-- Slot 3 -->
+  <g id="SLOT_3">
+    <rect id="#ALVO_IMAGEM_3" x="50" y="400" width="200" height="200" fill="#E8E8E8"/>
+    <text id="#TXT_NOME_3" x="50" y="630" font-family="Roboto" font-size="18" fill="#333333">Nome do Produto</text>
+    <text id="#TXT_MARCA_3" x="50" y="655" font-family="Roboto" font-size="12" fill="#666666">Marca</text>
+    <text id="#TXT_PRECO_INT_3" x="50" y="710" font-family="Roboto" font-size="48" font-weight="bold" fill="#FF0000">R$ 0</text>
+    <text id="#TXT_PRECO_CENT_3" x="180" y="690" font-family="Roboto" font-size="24" fill="#FF0000">,00</text>
+  </g>
+  
+  <!-- Slot 4 -->
+  <g id="SLOT_4">
+    <rect id="#ALVO_IMAGEM_4" x="300" y="400" width="200" height="200" fill="#E8E8E8"/>
+    <text id="#TXT_NOME_4" x="300" y="630" font-family="Roboto" font-size="18" fill="#333333">Nome do Produto</text>
+    <text id="#TXT_MARCA_4" x="300" y="655" font-family="Roboto" font-size="12" fill="#666666">Marca</text>
+    <text id="#TXT_PRECO_INT_4" x="300" y="710" font-family="Roboto" font-size="48" font-weight="bold" fill="#FF0000">R$ 0</text>
+    <text id="#TXT_PRECO_CENT_4" x="430" y="690" font-family="Roboto" font-size="24" fill="#FF0000">,00</text>
+  </g>
+  
+  <!-- Rodapé -->
+  <text x="297" y="800" font-family="Roboto" font-size="10" fill="#999999" text-anchor="middle">Ofertas válidas enquanto durarem os estoques</text>
+</svg>

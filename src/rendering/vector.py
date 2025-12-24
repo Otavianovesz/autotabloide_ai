@@ -121,6 +121,9 @@ class VectorEngine:
         Carrega fonte com cache. Falha ruidosamente se não existir.
         Conforme Vol. II, Cap. 3.3 - Sem fallback para fonte padrão.
         """
+        import logging
+        logger = logging.getLogger("VectorEngine")
+        
         cache_key = (font_path, size)
         
         if cache_key in self._font_cache:
@@ -139,8 +142,29 @@ class VectorEngine:
                     "Coloque a fonte em 'assets/fonts/' ou desative strict_fonts."
                 )
             else:
-                # Fallback para fonte padrão do sistema (não recomendado)
-                resolved_path = "arial.ttf"
+                # ⚠️ AVISO: Fallback para fonte do sistema (qualidade degradada)
+                logger.warning(
+                    f"[FONT FALLBACK] Fonte '{font_path}' não encontrada. "
+                    "Usando fallback do sistema. Qualidade visual pode ser afetada."
+                )
+                # Tenta várias fontes de fallback em ordem de preferência
+                fallback_fonts = [
+                    "DejaVuSans.ttf",      # Linux/comum
+                    "arial.ttf",            # Windows
+                    "Arial.ttf",            # Case sensitivity
+                    "LiberationSans-Regular.ttf",  # Linux alternativo
+                ]
+                for fallback in fallback_fonts:
+                    try:
+                        font = ImageFont.truetype(fallback, size)
+                        self._font_cache[cache_key] = font
+                        return font
+                    except IOError:
+                        continue
+                
+                # Último recurso: fonte default do PIL
+                logger.error(f"[FONT FALLBACK] Nenhuma fonte de fallback encontrada!")
+                return ImageFont.load_default()
         
         try:
             font = ImageFont.truetype(resolved_path, size)
@@ -741,3 +765,93 @@ class VectorEngine:
         """Calcula hash MD5 do SVG atual (para verificação de integridade)."""
         content = self.to_string()
         return hashlib.md5(content).hexdigest()
+
+    def render_frame(self, slot_data: dict) -> bytes:
+        """
+        Renderiza um frame completo com os dados fornecidos.
+        Usado pela Factory para geração batch.
+        
+        Args:
+            slot_data: Dict mapeando slot_id -> dados do produto
+            
+        Returns:
+            SVG renderizado como bytes
+        """
+        # Faz deep copy da árvore para não poluir o template
+        import copy
+        original_tree = self.tree
+        original_slots = self.slots
+        
+        self.tree = copy.deepcopy(original_tree)
+        self.root = self.tree.getroot()
+        self._index_slots()
+        
+        try:
+            for slot_id, data in slot_data.items():
+                if not data:
+                    continue
+                    
+                # Extrai sufixo do slot
+                suffix = slot_id.replace('SLOT_', '')
+                
+                # Nome do produto
+                nome = data.get('TXT_NOME_PRODUTO', '')
+                nome_id = f"TXT_NOME_PRODUTO_{suffix}"
+                if nome_id in self.slots:
+                    self._safe_set_text(nome_id, nome)
+                elif "TXT_NOME_PRODUTO" in self.slots:
+                    self._safe_set_text("TXT_NOME_PRODUTO", nome)
+                
+                # Unidade/Peso
+                unidade = data.get('TXT_UNIDADE', '')
+                unit_id = f"TXT_UNIDADE_{suffix}"
+                if unit_id in self.slots:
+                    self._safe_set_text(unit_id, unidade)
+                elif "TXT_UNIDADE" in self.slots:
+                    self._safe_set_text("TXT_UNIDADE", unidade)
+                
+                # Preço De (riscado)
+                preco_de = data.get('TXT_PRECO_DE')
+                if preco_de:
+                    de_id = f"TXT_PRECO_DE_{suffix}"
+                    if de_id in self.slots:
+                        self._safe_set_text(de_id, preco_de)
+                    elif "TXT_PRECO_DE" in self.slots:
+                        self._safe_set_text("TXT_PRECO_DE", preco_de)
+                
+                # Preço Inteiro
+                preco_int = data.get('TXT_PRECO_INT', '')
+                int_id = f"TXT_PRECO_INT_{suffix}"
+                if int_id in self.slots:
+                    self._safe_set_text(int_id, preco_int)
+                elif "TXT_PRECO_INT" in self.slots:
+                    self._safe_set_text("TXT_PRECO_INT", preco_int)
+                
+                # Preço Decimal
+                preco_dec = data.get('TXT_PRECO_DEC', '')
+                dec_id = f"TXT_PRECO_DEC_{suffix}"
+                if dec_id in self.slots:
+                    self._safe_set_text(dec_id, preco_dec)
+                elif "TXT_PRECO_DEC" in self.slots:
+                    self._safe_set_text("TXT_PRECO_DEC", preco_dec)
+                
+                # Imagem
+                img_hash = data.get('ALVO_IMAGEM')
+                if img_hash:
+                    alvo_id = f"ALVO_IMAGEM_{suffix}"
+                    if alvo_id not in self.slots:
+                        alvo_id = "ALVO_IMAGEM"
+                    if alvo_id in self.slots:
+                        # Placeholder para injeção de imagem
+                        pass
+            
+            result = self.to_string()
+            
+        finally:
+            # Restaura estado original
+            self.tree = original_tree
+            self.root = original_tree.getroot()
+            self.slots = original_slots
+        
+        return result
+

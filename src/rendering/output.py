@@ -332,6 +332,40 @@ class OutputEngine:
                         except:
                             pass
 
+    async def batch_render_to_pdf(
+        self,
+        frames: List[bytes],
+        output_path: str,
+        dpi: int = 300,
+        color_mode: str = "auto"
+    ) -> str:
+        """
+        Wrapper assíncrono para render_batch.
+        Roda em thread para não bloquear a UI.
+        
+        Args:
+            frames: Lista de SVGs renderizados
+            output_path: Caminho do PDF de saída
+            dpi: Resolução (300 padrão)
+            color_mode: "auto", "rgb" ou "cmyk"
+            
+        Returns:
+            Caminho do PDF gerado
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        use_cmyk = color_mode == "cmyk" or (color_mode == "auto" and self.gs_path)
+        
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            result = await loop.run_in_executor(
+                pool,
+                lambda: self.render_batch(frames, output_path, use_cmyk=use_cmyk)
+            )
+        
+        return result
+
     # ==========================================================================
     # MARCAS DE CORTE E SANGRIA (Vol. II, Cap. 6.2)
     # ==========================================================================

@@ -1,189 +1,614 @@
-import os
-import asyncio
-import tempfile
+"""
+AutoTabloide AI - Factory View (Fábrica de Cartazes)
+=====================================================
+Produção em lote de cartazes data-driven conforme Vol. VI, Cap. 5.
+Gera PDF multipáginas a partir de lista de produtos.
+"""
+
 import flet as ft
+import asyncio
+from datetime import datetime
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-# Imports do Pipeline Real
-from src.rendering.vector import VectorEngine
-from src.rendering.output import OutputEngine
+# Design System
+from src.ui.design_system import ColorScheme, Typography, Spacing, Animations
 
-# Caminho para o sistema
-ROOT_DIR = Path(__file__).parent.parent.parent.parent.resolve()
-SYSTEM_ROOT = ROOT_DIR / "AutoTabloide_System_Root"
+# Cores usando Design System
+COLORS = {
+    "success": ColorScheme.SUCCESS,
+    "warning": ColorScheme.WARNING,
+    "error": ColorScheme.ERROR,
+    "info": ColorScheme.ACCENT_PRIMARY,
+    "neutral": ColorScheme.TEXT_MUTED,
+    "surface": ColorScheme.BG_SECONDARY,
+    "surface_elevated": ColorScheme.BG_ELEVATED,
+}
+
 
 class FactoryView(ft.UserControl):
+    """
+    Fábrica de Cartazes - Produção Data-Driven.
+    
+    Workflow:
+    1. Seleciona layout de cartaz (CARTAZ_A4, CARTAZ_GIGANTE, ETIQUETA)
+    2. Importa lista de produtos (DB ou Excel)
+    3. Preview dinâmico ao clicar em item
+    4. Exporta PDF multipáginas (1 produto = 1 página)
+    """
+    
+    ALLOWED_TYPES = ["CARTAZ_A4", "CARTAZ_GIGANTE", "ETIQUETA"]
+    
     def __init__(self, page: ft.Page):
         super().__init__()
         self.page = page
-        self.is_processing = False
         
-        # Engines de Renderização
-        self.output_engine = OutputEngine(str(SYSTEM_ROOT))
-        self.template_path = str(SYSTEM_ROOT / "library" / "svg_source" / "cartaz_a4.svg")
+        # Estado
+        self.selected_layout: Optional[Dict] = None
+        self.product_list: List[Dict] = []
+        self.selected_product: Optional[Dict] = None
+        self.is_rendering: bool = False
+        self.render_progress: float = 0.0
         
-        # Mock Data Source (Em prod, viria do Repository)
-        self.batch_data = [
-            {"id": 1, "produto": "Cerveja Heineken 350ml", "preco": 5.99, "status": "Pendente"},
-            {"id": 2, "produto": "Picanha Bovina kg", "preco": 49.90, "status": "Pendente"},
-            {"id": 3, "produto": "Coca-Cola 2L", "preco": 9.99, "status": "Pendente"},
-        ]
-        
-        # Diretório de saída
-        self.output_dir = SYSTEM_ROOT / "temp_render"
-        os.makedirs(self.output_dir, exist_ok=True)
-
-    def process_batch(self, e):
-        if self.is_processing: return
-        self.is_processing = True
-        self.btn_process.disabled = True
-        self.progress_bar.value = 0
-        self.status_text.value = "Iniciando motores..."
-        self.update()
-
-        # Inicia a task assíncrona para não travar a UI
-        self.page.run_task(self._async_render_loop)
-
-    async def _async_render_loop(self):
-        total = len(self.batch_data)
-        rendered_pdfs = []
-        
-        for i, item in enumerate(self.batch_data):
-            item['status'] = "Renderizando..."
-            self.status_text.value = f"Processando item {i+1}/{total}: {item['produto']}"
-            self.update_grid()
+        # Configurações de exportação
+        self.export_dpi: int = 300
+        self.color_mode: str = "auto"  # auto, rgb, cmyk
+    
+    def did_mount(self):
+        """Carrega layouts disponíveis."""
+        self.page.run_task(self._load_layouts)
+    
+    async def _load_layouts(self):
+        """Carrega layouts do tipo CARTAZ."""
+        try:
+            from src.core.repositories import LayoutRepository
+            from src.core.database import AsyncSessionLocal
             
-            try:
-                # 1. Carregar e manipular SVG em thread separada
-                pdf_path = await asyncio.to_thread(
-                    self._render_single_item, 
-                    item, 
-                    i
-                )
+            async with AsyncSessionLocal() as session:
+                repo = LayoutRepository(session)
+                layouts = await repo.get_all()
                 
-                if pdf_path:
-                    rendered_pdfs.append(pdf_path)
-                    item['status'] = "Concluído"
-                else:
-                    item['status'] = "Erro"
-                    
-            except Exception as ex:
-                item['status'] = f"Erro: {str(ex)[:20]}"
-                print(f"[FACTORY ERROR] {item['produto']}: {ex}")
-            
-            self.progress_bar.value = (i + 1) / total
-            self.update()
-
-        # Resumo final
-        success_count = sum(1 for d in self.batch_data if d['status'] == "Concluído")
-        self.status_text.value = f"Lote Finalizado! {success_count}/{total} PDFs gerados em {self.output_dir}"
-        self.btn_process.disabled = False
-        self.is_processing = False
-        self.update()
-
-    def _render_single_item(self, item: dict, index: int) -> str:
-        """
-        Renderiza um único item para PDF CMYK.
-        Roda em thread separada via asyncio.to_thread.
-        """
-        # 1. Instância nova do VectorEngine (thread-safe: nova instância por item)
-        vector = VectorEngine()
-        
-        # Verifica se template existe
-        if not os.path.exists(self.template_path):
-            # Fallback: Criar SVG mínimo para teste
-            temp_svg = tempfile.NamedTemporaryFile(mode='w', suffix='.svg', delete=False)
-            temp_svg.write(f'''<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842">
-                <rect width="100%" height="100%" fill="white"/>
-                <text id="TXT_NOME_PRODUTO" x="50" y="100" style="font-size:40px">{item['produto']}</text>
-                <text id="TXT_PRECO_BIG_SLOT_01" x="50" y="200" style="font-size:80px">R$ {item['preco']:.2f}</text>
-            </svg>''')
-            temp_svg.close()
-            vector.load_template(temp_svg.name)
-            os.unlink(temp_svg.name)
-        else:
-            vector.load_template(self.template_path)
-        
-        # 2. Preencher dados no SVG
-        # Nota: A lógica de preço assume que o template tem slots padrão
-        try:
-            vector.handle_price_logic("SLOT_01", preco_atual=item['preco'])
-        except:
-            pass # Template pode não ter slots DE/POR
-        
-        # 3. Exportar SVG manipulado para bytes
-        svg_bytes = vector.to_string()
-        
-        # 4. Renderizar PDF RGB
-        pdf_rgb_path = str(self.output_dir / f"item_{index}_rgb.pdf")
-        self.output_engine.render_pdf(svg_bytes, pdf_rgb_path)
-        
-        # 5. Converter para CMYK (Ghostscript)
-        pdf_cmyk_path = str(self.output_dir / f"item_{index}_cmyk.pdf")
-        try:
-            self.output_engine.convert_to_cmyk(pdf_rgb_path, pdf_cmyk_path)
-            # Limpa arquivo RGB intermediário
-            os.remove(pdf_rgb_path)
-            return pdf_cmyk_path
+                self.available_layouts = [
+                    {
+                        "id": l.id,
+                        "name": l.nome_amigavel,
+                        "type": l.tipo_midia.value if l.tipo_midia else "CARTAZ_A4",
+                        "file": l.arquivo_fonte
+                    }
+                    for l in layouts
+                    if l.tipo_midia and l.tipo_midia.value in self.ALLOWED_TYPES
+                ]
+                
+                self.update()
+                
         except Exception as e:
-            print(f"[CMYK WARN] Falha na conversão CMYK (usando RGB): {e}")
-            # Retorna o RGB se CMYK falhar (degradation graceful apenas aqui)
-            return pdf_rgb_path
-
-    def update_grid(self):
-        # Reconstrói as linhas da tabela
-        self.data_table.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(str(d['id']))),
-                ft.DataCell(ft.Text(d['produto'])),
-                ft.DataCell(ft.Text(f"R$ {d['preco']:.2f}")),
-                ft.DataCell(
-                    ft.Icon(ft.icons.CHECK_CIRCLE, color="green") if d['status'] == "Concluído" 
-                    else ft.ProgressRing(scale=0.5) if d['status'] == "Renderizando..."
-                    else ft.Icon(ft.icons.ERROR, color="red") if "Erro" in d['status']
-                    else ft.Text(d['status'], size=11)
-                ),
-            ]) for d in self.batch_data
-        ]
-        # Only call update() if the control is attached to a page (not during build)
-        if self.data_table.page:
-            self.data_table.update()
-
-    def build(self):
-        # Controles de Topo
-        self.btn_process = ft.ElevatedButton(
-            "Iniciar Produção em Massa", 
-            icon=ft.icons.ROCKET_LAUNCH,
-            on_click=self.process_batch,
-            style=ft.ButtonStyle(bgcolor=ft.colors.RED_700, color=ft.colors.WHITE)
+            print(f"[Factory] Erro ao carregar layouts: {e}")
+            self.available_layouts = []
+    
+    def _on_layout_selected(self, e):
+        """Callback ao selecionar layout."""
+        layout_id = int(e.control.value)
+        self.selected_layout = next(
+            (l for l in self.available_layouts if l["id"] == layout_id),
+            None
         )
-        self.progress_bar = ft.ProgressBar(value=0, color="amber", bgcolor="#222222")
-        self.status_text = ft.Text("Aguardando comando...", size=12, italic=True)
-
-        header = ft.Container(
-            content=ft.Column([
-                ft.Row([ft.Text("Fábrica de Cartazes", size=24, weight="bold"), self.btn_process], alignment="spaceBetween"),
-                self.progress_bar,
-                self.status_text
+        self.update()
+    
+    async def _import_from_db(self):
+        """Importa produtos do banco de dados."""
+        try:
+            from src.core.repositories import ProductRepository
+            from src.core.database import AsyncSessionLocal
+            
+            async with AsyncSessionLocal() as session:
+                repo = ProductRepository(session)
+                products = await repo.get_all()
+                
+                self.product_list = [
+                    {
+                        "id": p.id,
+                        "name": p.nome_sanitizado or p.sku_origem,
+                        "price_de": float(p.preco_referencia) if p.preco_referencia else None,
+                        "price_por": float(p.preco_venda_atual) if p.preco_venda_atual else 0,
+                        "weight": p.detalhe_peso,
+                        "image": p.get_images()[0] if p.get_images() else None
+                    }
+                    for p in products
+                ]
+                
+                self._show_snackbar(f"{len(self.product_list)} produtos importados", COLORS["success"])
+                self.update()
+                
+        except Exception as e:
+            print(f"[Factory] Erro ao importar: {e}")
+            self._show_snackbar(f"Erro ao importar: {e}", COLORS["error"])
+    
+    def _import_from_file(self, e):
+        """
+        Abre diálogo para importar Excel/CSV.
+        Conforme Vol. VI, Cap. 5.2: Valida colunas obrigatórias.
+        """
+        file_picker = ft.FilePicker(
+            on_result=lambda ev: self.page.run_task(
+                self._process_import_file, ev.files[0].path if ev.files else None
+            )
+        )
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        
+        file_picker.pick_files(
+            allowed_extensions=["xlsx", "xls", "csv"],
+            dialog_title="Selecione a planilha de produtos"
+        )
+    
+    async def _process_import_file(self, file_path: str):
+        """
+        Processa arquivo importado com validação de colunas.
+        Conforme Vol. VI, Cap. 5.2: Colunas obrigatórias para PROCON.
+        """
+        if not file_path:
+            return
+        
+        try:
+            import pandas as pd
+            
+            # Lê arquivo
+            if file_path.endswith(".csv"):
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_excel(file_path)
+            
+            # === VALIDAÇÃO DE COLUNAS OBRIGATÓRIAS (Vol. VI, Cap. 5.2) ===
+            required_columns = {
+                "descricao": ["desc", "descricao", "descrição", "nome", "produto", "item"],
+                "preco_de": ["preco_de", "preço_de", "de", "anterior", "referencia"],
+                "preco_por": ["preco_por", "preço_por", "por", "atual", "venda", "oferta", "preco", "preço"]
+            }
+            
+            found_columns = {}
+            missing_required = []
+            
+            for key, variants in required_columns.items():
+                for col in df.columns:
+                    col_lower = col.lower().strip()
+                    if any(v in col_lower for v in variants):
+                        found_columns[key] = col
+                        break
+                
+                if key not in found_columns:
+                    if key != "preco_de":  # Preço De é opcional
+                        missing_required.append(key)
+            
+            # Verifica obrigatórios
+            if not found_columns.get("descricao"):
+                self._show_snackbar("ERRO: Coluna 'Descrição' não encontrada", COLORS["error"])
+                return
+            
+            if not found_columns.get("preco_por"):
+                self._show_snackbar("ERRO: Coluna 'Preço Por' obrigatória", COLORS["error"])
+                return
+            
+            # Extrai dados
+            products = []
+            col_desc = found_columns.get("descricao")
+            col_de = found_columns.get("preco_de")
+            col_por = found_columns.get("preco_por")
+            
+            # Detecta coluna de peso (opcional)
+            col_peso = None
+            for col in df.columns:
+                if any(k in col.lower() for k in ["peso", "gramatura", "unidade", "weight"]):
+                    col_peso = col
+                    break
+            
+            for idx, row in df.iterrows():
+                try:
+                    price_por = float(row[col_por]) if pd.notna(row[col_por]) else 0.0
+                    price_de = float(row[col_de]) if col_de and pd.notna(row[col_de]) else None
+                    
+                    products.append({
+                        "id": idx + 1,
+                        "name": str(row[col_desc]) if pd.notna(row[col_desc]) else f"Produto {idx+1}",
+                        "price_de": price_de,
+                        "price_por": price_por,
+                        "weight": str(row[col_peso]) if col_peso and pd.notna(row[col_peso]) else None,
+                        "image": None
+                    })
+                except Exception as ex:
+                    print(f"[Factory] Erro na linha {idx}: {ex}")
+            
+            if not products:
+                self._show_snackbar("Nenhum produto válido encontrado", COLORS["warning"])
+                return
+            
+            self.product_list = products
+            
+            # Feedback detalhado
+            msg = f"{len(products)} produtos importados"
+            if not col_de:
+                msg += " (sem Preço De)"
+            self._show_snackbar(msg, COLORS["success"])
+            self.update()
+            
+        except ImportError:
+            self._show_snackbar("Instale pandas: pip install pandas openpyxl", COLORS["error"])
+        except Exception as e:
+            print(f"[Factory] Erro ao processar arquivo: {e}")
+            self._show_snackbar(f"Erro: {e}", COLORS["error"])
+    
+    def _on_product_selected(self, product: Dict):
+        """Seleciona produto para preview."""
+        self.selected_product = product
+        self.update()
+    
+    def _remove_product(self, product: Dict):
+        """Remove produto da lista."""
+        self.product_list = [p for p in self.product_list if p["id"] != product["id"]]
+        if self.selected_product and self.selected_product["id"] == product["id"]:
+            self.selected_product = None
+        self.update()
+    
+    def _clear_list(self, e=None):
+        """Limpa lista de produtos."""
+        self.product_list = []
+        self.selected_product = None
+        self.update()
+    
+    async def _export_pdf(self):
+        """Exporta PDF multipáginas com todos os produtos."""
+        if not self.selected_layout or not self.product_list:
+            self._show_snackbar("Selecione layout e importe produtos primeiro", COLORS["warning"])
+            return
+        
+        self.is_rendering = True
+        self.render_progress = 0.0
+        self.update()
+        
+        try:
+            from src.rendering.vector import VectorEngine
+            from src.rendering.output import OutputEngine
+            
+            # Inicializa engines
+            system_root = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root"
+            svg_path = system_root / "library" / "svg_source" / self.selected_layout["file"]
+            
+            if not svg_path.exists():
+                self._show_snackbar(f"Template não encontrado: {svg_path.name}", COLORS["error"])
+                return
+            
+            # VectorEngine: Instancia primeiro, depois carrega template
+            vector_engine = VectorEngine(strict_fonts=False)  # Flexível para produção
+            vector_engine.load_template(str(svg_path))
+            
+            # OutputEngine: Requer system_root
+            output_engine = OutputEngine(str(system_root))
+            
+            # Lista de frames renderizados
+            frames = []
+            total = len(self.product_list)
+            
+            for i, product in enumerate(self.product_list):
+                # Atualiza progresso
+                self.render_progress = (i + 1) / total
+                self.update()
+                
+                # Prepara dados para o slot único
+                slot_data = {
+                    "SLOT_01": {
+                        "TXT_NOME_PRODUTO": product["name"],
+                        "TXT_PRECO_DE": f"R$ {product['price_de']:.2f}" if product["price_de"] else None,
+                        "TXT_PRECO_INT": str(int(product["price_por"])),
+                        "TXT_PRECO_DEC": f"{int((product['price_por'] % 1) * 100):02d}",
+                        "TXT_UNIDADE": product.get("weight", ""),
+                        "ALVO_IMAGEM": product.get("image")
+                    }
+                }
+                
+                # Renderiza frame
+                frame_svg = vector_engine.render_frame(slot_data)
+                frames.append(frame_svg)
+                
+                # Pequena pausa para UI atualizar
+                await asyncio.sleep(0.01)
+            
+            # Gera PDF multipáginas
+            output_path = system_root / "output" / f"cartazes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            await output_engine.batch_render_to_pdf(
+                frames=frames,
+                output_path=str(output_path),
+                dpi=self.export_dpi,
+                color_mode=self.color_mode
+            )
+            
+            self._show_snackbar(f"PDF gerado: {output_path.name}", COLORS["success"])
+            
+        except Exception as e:
+            print(f"[Factory] Erro ao exportar: {e}")
+            self._show_snackbar(f"Erro na exportacao: {e}", COLORS["error"])
+        
+        finally:
+            self.is_rendering = False
+            self.render_progress = 0.0
+            self.update()
+    
+    def _show_snackbar(self, message: str, color: str):
+        """Exibe notificação."""
+        self.page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=color)
+        self.page.snack_bar.open = True
+        self.page.update()
+    
+    def _build_product_row(self, product: Dict) -> ft.Container:
+        """Constrói linha de produto na lista."""
+        is_selected = self.selected_product and self.selected_product["id"] == product["id"]
+        
+        # Validação: precisa ter preço De e Por
+        has_price_de = product.get("price_de") is not None
+        has_price_por = product.get("price_por", 0) > 0
+        is_valid = has_price_de and has_price_por
+        
+        status_color = COLORS["success"] if is_valid else COLORS["warning"]
+        status_icon = ft.icons.CHECK_CIRCLE if is_valid else ft.icons.WARNING
+        
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(status_icon, color=status_color, size=16),
+                ft.Column([
+                    ft.Text(product["name"], size=12, weight=ft.FontWeight.W_500,
+                           max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Row([
+                        ft.Text(f"De: R$ {product['price_de']:.2f}" if has_price_de else "De: N/A",
+                               size=10, color=ft.colors.GREY_400),
+                        ft.Text(f"Por: R$ {product['price_por']:.2f}",
+                               size=10, color=COLORS["success"], weight=ft.FontWeight.BOLD)
+                    ], spacing=10)
+                ], expand=True, spacing=2),
+                ft.IconButton(
+                    ft.icons.DELETE_OUTLINE,
+                    icon_size=18,
+                    icon_color=COLORS["error"],
+                    tooltip="Remover",
+                    on_click=lambda e, p=product: self._remove_product(p)
+                )
             ]),
             padding=10,
-            bgcolor=ft.colors.SURFACE_VARIANT,
-            border_radius=10
+            bgcolor=COLORS["slot_filled"] if is_selected else COLORS["surface"],
+            border_radius=6,
+            on_click=lambda e, p=product: self._on_product_selected(p),
+            on_hover=lambda e: self._on_row_hover(e)
         )
-
-        # Grid de Dados
-        self.data_table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("ID")),
-                ft.DataColumn(ft.Text("Produto")),
-                ft.DataColumn(ft.Text("Preço")),
-                ft.DataColumn(ft.Text("Status")),
-            ],
+    
+    def _on_row_hover(self, e):
+        """Efeito hover."""
+        if e.data == "true":
+            e.control.bgcolor = COLORS["surface_elevated"]
+        else:
+            e.control.bgcolor = COLORS["surface"]
+        e.control.update()
+    
+    def _build_preview_panel(self) -> ft.Container:
+        """Constrói painel de preview."""
+        if not self.selected_product:
+            return ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.icons.PREVIEW, size=48, color=ft.colors.GREY_600),
+                    ft.Text("Selecione um produto para visualizar", color=ft.colors.GREY_400)
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                   alignment=ft.MainAxisAlignment.CENTER),
+                expand=True,
+                alignment=ft.alignment.center
+            )
+        
+        product = self.selected_product
+        
+        # Simula preview do cartaz
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("Preview do Cartaz", size=14, color=ft.colors.GREY_400),
+                ft.Container(
+                    content=ft.Column([
+                        # Área da imagem
+                        ft.Container(
+                            content=ft.Icon(ft.icons.IMAGE, size=64, color=ft.colors.WHITE54),
+                            bgcolor="#2A2A2A",
+                            height=150,
+                            border_radius=8,
+                            alignment=ft.alignment.center
+                        ),
+                        # Nome do produto
+                        ft.Text(
+                            product["name"],
+                            size=16,
+                            weight=ft.FontWeight.BOLD,
+                            text_align=ft.TextAlign.CENTER,
+                            max_lines=2
+                        ),
+                        # Peso/Unidade
+                        ft.Text(
+                            product.get("weight", ""),
+                            size=12,
+                            color=ft.colors.GREY_400,
+                            text_align=ft.TextAlign.CENTER
+                        ),
+                        # Preço De (riscado)
+                        ft.Text(
+                            f"De: R$ {product['price_de']:.2f}" if product.get("price_de") else "",
+                            size=14,
+                            color=ft.colors.GREY_500,
+                            style=ft.TextStyle(decoration=ft.TextDecoration.LINE_THROUGH)
+                        ) if product.get("price_de") else ft.Container(),
+                        # Preço Por (destaque)
+                        ft.Row([
+                            ft.Text("R$", size=20, color=COLORS["success"]),
+                            ft.Text(
+                                str(int(product["price_por"])),
+                                size=48,
+                                weight=ft.FontWeight.BOLD,
+                                color=COLORS["success"]
+                            ),
+                            ft.Text(
+                                f",{int((product['price_por'] % 1) * 100):02d}",
+                                size=24,
+                                color=COLORS["success"]
+                            )
+                        ], alignment=ft.MainAxisAlignment.CENTER)
+                    ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    bgcolor=COLORS["surface_elevated"],
+                    border_radius=10,
+                    padding=20,
+                    width=280
+                )
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
             expand=True,
-            heading_row_color=ft.colors.BLACK12,
-            border=ft.border.all(1, ft.colors.OUTLINE_VARIANT),
-            border_radius=10
+            alignment=ft.alignment.center
         )
-        self.update_grid()
-
-        return ft.Column([header, ft.Container(self.data_table, expand=True)], expand=True, spacing=10)
+    
+    def build(self):
+        # ===== HEADER =====
+        header = ft.Container(
+            content=ft.Row([
+                ft.Column([
+                    ft.Text("Fabrica de Cartazes", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Text("Producao em lote de cartazes de produto unico", 
+                           size=14, color=ft.colors.GREY_400)
+                ], spacing=5),
+            ]),
+            padding=ft.padding.only(bottom=20)
+        )
+        
+        # ===== SELEÇÃO DE LAYOUT =====
+        layout_options = [
+            ft.dropdown.Option(str(l["id"]), f"{l['name']} ({l['type']})")
+            for l in getattr(self, 'available_layouts', [])
+        ]
+        
+        layout_selector = ft.Container(
+            content=ft.Row([
+                ft.Text("Layout:", size=14),
+                ft.Dropdown(
+                    options=layout_options if layout_options else [
+                        ft.dropdown.Option("0", "Nenhum layout de cartaz disponivel")
+                    ],
+                    value=str(self.selected_layout["id"]) if self.selected_layout else None,
+                    on_change=self._on_layout_selected,
+                    width=300
+                ),
+                ft.Container(expand=True),
+                ft.Dropdown(
+                    label="DPI",
+                    value=str(self.export_dpi),
+                    options=[
+                        ft.dropdown.Option("150", "150 (Web)"),
+                        ft.dropdown.Option("300", "300 (Impressao)"),
+                        ft.dropdown.Option("600", "600 (Alta)"),
+                    ],
+                    width=120,
+                    on_change=lambda e: setattr(self, 'export_dpi', int(e.control.value))
+                ),
+                ft.Dropdown(
+                    label="Cor",
+                    value=self.color_mode,
+                    options=[
+                        ft.dropdown.Option("auto", "Automatico"),
+                        ft.dropdown.Option("rgb", "RGB"),
+                        ft.dropdown.Option("cmyk", "CMYK"),
+                    ],
+                    width=120,
+                    on_change=lambda e: setattr(self, 'color_mode', e.control.value)
+                )
+            ]),
+            padding=ft.padding.symmetric(vertical=10)
+        )
+        
+        # ===== BARRA DE IMPORTAÇÃO =====
+        import_bar = ft.Container(
+            content=ft.Row([
+                ft.ElevatedButton(
+                    "Importar do Banco",
+                    icon=ft.icons.STORAGE,
+                    on_click=lambda e: self.page.run_task(self._import_from_db)
+                ),
+                ft.ElevatedButton(
+                    "Importar Excel/CSV",
+                    icon=ft.icons.UPLOAD_FILE,
+                    on_click=self._import_from_file
+                ),
+                ft.Container(expand=True),
+                ft.Text(f"{len(self.product_list)} produtos na lista", 
+                       color=ft.colors.GREY_400) if self.product_list else ft.Container(),
+                ft.IconButton(
+                    ft.icons.CLEAR_ALL,
+                    tooltip="Limpar lista",
+                    on_click=self._clear_list
+                ) if self.product_list else ft.Container()
+            ]),
+            padding=ft.padding.symmetric(vertical=10)
+        )
+        
+        # ===== LISTA DE PRODUTOS =====
+        product_list = ft.Container(
+            content=ft.Column([
+                ft.Text("Lista de Geracao", weight=ft.FontWeight.BOLD),
+                ft.ListView(
+                    controls=[self._build_product_row(p) for p in self.product_list],
+                    spacing=5,
+                    expand=True
+                ) if self.product_list else ft.Container(
+                    content=ft.Text("Importe produtos para iniciar", color=ft.colors.GREY_500),
+                    alignment=ft.alignment.center,
+                    expand=True
+                )
+            ], expand=True),
+            bgcolor=COLORS["surface"],
+            border_radius=10,
+            padding=15,
+            expand=1
+        )
+        
+        # ===== PREVIEW =====
+        preview_panel = ft.Container(
+            content=self._build_preview_panel(),
+            bgcolor=COLORS["surface"],
+            border_radius=10,
+            padding=15,
+            expand=1
+        )
+        
+        # ===== BARRA DE EXPORTAÇÃO =====
+        export_bar = ft.Container(
+            content=ft.Row([
+                ft.ProgressBar(
+                    value=self.render_progress,
+                    color=COLORS["info"],
+                    bgcolor=COLORS["surface"],
+                    expand=True
+                ) if self.is_rendering else ft.Container(expand=True),
+                ft.Text(
+                    f"Renderizando... {int(self.render_progress * 100)}%",
+                    color=COLORS["info"]
+                ) if self.is_rendering else ft.Container(),
+                ft.ElevatedButton(
+                    "Exportar PDF",
+                    icon=ft.icons.PICTURE_AS_PDF,
+                    style=ft.ButtonStyle(bgcolor=COLORS["info"], color=ft.colors.WHITE),
+                    disabled=self.is_rendering or not self.product_list or not self.selected_layout,
+                    on_click=lambda e: self.page.run_task(self._export_pdf)
+                )
+            ]),
+            padding=ft.padding.symmetric(vertical=15)
+        )
+        
+        # ===== LAYOUT PRINCIPAL =====
+        return ft.Container(
+            content=ft.Column([
+                header,
+                layout_selector,
+                ft.Divider(height=1, color=ft.colors.GREY_800),
+                import_bar,
+                ft.Row([product_list, preview_panel], spacing=15, expand=True),
+                export_bar
+            ], expand=True),
+            padding=30,
+            expand=True
+        )

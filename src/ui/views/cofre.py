@@ -10,19 +10,22 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-# Cores Semânticas
+# Design System
+from src.ui.design_system import ColorScheme, Typography, Spacing, Animations
+
+# Cores usando Design System
 COLORS = {
-    "success": "#34C759",
-    "warning": "#FFCC00",
-    "error": "#FF3B30",
-    "info": "#007AFF",
-    "neutral": "#8E8E93",
-    "surface": "#1C1C1E",
-    "surface_elevated": "#2C2C2E",
-    "create": "#34C759",
-    "update": "#007AFF",
-    "delete": "#FF3B30",
-    "rollback": "#FF9500",
+    "success": ColorScheme.SUCCESS,
+    "warning": ColorScheme.WARNING,
+    "error": ColorScheme.ERROR,
+    "info": ColorScheme.ACCENT_PRIMARY,
+    "neutral": ColorScheme.TEXT_MUTED,
+    "surface": ColorScheme.BG_SECONDARY,
+    "surface_elevated": ColorScheme.BG_ELEVATED,
+    "create": ColorScheme.SUCCESS,
+    "update": ColorScheme.ACCENT_PRIMARY,
+    "delete": ColorScheme.ERROR,
+    "rollback": ColorScheme.WARNING,
 }
 
 # Ícones por tipo de ação
@@ -502,6 +505,176 @@ class CofreView(ft.UserControl):
             )
             self.page.snack_bar.open = True
             self.page.update()
+    
+    def _export_database(self, e):
+        """
+        Exporta banco de dados para arquivo externo.
+        Permite transferência entre máquinas.
+        """
+        import shutil
+        from pathlib import Path
+        
+        # Diálogo para salvar arquivo
+        def on_save_result(ev: ft.FilePickerResultEvent):
+            if not ev.path:
+                return
+            
+            try:
+                # Caminho do banco atual
+                db_path = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root" / "data" / "autotabloide.db"
+                
+                if not db_path.exists():
+                    self.page.snack_bar = ft.SnackBar(
+                        ft.Text("Banco de dados não encontrado!"),
+                        bgcolor=COLORS["error"]
+                    )
+                    self.page.snack_bar.open = True
+                    self.page.update()
+                    return
+                
+                # Copia para destino
+                dest_path = ev.path
+                if not dest_path.endswith('.db'):
+                    dest_path += '.db'
+                
+                shutil.copy2(str(db_path), dest_path)
+                
+                # Também exporta imagens se existirem
+                vault_path = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root" / "assets" / "store"
+                if vault_path.exists():
+                    vault_dest = Path(dest_path).parent / "autotabloide_images"
+                    if vault_dest.exists():
+                        shutil.rmtree(vault_dest)
+                    shutil.copytree(vault_path, vault_dest)
+                
+                self.page.snack_bar = ft.SnackBar(
+                    ft.Text(f"Banco exportado para: {dest_path}"),
+                    bgcolor=COLORS["success"]
+                )
+                self.page.snack_bar.open = True
+                self.page.update()
+                
+            except Exception as ex:
+                self.page.snack_bar = ft.SnackBar(
+                    ft.Text(f"Erro ao exportar: {ex}"),
+                    bgcolor=COLORS["error"]
+                )
+                self.page.snack_bar.open = True
+                self.page.update()
+        
+        # Configura FilePicker para salvar
+        save_dialog = ft.FilePicker(on_result=on_save_result)
+        self.page.overlay.append(save_dialog)
+        self.page.update()
+        
+        save_dialog.save_file(
+            dialog_title="Exportar Banco de Dados",
+            file_name=f"autotabloide_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+            allowed_extensions=["db"]
+        )
+    
+    def _import_database(self, e):
+        """
+        Importa banco de dados de arquivo externo.
+        Substitui banco atual após confirmação.
+        """
+        import shutil
+        from pathlib import Path
+        
+        def on_file_result(ev: ft.FilePickerResultEvent):
+            if not ev.files or not ev.files[0]:
+                return
+            
+            source_path = ev.files[0].path
+            
+            # Confirmar antes de substituir
+            def confirm_import(e2):
+                self.page.close(confirm_dialog)
+                self._execute_import(source_path)
+            
+            def cancel_import(e2):
+                self.page.close(confirm_dialog)
+            
+            confirm_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Row([
+                    ft.Icon(ft.icons.WARNING, color=COLORS["warning"]),
+                    ft.Text("Confirmar Importação")
+                ]),
+                content=ft.Column([
+                    ft.Text("ATENÇÃO: Esta ação irá SUBSTITUIR todos os dados atuais!"),
+                    ft.Text(f"Arquivo: {Path(source_path).name}", size=12, color=ft.colors.GREY_400),
+                    ft.Text("Um backup do estado atual será criado automaticamente.", size=12)
+                ], spacing=10),
+                actions=[
+                    ft.TextButton("Cancelar", on_click=cancel_import),
+                    ft.ElevatedButton(
+                        "Importar",
+                        style=ft.ButtonStyle(bgcolor=COLORS["error"], color=ft.colors.WHITE),
+                        on_click=confirm_import
+                    )
+                ]
+            )
+            
+            self.page.open(confirm_dialog)
+        
+        # Configura FilePicker para abrir
+        file_picker = ft.FilePicker(on_result=on_file_result)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        
+        file_picker.pick_files(
+            dialog_title="Importar Banco de Dados",
+            allowed_extensions=["db"],
+            allow_multiple=False
+        )
+    
+    def _execute_import(self, source_path: str):
+        """Executa a importação do banco de dados."""
+        import shutil
+        from pathlib import Path
+        
+        try:
+            db_path = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root" / "data" / "autotabloide.db"
+            snapshots_dir = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root" / "snapshots"
+            
+            # Cria backup do atual antes de substituir
+            if db_path.exists():
+                snapshots_dir.mkdir(parents=True, exist_ok=True)
+                backup_name = f"pre_import_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                shutil.copy2(str(db_path), str(snapshots_dir / backup_name))
+            
+            # Copia novo banco
+            shutil.copy2(source_path, str(db_path))
+            
+            # Verifica se há pasta de imagens junto
+            source_images = Path(source_path).parent / "autotabloide_images"
+            if source_images.exists():
+                vault_path = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root" / "assets" / "store"
+                vault_path.mkdir(parents=True, exist_ok=True)
+                
+                # Copia imagens
+                for img in source_images.iterdir():
+                    shutil.copy2(str(img), str(vault_path / img.name))
+            
+            self.page.snack_bar = ft.SnackBar(
+                ft.Text("Banco importado com sucesso! Reinicie a aplicação."),
+                bgcolor=COLORS["success"]
+            )
+            self.page.snack_bar.open = True
+            self.page.update()
+            
+            # Recarrega snapshots
+            self.page.run_task(self._load_snapshots)
+            
+        except Exception as ex:
+            self.page.snack_bar = ft.SnackBar(
+                ft.Text(f"Erro ao importar: {ex}"),
+                bgcolor=COLORS["error"]
+            )
+            self.page.snack_bar.open = True
+            self.page.update()
+
 
     def _on_scroll(self, e):
         """Handler de scroll para infinite scroll."""
@@ -587,6 +760,27 @@ class CofreView(ft.UserControl):
                         on_click=self._on_create_backup
                     ),
                     ft.Container(height=10),
+                    # Botões de Export/Import para transferência entre máquinas
+                    ft.Row([
+                        ft.ElevatedButton(
+                            "Exportar",
+                            icon=ft.icons.UPLOAD,
+                            tooltip="Exportar banco para outro PC",
+                            expand=True,
+                            on_click=self._export_database,
+                            style=ft.ButtonStyle(bgcolor=COLORS["info"])
+                        ),
+                        ft.ElevatedButton(
+                            "Importar",
+                            icon=ft.icons.DOWNLOAD,
+                            tooltip="Importar banco de outro PC",
+                            expand=True,
+                            on_click=self._import_database,
+                            style=ft.ButtonStyle(bgcolor=COLORS["warning"])
+                        )
+                    ], spacing=10),
+                    ft.Container(height=10),
+                    ft.Text("Snapshots Locais", size=13, color=ft.colors.GREY_400),
                     self.snapshots_list
                 ],
                 expand=True
@@ -596,6 +790,7 @@ class CofreView(ft.UserControl):
             border_radius=10,
             expand=1
         )
+
         
         return ft.Container(
             content=ft.Row(

@@ -10,19 +10,22 @@ import asyncio
 from typing import List, Optional, Dict
 from decimal import Decimal
 
-# Cores Semânticas
+# Design System
+from src.ui.design_system import ColorScheme, Typography, Spacing, Animations
+
+# Cores usando Design System
 COLORS = {
-    "success": "#34C759",
-    "warning": "#FFCC00",
-    "error": "#FF3B30",
-    "info": "#007AFF",
-    "neutral": "#8E8E93",
-    "surface": "#1C1C1E",
-    "surface_elevated": "#2C2C2E",
-    "quality_perfect": "#34C759",
-    "quality_attention": "#FFCC00",
-    "quality_incomplete": "#FF9500",
-    "quality_critical": "#FF3B30",
+    "success": ColorScheme.SUCCESS,
+    "warning": ColorScheme.WARNING,
+    "error": ColorScheme.ERROR,
+    "info": ColorScheme.ACCENT_PRIMARY,
+    "neutral": ColorScheme.TEXT_MUTED,
+    "surface": ColorScheme.BG_SECONDARY,
+    "surface_elevated": ColorScheme.BG_ELEVATED,
+    "quality_perfect": ColorScheme.QUALITY_PERFECT,
+    "quality_attention": ColorScheme.QUALITY_ATTENTION,
+    "quality_incomplete": ColorScheme.QUALITY_INCOMPLETE,
+    "quality_critical": ColorScheme.QUALITY_CRITICAL,
 }
 
 
@@ -300,10 +303,116 @@ class EstoqueView(ft.UserControl):
 
     def _show_image_doctor(self, product: dict):
         """Modal do Image Doctor (Vol. VI, Cap. 3.3)."""
+        from pathlib import Path
+        
+        # Estado do modal
+        current_image_path = None
+        processed_image_path = None
+        
+        # Referência para atualizar preview
+        preview_container = ft.Ref[ft.Container]()
+        status_text = ft.Ref[ft.Text]()
         
         def close_modal(e):
             modal.open = False
             self.page.update()
+        
+        def update_status(msg: str, color: str = ft.colors.GREY_400):
+            if status_text.current:
+                status_text.current.value = msg
+                status_text.current.color = color
+                status_text.current.update()
+        
+        async def handle_remove_background(e):
+            """Remove fundo usando rembg."""
+            nonlocal processed_image_path
+            
+            if not current_image_path:
+                update_status("Selecione uma imagem primeiro", COLORS["error"])
+                return
+            
+            update_status("Removendo fundo...", COLORS["info"])
+            
+            try:
+                from src.rendering.image_pipeline import ImagePipeline
+                system_root = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root"
+                pipeline = ImagePipeline(str(system_root))
+                
+                processed_image_path = await asyncio.to_thread(
+                    pipeline.remove_background, current_image_path
+                )
+                
+                update_status("Fundo removido com sucesso!", COLORS["success"])
+                
+            except ImportError:
+                update_status("Instale rembg: pip install rembg", COLORS["error"])
+            except Exception as ex:
+                update_status(f"Erro: {ex}", COLORS["error"])
+        
+        async def handle_upscale(e):
+            """Aumenta resolução usando Real-ESRGAN."""
+            nonlocal processed_image_path
+            
+            source = processed_image_path or current_image_path
+            if not source:
+                update_status("Selecione uma imagem primeiro", COLORS["error"])
+                return
+            
+            update_status("Ampliando 4x (pode demorar)...", COLORS["info"])
+            
+            try:
+                from src.rendering.image_pipeline import ImagePipeline
+                system_root = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root"
+                pipeline = ImagePipeline(str(system_root))
+                
+                processed_image_path = await asyncio.to_thread(
+                    pipeline.upscale, source, 4
+                )
+                
+                update_status("Resolução aumentada 4x!", COLORS["success"])
+                
+            except Exception as ex:
+                update_status(f"Erro no upscale: {ex}", COLORS["error"])
+        
+        async def handle_save(e):
+            """Salva imagem processada no vault."""
+            source = processed_image_path or current_image_path
+            if not source:
+                update_status("Nenhuma imagem para salvar", COLORS["error"])
+                return
+            
+            update_status("Salvando no vault...", COLORS["info"])
+            
+            try:
+                from src.rendering.image_pipeline import ImagePipeline
+                from src.core.repositories import ProductRepository
+                from src.core.database import AsyncSessionLocal
+                
+                system_root = Path(__file__).parent.parent.parent.parent / "AutoTabloide_System_Root"
+                pipeline = ImagePipeline(str(system_root))
+                
+                # Armazena no vault
+                img_hash = await asyncio.to_thread(pipeline.store_in_vault, source)
+                
+                # Gera thumbnail
+                await asyncio.to_thread(pipeline.generate_thumbnail, source)
+                
+                # Atualiza produto no banco
+                async with AsyncSessionLocal() as session:
+                    repo = ProductRepository(session)
+                    await repo.add_image_to_product(product['id'], img_hash)
+                
+                update_status(f"Salvo! Hash: {img_hash[:8]}...", COLORS["success"])
+                
+                # Fecha modal após breve delay
+                await asyncio.sleep(1.5)
+                close_modal(None)
+                
+                # Recarrega lista
+                self.page.run_task(self._load_products)
+                
+            except Exception as ex:
+                update_status(f"Erro ao salvar: {ex}", COLORS["error"])
         
         # Conteúdo do modal
         content = ft.Column(
@@ -326,7 +435,7 @@ class EstoqueView(ft.UserControl):
                                         ft.ElevatedButton(
                                             "Buscar Imagem",
                                             icon=ft.icons.IMAGE_SEARCH,
-                                            on_click=lambda e: print("Hunter search...")
+                                            on_click=lambda e: update_status("Busca enfileirada para o Sentinel...", COLORS["info"])
                                         ),
                                         ft.Container(
                                             content=ft.Text("Resultados aparecerao aqui..."),
@@ -348,6 +457,7 @@ class EstoqueView(ft.UserControl):
                                 content=ft.Column(
                                     [
                                         ft.Container(
+                                            ref=preview_container,
                                             content=ft.Column(
                                                 [
                                                     ft.Icon(ft.icons.CLOUD_UPLOAD, size=50, color=ft.colors.GREY_500),
@@ -370,15 +480,25 @@ class EstoqueView(ft.UserControl):
                     expand=True
                 ),
                 ft.Divider(),
+                ft.Text(ref=status_text, value="Selecione ou busque uma imagem", size=12, color=ft.colors.GREY_400),
                 ft.Row(
                     [
-                        ft.OutlinedButton("Remover Fundo", icon=ft.icons.AUTO_FIX_HIGH),
-                        ft.OutlinedButton("Upscale 4x", icon=ft.icons.ZOOM_IN),
+                        ft.OutlinedButton(
+                            "Remover Fundo", 
+                            icon=ft.icons.AUTO_FIX_HIGH,
+                            on_click=lambda e: self.page.run_task(handle_remove_background, e)
+                        ),
+                        ft.OutlinedButton(
+                            "Upscale 4x", 
+                            icon=ft.icons.ZOOM_IN,
+                            on_click=lambda e: self.page.run_task(handle_upscale, e)
+                        ),
                         ft.Container(expand=True),
                         ft.ElevatedButton(
                             "Salvar",
                             icon=ft.icons.SAVE,
-                            style=ft.ButtonStyle(bgcolor=COLORS["success"])
+                            style=ft.ButtonStyle(bgcolor=COLORS["success"]),
+                            on_click=lambda e: self.page.run_task(handle_save, e)
                         )
                     ]
                 )
@@ -397,6 +517,7 @@ class EstoqueView(ft.UserControl):
         self.page.dialog = modal
         modal.open = True
         self.page.update()
+
 
     def _on_import_click(self, e):
         """Abre diálogo de importação."""

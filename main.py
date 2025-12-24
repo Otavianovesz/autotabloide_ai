@@ -67,7 +67,15 @@ if __name__ == "__main__":
     # 2. Verificar Integridade
     check_integrity()
     
-    # 3. Iniciar Aplicação
+    # 3. Inicializar Safe Mode (Vol. III, Cap. 8.2)
+    from src.core.safe_mode import init_safe_mode, get_safe_mode_controller
+    safe_mode_controller, is_safe_mode = init_safe_mode(SYSTEM_ROOT)
+    
+    if is_safe_mode:
+        print("\n[⚠️ SAFE MODE] Sistema em modo de recuperação!")
+        print("[⚠️ SAFE MODE] Recursos limitados ativados.")
+    
+    # 4. Iniciar Aplicação
     try:
         print("\n[SYSTEM] Inicializando AutoTabloide AI...")
         
@@ -81,10 +89,14 @@ if __name__ == "__main__":
         from src.ui.views.atelier import AtelierView
         from src.ui.views.factory import FactoryView
         from src.ui.views.cofre import CofreView
+        from src.ui.views.settings import SettingsView
+        
+        # NeuralEngine (processo isolado para IA)
+        from src.ai.neural_engine import initialize_neural_engine, shutdown_neural_engine
         
         # Configuração do Sentinel (AI Sidecar)
         sentinel_config = {
-            "model_path": str(SYSTEM_ROOT / "bin" / "Llama-3-8B-Instruct.Q4_K_M.gguf"),
+            "model_path": str(SYSTEM_ROOT / "bin" / "Llama-3-8b-instruct.Q4_K_M.gguf"),
             "temp_dir": str(SYSTEM_ROOT / "staging" / "downloads")
         }
         
@@ -98,10 +110,14 @@ if __name__ == "__main__":
         print(f"[SYSTEM] Sentinel Sidecar PID: {sentinel.pid}")
 
         def main(page: ft.Page):
+            # === Import Design System ===
+            from src.ui.design_system import ColorScheme, apply_page_theme
+            
             # === Configuração da Página (Vol. VI, Cap. 1.1) ===
             page.title = "AutoTabloide AI - Codex Industrialis"
-            page.theme_mode = ft.ThemeMode.DARK
-            page.padding = 0
+            
+            # Aplica tema premium
+            apply_page_theme(page)
             page.scroll = ft.ScrollMode.HIDDEN  # Rolagem gerenciada por componentes
             
             # Dimensões mínimas (Vol. VI, Tab. 1.1)
@@ -109,12 +125,6 @@ if __name__ == "__main__":
             page.window_min_height = 720
             page.window_width = 1400
             page.window_height = 900
-            
-            # Fontes customizadas (se disponíveis)
-            page.fonts = {
-                "Roboto": "/assets/fonts/Roboto-Regular.ttf",
-                "JetBrains": "/assets/fonts/JetBrainsMono.ttf"
-            }
             
             # Inicializa DB de forma assíncrona
             page.run_task(init_database)
@@ -135,6 +145,8 @@ if __name__ == "__main__":
                         view_cache[index] = FactoryView(page)
                     elif index == 4:
                         view_cache[index] = CofreView(page)
+                    elif index == 5:
+                        view_cache[index] = SettingsView(page)
                 return view_cache.get(index)
             
             def change_view(e):
@@ -167,7 +179,8 @@ if __name__ == "__main__":
                 min_extended_width=200,
                 extended=True,
                 group_alignment=-0.9,
-                bgcolor="#111111",
+                bgcolor=ColorScheme.BG_PRIMARY,
+                indicator_color=ColorScheme.ACCENT_PRIMARY,
                 destinations=[
                     ft.NavigationRailDestination(
                         icon=ft.icons.DASHBOARD_OUTLINED,
@@ -194,6 +207,11 @@ if __name__ == "__main__":
                         selected_icon=ft.icons.SHIELD,
                         label="Cofre"
                     ),
+                    ft.NavigationRailDestination(
+                        icon=ft.icons.SETTINGS_OUTLINED,
+                        selected_icon=ft.icons.SETTINGS,
+                        label="Config"
+                    ),
                 ],
                 on_change=change_view
             )
@@ -202,29 +220,21 @@ if __name__ == "__main__":
             body = ft.Container(
                 content=DashboardView(page),  # View inicial
                 expand=True,
-                bgcolor="#1A1A1A",
+                bgcolor=ColorScheme.BG_PRIMARY,
                 padding=0
             )
 
             # === Barra de Status Inferior (Vol. VI, Cap. 1.3) ===
-            status_bar = ft.Container(
-                content=ft.Row(
-                    [
-                        ft.Icon(ft.icons.STORAGE, size=14, color=ft.colors.GREEN),
-                        ft.Text("DB: OK", size=11, color=ft.colors.GREY_400),
-                        ft.VerticalDivider(width=1, color=ft.colors.GREY_800),
-                        ft.Icon(ft.icons.PSYCHOLOGY, size=14, color=ft.colors.GREY_500),
-                        ft.Text("IA: Idle", size=11, color=ft.colors.GREY_400),
-                        ft.Container(expand=True),
-                        ft.Text("v1.0.0", size=11, color=ft.colors.GREY_600)
-                    ],
-                    spacing=10,
-                    alignment=ft.MainAxisAlignment.START
-                ),
-                height=24,
-                bgcolor="#000000",
-                padding=ft.padding.symmetric(horizontal=15)
+            # Importa componente de telemetria
+            from src.ui.components.status_bar import StatusBarWithTelemetry
+            
+            status_bar = StatusBarWithTelemetry(
+                on_sentinel_click=lambda: print("[UI] Sentinel clicked"),
+                on_db_click=lambda: print("[UI] DB clicked")
             )
+            
+            # Atualiza status inicial do Sentinel
+            status_bar.set_sentinel_status("online" if sentinel.is_alive() else "offline")
 
             # === Layout Principal ===
             page.add(
@@ -233,7 +243,7 @@ if __name__ == "__main__":
                         ft.Row(
                             [
                                 rail,
-                                ft.VerticalDivider(width=1, color="#333333"),
+                                ft.VerticalDivider(width=1, color=ColorScheme.BORDER_DEFAULT),
                                 body
                             ],
                             expand=True,
@@ -249,9 +259,10 @@ if __name__ == "__main__":
             # === Cleanup no Fechamento ===
             def on_window_event(e):
                 if e.data == "close":
-                    print("[SYSTEM] Encerrando Sentinel...")
+                    print("[SYSTEM] Encerrando processos...")
                     sentinel_in_q.put({"type": "STOP"})
                     sentinel.join(timeout=2)
+                    shutdown_neural_engine()
                     page.window_destroy()
             
             page.window_prevent_close = True

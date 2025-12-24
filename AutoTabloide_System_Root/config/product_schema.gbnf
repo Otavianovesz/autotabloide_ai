@@ -1,0 +1,29 @@
+# GBNF Grammar for Product ETL Extraction
+# Enforces strict JSON output from LLM
+# Vol. IV, Cap. 1.4 - Deterministic Decoding
+
+root ::= object
+
+object ::= "{" ws pair_list "}" ws
+
+pair_list ::= pair ("," ws pair)*
+
+pair ::= string ":" ws value
+
+string ::= "\"" chars "\""
+
+chars ::= char*
+
+char ::= [a-zA-Z0-9_ áéíóúâêîôûàèìòùãõçÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇ.,;:!?()/-]+
+
+value ::= string | number | "null" | boolean | array
+
+boolean ::= "true" | "false"
+
+number ::= integer ("." [0-9]+)?
+
+integer ::= "-"? [0-9]+
+
+array ::= "[" ws (value ("," ws value)*)? "]" ws
+
+ws ::= [ \t\n]*

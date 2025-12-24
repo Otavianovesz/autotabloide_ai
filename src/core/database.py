@@ -221,3 +221,129 @@ async def get_table_counts() -> dict:
         counts['audit_logs'] = result.scalar() or 0
         
         return counts
+
+
+# ==============================================================================
+# PROTOCOLO MÁQUINA DO TEMPO: Snapshots Atômicos
+# ==============================================================================
+
+async def create_atomic_snapshot(output_path: str = None) -> str:
+    """
+    Cria snapshot atômico do banco de dados usando VACUUM INTO.
+    
+    PROTOCOLO MÁQUINA DO TEMPO (Vol. V, Cap. 3):
+    - Backup a quente (sem parar o sistema)
+    - Atômico (tudo ou nada)
+    - Consistente (snapshot point-in-time)
+    
+    Args:
+        output_path: Caminho do backup. Se None, gera automaticamente.
+        
+    Returns:
+        Caminho do arquivo de backup criado
+    """
+    from datetime import datetime
+    import os
+    
+    # Gera caminho se não especificado
+    if output_path is None:
+        snapshots_dir = DB_PATH.parent / "snapshots"
+        os.makedirs(snapshots_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = str(snapshots_dir / f"core_snapshot_{timestamp}.db")
+    else:
+        # Garante que diretório existe
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    async with AsyncSessionLocal() as session:
+        try:
+            # VACUUM INTO: cria cópia atômica em um único comando
+            # Isso é mais seguro que copiar arquivos manualmente
+            await session.execute(text(f"VACUUM INTO '{output_path}'"))
+            await session.commit()
+            
+            logger.info(f"Snapshot atômico criado: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Falha ao criar snapshot: {e}")
+            raise
+
+
+async def restore_from_snapshot(snapshot_path: str, backup_current: bool = True) -> bool:
+    """
+    Restaura banco de dados a partir de um snapshot.
+    
+    ATENÇÃO: Esta operação substitui o banco atual!
+    
+    Args:
+        snapshot_path: Caminho do snapshot a restaurar
+        backup_current: Se True, faz backup do estado atual antes
+        
+    Returns:
+        True se restauração bem sucedida
+    """
+    import shutil
+    from datetime import datetime
+    
+    snapshot_file = Path(snapshot_path)
+    if not snapshot_file.exists():
+        raise FileNotFoundError(f"Snapshot não encontrado: {snapshot_path}")
+    
+    try:
+        # 1. Backup do estado atual (segurança)
+        if backup_current:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = DB_PATH.parent / "snapshots" / f"pre_restore_{timestamp}.db"
+            await create_atomic_snapshot(str(backup_path))
+            logger.info(f"Backup pré-restauração criado: {backup_path}")
+        
+        # 2. Fecha conexões ativas (importante!)
+        await engine.dispose()
+        
+        # 3. Remove WAL e SHM se existirem
+        wal_file = DB_PATH.with_suffix('.db-wal')
+        shm_file = DB_PATH.with_suffix('.db-shm')
+        
+        for f in [wal_file, shm_file]:
+            if f.exists():
+                f.unlink()
+        
+        # 4. Substitui o banco
+        shutil.copy2(snapshot_path, DB_PATH)
+        
+        logger.info(f"Banco restaurado de: {snapshot_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Falha na restauração: {e}")
+        raise
+
+
+async def list_snapshots() -> list:
+    """
+    Lista todos os snapshots disponíveis.
+    
+    Returns:
+        Lista de dicts com info de cada snapshot
+    """
+    import os
+    from datetime import datetime
+    
+    snapshots_dir = DB_PATH.parent / "snapshots"
+    if not snapshots_dir.exists():
+        return []
+    
+    snapshots = []
+    for f in sorted(snapshots_dir.iterdir(), reverse=True):
+        if f.suffix == '.db':
+            stat = f.stat()
+            snapshots.append({
+                "name": f.name,
+                "path": str(f),
+                "size_bytes": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+    
+    return snapshots

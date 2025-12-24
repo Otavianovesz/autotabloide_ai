@@ -1,118 +1,290 @@
+"""
+AutoTabloide AI - Verificador de Integridade do Sistema
+=========================================================
+Bootloader estrito conforme auditoria de resiliência.
+Protocolo 4: Verificação Hash de binários e assets críticos.
+"""
+
 import os
-import sys
-import platform
-import shutil
-import aiosqlite
+import hashlib
+import logging
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
 
-# Constants matching setup.py
-SYSTEM_ROOT_NAME = "AutoTabloide_System_Root"
+logger = logging.getLogger("IntegrityChecker")
 
-def get_system_root() -> Path:
-    """Resolves the absolute path to the system root."""
-    # Assuming runtime execution from project root or similar. 
-    # Adjust logic if needed based on entry point.
-    return Path.cwd() / SYSTEM_ROOT_NAME
 
-class MissingBinaryError(Exception):
-    """Raised when a critical binary is missing from /bin."""
-    pass
+class AssetStatus(str, Enum):
+    """Status de verificação de asset."""
+    OK = "OK"
+    MISSING = "MISSING"
+    CORRUPTED = "CORRUPTED"
+    SIZE_MISMATCH = "SIZE_MISMATCH"
 
-class FatalFileSystemError(Exception):
-    """Raised when the system cannot write to its own directories."""
-    pass
+
+@dataclass
+class AssetCheck:
+    """Resultado de verificação de um asset."""
+    path: str
+    status: AssetStatus
+    expected_hash: Optional[str] = None
+    actual_hash: Optional[str] = None
+    expected_size: Optional[int] = None
+    actual_size: Optional[int] = None
+
 
 class IntegrityChecker:
     """
-    Runtime verification logic. 
-    Runs at application boot to ensure environment sanity.
+    Verificador de Integridade do Sistema.
+    
+    PROTOCOLO BOOTLOADER ESTRITO:
+    - Verifica existência de binários vitais
+    - Valida integridade via hash MD5 (opcional, para assets críticos)
+    - Detecta arquivos corrompidos (0 bytes)
+    - Relatório completo de status
     """
     
-    REQUIRED_DIRS = [
-        "bin", "database", "temp_render", "assets/profiles"
-    ]
-
-    def __init__(self):
-        self.root = get_system_root()
-
-    def check_topology(self):
-        if not self.root.exists():
-             raise FatalFileSystemError(f"System Root not found at {self.root}. Run setup.py first.")
+    # Assets obrigatórios para funcionamento básico
+    # Formato: (caminho relativo, hash esperado ou None, tamanho mínimo em bytes)
+    REQUIRED_ASSETS = {
+        # Binários vitais
+        "bin/gswin64c.exe": (None, 1000),  # Ghostscript (hash varia por versão)
         
-        for d in self.REQUIRED_DIRS:
-            path = self.root / d
-            if not path.exists():
-                 # We could auto-create, but at runtime, missing 'bin' or 'assets' is suspicious.
-                 # 'temp_render' is volatile so we can create it.
-                 if d == "temp_render":
-                     path.mkdir(parents=True, exist_ok=True)
-                 else:
-                     raise FatalFileSystemError(f"Critical directory missing: {path}")
-
-    def check_binaries(self):
-        bin_dir = self.root / "bin"
-        system = platform.system()
+        # Perfis ICC para conversão CMYK
+        "assets/profiles/CoatedFOGRA39.icc": (None, 500000),
         
-        vec_lib = "vec0.dll" if system == "Windows" else "vec0.so"
-        print(f"[DEBUG] Checking for sqlite-vec at: {bin_dir / vec_lib}")
-        if not (bin_dir / vec_lib).exists():
-             raise MissingBinaryError(f"sqlite-vec extension ({vec_lib}) missing in {bin_dir}")
+        # Diretórios estruturais
+        "database": (None, None),  # Diretório deve existir
+        "vault/images": (None, None),
+        "staging": (None, None),
+    }
+    
+    # Assets opcionais (warning se ausentes)
+    OPTIONAL_ASSETS = {
+        "bin/realesrgan-ncnn-vulkan.exe": (None, 1000),
+        "bin/Llama-3-8B-Instruct.Q4_K_M.gguf": (None, 1000000),
+    }
+    
+    def __init__(self, system_root: Optional[str] = None):
+        """
+        Args:
+            system_root: Raiz do sistema. Se None, auto-detecta.
+        """
+        if system_root:
+            self.system_root = Path(system_root)
+        else:
+            # Auto-detecta
+            self.system_root = Path(__file__).parent.parent.parent / "AutoTabloide_System_Root"
+        
+        self.check_results: List[AssetCheck] = []
+        self.critical_failures: List[str] = []
+        self.warnings: List[str] = []
 
-        gs_exe = "gswin64c.exe" if system == "Windows" else "gs"
-        if not (bin_dir / gs_exe).exists():
-             raise MissingBinaryError(f"Ghostscript executable ({gs_exe}) missing in {bin_dir}")
+    def run(self, strict_hash: bool = False) -> bool:
+        """
+        Executa verificação completa de integridade.
+        
+        Args:
+            strict_hash: Se True, valida hashes MD5 (mais lento)
+            
+        Returns:
+            True se todos os assets críticos estão OK
+        """
+        self.check_results = []
+        self.critical_failures = []
+        self.warnings = []
+        
+        logger.info(f"Verificação de integridade: {self.system_root}")
+        
+        # Verifica se o diretório raiz existe
+        if not self.system_root.exists():
+            self.critical_failures.append(
+                f"CRITICO: Diretorio raiz nao existe: {self.system_root}"
+            )
+            return False
+        
+        # Verifica assets obrigatórios
+        for rel_path, (expected_hash, min_size) in self.REQUIRED_ASSETS.items():
+            check = self._check_asset(rel_path, expected_hash, min_size, strict_hash)
+            self.check_results.append(check)
+            
+            if check.status != AssetStatus.OK:
+                self.critical_failures.append(
+                    f"CRITICO: {rel_path} -> {check.status.value}"
+                )
+        
+        # Verifica assets opcionais
+        for rel_path, (expected_hash, min_size) in self.OPTIONAL_ASSETS.items():
+            check = self._check_asset(rel_path, expected_hash, min_size, strict_hash)
+            self.check_results.append(check)
+            
+            if check.status != AssetStatus.OK:
+                self.warnings.append(
+                    f"AVISO: {rel_path} -> {check.status.value}"
+                )
+        
+        # Log resultados
+        self._log_results()
+        
+        # Retorna True apenas se não houver falhas críticas
+        return len(self.critical_failures) == 0
 
-    def clean_temp(self):
-        temp_dir = self.root / "temp_render"
-        if temp_dir.exists():
-            for item in temp_dir.iterdir():
-                try:
-                    if item.is_file():
-                        item.unlink()
-                    elif item.is_dir():
-                        shutil.rmtree(item)
-                except Exception as e:
-                    print(f"Warning: Failed to clean temp item {item}: {e}")
+    def _check_asset(
+        self, 
+        rel_path: str, 
+        expected_hash: Optional[str],
+        min_size: Optional[int],
+        validate_hash: bool
+    ) -> AssetCheck:
+        """Verifica um asset individual."""
+        full_path = self.system_root / rel_path
+        
+        # 1. Verifica existência
+        if not full_path.exists():
+            return AssetCheck(
+                path=rel_path,
+                status=AssetStatus.MISSING
+            )
+        
+        # 2. Se for diretório, apenas verifica existência
+        if full_path.is_dir():
+            return AssetCheck(
+                path=rel_path,
+                status=AssetStatus.OK
+            )
+        
+        # 3. Verifica tamanho
+        actual_size = full_path.stat().st_size
+        
+        if actual_size == 0:
+            return AssetCheck(
+                path=rel_path,
+                status=AssetStatus.CORRUPTED,
+                actual_size=0
+            )
+        
+        if min_size and actual_size < min_size:
+            return AssetCheck(
+                path=rel_path,
+                status=AssetStatus.SIZE_MISMATCH,
+                expected_size=min_size,
+                actual_size=actual_size
+            )
+        
+        # 4. Verifica hash se solicitado e esperado
+        if validate_hash and expected_hash:
+            actual_hash = self._calculate_md5(full_path)
+            
+            if actual_hash != expected_hash:
+                return AssetCheck(
+                    path=rel_path,
+                    status=AssetStatus.CORRUPTED,
+                    expected_hash=expected_hash,
+                    actual_hash=actual_hash
+                )
+        
+        return AssetCheck(
+            path=rel_path,
+            status=AssetStatus.OK,
+            actual_size=actual_size
+        )
 
-    def run(self):
-        self.check_topology()
-        self.check_binaries()
-        self.clean_temp()
-        print("[INTEGRITY] Runtime verification passed.")
+    def _calculate_md5(self, file_path: Path) -> str:
+        """Calcula hash MD5 de um arquivo."""
+        hash_md5 = hashlib.md5()
+        
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        
+        return hash_md5.hexdigest()
 
-# --- Database Factory with Robust Extension Loading ---
+    def _log_results(self):
+        """Loga resultados da verificação."""
+        ok_count = sum(1 for r in self.check_results if r.status == AssetStatus.OK)
+        total = len(self.check_results)
+        
+        logger.info(f"Verificação: {ok_count}/{total} assets OK")
+        
+        for failure in self.critical_failures:
+            logger.error(failure)
+        
+        for warning in self.warnings:
+            logger.warning(warning)
 
-async def get_db(db_path: str = None) -> aiosqlite.Connection:
+    def get_report(self) -> Dict:
+        """Retorna relatório estruturado."""
+        return {
+            "system_root": str(self.system_root),
+            "total_checks": len(self.check_results),
+            "passed": sum(1 for r in self.check_results if r.status == AssetStatus.OK),
+            "failed": len(self.critical_failures),
+            "warnings": len(self.warnings),
+            "critical_failures": self.critical_failures,
+            "warnings_list": self.warnings,
+            "details": [
+                {
+                    "path": r.path,
+                    "status": r.status.value,
+                    "size": r.actual_size
+                }
+                for r in self.check_results
+            ]
+        }
+
+
+def verify_system_integrity(system_root: Optional[str] = None, strict: bool = False) -> bool:
     """
-    Creates an aiosqlite connection with sqlite-vec loaded safely.
-    Uses non-blocking syntax for extension loading.
+    Função helper para verificação rápida.
+    
+    Args:
+        system_root: Raiz do sistema
+        strict: Se True, falha o processo se integridade falhar
+        
+    Returns:
+        True se sistema íntegro
     """
-    root = get_system_root()
-    if db_path is None:
-        db_path = root / "database" / "core.db"
+    checker = IntegrityChecker(system_root)
+    result = checker.run()
     
-    # Determine extension path
-    bin_dir = root / "bin"
-    ext_name = "vec0.dll" if platform.system() == "Windows" else "vec0.so"
-    lib_path = os.path.abspath(bin_dir / ext_name)
+    if strict and not result:
+        import sys
+        print("\n[CRITICO] Falha na verificação de integridade do sistema:")
+        for failure in checker.critical_failures:
+            print(f"  - {failure}")
+        print("\nO sistema não pode iniciar com segurança.")
+        sys.exit(1)
     
-    conn = await aiosqlite.connect(db_path)
-    
-    # Enable extension loading
-    # Note: enable_load_extension is not async in aiosqlite < 0.20 (checking context usually safe to run in executor)
-    # But for strict asyncio compliance/robustness as requested:
-    
-    def _enable_and_load(db_conn, extension_path):
-        """Helper to run in thread pool to avoid blocking the event loop."""
-        db_conn.enable_load_extension(True)
-        db_conn.load_extension(extension_path)
+    return result
 
-    try:
-        # aiosqlite 0.19+ supports await conn.load_extension logic directly usually, 
-        # but the request specifically asked for robust thread usage.
-        await conn.run_async(_enable_and_load, lib_path)
-    except Exception as e:
-        await conn.close()
-        raise RuntimeError(f"Failed to load sqlite-vec extension from {lib_path}. Error: {e}")
 
-    return conn
+def create_asset_snapshot(system_root: str, output_path: str) -> str:
+    """
+    Cria snapshot de hashes dos assets para verificação futura.
+    
+    Útil para distribuição: gera arquivo de referência dos hashes.
+    """
+    root = Path(system_root)
+    hashes = {}
+    
+    for path in root.rglob("*"):
+        if path.is_file():
+            rel_path = str(path.relative_to(root))
+            hash_md5 = hashlib.md5()
+            
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hash_md5.update(chunk)
+            
+            hashes[rel_path] = {
+                "md5": hash_md5.hexdigest(),
+                "size": path.stat().st_size
+            }
+    
+    import json
+    with open(output_path, "w") as f:
+        json.dump(hashes, f, indent=2)
+    
+    return output_path
