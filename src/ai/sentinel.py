@@ -480,6 +480,9 @@ class SentinelProcess(multiprocessing.Process):
             return self._sanitize_text(task)
         elif task_type == "HUNT_IMAGE":
             return self._hunt_image(task)
+        elif task_type == "PROCESS_IMAGE":
+            # Passo 22-23: Integração ImageProcessor
+            return self._process_image(task)
         else:
             return {"status": "error", "error": f"Tipo desconhecido: {task_type}"}
 
@@ -568,9 +571,48 @@ JSON:"""
                 "error": str(e)
             }
 
+    def _process_image(self, task: Dict) -> Dict:
+        """
+        Processa imagem via ImageProcessor.
+        Passo 22-23 do Checklist - Integração ImageProcessor no Sentinel.
+        """
+        image_path = task.get("image_path")
+        remove_bg = task.get("remove_bg", False)  # Passo 23: Flag remove_bg
+        
+        if not image_path or not os.path.exists(image_path):
+            return {"status": "error", "task_id": task.get("id"), "error": "Imagem não encontrada"}
+        
+        try:
+            # Importa ImageProcessor
+            from src.ai.vision import ImageProcessor
+            processor = ImageProcessor()
+            
+            # Lê imagem
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+            
+            # Processa
+            result = processor.process_image(image_bytes, remove_bg=remove_bg)
+            
+            # Salva resultado
+            output_path = image_path.replace(".", "_processed.")
+            with open(output_path, "wb") as f:
+                f.write(result)
+            
+            return {
+                "status": "success",
+                "task_id": task.get("id"),
+                "result": {"processed_path": output_path}
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao processar imagem: {e}")
+            return {"status": "error", "task_id": task.get("id"), "error": str(e)}
+
     def _cleanup(self):
         """Limpeza de recursos."""
         if self._hunter:
             self._hunter.shutdown()
         if self.llm:
             del self.llm
+

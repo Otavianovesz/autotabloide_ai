@@ -18,9 +18,16 @@ pillow = "10.2.0"
 pypdf = "4.0.1"
 loguru = "0.7.2"
 pydantic = "2.6.0"
-rapidfuzz = "^3.6.0"
+rapidfuzz = "3.6.0"  # Versão fixa (Passo do Checklist)
 playwright = "1.41.0"
-psutil = "^7.1.3"
+psutil = "7.1.3"  # Versão fixa (Passo do Checklist)
+# === Visão Computacional (Passos 16-17) ===
+rembg = "2.0.50"  # Remoção de fundo com U2-Net
+opencv-python-headless = "4.9.0.80"  # Processamento sem GUI
+onnxruntime = "1.17.0"  # Backend para rembg
+# === Alembic para Migrations (Passos 7-9) ===
+alembic = "1.13.1"
+
 
 [build-system]
 requires = ["poetry-core"]
@@ -28,5 +35,29 @@ build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
 dev = [
-    "pytest (>=9.0.2,<10.0.0)"
+    "pytest (>=9.0.2,<10.0.0)",
+    "black (>=24.0.0)",
+    "ruff (>=0.1.0)",
+    "mypy (>=1.8.0)"
 ]
+
+# ==============================================================================
+# LINTING (Passo 100 do Checklist)
+# ==============================================================================
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+exclude = '''/(\.eggs|\.git|\.venv|build|dist|alembic|__pycache__)/'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008", "C901"]
+exclude = [".eggs", ".git", ".venv", "build", "dist", "alembic"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["tests"]

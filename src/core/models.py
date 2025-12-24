@@ -3,13 +3,17 @@ AutoTabloide AI - Modelos de Dados (SQLAlchemy ORM)
 ====================================================
 Schema completo conforme Documentação Técnica Volumes I, III, IV e V.
 
-Tabelas:
+Tabelas Core (core.db):
 - Produto: Inventário mestre de produtos
 - ProdutoAlias: Aprendizado de correlação de nomes
 - LayoutMeta: Metadados de templates SVG
 - ProjetoSalvo: Workspaces persistentes (snapshot imutável)
+- SystemConfig: Configurações chave-valor do sistema
+
+Tabelas Learning (learning.db):
 - AuditLog: Rastreabilidade forense
 - KnowledgeVector: RAG local para embeddings
+- HumanCorrection: Feedback loop de aprendizado
 """
 
 import json
@@ -25,8 +29,17 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
+# ==============================================================================
+# BASE CLASSES PARA DUAL-DATABASE (Passo 1-2 do Checklist)
+# ==============================================================================
+
 class Base(DeclarativeBase):
-    """Base class para todos os modelos SQLAlchemy."""
+    """Base class para modelos do core.db (produtos, projetos, layouts)."""
+    pass
+
+
+class LearningBase(DeclarativeBase):
+    """Base class para modelos do learning.db (IA, auditoria, vetores)."""
     pass
 
 
@@ -413,11 +426,72 @@ class ProjetoSalvo(Base):
 
 
 # ==============================================================================
+# TABELA: SYSTEM_CONFIG (Configurações Chave-Valor)
+# Passo 6 do Checklist - Settings persistentes no banco
+# ==============================================================================
+
+class SystemConfig(Base):
+    """
+    Configurações do sistema em formato chave-valor.
+    Substitui dependência de arquivos JSON para settings críticos.
+    """
+    __tablename__ = "system_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Chave única de configuração
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    
+    # Valor como JSON string (suporta tipos complexos)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="null")
+    
+    # Tipo de dado para deserialização correta
+    value_type: Mapped[str] = mapped_column(String(20), default="string")
+    
+    # Descrição para UI
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    
+    # Categoria para agrupamento
+    category: Mapped[str] = mapped_column(String(50), default="general", index=True)
+    
+    # Se pode ser editado pela UI
+    editable: Mapped[bool] = mapped_column(Integer, default=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, server_default=func.now()
+    )
+    last_modified: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=func.now()
+    )
+
+    def get_value(self):
+        """Retorna valor deserializado corretamente."""
+        try:
+            return json.loads(self.value)
+        except json.JSONDecodeError:
+            return self.value
+    
+    def set_value(self, value):
+        """Serializa valor para JSON."""
+        self.value = json.dumps(value, ensure_ascii=False)
+        self.value_type = type(value).__name__
+
+    def __repr__(self):
+        return f"<SystemConfig(key='{self.key}', value='{self.value[:30]}...')>"
+
+
+# ==============================================================================
+# TABELAS DO LEARNING.DB (Separação física para IA e Auditoria)
+# Passos 3-5 do Checklist
+# ==============================================================================
+
+# ==============================================================================
 # TABELA: AUDIT_LOG (Rastreabilidade Forense)
 # Vol. V, Cap. 5.1 - Histórico completo para rollback
 # ==============================================================================
 
-class AuditLog(Base):
+class AuditLog(LearningBase):
     """
     Log de auditoria para rastreabilidade total.
     Permite "Time Machine" - rollback de qualquer alteração.
@@ -494,10 +568,11 @@ class AuditLog(Base):
 # Vol. IV, Cap. 2.2 - Embeddings para memória institucional
 # ==============================================================================
 
-class KnowledgeVector(Base):
+class KnowledgeVector(LearningBase):
     """
     Armazenamento de embeddings para busca semântica (RAG).
     Permite que a IA aprenda com correções do usuário.
+    NOTA: Reside em learning.db - sem FK para produtos.id
     """
     __tablename__ = "knowledge_vectors"
 
@@ -516,9 +591,9 @@ class KnowledgeVector(Base):
     # Dimensionalidade do vetor (ex: 384 para all-MiniLM-L6-v2)
     dimensions: Mapped[int] = mapped_column(Integer, default=384)
     
-    # Referência ao produto resultante (se for correção validada)
+    # Referência ao produto resultante (armazena o ID sem FK cross-database)
     produto_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("produtos.id"), nullable=True
+        Integer, nullable=True
     )
     
     # Resultado validado pelo humano
@@ -543,7 +618,7 @@ class KnowledgeVector(Base):
 # Vol. IV, Cap. 8 - Aprendizado via correções humanas
 # ==============================================================================
 
-class HumanCorrection(Base):
+class HumanCorrection(LearningBase):
     """
     Registro de correções humanas para aprendizado contínuo.
     Permite que o sistema aprenda com os erros sem re-treinamento.

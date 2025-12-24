@@ -11,6 +11,25 @@ from decimal import Decimal
 
 
 # ==============================================================================
+# PATHS DINÂMICOS (Passo 12 - Centralização)
+# ==============================================================================
+
+# Diretório base é o pai do src/
+BASE_DIR = Path(__file__).parent.parent.parent.resolve()
+SYSTEM_ROOT = BASE_DIR / "AutoTabloide_System_Root"
+
+# Paths derivados para uso em todo o sistema
+DB_DIR = SYSTEM_ROOT / "database"
+LOGS_DIR = SYSTEM_ROOT / "logs"
+CACHE_DIR = SYSTEM_ROOT / "cache"
+CONFIG_DIR = SYSTEM_ROOT / "config"
+ASSETS_DIR = SYSTEM_ROOT / "assets"
+FONTS_DIR = ASSETS_DIR / "fonts"
+STAGING_DIR = SYSTEM_ROOT / "staging"
+TEMP_DIR = SYSTEM_ROOT / "temp"
+
+
+# ==============================================================================
 # IDENTIDADE DO SISTEMA
 # ==============================================================================
 

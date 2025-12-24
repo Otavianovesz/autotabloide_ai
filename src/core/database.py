@@ -1,8 +1,12 @@
 """
-AutoTabloide AI - Configuração de Banco de Dados
-==================================================
+AutoTabloide AI - Configuração de Banco de Dados (Dual-Engine)
+================================================================
 Camada de persistência conforme Vol. I, Cap. 1.3.
 SQLite 3 com WAL Mode para concorrência não-bloqueante.
+
+ARQUITETURA DUAL-DATABASE (Passos 1-2 do Checklist 100):
+- core.db: Produtos, Projetos, Layouts, SystemConfig
+- learning.db: AuditLog, KnowledgeVector, HumanCorrection
 """
 
 import os
@@ -22,34 +26,24 @@ logger = logging.getLogger("Database")
 BASE_DIR = Path(__file__).parent.parent.parent.resolve()
 SYSTEM_ROOT = BASE_DIR / "AutoTabloide_System_Root"
 DB_DIR = SYSTEM_ROOT / "database"
-DB_PATH = DB_DIR / "core.db"
 
-# URL de conexão assíncrona
-DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
+# Caminhos dos bancos de dados
+CORE_DB_PATH = DB_DIR / "core.db"
+LEARNING_DB_PATH = DB_DIR / "learning.db"
+
+# URLs de conexão assíncrona
+CORE_DATABASE_URL = f"sqlite+aiosqlite:///{CORE_DB_PATH}"
+LEARNING_DATABASE_URL = f"sqlite+aiosqlite:///{LEARNING_DB_PATH}"
 
 # Garantia de existência do diretório (Evita crash inicial)
-os.makedirs(DB_DIR, exist_ok=True)
+DB_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ==============================================================================
-# ENGINE ASSÍNCRONA
+# FUNÇÃO DE PRAGMAS (Reutilizável para ambas engines)
 # ==============================================================================
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,  # True apenas para debug profundo
-    future=True,
-    # Configurações de pool para SQLite
-    pool_pre_ping=True,
-)
-
-
-# ==============================================================================
-# PRAGMAS CRÍTICOS (Lei do Sistema - Vol. I, Cap. 1.3)
-# ==============================================================================
-
-@event.listens_for(engine.sync_engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
+def _configure_sqlite_pragmas(dbapi_connection, connection_record):
     """
     Configura PRAGMAs essenciais para performance e integridade.
     Executado a cada nova conexão ao banco.
@@ -75,15 +69,58 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA mmap_size=30000000")
     
     cursor.close()
-    # logger.debug("SQLite PRAGMAs configurados com sucesso.")
 
 
 # ==============================================================================
-# SESSION FACTORY
+# ENGINE CORE (Produtos, Projetos, Layouts)
 # ==============================================================================
 
+core_engine = create_async_engine(
+    CORE_DATABASE_URL,
+    echo=False,
+    future=True,
+    pool_pre_ping=True,
+)
+
+# Aplica PRAGMAs na engine core
+event.listens_for(core_engine.sync_engine, "connect")(_configure_sqlite_pragmas)
+
+# Alias para retrocompatibilidade
+engine = core_engine
+DB_PATH = CORE_DB_PATH
+DATABASE_URL = CORE_DATABASE_URL
+
+
+# ==============================================================================
+# ENGINE LEARNING (IA, Auditoria, Vetores)
+# ==============================================================================
+
+learning_engine = create_async_engine(
+    LEARNING_DATABASE_URL,
+    echo=False,
+    future=True,
+    pool_pre_ping=True,
+)
+
+# Aplica PRAGMAs na engine learning
+event.listens_for(learning_engine.sync_engine, "connect")(_configure_sqlite_pragmas)
+
+
+# ==============================================================================
+# SESSION FACTORIES
+# ==============================================================================
+
+# Factory para core.db
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
+    bind=core_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
+
+# Factory para learning.db
+LearningSessionLocal = async_sessionmaker(
+    bind=learning_engine,
     class_=AsyncSession,
     expire_on_commit=False,
     autoflush=False
@@ -92,7 +129,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def get_db():
     """
-    Dependency Injection para sessões de banco de dados.
+    Dependency Injection para sessões do banco core.
     Uso: async with get_db() as session: ...
     """
     async with AsyncSessionLocal() as session:
@@ -102,30 +139,53 @@ async def get_db():
             await session.close()
 
 
+async def get_learning_db():
+    """
+    Dependency Injection para sessões do banco learning.
+    Uso: async with get_learning_db() as session: ...
+    """
+    async with LearningSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 def get_session_sync():
     """
-    Retorna factory de sessão para uso direto (sem generator).
+    Retorna factory de sessão core para uso direto (sem generator).
     Uso: session = await get_session_sync()()
     """
     return AsyncSessionLocal
 
 
+def get_learning_session_sync():
+    """
+    Retorna factory de sessão learning para uso direto.
+    """
+    return LearningSessionLocal
+
+
 # ==============================================================================
-# INICIALIZAÇÃO DO SCHEMA
+# INICIALIZAÇÃO DO SCHEMA (Dual-Database)
 # ==============================================================================
 
 async def init_db():
     """
-    Inicializa o Schema no Banco de Dados.
+    Inicializa os Schemas em ambos os Bancos de Dados.
     Cria todas as tabelas definidas em models.py se não existirem.
     """
-    from src.core.models import Base
+    from src.core.models import Base, LearningBase
     
-    async with engine.begin() as conn:
-        # Em produção real, usaríamos Alembic para migrações.
-        # Para o setup inicial, create_all é aceitável.
+    # Inicializa core.db (Produtos, Projetos, Layouts, SystemConfig)
+    async with core_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        logger.info(f"Schema do banco de dados inicializado em: {DB_PATH}")
+        logger.info(f"Schema CORE inicializado em: {CORE_DB_PATH}")
+    
+    # Inicializa learning.db (AuditLog, KnowledgeVector, HumanCorrection)
+    async with learning_engine.begin() as conn:
+        await conn.run_sync(LearningBase.metadata.create_all)
+        logger.info(f"Schema LEARNING inicializado em: {LEARNING_DB_PATH}")
 
 
 async def check_db_health() -> dict:

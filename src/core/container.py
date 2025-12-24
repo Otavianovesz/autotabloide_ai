@@ -224,3 +224,36 @@ def register_instance(service_type: Type[T], instance: T) -> None:
         instance: Instância já criada
     """
     get_container().register_instance(service_type, instance)
+
+
+# ==============================================================================
+# BOOTSTRAP DE SERVIÇOS (Passo 11 do Checklist 100)
+# ==============================================================================
+
+async def bootstrap_services() -> None:
+    """
+    Registra todos os serviços padrão no container.
+    Deve ser chamado uma vez no startup da aplicação.
+    
+    Serviços registrados:
+    - SettingsService: Configurações centralizadas
+    - EventBus: Sistema Pub/Sub
+    - ProjectManager: Gestão de projetos
+    """
+    from src.core.settings_service import SettingsService, get_settings
+    from src.core.event_bus import event_bus
+    from src.core.project_manager import ProjectManager
+    
+    container = get_container()
+    
+    # SettingsService (singleton inicializado)
+    settings = await get_settings()
+    container.register_instance(SettingsService, settings)
+    
+    # EventBus (já é singleton global)
+    from src.core.event_bus import EventBus
+    container.register_instance(EventBus, event_bus)
+    
+    # ProjectManager (factory)
+    container.register(ProjectManager, lambda: ProjectManager(), singleton=True)
+

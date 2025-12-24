@@ -1,0 +1,86 @@
+# ==============================================================================
+# AutoTabloide AI - Configuração de Linting
+# ==============================================================================
+# Passo 100 do Checklist 100
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | alembic
+  | __pycache__
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".eggs", ".git", ".hg", ".mypy_cache", ".tox", ".venv", "build", "dist", "alembic"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (tratado pelo black)
+    "B008",  # function call in default argument
+    "C901",  # complexity
+    "E712",  # comparison to True
+]
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "alembic",
+]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["alembic", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks integration tests",
+]
