@@ -122,8 +122,11 @@ class SlotData:
         """Define único produto no slot (substitui existentes)."""
         self.products = [ProductInSlot.from_product(product)]
 
+# Importa mixin de limpeza de eventos
+from src.ui.ui_safety import EventCleanupMixin
 
-class AtelierView(ft.UserControl):
+
+class AtelierView(EventCleanupMixin, ft.UserControl):
     """
     Tela de Montagem de Tabloides (A Mesa).
     
@@ -134,6 +137,8 @@ class AtelierView(ft.UserControl):
     4. Modal de override por slot
     5. Auto-preenchimento
     6. Undo/Redo
+    
+    Passo 17: Herda de EventCleanupMixin para limpeza automática de eventos.
     """
     
     def __init__(self, page: ft.Page):
@@ -451,17 +456,27 @@ class AtelierView(ft.UserControl):
         except Exception as e:
             print(f"[Atelier] Erro ao carregar projeto: {e}")
     
-    async def _load_shelf_products(self):
-        """Carrega produtos para a estante."""
+    async def _load_shelf_products(self, offset: int = 0, limit: int = 100):
+        """
+        Carrega produtos para a estante com paginação.
+        Passos 11-12 do Checklist v2 - Virtualização via paginação na query.
+        
+        Args:
+            offset: Posição inicial
+            limit: Quantidade máxima por página
+        """
         try:
             from src.core.repositories import ProductRepository
             from src.core.database import AsyncSessionLocal
             
             async with AsyncSessionLocal() as session:
                 repo = ProductRepository(session)
-                products = await repo.get_all()
                 
-                self.shelf_products = [
+                # Paginação na query - não carrega todos de uma vez
+                products = await repo.get_all(limit=limit, offset=offset)
+                total_count = await repo.count()
+                
+                new_products = [
                     {
                         "id": p.id,
                         "name": p.nome_sanitizado or p.sku_origem,
@@ -473,25 +488,52 @@ class AtelierView(ft.UserControl):
                     for p in products
                 ]
                 
+                if offset == 0:
+                    self.shelf_products = new_products
+                else:
+                    self.shelf_products.extend(new_products)
+                
                 self.filtered_products = self.shelf_products.copy()
+                self._shelf_total = total_count
+                self._shelf_offset = offset + len(new_products)
                 self.update()
                 
         except Exception as e:
             print(f"[Atelier] Erro ao carregar produtos: {e}")
     
     def _filter_products(self, e):
-        """Filtra produtos na estante."""
+        """
+        Filtra produtos na estante com debounce.
+        Passo 13 do Checklist v2 - Debounce de 300ms.
+        """
         query = e.control.value.lower()
         self.search_query = query
         
-        if query:
-            self.filtered_products = [
-                p for p in self.shelf_products
-                if query in p["name"].lower()
-            ]
-        else:
-            self.filtered_products = self.shelf_products.copy()
+        # Debounce: cancela timer anterior
+        if hasattr(self, '_debounce_timer') and self._debounce_timer:
+            self._debounce_timer.cancel()
         
+        import threading
+        
+        def apply_filter():
+            if query:
+                self.filtered_products = [
+                    p for p in self.shelf_products
+                    if query in p["name"].lower()
+                ]
+            else:
+                self.filtered_products = self.shelf_products.copy()
+            
+            # Atualiza na main thread
+            if self.page:
+                self.page.run_task(self._update_shelf_ui)
+        
+        # Timer de 300ms
+        self._debounce_timer = threading.Timer(0.3, apply_filter)
+        self._debounce_timer.start()
+    
+    async def _update_shelf_ui(self):
+        """Atualiza UI da estante."""
         self.update()
     
     def _save_state_for_undo(self):
@@ -1171,28 +1213,37 @@ class AtelierView(ft.UserControl):
         )
     
     async def _process_excel_file(self, file_path: str):
-        """Processa arquivo Excel e abre O Juiz para conciliação."""
+        """
+        Processa arquivo Excel e abre O Juiz para conciliação.
+        Passo 1-3 do Checklist v2 - Usa ImportService em vez de pandas direto.
+        """
         if not file_path:
             return
         
+        from pathlib import Path
         from src.ui.components.o_juiz_modal import OJuizModal, ConflictItem
         from src.core.repositories import ProductRepository
         from src.core.database import AsyncSessionLocal
+        from src.core.services.import_service import ImportService
         
         try:
-            # Ler arquivo Excel/CSV
-            import pandas as pd
+            # Usar ImportService para ler arquivo (roda em background thread)
+            file_path_obj = Path(file_path)
+            rows = await ImportService.read_file(file_path_obj)
             
-            if file_path.endswith(".csv"):
-                df = pd.read_csv(file_path)
-            else:
-                df = pd.read_excel(file_path)
+            if not rows:
+                self._show_snackbar("Arquivo vazio ou inválido", COLORS["error"])
+                return
             
             # Detectar colunas (flexível)
             desc_col = None
             price_col = None
             
-            for col in df.columns:
+            # Pegar nomes das colunas da primeira linha
+            first_row = rows[0] if rows else {}
+            columns = list(first_row.keys())
+            
+            for col in columns:
                 col_lower = col.lower()
                 if any(k in col_lower for k in ["desc", "nome", "produto", "item"]):
                     desc_col = col
@@ -1217,9 +1268,13 @@ class AtelierView(ft.UserControl):
             from rapidfuzz import fuzz
             
             conflict_items = []
-            for idx, row in df.iterrows():
-                raw_name = str(row[desc_col]) if pd.notna(row[desc_col]) else ""
-                raw_price = float(row[price_col]) if price_col and pd.notna(row[price_col]) else 0
+            for idx, row in enumerate(rows):
+                raw_name = str(row.get(desc_col, "")).strip()
+                raw_price_val = row.get(price_col, "0")
+                try:
+                    raw_price = float(str(raw_price_val).replace(",", ".").replace("R$", "").strip()) if raw_price_val else 0
+                except ValueError:
+                    raw_price = 0
                 
                 # Buscar melhor match
                 best_match = None

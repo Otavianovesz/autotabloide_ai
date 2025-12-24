@@ -47,13 +47,36 @@ def setup_logging():
 
 
 def run_integrity_checks(logger) -> bool:
-    """Executa verificações de integridade com self-healing."""
+    """
+    Executa verificações de integridade com self-healing.
+    Passos 51-60: Integra SystemHealthCheck do infrastructure.py
+    """
     from src.core.integrity import run_startup_checks
     
     success, is_safe_mode = run_startup_checks(SYSTEM_ROOT)
     
     if is_safe_mode:
         logger.warning("⚠️ SAFE MODE: Sistema em modo de recuperação!")
+    
+    # Verifica saúde do sistema (Ghostscript, VC++, offline mode)
+    try:
+        from src.core.infrastructure import verify_ghostscript, check_offline_mode
+        
+        gs_ok, gs_version = verify_ghostscript()
+        if gs_ok:
+            logger.info(f"Ghostscript v{gs_version} disponível")
+        else:
+            logger.warning(f"Ghostscript não encontrado: {gs_version}")
+        
+        offline = check_offline_mode()
+        if all([offline.get("database"), offline.get("templates"), offline.get("fonts")]):
+            logger.info("Modo offline: Sistema funciona sem internet")
+        else:
+            missing = [k for k, v in offline.items() if not v]
+            logger.warning(f"Modo offline parcial. Faltando: {missing}")
+            
+    except ImportError:
+        logger.debug("infrastructure.py não disponível")
     
     return is_safe_mode
 
@@ -137,6 +160,17 @@ if __name__ == "__main__":
         sentinel = SentinelProcess(sentinel_in_q, sentinel_out_q, sentinel_config)
         sentinel.start()
         logger.info(f"Sentinel Sidecar iniciado (PID: {sentinel.pid})")
+        
+        # Passo 21-22: Configura Watchdog para reiniciar Sentinel se morrer
+        from src.ai.sentinel_watchdog import get_watchdog
+        watchdog = get_watchdog()
+        
+        def create_sentinel():
+            """Factory para criar novo Sentinel."""
+            return SentinelProcess(sentinel_in_q, sentinel_out_q, sentinel_config)
+        
+        watchdog.set_sentinel(sentinel, create_sentinel)
+        logger.info("Sentinel Watchdog configurado")
 
         def main(page: ft.Page):
             # === Import Design System ===

@@ -165,11 +165,21 @@ class Produto(Base):
             self.set_images(images)
     
     def is_alcoholic(self) -> bool:
-        """Verifica se produto requer ícone +18."""
-        restricted_categories = ["bebida alcoólica", "cigarro", "tabaco", "vinho", "cerveja", "vodka", "whisky"]
-        if self.categoria:
+        """
+        Verifica se produto requer ícone +18.
+        Passo 5-6 do Checklist v2 - Usa SettingsService para lista configurável.
+        """
+        if not self.categoria:
+            return False
+        
+        try:
+            from src.core.settings_service import get_settings
+            settings = get_settings()
+            return settings.is_restricted(self.categoria)
+        except Exception:
+            # Fallback para lista padrão se SettingsService não disponível
+            restricted_categories = ["bebida alcoólica", "cigarro", "tabaco", "vinho", "cerveja", "vodka", "whisky"]
             return self.categoria.lower() in restricted_categories
-        return False
     
     def price_changed_since_print(self) -> bool:
         """

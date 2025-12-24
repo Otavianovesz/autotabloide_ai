@@ -145,18 +145,26 @@ class FactoryView(ft.UserControl):
         """
         Processa arquivo importado com validação de colunas.
         Conforme Vol. VI, Cap. 5.2: Colunas obrigatórias para PROCON.
+        Passo 1-3: Usa ImportService em vez de pandas direto.
         """
         if not file_path:
             return
         
         try:
-            import pandas as pd
+            from pathlib import Path
+            from src.core.services.import_service import ImportService
             
-            # Lê arquivo
-            if file_path.endswith(".csv"):
-                df = pd.read_csv(file_path)
-            else:
-                df = pd.read_excel(file_path)
+            # Usa ImportService para ler arquivo (background thread)
+            file_path_obj = Path(file_path)
+            rows = await ImportService.read_file(file_path_obj)
+            
+            if not rows:
+                self._show_snackbar("Arquivo vazio ou inválido", COLORS["error"])
+                return
+            
+            # Obtém nomes das colunas
+            first_row = rows[0] if rows else {}
+            columns = list(first_row.keys())
             
             # === VALIDAÇÃO DE COLUNAS OBRIGATÓRIAS (Vol. VI, Cap. 5.2) ===
             required_columns = {
@@ -169,7 +177,7 @@ class FactoryView(ft.UserControl):
             missing_required = []
             
             for key, variants in required_columns.items():
-                for col in df.columns:
+                for col in columns:
                     col_lower = col.lower().strip()
                     if any(v in col_lower for v in variants):
                         found_columns[key] = col
@@ -196,15 +204,25 @@ class FactoryView(ft.UserControl):
             
             # Detecta coluna de peso (opcional)
             col_peso = None
-            for col in df.columns:
+            for col in columns:
                 if any(k in col.lower() for k in ["peso", "gramatura", "unidade", "weight"]):
                     col_peso = col
                     break
             
-            for idx, row in df.iterrows():
+            for idx, row in enumerate(rows):
                 try:
-                    price_por = float(row[col_por]) if pd.notna(row[col_por]) else 0.0
-                    price_de = float(row[col_de]) if col_de and pd.notna(row[col_de]) else None
+                    price_por_raw = row.get(col_por, "0")
+                    price_de_raw = row.get(col_de, "") if col_de else ""
+                    
+                    try:
+                        price_por = float(str(price_por_raw).replace(",", ".").replace("R$", "").strip()) if price_por_raw else 0.0
+                    except ValueError:
+                        price_por = 0.0
+                    
+                    try:
+                        price_de = float(str(price_de_raw).replace(",", ".").replace("R$", "").strip()) if price_de_raw else None
+                    except ValueError:
+                        price_de = None
                     
                     products.append({
                         "id": idx + 1,

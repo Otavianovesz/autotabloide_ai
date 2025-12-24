@@ -29,8 +29,13 @@ NAMESPACES = {
     'xlink': 'http://www.w3.org/1999/xlink'
 }
 
+# Importa mixin de paginação
+from src.rendering.page_pagination import PagePaginationMixin
+# Importa mixin de melhorias (bleed, crop marks, EAN validation)
+from src.rendering.vector_improvements import VectorImprovementsMixin, LRUFontCache
 
-class VectorEngine:
+
+class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
     """
     Motor de Manipulação Vetorial de Alta Fidelidade.
     Interpreta SVG como árvore DOM XML e injeta dados com precisão.
@@ -40,6 +45,8 @@ class VectorEngine:
     - Busca binária para ajuste de fonte
     - Quebra de linha automática com hifenização
     - Suporte a tags de preço De/Por
+    - Passo 31-34: Suporte a paginação via #PAGE_xx
+    - Passo 35-40: Bleed, crop marks, EAN validation via VectorImprovementsMixin
     """
     
     # Caminho padrão para fontes (pode ser sobrescrito)
@@ -563,15 +570,25 @@ class VectorEngine:
             self._inject_age_restriction_icon(slot_id)
 
     def _is_restricted_category(self, categoria: str) -> bool:
-        """Verifica se categoria requer ícone +18."""
+        """
+        Verifica se categoria requer ícone +18.
+        Passo 7 do Checklist v2 - Usa SettingsService para lista configurável.
+        """
         if not categoria:
             return False
-        restricted = [
-            "bebida alcoólica", "alcoolica", "alcoólico",
-            "cigarro", "tabaco", "tabacaria",
-            "cerveja", "vinho", "vodka", "whisky", "cachaça"
-        ]
-        return categoria.lower() in restricted
+        
+        try:
+            from src.core.settings_service import get_settings
+            settings = get_settings()
+            return settings.is_restricted(categoria)
+        except Exception:
+            # Fallback se SettingsService não disponível
+            restricted = [
+                "bebida alcoólica", "alcoolica", "alcoólico",
+                "cigarro", "tabaco", "tabacaria",
+                "cerveja", "vinho", "vodka", "whisky", "cachaça"
+            ]
+            return categoria.lower() in restricted
 
     def _inject_age_restriction_icon(self, slot_id: str):
         """

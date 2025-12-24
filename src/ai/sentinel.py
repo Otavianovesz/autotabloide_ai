@@ -56,8 +56,9 @@ class TheHunter:
     PROTOCOLO CAÇADOR RESILIENTE: Implementa estratégia de busca em cascata
     com múltiplos fallbacks. Se Google falhar, tenta DuckDuckGo, Bing, etc.
     Inclui verificação de integridade de imagem.
+    
+    Passos 25, 28-29: Usa hunter_utils para rotação UA, captcha e validação.
     """
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     
     # Configurações de validação de imagem
     MIN_IMAGE_WIDTH = 300
@@ -70,6 +71,31 @@ class TheHunter:
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._is_initialized = False
+        
+        # Integração com hunter_utils (Passos 25, 28-29)
+        try:
+            from src.scraping.hunter_utils import (
+                get_user_agent_rotator,
+                HunterImageValidator,
+                detect_captcha
+            )
+            self._ua_rotator = get_user_agent_rotator()
+            self._image_validator = HunterImageValidator()
+            self._detect_captcha = detect_captcha
+            logger.info("Hunter utils integrado: UA rotation, captcha detection, image validation")
+        except ImportError:
+            # Fallback se módulo não disponível
+            self._ua_rotator = None
+            self._image_validator = None
+            self._detect_captcha = None
+            logger.warning("hunter_utils não disponível, usando fallback")
+    
+    @property
+    def USER_AGENT(self) -> str:
+        """Retorna User-Agent (rotativo se disponível)."""
+        if self._ua_rotator:
+            return self._ua_rotator.get_random()
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     def _ensure_browser(self) -> bool:
         """Garante que o browser está iniciado."""

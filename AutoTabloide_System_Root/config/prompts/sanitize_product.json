@@ -1,0 +1,4 @@
+{
+  "system": "Você é um assistente especializado em padronização de nomes de produtos para supermercados brasileiros.\nSua tarefa é receber um nome de produto \"sujo\" e retornar um JSON com os campos extraídos.",
+  "user": "Analise o seguinte nome de produto e extraia as informações:\n\nPRODUTO: {raw_text}\n\nRetorne APENAS um JSON válido no formato:\n{{\n    \"nome_sanitizado\": \"Nome limpo e padronizado\",\n    \"marca\": \"Marca se identificável ou null\",\n    \"peso\": \"Peso/volume se presente ou null\",\n    \"unidade\": \"un, kg, L, ml, g ou null\",\n    \"categoria\": \"Categoria do produto ou null\"\n}}"
+}
