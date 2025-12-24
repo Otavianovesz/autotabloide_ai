@@ -18,12 +18,21 @@ from src.ui.design_system import (
     create_loading_indicator
 )
 
+# Industrial Components
+from src.core.logging_config import get_logger
+from src.ui.audio import play_success, play_error
+
+logger = get_logger("DashboardView")
+
 
 class DashboardView(ft.UserControl):
     """
     Tela inicial com visão executiva do sistema.
     Exibe métricas de produção, saúde do banco e status da IA.
+    Auto-refresh a cada 30 segundos conforme Vol. VI.
     """
+    
+    REFRESH_INTERVAL_SECONDS = 30
     
     def __init__(self, page: ft.Page):
         super().__init__()
@@ -31,10 +40,29 @@ class DashboardView(ft.UserControl):
         self._metrics = {}
         self._db_health = {}
         self._is_loading = True
+        self._refresh_task = None
 
     def did_mount(self):
-        """Carrega dados ao montar componente."""
+        """Carrega dados ao montar e inicia auto-refresh."""
         self.page.run_task(self._load_dashboard_data)
+        self._refresh_task = self.page.run_task(self._auto_refresh_loop)
+
+    def will_unmount(self):
+        """Cancela auto-refresh ao desmontar."""
+        if self._refresh_task:
+            self._refresh_task.cancel()
+
+    async def _auto_refresh_loop(self):
+        """Loop de auto-refresh das métricas."""
+        import asyncio
+        while True:
+            try:
+                await asyncio.sleep(self.REFRESH_INTERVAL_SECONDS)
+                await self._load_dashboard_data()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(5)
 
     async def _load_dashboard_data(self):
         """Carrega métricas e status de forma assíncrona."""
@@ -45,8 +73,7 @@ class DashboardView(ft.UserControl):
             self._metrics = await get_table_counts()
             
         except Exception as e:
-            print(f"[Dashboard] Erro ao carregar dados: {e}")
-            # Mock data para fallback
+            logger.error(f"Erro ao carregar dados: {e}")
             self._metrics = {"produtos": 0, "layouts": 0, "projetos": 0, "audit_logs": 0}
             self._db_health = {"status": "unknown", "journal_mode": "N/A", "integrity": "N/A"}
         

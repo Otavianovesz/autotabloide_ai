@@ -13,6 +13,13 @@ from decimal import Decimal
 # Design System
 from src.ui.design_system import ColorScheme, Typography, Spacing, Animations
 
+# Industrial Components
+from src.core.event_bus import emit, EventType, subscribe, get_event_bus
+from src.core.logging_config import get_logger
+from src.ui.audio import play_success, play_error
+
+logger = get_logger("EstoqueView")
+
 # Cores usando Design System
 COLORS = {
     "success": ColorScheme.SUCCESS,
@@ -245,7 +252,7 @@ class EstoqueView(ft.UserControl):
                 self._update_list()
                 
         except Exception as e:
-            print(f"[Estoque] Erro ao carregar produtos: {e}")
+            logger.error(f"Erro ao carregar produtos: {e}")
             self.products = []
             self._update_list()
 
@@ -287,15 +294,17 @@ class EstoqueView(ft.UserControl):
 
     def _on_magic_wand(self, product: dict):
         """Aciona sanitização via IA."""
+        logger.info(f"Magic Wand acionado para produto ID={product.get('id')}")
+        
+        # Emite evento para o sistema
+        emit(EventType.AI_TASK_START, product_id=product['id'], action='sanitize')
+        
         self.page.snack_bar = ft.SnackBar(
             ft.Text(f"Sanitizando: {product['nome_sanitizado'][:30]}..."),
             bgcolor=COLORS["info"]
         )
         self.page.snack_bar.open = True
         self.page.update()
-        
-        # Aqui enviaria para o Sentinel process
-        # sentinel_queue.put({"type": "SANITIZE", "id": product["id"], "raw_text": product["nome_sanitizado"]})
 
     def _on_image_click(self, product: dict):
         """Abre modal do Image Doctor."""
@@ -343,6 +352,7 @@ class EstoqueView(ft.UserControl):
                 )
                 
                 update_status("Fundo removido com sucesso!", COLORS["success"])
+                play_success()
                 
             except ImportError:
                 update_status("Instale rembg: pip install rembg", COLORS["error"])
@@ -370,6 +380,7 @@ class EstoqueView(ft.UserControl):
                 )
                 
                 update_status("Resolução aumentada 4x!", COLORS["success"])
+                play_success()
                 
             except Exception as ex:
                 update_status(f"Erro no upscale: {ex}", COLORS["error"])
@@ -403,6 +414,10 @@ class EstoqueView(ft.UserControl):
                     await repo.add_image_to_product(product['id'], img_hash)
                 
                 update_status(f"Salvo! Hash: {img_hash[:8]}...", COLORS["success"])
+                play_success()
+                
+                # Emite evento de atualização
+                emit(EventType.PRODUCT_UPDATED, product_id=product['id'])
                 
                 # Fecha modal após breve delay
                 await asyncio.sleep(1.5)

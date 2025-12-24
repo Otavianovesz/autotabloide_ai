@@ -1,14 +1,11 @@
 """
-AutoTabloide AI - Entry Point Principal
-=========================================
+AutoTabloide AI - Entry Point Principal (Refatorado)
+=====================================================
 Conforme Vol. VI, Cap. 1 - Shell de Aplicação.
-Orquestra inicialização, navegação e ciclo de vida.
+Refatorado para usar infraestrutura industrial.
 """
 
-import os
 import sys
-import platform
-import asyncio
 from pathlib import Path
 
 # ==============================================================================
@@ -19,42 +16,75 @@ ROOT_DIR = Path(__file__).parent.resolve()
 SYSTEM_ROOT = ROOT_DIR / "AutoTabloide_System_Root"
 BIN_DIR = SYSTEM_ROOT / "bin"
 
-def setup_environment():
+
+def setup_environment() -> None:
     """Configura ambiente de execução com DLLs e paths."""
+    import os
+    import platform
+    
     if not BIN_DIR.exists():
-        print(f"[BOOT ERROR] Diretorio de binarios nao encontrado: {BIN_DIR}")
-        print("Execute 'python setup.py' ou verifique a instalacao.")
-        sys.exit(1)
+        BIN_DIR.mkdir(parents=True, exist_ok=True)
 
     # Adiciona bin ao PATH
-    os.environ["PATH"] = str(BIN_DIR) + os.pathsep + os.environ["PATH"]
+    os.environ["PATH"] = str(BIN_DIR) + os.pathsep + os.environ.get("PATH", "")
     
     # Windows 3.8+ - DLL directories
     if platform.system() == "Windows" and hasattr(os, "add_dll_directory"):
         try:
             os.add_dll_directory(str(BIN_DIR))
-        except Exception as e:
-            print(f"[BOOT WARNING] Falha ao adicionar DLLs: {e}")
+        except Exception:
+            pass  # Ignora silenciosamente
 
-def check_integrity():
-    """Verificação de integridade antes do boot."""
-    try:
-        from src.infrastructure.integrity import IntegrityChecker
-        checker = IntegrityChecker()
-        checker.run()
-    except ImportError:
-        print("[BOOT] Modulo de integridade nao encontrado. Pulando check.")
-    except Exception as e:
-        print(f"[BOOT ERROR] Falha na verificacao: {e}")
+
+def setup_logging():
+    """Configura sistema de logging industrial."""
+    from src.core.logging_config import setup_logging as init_logging, get_logger
+    
+    log_dir = SYSTEM_ROOT / "logs"
+    init_logging(log_dir, console_output=True, file_output=True)
+    
+    return get_logger("Main")
+
+
+def run_integrity_checks(logger) -> bool:
+    """Executa verificações de integridade com self-healing."""
+    from src.core.integrity import run_startup_checks
+    
+    success, is_safe_mode = run_startup_checks(SYSTEM_ROOT)
+    
+    if is_safe_mode:
+        logger.warning("⚠️ SAFE MODE: Sistema em modo de recuperação!")
+    
+    return is_safe_mode
+
+
+def register_services(logger):
+    """Registra serviços no container de DI."""
+    from src.core.container import register, register_instance
+    from src.core.utils import LifecycleManager
+    
+    # Registrar LifecycleManager
+    lifecycle = LifecycleManager(SYSTEM_ROOT)
+    register_instance(LifecycleManager, lifecycle)
+    
+    logger.info("Serviços registrados no container de DI")
+    
+    return lifecycle
+
 
 async def init_database():
     """Inicializa banco de dados de forma assíncrona."""
+    from src.core.logging_config import get_logger
+    logger = get_logger("Database")
+    
     try:
         from src.core.database import init_db
         await init_db()
-        print("[SYSTEM] Banco de dados inicializado.")
+        logger.info("Banco de dados inicializado com WAL mode")
     except Exception as e:
-        print(f"[BOOT ERROR] Falha ao inicializar DB: {e}")
+        logger.error(f"Falha ao inicializar DB: {e}")
+        raise
+
 
 # ==============================================================================
 # ENTRY POINT
@@ -64,21 +94,20 @@ if __name__ == "__main__":
     # 1. Configurar Ambiente
     setup_environment()
     
-    # 2. Verificar Integridade
-    check_integrity()
+    # 2. Configurar Logging (antes de tudo!)
+    logger = setup_logging()
+    logger.info("=" * 60)
+    logger.info("AutoTabloide AI - Iniciando...")
+    logger.info("=" * 60)
     
-    # 3. Inicializar Safe Mode (Vol. III, Cap. 8.2)
-    from src.core.safe_mode import init_safe_mode, get_safe_mode_controller
-    safe_mode_controller, is_safe_mode = init_safe_mode(SYSTEM_ROOT)
+    # 3. Integridade e Self-Healing
+    is_safe_mode = run_integrity_checks(logger)
     
-    if is_safe_mode:
-        print("\n[⚠️ SAFE MODE] Sistema em modo de recuperação!")
-        print("[⚠️ SAFE MODE] Recursos limitados ativados.")
+    # 4. Registrar Serviços (DI Container)
+    lifecycle = register_services(logger)
     
-    # 4. Iniciar Aplicação
+    # 5. Iniciar Aplicação
     try:
-        print("\n[SYSTEM] Inicializando AutoTabloide AI...")
-        
         import flet as ft
         import multiprocessing
         from src.ai.sentinel import SentinelProcess
@@ -92,7 +121,7 @@ if __name__ == "__main__":
         from src.ui.views.settings import SettingsView
         
         # NeuralEngine (processo isolado para IA)
-        from src.ai.neural_engine import initialize_neural_engine, shutdown_neural_engine
+        from src.ai.neural_engine import shutdown_neural_engine
         
         # Configuração do Sentinel (AI Sidecar)
         sentinel_config = {
@@ -107,22 +136,33 @@ if __name__ == "__main__":
         # Inicializa Processo Sentinel
         sentinel = SentinelProcess(sentinel_in_q, sentinel_out_q, sentinel_config)
         sentinel.start()
-        print(f"[SYSTEM] Sentinel Sidecar PID: {sentinel.pid}")
+        logger.info(f"Sentinel Sidecar iniciado (PID: {sentinel.pid})")
 
         def main(page: ft.Page):
             # === Import Design System ===
             from src.ui.design_system import ColorScheme, apply_page_theme
+            from src.core.constants import UIConfig, AppInfo
+            
+            # === Integração de Keyboard Manager e Event Bus ===
+            from src.ui.keyboard import get_keyboard_manager, setup_keyboard_handlers
+            from src.core.event_bus import get_event_bus, EventType, emit
+            from src.ui.audio import get_audio, init_audio
+            
+            # Inicializa sistemas
+            keyboard = get_keyboard_manager()
+            event_bus = get_event_bus()
+            audio = init_audio(SYSTEM_ROOT / "assets" / "sounds", enabled=True)
             
             # === Configuração da Página (Vol. VI, Cap. 1.1) ===
-            page.title = "AutoTabloide AI - Codex Industrialis"
+            page.title = f"{AppInfo.NAME} v{AppInfo.VERSION}"
             
             # Aplica tema premium
             apply_page_theme(page)
-            page.scroll = ft.ScrollMode.HIDDEN  # Rolagem gerenciada por componentes
+            page.scroll = ft.ScrollMode.HIDDEN
             
             # Dimensões mínimas (Vol. VI, Tab. 1.1)
-            page.window_min_width = 1280
-            page.window_min_height = 720
+            page.window_min_width = UIConfig.MIN_WIDTH
+            page.window_min_height = UIConfig.MIN_HEIGHT
             page.window_width = 1400
             page.window_height = 900
             
@@ -135,18 +175,12 @@ if __name__ == "__main__":
             def get_view(index: int):
                 """Retorna view cacheada ou cria nova."""
                 if index not in view_cache:
-                    if index == 0:
-                        view_cache[index] = DashboardView(page)
-                    elif index == 1:
-                        view_cache[index] = EstoqueView(page)
-                    elif index == 2:
-                        view_cache[index] = AtelierView(page)
-                    elif index == 3:
-                        view_cache[index] = FactoryView(page)
-                    elif index == 4:
-                        view_cache[index] = CofreView(page)
-                    elif index == 5:
-                        view_cache[index] = SettingsView(page)
+                    view_classes = [
+                        DashboardView, EstoqueView, AtelierView,
+                        FactoryView, CofreView, SettingsView
+                    ]
+                    if 0 <= index < len(view_classes):
+                        view_cache[index] = view_classes[index](page)
                 return view_cache.get(index)
             
             def change_view(e):
@@ -158,25 +192,55 @@ if __name__ == "__main__":
                     body.content = view
                 else:
                     body.content = ft.Container(
-                        content=ft.Text("Tela nao implementada", size=24),
+                        content=ft.Text("Tela não implementada", size=24),
                         alignment=ft.alignment.center
                     )
                 
-                # Colapsa nav rail na tela de Montagem (Vol. VI, Cap. 1.2)
-                if idx == 2:  # Ateliê/Montagem
-                    rail.extended = False
-                else:
-                    rail.extended = True
+                # Colapsa nav rail na tela de Montagem
+                rail.extended = idx != 2
+                
+                # Atualiza view atual no keyboard manager
+                keyboard.set_current_view(["dashboard", "estoque", "atelier", "factory", "cofre", "settings"][idx])
+                
+                # Emite evento de mudança de view
+                emit(EventType.VIEW_CHANGED, view_index=idx)
                 
                 body.update()
                 rail.update()
+            
+            def navigate_to(index: int):
+                """Navega para view pelo índice via atalho."""
+                rail.selected_index = index
+                # Simula evento de navegação
+                class FakeEvent:
+                    control = type('obj', (object,), {'selected_index': index})()
+                change_view(FakeEvent())
+                audio.click()
+            
+            # === Registra handlers de navegação (Ctrl+1-6) ===
+            keyboard.set_handler("nav_dashboard", lambda: navigate_to(0))
+            keyboard.set_handler("nav_estoque", lambda: navigate_to(1))
+            keyboard.set_handler("nav_atelier", lambda: navigate_to(2))
+            keyboard.set_handler("nav_factory", lambda: navigate_to(3))
+            keyboard.set_handler("nav_cofre", lambda: navigate_to(4))
+            keyboard.set_handler("nav_settings", lambda: navigate_to(5))
+            
+            # Handler de Escape (cancela modal atual)
+            def handle_escape():
+                if page.dialog and page.dialog.open:
+                    page.dialog.open = False
+                    page.update()
+            keyboard.set_handler("cancel", handle_escape)
+            
+            # Conecta evento de teclado do Flet
+            page.on_keyboard_event = lambda e: keyboard.handle_key_event(e)
 
             # === Navigation Rail (Vol. VI, Cap. 1.2) ===
             rail = ft.NavigationRail(
                 selected_index=0,
                 label_type=ft.NavigationRailLabelType.ALL,
-                min_width=72,
-                min_extended_width=200,
+                min_width=UIConfig.RAIL_WIDTH_COLLAPSED,
+                min_extended_width=UIConfig.RAIL_WIDTH_EXPANDED,
                 extended=True,
                 group_alignment=-0.9,
                 bgcolor=ColorScheme.BG_PRIMARY,
@@ -195,12 +259,12 @@ if __name__ == "__main__":
                     ft.NavigationRailDestination(
                         icon=ft.icons.BRUSH_OUTLINED,
                         selected_icon=ft.icons.BRUSH,
-                        label="Atelie"
+                        label="Ateliê"
                     ),
                     ft.NavigationRailDestination(
                         icon=ft.icons.FACTORY_OUTLINED,
                         selected_icon=ft.icons.FACTORY,
-                        label="Fabrica"
+                        label="Fábrica"
                     ),
                     ft.NavigationRailDestination(
                         icon=ft.icons.SHIELD_OUTLINED,
@@ -218,23 +282,62 @@ if __name__ == "__main__":
 
             # === Corpo Principal ===
             body = ft.Container(
-                content=DashboardView(page),  # View inicial
+                content=DashboardView(page),
                 expand=True,
                 bgcolor=ColorScheme.BG_PRIMARY,
                 padding=0
             )
 
             # === Barra de Status Inferior (Vol. VI, Cap. 1.3) ===
-            # Importa componente de telemetria
             from src.ui.components.status_bar import StatusBarWithTelemetry
             
             status_bar = StatusBarWithTelemetry(
-                on_sentinel_click=lambda: print("[UI] Sentinel clicked"),
-                on_db_click=lambda: print("[UI] DB clicked")
+                on_sentinel_click=lambda: None,
+                on_db_click=lambda: None
             )
             
-            # Atualiza status inicial do Sentinel
             status_bar.set_sentinel_status("online" if sentinel.is_alive() else "offline")
+            
+            # === Sentinel IPC Subscriber ===
+            async def sentinel_subscriber():
+                """Loop que recebe mensagens do Sentinel."""
+                import asyncio
+                from src.core.logging_config import get_logger
+                sub_logger = get_logger("Sentinel.Subscriber")
+                
+                while True:
+                    try:
+                        # Checa processo vivo
+                        if sentinel.is_alive():
+                            if status_bar._telemetry.sentinel_status == "offline":
+                                status_bar.set_sentinel_status("online")
+                        else:
+                            status_bar.set_sentinel_status("offline")
+                        
+                        # Processa mensagens (non-blocking)
+                        while not sentinel_out_q.empty():
+                            try:
+                                msg = sentinel_out_q.get_nowait()
+                                msg_type = msg.get("type", "")
+                                
+                                if msg_type == "HEARTBEAT":
+                                    status_bar.set_sentinel_status("online")
+                                elif msg_type == "STATUS":
+                                    status_bar.set_sentinel_status(msg.get("status", "online"))
+                                elif msg_type == "BUSY":
+                                    status_bar.set_sentinel_status("busy")
+                            except Exception:
+                                break
+                        
+                        await asyncio.sleep(2)
+                        
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        sub_logger.error(f"Erro no subscriber: {e}")
+                        await asyncio.sleep(5)
+            
+            page.run_task(sentinel_subscriber)
 
             # === Layout Principal ===
             page.add(
@@ -259,29 +362,39 @@ if __name__ == "__main__":
             # === Cleanup no Fechamento ===
             def on_window_event(e):
                 if e.data == "close":
-                    print("[SYSTEM] Encerrando processos...")
+                    from src.core.logging_config import get_logger
+                    close_logger = get_logger("Shutdown")
+                    close_logger.info("Encerrando aplicação...")
+                    
+                    # Parar Sentinel
                     sentinel_in_q.put({"type": "STOP"})
                     sentinel.join(timeout=2)
+                    
+                    # Cleanup de serviços
                     shutdown_neural_engine()
+                    lifecycle.shutdown()
+                    
+                    close_logger.info("Shutdown concluído")
                     page.window_destroy()
             
             page.window_prevent_close = True
             page.on_window_event = on_window_event
 
         # Inicia aplicação Flet
+        logger.info("Iniciando interface Flet...")
         ft.app(target=main)
         
     except ImportError as e:
-        print(f"\n[CRITICAL ERROR] Falha ao importar: {e}")
-        print("Verifique se ativou o ambiente virtual (poetry shell).")
+        logger.critical(f"Falha ao importar: {e}")
+        logger.info("Verifique se ativou o ambiente virtual (poetry shell)")
         if 'sentinel' in locals() and sentinel.is_alive():
             sentinel.terminate()
         input("Pressione ENTER para sair...")
         
     except Exception as e:
-        print(f"\n[CRITICAL ERROR] Erro fatal: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.critical(f"Erro fatal: {e}", exc_info=True)
         if 'sentinel' in locals() and sentinel.is_alive():
             sentinel.terminate()
+        if 'lifecycle' in locals():
+            lifecycle.shutdown()
         input("Pressione ENTER para sair...")
