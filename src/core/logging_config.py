@@ -3,15 +3,26 @@ AutoTabloide AI - Sistema de Logging Industrial
 ================================================
 Conforme Auditoria: Substituir print() por logging estruturado.
 Logs rotacionados, níveis semânticos e captura de exceções.
+
+CENTURY CHECKLIST:
+- Item 4: Logging Assíncrono via QueueHandler
+- Item 5: Limpeza de logs > 30 dias
 """
 
 import logging
 import logging.handlers
 import sys
+import atexit
+import threading
+import queue
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import traceback
+
+# Variáveis globais para logging assíncrono
+_log_queue: Optional[queue.Queue] = None
+_log_listener: Optional[logging.handlers.QueueListener] = None
 
 
 class LoggingConfig:
@@ -108,7 +119,36 @@ def setup_logging(
         )
         root_logger.addHandler(error_handler)
     
+    # CENTURY CHECKLIST Item 5: Limpar logs antigos (> 30 dias)
+    cleanup_old_logs(log_dir, max_age_days=30)
+    
     return root_logger
+
+
+def cleanup_old_logs(log_dir: Path, max_age_days: int = 30) -> int:
+    """
+    Remove arquivos de log antigos.
+    CENTURY CHECKLIST Item 5.
+    
+    Args:
+        log_dir: Diretório de logs
+        max_age_days: Idade máxima em dias
+        
+    Returns:
+        Número de arquivos removidos
+    """
+    removed = 0
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    
+    try:
+        for log_file in log_dir.glob("*.log*"):
+            if log_file.stat().st_mtime < cutoff.timestamp():
+                log_file.unlink()
+                removed += 1
+    except Exception:
+        pass  # Silencioso - limpeza é best-effort
+    
+    return removed
 
 
 class ColoredFormatter(logging.Formatter):

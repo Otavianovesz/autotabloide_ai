@@ -42,7 +42,8 @@ class ThumbnailCache:
     
     def _compute_hash(self, content: bytes) -> str:
         """Computa hash do conteúdo."""
-        return hashlib.md5(content).hexdigest()[:16]
+        # INDUSTRIAL ROBUSTNESS #107: SHA-256
+        return hashlib.sha256(content).hexdigest()[:16]
     
     def _get_cache_path(self, content_hash: str, width: int, height: int) -> Path:
         """Retorna caminho do cache para um thumbnail."""

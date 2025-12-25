@@ -335,30 +335,102 @@ class HunterScraper:
             logger.error(f"Erro ao baixar {url}: {e}")
             return None
     
+    async def filter_noisy_images(
+        self,
+        image_paths: List[Path],
+        max_text_ratio: float = 0.3
+    ) -> List[Path]:
+        """
+        INDUSTRIAL ROBUSTNESS #67: Filtra imagens com muito texto/OCR.
+        
+        Imagens de produto que contêm muito texto (descrições, tabelas nutricionais
+        cobrindo a embalagem) não são adequadas para tabloides.
+        
+        Usa detecção simples baseada em contraste/edges como proxy para texto.
+        
+        Args:
+            image_paths: Lista de paths de imagens
+            max_text_ratio: Ratio máximo de "área de texto" permitido (0.0-1.0)
+        
+        Returns:
+            Lista filtrada de imagens adequadas
+        """
+        try:
+            from PIL import Image
+            import numpy as np
+        except ImportError:
+            logger.warning("PIL/numpy não disponível para filtro de ruído")
+            return image_paths
+        
+        filtered = []
+        
+        for path in image_paths:
+            try:
+                with Image.open(path) as img:
+                    # Converte para grayscale
+                    gray = img.convert('L')
+                    arr = np.array(gray)
+                    
+                    # Calcula variação local (edges = texto/detalhes)
+                    # Alto desvio padrão local indica muito texto
+                    local_std = np.std(arr)
+                    
+                    # Normaliza pelo range
+                    text_ratio = min(local_std / 80.0, 1.0)  # 80 é limiar empírico
+                    
+                    if text_ratio <= max_text_ratio:
+                        filtered.append(path)
+                        logger.debug(f"Imagem aceita: {path.name} (text_ratio={text_ratio:.2f})")
+                    else:
+                        logger.info(f"Imagem rejeitada por excesso de texto: {path.name} (text_ratio={text_ratio:.2f})")
+                        
+            except Exception as e:
+                logger.warning(f"Erro ao analisar {path}: {e}")
+                # Na dúvida, mantém a imagem
+                filtered.append(path)
+        
+        return filtered
+    
     async def search_and_download(
         self,
         query: str,
         count: int = 1,
-        engine: str = "google"
+        engine: str = "google",
+        filter_noisy: bool = True
     ) -> List[Path]:
         """
         Busca e baixa imagens em uma operação.
         
+        INDUSTRIAL ROBUSTNESS #67: Filtra imagens com muito texto automaticamente.
+        
+        Args:
+            query: Termo de busca
+            count: Número de imagens desejadas
+            engine: "google" ou "duckduckgo"
+            filter_noisy: Se True, filtra imagens com excesso de texto
+        
         Returns:
-            Lista de paths das imagens baixadas
+            Lista de paths das imagens baixadas (já filtradas)
         """
-        results = await self.search_images(query, engine, max_results=count * 2)
+        # Busca mais que o necessário para compensar filtro
+        search_multiplier = 3 if filter_noisy else 2
+        results = await self.search_images(query, engine, max_results=count * search_multiplier)
         
         downloaded = []
         for result in results:
-            if len(downloaded) >= count:
+            if len(downloaded) >= count * 2:  # Baixa mais para filtrar depois
                 break
             
             path = await self.download_image(result.url)
             if path:
                 downloaded.append(path)
         
-        return downloaded
+        # #67: Aplica filtro de ruído
+        if filter_noisy and downloaded:
+            downloaded = await self.filter_noisy_images(downloaded)
+        
+        # Retorna apenas a quantidade solicitada
+        return downloaded[:count]
     
     async def shutdown(self):
         """Encerra o hunter e fecha o browser."""

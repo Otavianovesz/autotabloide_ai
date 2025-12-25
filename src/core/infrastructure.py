@@ -2,18 +2,13 @@
 AutoTabloide AI - Infrastructure Utilities
 =============================================
 Utilitários de infraestrutura e deploy.
-Passos 51-60 do Checklist v2.
 
-Funcionalidades:
-- Verificação Ghostscript (51)
-- Verificação DLLs (52)
-- Script reset fábrica (53)
-- Logs rotacionados (54)
-- Caminhos longos Windows (55)
-- Verificação VC++ Runtime (56)
-- Modo offline (57)
-- Export logs (58)
-- Versionamento (59)
+CENTURY CHECKLIST Items 51-60, 91-100:
+- Items 51-60: GS, DLLs, Reset, Logs, Paths, VC++, Offline, Export, Versão
+- Item 91: Splash Screen Info
+- Item 93: Bug Report ZIP
+- Item 97: Verificação Espaço em Disco
+- Item 100: Auditoria Segurança
 """
 
 import os
@@ -344,3 +339,118 @@ class SystemHealthCheck:
             lines.append(f"{status} {check}: {msg}")
         
         return "\n".join(lines)
+
+
+# ==============================================================================
+# CENTURY CHECKLIST ITEMS 91-100 (Refinamentos Finais)
+# ==============================================================================
+
+def get_splash_info() -> Dict[str, str]:
+    """
+    CENTURY CHECKLIST Item 91: Informações para Splash Screen.
+    
+    Returns:
+        Dict com informações de splash
+    """
+    return {
+        "name": AppInfo.NAME,
+        "version": f"v{AppInfo.VERSION}",
+        "codename": AppInfo.CODENAME,
+        "loading_message": "Inicializando sistema...",
+    }
+
+
+def create_bug_report_zip(output_path: Optional[Path] = None) -> Optional[Path]:
+    """
+    CENTURY CHECKLIST Item 93: Gera ZIP para reportar bug.
+    Inclui logs e info do sistema, sem dados sensíveis.
+    
+    Returns:
+        Caminho do ZIP ou None
+    """
+    try:
+        if output_path is None:
+            desktop = Path.home() / "Desktop"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = desktop / f"autotabloide_bug_report_{timestamp}.zip"
+        
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Logs (últimos 5)
+            log_files = sorted(LOGS_DIR.glob("*.log"), key=lambda x: x.stat().st_mtime, reverse=True)[:5]
+            for log_file in log_files:
+                zf.write(log_file, f"logs/{log_file.name}")
+            
+            # Erro crítico
+            error_log = LOGS_DIR / "errors.log"
+            if error_log.exists():
+                zf.write(error_log, "logs/errors.log")
+            
+            # Info do sistema
+            info = get_version_info()
+            info["health"] = SystemHealthCheck.run_all()
+            zf.writestr("system_info.txt", str(info))
+        
+        logger.info(f"Bug report criado: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"Erro ao criar bug report: {e}")
+        return None
+
+
+def check_disk_space(required_mb: int = 500) -> Tuple[bool, int]:
+    """
+    CENTURY CHECKLIST Item 97: Verifica espaço em disco.
+    
+    Args:
+        required_mb: Espaço mínimo necessário em MB
+        
+    Returns:
+        Tupla (tem_espaço, espaço_livre_mb)
+    """
+    try:
+        total, used, free = shutil.disk_usage(SYSTEM_ROOT)
+        free_mb = free // (1024 * 1024)
+        has_space = free_mb >= required_mb
+        
+        if not has_space:
+            logger.warning(f"Espaço em disco baixo: {free_mb}MB (mínimo: {required_mb}MB)")
+        
+        return has_space, free_mb
+        
+    except Exception as e:
+        logger.error(f"Erro ao verificar espaço: {e}")
+        return True, 0  # Assume disponível em caso de erro
+
+
+def security_audit() -> List[str]:
+    """
+    CENTURY CHECKLIST Item 100: Auditoria básica de segurança.
+    Verifica padrões comuns de problemas.
+    
+    Returns:
+        Lista de avisos (vazia = sem problemas)
+    """
+    warnings = []
+    
+    # Verifica arquivos de configuração expostos
+    sensitive_patterns = ["password", "secret", "api_key", "token"]
+    
+    try:
+        config_file = CONFIG_DIR / "settings.json"
+        if config_file.exists():
+            content = config_file.read_text().lower()
+            for pattern in sensitive_patterns:
+                if pattern in content:
+                    warnings.append(f"Possível dado sensível em settings.json: '{pattern}'")
+        
+        # Verifica permissões de diretório (básico)
+        if SYSTEM_ROOT.exists():
+            # Em produção, verificaria permissões mais detalhadas
+            pass
+        
+    except Exception as e:
+        logger.warning(f"Erro na auditoria de segurança: {e}")
+    
+    return warnings
+

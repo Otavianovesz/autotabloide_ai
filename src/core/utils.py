@@ -459,13 +459,16 @@ class UnitConverter:
 # HASH E CHECKSUM
 # ==============================================================================
 
-def compute_file_hash(file_path: Path, algorithm: str = 'md5') -> str:
+def compute_file_hash(file_path: Path, algorithm: str = 'sha256') -> str:
     """
     Calcula hash de arquivo.
     
+    INDUSTRIAL ROBUSTNESS #107: Usa SHA-256 por padrão
+    (mais seguro e sem colisões conhecidas vs MD5).
+    
     Args:
         file_path: Caminho do arquivo
-        algorithm: 'md5', 'sha256', etc.
+        algorithm: 'sha256' (padrão), 'md5', etc.
         
     Returns:
         Hash hexadecimal
@@ -479,8 +482,12 @@ def compute_file_hash(file_path: Path, algorithm: str = 'md5') -> str:
     return hasher.hexdigest()
 
 
-def compute_string_hash(text: str, algorithm: str = 'md5') -> str:
-    """Calcula hash de string."""
+def compute_string_hash(text: str, algorithm: str = 'sha256') -> str:
+    """
+    Calcula hash de string.
+    
+    INDUSTRIAL ROBUSTNESS #107: Usa SHA-256 por padrão.
+    """
     hasher = hashlib.new(algorithm)
     hasher.update(text.encode('utf-8'))
     return hasher.hexdigest()

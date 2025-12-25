@@ -477,7 +477,12 @@ class SentinelProcess(multiprocessing.Process):
         )
 
     def _load_llm(self):
-        """Carrega modelo LLM se disponível."""
+        """
+        Carrega modelo LLM se disponível.
+        
+        GPU AUTO-OFFLOAD (#59 Industrial Robustness):
+        Calcula n_gpu_layers dinamicamente baseado em VRAM disponível.
+        """
         if not HAS_LLAMA:
             logger.warning("llama-cpp-python não instalado. Sanitização via LLM desabilitada.")
             return
@@ -487,17 +492,75 @@ class SentinelProcess(multiprocessing.Process):
             logger.warning(f"Modelo LLM não encontrado: {model_path}")
             return
         
+        # Calcular GPU layers baseado em VRAM
+        n_gpu_layers = self._calculate_gpu_layers()
+        
         try:
-            logger.info(f"Carregando LLM: {os.path.basename(model_path)}")
+            logger.info(f"Carregando LLM: {os.path.basename(model_path)} (GPU layers: {n_gpu_layers})")
             self.llm = Llama(
                 model_path=model_path,
                 n_ctx=2048,
-                n_gpu_layers=35,  # GPU acceleration for RTX 4060
+                n_gpu_layers=n_gpu_layers,
                 verbose=False
             )
             logger.info("LLM carregado com sucesso.")
         except Exception as e:
             logger.error(f"Falha ao carregar LLM: {e}")
+            # Tenta fallback CPU-only
+            if n_gpu_layers > 0:
+                logger.info("Tentando fallback CPU-only...")
+                try:
+                    self.llm = Llama(
+                        model_path=model_path,
+                        n_ctx=2048,
+                        n_gpu_layers=0,
+                        verbose=False
+                    )
+                    logger.info("LLM carregado em modo CPU-only.")
+                except Exception as e2:
+                    logger.error(f"Fallback CPU também falhou: {e2}")
+    
+    def _calculate_gpu_layers(self) -> int:
+        """
+        Calcula número de GPU layers baseado em VRAM disponível (#59).
+        
+        Heurística:
+        - 0 VRAM (ou sem GPU): 0 layers (CPU only)
+        - 4GB VRAM: ~20 layers
+        - 6GB VRAM: ~30 layers
+        - 8GB VRAM: ~35 layers
+        - 12GB+ VRAM: -1 (todas as layers)
+        """
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                logger.info("CUDA não disponível, usando CPU")
+                return 0
+            
+            # Pega VRAM total em GB
+            total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            
+            if total_vram_gb >= 12:
+                layers = -1  # Todas as layers
+            elif total_vram_gb >= 8:
+                layers = 35
+            elif total_vram_gb >= 6:
+                layers = 30
+            elif total_vram_gb >= 4:
+                layers = 20
+            else:
+                layers = 10
+            
+            logger.info(f"GPU detectada: {total_vram_gb:.1f}GB VRAM -> {layers} layers")
+            return layers
+            
+        except ImportError:
+            logger.debug("PyTorch não disponível para detecção de VRAM")
+        except Exception as e:
+            logger.debug(f"Erro ao detectar VRAM: {e}")
+        
+        # Fallback: tenta usar GPU com valor conservador
+        return 20
 
     def _process_task(self, task: Dict) -> Dict:
         """Processa uma tarefa da fila."""
@@ -514,8 +577,34 @@ class SentinelProcess(multiprocessing.Process):
             return {"status": "error", "error": f"Tipo desconhecido: {task_type}"}
 
     def _sanitize_text(self, task: Dict) -> Dict:
-        """Sanitiza texto via LLM."""
+        """
+        Sanitiza texto via LLM.
+        
+        SEGURANÇA (#108 Industrial Robustness):
+        Verifica prompt injection antes de enviar ao LLM.
+        Descrições de produtos da web podem conter comandos maliciosos.
+        """
         raw_text = task.get("raw_text", "")
+        
+        # SEGURANÇA (#108): Verificar prompt injection
+        try:
+            from src.core.exceptions import PromptInjectionError
+            if PromptInjectionError.check_text(raw_text):
+                logger.warning(f"Prompt injection detectado em: {raw_text[:100]}")
+                # Retorna texto limpo sem usar LLM
+                return {
+                    "status": "warning",
+                    "task_id": task.get("id"),
+                    "result": {
+                        "nome_sanitizado": self._basic_sanitize(raw_text),
+                        "marca": None,
+                        "peso": None
+                    },
+                    "used_llm": False,
+                    "warning": "Texto suspeito detectado, sanitização básica aplicada"
+                }
+        except ImportError:
+            pass  # Módulo não disponível, continua normalmente
         
         if not self.llm:
             # Fallback: retorna texto original
@@ -530,6 +619,28 @@ class SentinelProcess(multiprocessing.Process):
                 "used_llm": False
             }
         
+        # LLM disponível - processar com modelo
+        return self._sanitize_with_llm(raw_text, task.get("id"))
+    
+    def _basic_sanitize(self, text: str) -> str:
+        """Sanitização básica sem LLM para textos suspeitos."""
+        import re
+        # Remove caracteres de controle
+        text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+        # Remove comandos óbvios de injection
+        patterns = [
+            r'ignore\s+previous',
+            r'ignore\s+all',
+            r'system\s+prompt',
+            r'output:',
+            r'respond\s+with:',
+        ]
+        for pattern in patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+        return text.strip()
+
+    def _sanitize_with_llm(self, raw_text: str, task_id: Any) -> Dict:
+        """Executa sanitização via LLM."""
         try:
             prompt = f"""Extraia informações do produto:
 Entrada: "{raw_text}"
@@ -543,10 +654,12 @@ JSON:"""
             
             grammar = LlamaGrammar.from_string(GRAMMAR_GBNF)
             
+            # #61: Temperature=0.0 para determinismo (Vol. I, Cap. 11.1)
             output = self.llm(
                 prompt,
                 max_tokens=200,
-                temperature=0.1,
+                temperature=0.0,  # CRÍTICO: Saída determinística
+                top_p=0.1,        # CRÍTICO: Reduz variabilidade
                 grammar=grammar
             )
             
@@ -555,7 +668,7 @@ JSON:"""
             
             return {
                 "status": "success",
-                "task_id": task.get("id"),
+                "task_id": task_id,
                 "result": parsed,
                 "used_llm": True
             }
@@ -564,7 +677,7 @@ JSON:"""
             logger.error(f"Erro na sanitização: {e}")
             return {
                 "status": "error",
-                "task_id": task.get("id"),
+                "task_id": task_id,
                 "error": str(e)
             }
 

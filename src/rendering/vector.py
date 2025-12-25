@@ -9,12 +9,22 @@ import os
 import re
 import math
 import hashlib
+import logging
 from typing import Dict, Optional, Tuple, List, Union
 from pathlib import Path
 from lxml import etree
 from PIL import ImageFont, Image
 
-# Tentativa de importar Pyphen para hifenização (opcional)
+logger = logging.getLogger("VectorEngine")
+
+# Tentativa de importar fonttools para kerning (#26)
+try:
+    from fontTools.ttLib import TTFont
+    HAS_FONTTOOLS = True
+except ImportError:
+    HAS_FONTTOOLS = False
+
+# Tentativa de importar Pyphen para hifenização (#27)
 try:
     import pyphen
     HAS_PYPHEN = True
@@ -77,19 +87,54 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         """
         Carrega e higieniza template SVG.
         Remove metadados proprietários (Inkscape/Illustrator) que poluem o XML.
+        
+        SEGURANÇA (#103 Industrial Robustness):
+        - Parser configurado com XXE Shielding
+        - resolve_entities=False previne XML External Entity attacks
+        - no_network=True bloqueia acesso a recursos externos
         """
-        parser = etree.XMLParser(remove_blank_text=True)
+        parser = self._create_secure_parser()
         self.tree = etree.parse(template_path, parser)
         self.root = self.tree.getroot()
         
         self._purge_namespaces()
         self._index_slots()
     
+    def _create_secure_parser(self) -> etree.XMLParser:
+        """
+        Cria parser XML seguro contra XXE Injection (#103).
+        
+        PROTEÇÕES:
+        - resolve_entities=False: Não resolve entidades externas
+        - no_network=True: Bloqueia requisições de rede
+        - load_dtd=False: Não carrega DTD externos
+        - dtd_validation=False: Desabilita validação DTD
+        
+        Um SVG malicioso poderia tentar:
+        <!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+        Este parser rejeita tais tentativas silenciosamente.
+        """
+        return etree.XMLParser(
+            remove_blank_text=True,
+            resolve_entities=False,  # CRÍTICO: Previne XXE
+            no_network=True,         # CRÍTICO: Sem acesso à rede
+            load_dtd=False,          # Não carrega DTD externos
+            dtd_validation=False,    # Sem validação DTD
+            recover=True             # Tenta recuperar de erros menores
+        )
+    
     def load_from_string(self, svg_content: Union[str, bytes]):
-        """Carrega SVG a partir de string/bytes."""
+        """
+        Carrega SVG a partir de string/bytes.
+        
+        SEGURANÇA (#103 Industrial Robustness):
+        Usa o mesmo parser seguro contra XXE.
+        """
         if isinstance(svg_content, str):
             svg_content = svg_content.encode('utf-8')
-        self.root = etree.fromstring(svg_content)
+        
+        parser = self._create_secure_parser()
+        self.root = etree.fromstring(svg_content, parser)
         self.tree = etree.ElementTree(self.root)
         
         self._purge_namespaces()
@@ -291,6 +336,10 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         - Prioriza quebra de linha antes de reduzir fonte
         - Limite mínimo de 60% do tamanho original
         
+        FAIL-FAST (#104 Industrial Robustness):
+        - Se a fonte calculada for menor que MIN_FONT_SIZE_PT (6pt),
+          lança TextOverflowError em vez de gerar texto ilegível.
+        
         Args:
             node_id: ID do elemento de texto no SVG
             text: Texto a ser inserido
@@ -298,7 +347,13 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
             font_path: Caminho da fonte (relativo a assets/fonts)
             allow_shrink: Permite redução de fonte se necessário
             min_size_ratio: Proporção mínima do tamanho original (default 60%)
+            
+        Raises:
+            TextOverflowError: Se texto requer fonte < 6pt (ilegível)
         """
+        # CONSTANTE CRÍTICA (#104): Fonte mínima legível para impressão
+        MIN_FONT_SIZE_PT = 6.0
+        
         node = self.slots.get(node_id)
         if node is None:
             return False
@@ -308,7 +363,10 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         match = re.search(r'font-size:\s*([\d.]+)', current_style)
         original_size = float(match.group(1)) if match else 24.0
         
-        min_size = int(original_size * min_size_ratio)
+        # Calcula mínimo respeitando tanto o ratio quanto o limite absoluto
+        ratio_min = int(original_size * min_size_ratio)
+        absolute_min = int(MIN_FONT_SIZE_PT)
+        min_size = max(ratio_min, absolute_min)  # Nunca menor que 6pt
         
         # Define texto
         node.text = text
@@ -347,6 +405,20 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
                 low = mid + 1
             else:
                 high = mid - 1
+        
+        # FAIL-FAST CHECK (#104)
+        # Verifica se mesmo no tamanho mínimo o texto cabe
+        final_width = self._measure_text_width(text, font_path, best_size)
+        if final_width > max_width_px and best_size <= MIN_FONT_SIZE_PT:
+            # Texto IMPOSSÍVEL de caber - lançar exceção
+            from src.core.exceptions import TextOverflowError
+            raise TextOverflowError(
+                slot_id=node_id,
+                text=text,
+                min_font_attempted=best_size,
+                required_width=final_width,
+                available_width=max_width_px
+            )
         
         # Aplica novo tamanho
         self._update_style(node, 'font-size', f'{best_size}px')
@@ -451,11 +523,17 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         slot_suffix: str,
         preco_atual: float, 
         preco_ref: Optional[float] = None,
-        font_path: str = "Roboto-Bold.ttf"
+        font_path: str = "Roboto-Bold.ttf",
+        strict_validation: bool = True
     ):
         """
         Lógica de Negócio para Precificação Visual (De/Por).
         Suporta múltiplos formatos de tag conforme Vol. II, Cap. 4.4.
+        
+        VALIDAÇÃO ANTI-FRAUDE (#34/#97 Industrial Robustness):
+        - Se preco_ref fornecido, DEVE ser maior que preco_atual
+        - Caso contrário, lança PriceValidationError
+        - Isso previne ofertas enganosas e passivo legal
         
         Tags suportadas:
         - TXT_PRECO_POR_{slot}: Preço atual formatado
@@ -463,7 +541,30 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         - TXT_PRECO_DEC_{slot}: Centavos
         - TXT_PRECO_DE_{slot}: Preço de referência (oculto se não houver)
         - TXT_PRECO_COMPLETO_{slot}: Preço completo em string única
+        
+        Args:
+            slot_suffix: Sufixo do slot (ex: "01")
+            preco_atual: Preço de venda atual
+            preco_ref: Preço de referência ("De") - opcional
+            font_path: Caminho da fonte
+            strict_validation: Se True, lança exceção em preços inválidos
+            
+        Raises:
+            PriceValidationError: Se preco_ref <= preco_atual (oferta inválida)
         """
+        # VALIDAÇÃO ANTI-FRAUDE (#34/#97)
+        if strict_validation and preco_ref is not None:
+            if preco_ref <= preco_atual:
+                from src.core.exceptions import PriceValidationError
+                raise PriceValidationError(
+                    message=(
+                        f"Oferta inválida: Preço 'De' (R$ {preco_ref:.2f}) deve ser "
+                        f"maior que preço 'Por' (R$ {preco_atual:.2f}). "
+                        "Isso pode configurar propaganda enganosa."
+                    ),
+                    price_value={"de": preco_ref, "por": preco_atual}
+                )
+        
         suf = f"_{slot_suffix}" if slot_suffix else ""
         
         # Formatação
@@ -738,6 +839,80 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
             
             self.place_image(new_id, img_path, sub_w, sub_h)
 
+    def create_clipping_path(
+        self,
+        clip_id: str,
+        target_element_id: str,
+        shape: str = "rect"
+    ) -> None:
+        """
+        INDUSTRIAL ROBUSTNESS #38: Cria clipping path dinâmico para elemento.
+        
+        Usado para:
+        - Imagens que precisam respeitar bordas arredondadas
+        - Slots com formato irregular (círculo, polígono)
+        - Prevenir overflow de conteúdo em slots
+        
+        Args:
+            clip_id: ID único para o clipPath
+            target_element_id: ID do elemento a receber o clip
+            shape: "rect", "circle", "ellipse" ou caminho SVG
+        """
+        target = self.slots.get(target_element_id)
+        if target is None:
+            return
+        
+        x = float(target.get('x', '0'))
+        y = float(target.get('y', '0'))
+        w = float(target.get('width', '100'))
+        h = float(target.get('height', '100'))
+        
+        ns = '{http://www.w3.org/2000/svg}'
+        
+        # Cria ou encontra defs
+        defs = self.root.find(f'{ns}defs')
+        if defs is None:
+            defs = etree.SubElement(self.root, f'{ns}defs')
+            self.root.insert(0, defs)  # defs deve ser primeiro
+        
+        # Cria clipPath
+        clip_path = etree.SubElement(defs, f'{ns}clipPath')
+        clip_path.set('id', clip_id)
+        
+        # Cria forma do clip
+        if shape == "circle":
+            cx = x + w / 2
+            cy = y + h / 2
+            r = min(w, h) / 2
+            clip_shape = etree.SubElement(clip_path, f'{ns}circle')
+            clip_shape.set('cx', str(cx))
+            clip_shape.set('cy', str(cy))
+            clip_shape.set('r', str(r))
+        elif shape == "ellipse":
+            cx = x + w / 2
+            cy = y + h / 2
+            clip_shape = etree.SubElement(clip_path, f'{ns}ellipse')
+            clip_shape.set('cx', str(cx))
+            clip_shape.set('cy', str(cy))
+            clip_shape.set('rx', str(w / 2))
+            clip_shape.set('ry', str(h / 2))
+        else:  # rect ou fallback
+            clip_shape = etree.SubElement(clip_path, f'{ns}rect')
+            clip_shape.set('x', str(x))
+            clip_shape.set('y', str(y))
+            clip_shape.set('width', str(w))
+            clip_shape.set('height', str(h))
+            # Border radius se disponível
+            rx = target.get('rx', '0')
+            ry = target.get('ry', rx)
+            clip_shape.set('rx', rx)
+            clip_shape.set('ry', ry)
+        
+        # Aplica clip ao elemento
+        target.set('clip-path', f'url(#{clip_id})')
+        
+        logger.debug(f"Clipping path '{clip_id}' criado para '{target_element_id}'")
+
     # ==========================================================================
     # TEXTOS LEGAIS (Vol. I, Cap. 5.3)
     # ==========================================================================
@@ -779,9 +954,12 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
         self.tree.write(output_path, pretty_print=True, encoding='utf-8')
 
     def calculate_hash(self) -> str:
-        """Calcula hash MD5 do SVG atual (para verificação de integridade)."""
+        """
+        Calcula hash SHA-256 do SVG atual (para verificação de integridade).
+        INDUSTRIAL ROBUSTNESS #107: Usa SHA-256 por segurança.
+        """
         content = self.to_string()
-        return hashlib.md5(content).hexdigest()
+        return hashlib.sha256(content).hexdigest()
 
     def render_frame(self, slot_data: dict) -> bytes:
         """

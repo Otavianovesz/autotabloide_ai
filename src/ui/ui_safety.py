@@ -1,23 +1,146 @@
 """
 AutoTabloide AI - UI Safety Utilities
 ========================================
-Utilitários de segurança para UI.
-Passos 14, 17, 43 do Checklist v2.
+Utilitários de segurança e performance para UI.
 
-Funcionalidades:
-- Spinner com desabilitar botões (14)
-- Cleanup de eventos on unmount (17)
-- Sanitização de inputs (43)
+CENTURY CHECKLIST:
+- Item 22: Debounce na busca (300ms)
+- Item 25: Cache LRU de thumbnails
+- Item 26: Loading Skeleton
+- Item 35: Prevenção de clique duplo (SafeButton)
+- Item 17: Cleanup de eventos (EventCleanupMixin)
 """
 
 import re
 import asyncio
-from typing import Optional, Callable, List, Any
+import time
+from typing import Optional, Callable, List, Any, Dict
+from functools import lru_cache
+from collections import OrderedDict
 import flet as ft
 
 from src.core.logging_config import get_logger
 
 logger = get_logger("UISafety")
+
+
+class Debouncer:
+    """
+    CENTURY CHECKLIST Item 22: Debounce para busca.
+    Espera N ms após última chamada antes de executar.
+    """
+    
+    def __init__(self, delay_ms: int = 300):
+        self.delay_ms = delay_ms
+        self._task: Optional[asyncio.Task] = None
+        self._last_call = 0
+    
+    async def debounce(self, callback: Callable, *args, **kwargs):
+        """
+        Executa callback após delay. Cancela execuções pendentes.
+        """
+        # Cancela tarefa anterior se existir
+        if self._task and not self._task.done():
+            self._task.cancel()
+        
+        async def delayed_execute():
+            await asyncio.sleep(self.delay_ms / 1000)
+            await callback(*args, **kwargs)
+        
+        self._task = asyncio.create_task(delayed_execute())
+    
+    def cancel(self):
+        """Cancela execução pendente."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+
+
+class ThumbnailCache:
+    """
+    CENTURY CHECKLIST Item 25: Cache LRU para thumbnails.
+    Evita recarregar imagens do disco repetidamente.
+    """
+    
+    def __init__(self, max_size: int = 100):
+        self.max_size = max_size
+        self._cache: OrderedDict[str, bytes] = OrderedDict()
+    
+    def get(self, key: str) -> Optional[bytes]:
+        """Retorna thumbnail do cache se existir."""
+        if key in self._cache:
+            # Move para o final (mais recente)
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+    
+    def put(self, key: str, data: bytes) -> None:
+        """Adiciona thumbnail ao cache."""
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        else:
+            if len(self._cache) >= self.max_size:
+                # Remove o mais antigo
+                self._cache.popitem(last=False)
+            self._cache[key] = data
+    
+    def clear(self) -> None:
+        """Limpa todo o cache."""
+        self._cache.clear()
+    
+    @property
+    def size(self) -> int:
+        return len(self._cache)
+
+
+def create_loading_skeleton(width: int = 100, height: int = 100) -> ft.Container:
+    """
+    CENTURY CHECKLIST Item 26: Cria skeleton de carregamento.
+    Retângulo cinza animado para feedback visual.
+    """
+    return ft.Container(
+        width=width,
+        height=height,
+        bgcolor="#E0E0E0",
+        border_radius=8,
+        animate=ft.animation.Animation(500, ft.AnimationCurve.EASE_IN_OUT),
+    )
+
+
+def create_loading_card_skeleton() -> ft.Container:
+    """Skeleton para card de produto."""
+    return ft.Container(
+        content=ft.Column([
+            # Imagem placeholder
+            ft.Container(
+                width=80, height=80,
+                bgcolor="#E0E0E0",
+                border_radius=4,
+            ),
+            # Texto placeholder
+            ft.Container(
+                width=70, height=12,
+                bgcolor="#D0D0D0",
+                border_radius=2,
+            ),
+            ft.Container(
+                width=50, height=10,
+                bgcolor="#D0D0D0",
+                border_radius=2,
+            ),
+        ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        padding=8,
+        border_radius=8,
+        bgcolor="#F5F5F5",
+    )
+
+
+# Cache global de thumbnails
+_thumbnail_cache = ThumbnailCache(max_size=200)
+
+
+def get_thumbnail_cache() -> ThumbnailCache:
+    """Retorna cache global de thumbnails."""
+    return _thumbnail_cache
 
 
 class SafeButton(ft.ElevatedButton):

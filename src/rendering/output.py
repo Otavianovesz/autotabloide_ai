@@ -194,9 +194,25 @@ class OutputEngine:
         
         # PDF/X padrão
         if pdf_standard == "pdfx1a":
+            # CRÍTICO (#101 Industrial Robustness): Transparency Flattener
+            # PDF/X-1a NÃO suporta transparência nativa!
+            # Sem estas flags, PNGs com alpha ou drop-shadows ficam:
+            # - Pixelados (rasterização pobre)
+            # - Pretos/brancos (canal alpha ignorado)
+            # - Causam rejeição pela gráfica
             cmd.extend([
                 "-dPDFX=true",
-                "-dCompatibilityLevel=1.4",
+                "-dCompatibilityLevel=1.3",    # PDF 1.3 força achatamento
+                "-dHaveTransparency=false",    # CRÍTICO: Achata transparências
+                "-dAutoFilterColorImages=false",
+                "-dColorImageFilter=/FlateEncode",  # Compressão sem perdas
+            ])
+        elif pdf_standard == "pdfx4":
+            # PDF/X-4 SUPORTA transparência nativa (impressoras modernas)
+            cmd.extend([
+                "-dPDFX=true",
+                "-dCompatibilityLevel=1.6",    # PDF 1.6+ para X-4
+                "-dHaveTransparency=true",     # Preserva transparências
             ])
         
         cmd.extend([
@@ -292,9 +308,19 @@ class OutputEngine:
         Returns:
             Caminho do PDF gerado
         """
+        # Import MemoryContext for garbage collection after heavy operations
+        try:
+            from src.core.memory import MemoryContext
+            memory_ctx = MemoryContext("BatchRender")
+        except ImportError:
+            memory_ctx = None
+        
         temp_pdfs = []
         
         try:
+            if memory_ctx:
+                memory_ctx.__enter__()
+            
             for i, svg_content in enumerate(svg_contents):
                 # 1. Renderiza SVG -> PDF RGB
                 temp_rgb = str(self.temp_dir / f"page_{i:04d}_rgb.pdf")
@@ -331,6 +357,10 @@ class OutputEngine:
                             os.remove(pdf)
                         except:
                             pass
+            
+            # Memory cleanup after heavy operation
+            if memory_ctx:
+                memory_ctx.__exit__(None, None, None)
 
     async def batch_render_to_pdf(
         self,
@@ -474,3 +504,253 @@ class OutputEngine:
                     except:
                         pass
             logger.info("Arquivos temporários removidos.")
+
+    # ==========================================================================
+    # #53: COLOR BARS - Barras de Controle de Cor
+    # ==========================================================================
+    
+    def add_color_bars(
+        self,
+        svg_content: bytes,
+        bar_width_mm: float = 5.0,
+        bar_height_mm: float = 10.0
+    ) -> bytes:
+        """
+        Adiciona barras de controle CMYK para calibração de impressora (#53).
+        
+        Cria 4 retângulos com C=100%, M=100%, Y=100%, K=100% 
+        fora da área de sangria para verificação de densidade.
+        
+        Args:
+            svg_content: SVG original
+            bar_width_mm: Largura de cada barra
+            bar_height_mm: Altura das barras
+        """
+        from lxml import etree
+        
+        root = etree.fromstring(svg_content)
+        
+        # Obtém dimensões
+        width = float(root.get('width', '210').replace('mm', '').replace('px', ''))
+        height = float(root.get('height', '297').replace('mm', '').replace('px', ''))
+        
+        # Escala (96dpi = 3.78 px/mm)
+        scale = 3.78
+        bar_w = bar_width_mm * scale
+        bar_h = bar_height_mm * scale
+        offset = 15 * scale  # 15mm da borda
+        
+        # Cores CMYK em RGB (aproximação para SVG)
+        colors = [
+            ("#00FFFF", "CYAN"),     # Cyan
+            ("#FF00FF", "MAGENTA"),  # Magenta
+            ("#FFFF00", "YELLOW"),   # Yellow
+            ("#000000", "BLACK"),    # Black (K)
+        ]
+        
+        # Grupo para barras
+        bars_group = etree.SubElement(root, '{http://www.w3.org/2000/svg}g')
+        bars_group.set('id', 'COLOR_BARS')
+        
+        # Posiciona barras no topo, fora da área de sangria
+        for i, (color, name) in enumerate(colors):
+            rect = etree.SubElement(bars_group, '{http://www.w3.org/2000/svg}rect')
+            rect.set('x', str(offset + (i * (bar_w + 2))))
+            rect.set('y', str(-offset - bar_h))  # Acima da página
+            rect.set('width', str(bar_w))
+            rect.set('height', str(bar_h))
+            rect.set('fill', color)
+            rect.set('id', f'COLOR_BAR_{name}')
+        
+        return etree.tostring(root, encoding='utf-8')
+
+    # ==========================================================================
+    # #54: REGISTRATION COLOR - Marcas de Registro
+    # ==========================================================================
+    
+    def add_registration_marks(
+        self,
+        svg_content: bytes,
+        mark_size_mm: float = 5.0
+    ) -> bytes:
+        """
+        Adiciona marcas de registro para alinhamento de chapas (#54).
+        
+        Usa "cor de registro" que imprime em todas as chapas CMYK.
+        Em SVG usamos #000000, mas no PDF/X isso é convertido para
+        C=100% M=100% Y=100% K=100% pelo perfil.
+        
+        Args:
+            svg_content: SVG original
+            mark_size_mm: Tamanho das marcas de registro
+        """
+        from lxml import etree
+        
+        root = etree.fromstring(svg_content)
+        
+        width = float(root.get('width', '210').replace('mm', '').replace('px', ''))
+        height = float(root.get('height', '297').replace('mm', '').replace('px', ''))
+        
+        scale = 3.78
+        mark_size = mark_size_mm * scale
+        offset = 12 * scale
+        
+        # Grupo para marcas de registro
+        reg_group = etree.SubElement(root, '{http://www.w3.org/2000/svg}g')
+        reg_group.set('id', 'REGISTRATION_MARKS')
+        # "Cor de registro" - imprime em todas as chapas
+        reg_group.set('style', 'stroke:#000000;stroke-width:0.5;fill:none')
+        
+        # Marcas nos 4 lados (círculo + cruz)
+        positions = [
+            (width / 2, -offset),           # Topo centro
+            (width / 2, height + offset),   # Base centro
+            (-offset, height / 2),          # Esquerda centro
+            (width + offset, height / 2),   # Direita centro
+        ]
+        
+        for x, y in positions:
+            # Círculo externo
+            circle = etree.SubElement(reg_group, '{http://www.w3.org/2000/svg}circle')
+            circle.set('cx', str(x))
+            circle.set('cy', str(y))
+            circle.set('r', str(mark_size / 2))
+            
+            # Cruz central (horizontal)
+            h_line = etree.SubElement(reg_group, '{http://www.w3.org/2000/svg}line')
+            h_line.set('x1', str(x - mark_size))
+            h_line.set('x2', str(x + mark_size))
+            h_line.set('y1', str(y))
+            h_line.set('y2', str(y))
+            
+            # Cruz central (vertical)
+            v_line = etree.SubElement(reg_group, '{http://www.w3.org/2000/svg}line')
+            v_line.set('x1', str(x))
+            v_line.set('x2', str(x))
+            v_line.set('y1', str(y - mark_size))
+            v_line.set('y2', str(y + mark_size))
+        
+        return etree.tostring(root, encoding='utf-8')
+
+    # ==========================================================================
+    # #55: SLUG AREA - Área de Informações Técnicas
+    # ==========================================================================
+    
+    def add_slug_area(
+        self,
+        svg_content: bytes,
+        job_name: str = "",
+        date_str: str = "",
+        page_info: str = ""
+    ) -> bytes:
+        """
+        Adiciona área de slug com informações técnicas (#55).
+        
+        O slug fica fora da área de sangria e contém:
+        - Nome do trabalho
+        - Data de criação
+        - Informação de página
+        - Marca "AutoTabloide AI"
+        
+        Args:
+            svg_content: SVG original
+            job_name: Nome do trabalho/projeto
+            date_str: Data de criação
+            page_info: Informação de página (ex: "1/4")
+        """
+        from lxml import etree
+        from datetime import datetime
+        
+        root = etree.fromstring(svg_content)
+        
+        width = float(root.get('width', '210').replace('mm', '').replace('px', ''))
+        height = float(root.get('height', '297').replace('mm', '').replace('px', ''))
+        
+        scale = 3.78
+        slug_offset = 20 * scale  # 20mm abaixo da área de sangria
+        
+        # Grupo para slug
+        slug_group = etree.SubElement(root, '{http://www.w3.org/2000/svg}g')
+        slug_group.set('id', 'SLUG_AREA')
+        
+        # Texto de informação
+        if not date_str:
+            date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        info_text = f"{job_name} | {date_str} | {page_info} | AutoTabloide AI"
+        
+        text_elem = etree.SubElement(slug_group, '{http://www.w3.org/2000/svg}text')
+        text_elem.set('x', str(width / 2))
+        text_elem.set('y', str(height + slug_offset))
+        text_elem.set('text-anchor', 'middle')
+        text_elem.set('style', 'font-family:sans-serif;font-size:8px;fill:#666666')
+        text_elem.text = info_text
+        
+        return etree.tostring(root, encoding='utf-8')
+
+    # ==========================================================================
+    # INDUSTRIAL ROBUSTNESS: UNIFIED PROFESSIONAL PRINT PIPELINE
+    # ==========================================================================
+    
+    def render_professional_pdf(
+        self,
+        svg_contents: List[bytes],
+        output_path: str,
+        job_name: str = "Tabloide",
+        add_print_marks: bool = True,
+        add_bleed: bool = True,
+        use_cmyk: bool = True
+    ) -> str:
+        """
+        Pipeline completo para impressão profissional offset.
+        
+        INTEGRA TODOS OS ITENS INDUSTRIAL:
+        - #52: Sangria (bleed)
+        - #53: Color Bars
+        - #54: Registration Marks
+        - #55: Slug Area
+        - #101: Transparency Flattening
+        
+        Args:
+            svg_contents: Lista de SVGs como bytes
+            output_path: Caminho do PDF final
+            job_name: Nome do trabalho para slug
+            add_print_marks: Se True, adiciona color bars, registration, slug
+            add_bleed: Se True, expande área de sangria
+            use_cmyk: Se True, converte para CMYK/FOGRA39
+            
+        Returns:
+            Caminho do PDF gerado
+        """
+        from datetime import datetime
+        
+        processed_svgs = []
+        total = len(svg_contents)
+        
+        for i, svg in enumerate(svg_contents):
+            processed = svg
+            
+            if add_print_marks:
+                # #53: Color Bars
+                processed = self.add_color_bars(processed)
+                
+                # #54: Registration Marks
+                processed = self.add_registration_marks(processed)
+                
+                # #55: Slug Area
+                processed = self.add_slug_area(
+                    processed,
+                    job_name=job_name,
+                    date_str=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    page_info=f"{i+1}/{total}"
+                )
+            
+            processed_svgs.append(processed)
+        
+        # Renderiza com pipeline CMYK (#101 Transparency)
+        return self.render_batch(
+            processed_svgs,
+            output_path,
+            use_cmyk=use_cmyk
+        )
+

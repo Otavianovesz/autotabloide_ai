@@ -148,6 +148,62 @@ class LayoutStructureError(RenderError):
         super().__init__(message, details=details, **kwargs)
 
 
+class TextOverflowError(RenderError):
+    """
+    Texto não cabe no slot mesmo com fontes mínimas (#104 Industrial Robustness).
+    Lançada quando a busca binária retorna fonte < MIN_FONT_SIZE (6pt).
+    Força intervenção humana em vez de gerar PDF ilegível.
+    """
+    
+    def __init__(
+        self,
+        slot_id: str,
+        text: str,
+        min_font_attempted: float,
+        required_width: float,
+        available_width: float,
+        **kwargs
+    ):
+        msg = (
+            f"Texto não cabe no slot '{slot_id}': "
+            f"'{text[:50]}...' requer {required_width:.0f}px mas slot tem {available_width:.0f}px. "
+            f"Fonte mínima {min_font_attempted:.1f}pt é ilegível."
+        )
+        super().__init__(msg, slot_id=slot_id, recoverable=True, **kwargs)
+        self.details.update({
+            "text_preview": text[:100],
+            "min_font_pt": min_font_attempted,
+            "required_width_px": required_width,
+            "available_width_px": available_width
+        })
+
+
+class LowDPIError(RenderError):
+    """
+    Imagem com DPI efetivo abaixo do mínimo para impressão (#102 Industrial Robustness).
+    Lançada quando imagem esticada no slot resulta em DPI < 250.
+    """
+    
+    def __init__(
+        self,
+        image_path: str,
+        effective_dpi: float,
+        required_dpi: float = 250.0,
+        slot_id: Optional[str] = None,
+        **kwargs
+    ):
+        msg = (
+            f"Imagem com baixa resolução: '{image_path}' tem {effective_dpi:.0f} DPI efetivo "
+            f"(mínimo {required_dpi:.0f} DPI para impressão profissional)."
+        )
+        super().__init__(msg, slot_id=slot_id, recoverable=True, **kwargs)
+        self.details.update({
+            "image_path": image_path,
+            "effective_dpi": effective_dpi,
+            "required_dpi": required_dpi
+        })
+
+
 # ==============================================================================
 # ERROS DE IMPORTAÇÃO
 # ==============================================================================
@@ -252,6 +308,52 @@ class ModelNotFoundError(AIError):
 class InferenceError(AIError):
     """Erro durante inferência do modelo."""
     pass
+
+
+class PromptInjectionError(AIError):
+    """
+    Tentativa de prompt injection detectada (#108 Industrial Robustness).
+    Lançada quando descrições de produtos contêm comandos suspeitos para o LLM.
+    """
+    
+    INJECTION_PATTERNS = [
+        "ignore previous",
+        "ignore all",
+        "disregard",
+        "forget your instructions",
+        "system prompt",
+        "you are now",
+        "act as",
+        "pretend to be",
+        "output:",
+        "respond with:",
+    ]
+    
+    def __init__(self, detected_pattern: str, original_text: str, **kwargs):
+        msg = f"Possível prompt injection detectado: padrão '{detected_pattern}' encontrado"
+        super().__init__(msg, recoverable=True, **kwargs)
+        self.details.update({
+            "detected_pattern": detected_pattern,
+            "text_preview": original_text[:200]
+        })
+    
+    @classmethod
+    def check_text(cls, text: str) -> bool:
+        """Verifica se texto contém padrões de injection."""
+        text_lower = text.lower()
+        for pattern in cls.INJECTION_PATTERNS:
+            if pattern in text_lower:
+                return True
+        return False
+    
+    @classmethod
+    def sanitize_or_raise(cls, text: str) -> str:
+        """Verifica e lança exceção se encontrar injection."""
+        text_lower = text.lower()
+        for pattern in cls.INJECTION_PATTERNS:
+            if pattern in text_lower:
+                raise cls(detected_pattern=pattern, original_text=text)
+        return text
 
 
 # ==============================================================================

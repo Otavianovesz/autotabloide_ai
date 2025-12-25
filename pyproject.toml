@@ -27,11 +27,30 @@ opencv-python-headless = "4.9.0.80"  # Processamento sem GUI
 onnxruntime = "1.17.0"  # Backend para rembg
 # === Alembic para Migrations (Passos 7-9) ===
 alembic = "1.13.1"
+# === Industrial Robustness Dependencies (#3-8) ===
+httpx = "0.26.0"           # Async HTTP client (Vol. III)
+aiofiles = "23.2.1"        # Async file I/O (Vol. III, Tab. 1.1)
+fonttools = "4.47.0"       # Font metrics e kerning (Vol. II, Cap. 3.3)
+pyphen = "0.15.0"          # Hyphenation PT-BR (Vol. II, Cap. 3.4)
+# sentence-transformers = "2.2.2"  # RAG embeddings (Vol. IV, Cap. 2.1) - Optional
+# sqlite-vec = "0.1.0"      # Vector store SQLite (Vol. IV, Cap. 2.2) - Optional
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.extras]
+# === Optional AI/ML Dependencies ===
+# Install with: poetry install -E ai
+ai = ["sentence-transformers", "sqlite-vec"]
+
+[tool.poetry.group.ai]
+optional = true
+
+[tool.poetry.group.ai.dependencies]
+sentence-transformers = "2.2.2"  # RAG embeddings (Vol. IV, Cap. 2.1)
+# sqlite-vec = "0.1.0"           # Vector store - install manually
 
 [dependency-groups]
 dev = [

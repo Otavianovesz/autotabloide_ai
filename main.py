@@ -19,9 +19,17 @@ BIN_DIR = SYSTEM_ROOT / "bin"
 
 
 def setup_environment() -> None:
-    """Configura ambiente de execução com DLLs e paths."""
+    """
+    Configura ambiente de execução com DLLs, paths e diretórios.
+    
+    CHECKLIST ITEMS:
+    - #11: Criação de /library/fonts/ no boot
+    - #12: Limpeza de /temp_render/ a cada boot
+    - #102/105/109: Inicialização de industrial_robustness
+    """
     import os
     import platform
+    import shutil
     
     if not BIN_DIR.exists():
         BIN_DIR.mkdir(parents=True, exist_ok=True)
@@ -35,6 +43,56 @@ def setup_environment() -> None:
             os.add_dll_directory(str(BIN_DIR))
         except Exception:
             pass  # Ignora silenciosamente
+    
+    # =========================================================================
+    # #11: Criação de diretórios obrigatórios (Vol. I, Tab. 2.1)
+    # =========================================================================
+    required_dirs = [
+        SYSTEM_ROOT / "library" / "fonts",       # #11: Fontes do usuário
+        SYSTEM_ROOT / "assets" / "profiles",     # #10: Perfis ICC
+        SYSTEM_ROOT / "staging" / "downloads",   # Staging para Hunter
+        SYSTEM_ROOT / "logs",                    # Logs do sistema
+    ]
+    
+    for dir_path in required_dirs:
+        dir_path.mkdir(parents=True, exist_ok=True)
+    
+    # =========================================================================
+    # #12: Limpeza de /temp_render/ a cada boot (Vol. I, Tab. 2.1)
+    # =========================================================================
+    temp_render = SYSTEM_ROOT / "temp_render"
+    if temp_render.exists():
+        try:
+            shutil.rmtree(temp_render)
+        except Exception:
+            # Se falhar, tenta remover arquivos individualmente
+            for file in temp_render.glob("*"):
+                try:
+                    file.unlink()
+                except Exception:
+                    pass
+    temp_render.mkdir(parents=True, exist_ok=True)
+    
+    # =========================================================================
+    # #102/105/109: Inicialização de Industrial Robustness
+    # =========================================================================
+    try:
+        from src.core.industrial_robustness import initialize_industrial_robustness
+        initialize_industrial_robustness()
+    except ImportError:
+        pass  # Módulo não disponível
+    
+    # =========================================================================
+    # CENTURY CHECKLIST: Inicialização de Sistemas Industriais
+    # =========================================================================
+    try:
+        from src.core.century_industrial import initialize_industrial_systems
+        # Inicializa MemoryWatchdog, LogCleaner, TempDirectoryManager, etc.
+        _industrial_systems = initialize_industrial_systems(SYSTEM_ROOT)
+    except ImportError:
+        pass  # Módulo não disponível
+    except Exception:
+        pass  # Falha silenciosa para não bloquear boot
 
 
 def check_single_instance() -> bool:

@@ -2,11 +2,14 @@
 AutoTabloide AI - Settings Views
 ==================================
 Telas de configuração para o sistema.
-Passos 52-54 do Checklist 100.
+
+CENTURY CHECKLIST Items 71-72:
+- Item 71: Editor de Palavras Proibidas (+18/Álcool/Tabaco)
+- Item 72: Caminhos de Binários (Ghostscript)
 
 Telas:
-- Palavras Proibidas (+18) CRUD (53)
-- Configuração Ghostscript (54)
+- RestrictedWordsView: CRUD para palavras +18
+- GhostscriptConfigView: Configuração Ghostscript
 """
 
 import asyncio

@@ -71,7 +71,8 @@ class ImageProcessor:
         Returns:
             Hash MD5 como string hex
         """
-        return hashlib.md5(image_bytes).hexdigest()
+        # INDUSTRIAL ROBUSTNESS #107: SHA-256 por segurança
+        return hashlib.sha256(image_bytes).hexdigest()
     
     def _get_cached_path(self, original_hash: str) -> Optional[Path]:
         """
@@ -104,17 +105,23 @@ class ImageProcessor:
         logger.debug(f"Imagem cacheada: {cached_path.name}")
         return cached_path
     
-    def remove_background(self, image_bytes: bytes) -> bytes:
+    def remove_background(self, image_bytes: bytes) -> Tuple[bytes, bool]:
         """
         Remove fundo de imagem usando rembg (U2-Net).
         Passo 19 do Checklist.
+        CENTURY CHECKLIST Item 36: Retorna flag indicando sucesso.
         
         Args:
             image_bytes: Bytes da imagem original
             
         Returns:
-            Bytes da imagem PNG com fundo transparente
+            Tupla (bytes_resultado, bg_removed_success)
         """
+        # CENTURY CHECKLIST Item 37: Validar cabeçalho da imagem
+        if not self._validate_image_header(image_bytes):
+            logger.warning("Cabeçalho de imagem inválido")
+            return image_bytes, False
+        
         try:
             from rembg import remove, new_session
             
@@ -133,14 +140,44 @@ class ImageProcessor:
             )
             
             logger.debug("Fundo removido com sucesso")
-            return output
+            return output, True
             
         except ImportError:
             logger.warning("rembg não instalado, retornando imagem original")
-            return image_bytes
+            return image_bytes, False
         except Exception as e:
             logger.error(f"Erro ao remover fundo: {e}")
-            return image_bytes
+            return image_bytes, False
+    
+    def _validate_image_header(self, image_bytes: bytes) -> bool:
+        """
+        CENTURY CHECKLIST Item 37: Verifica se bytes são imagem válida.
+        Checa magic bytes de PNG, JPEG, GIF, WebP.
+        
+        Returns:
+            True se cabeçalho é válido
+        """
+        if len(image_bytes) < 10:
+            return False
+        
+        # Magic bytes comuns
+        magic = {
+            b'\x89PNG': 'PNG',
+            b'\xff\xd8\xff': 'JPEG',
+            b'GIF87a': 'GIF',
+            b'GIF89a': 'GIF',
+            b'RIFF': 'WebP',  # WebP é RIFF....WEBP
+        }
+        
+        for header, fmt in magic.items():
+            if image_bytes.startswith(header):
+                return True
+        
+        # WebP precisa check especial
+        if image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+            return True
+        
+        return False
     
     def trim_transparent_borders(self, image: Image.Image, padding_px: int = 10) -> Image.Image:
         """

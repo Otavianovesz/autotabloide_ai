@@ -88,7 +88,8 @@ class RAGEngine:
             return None
         
         # Cache por hash do texto
-        text_hash = hashlib.md5(text.encode()).hexdigest()
+        # INDUSTRIAL ROBUSTNESS #107: SHA-256
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
         if text_hash in self._cache:
             return self._cache[text_hash]
         

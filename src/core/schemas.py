@@ -74,7 +74,6 @@ class ProdutoBase(BaseModel):
         ...,
         gt=Decimal("0"),
         le=Decimal("999999.99"),
-        decimal_places=2,
         description="Preço de venda em reais"
     )
     
@@ -82,7 +81,6 @@ class ProdutoBase(BaseModel):
         None,
         ge=Decimal("0"),
         le=Decimal("999999.99"),
-        decimal_places=2,
         description="Preço 'De' para promoções"
     )
     

@@ -455,7 +455,8 @@ class ImagePipeline:
         
         # Calcula hash
         with open(input_path, "rb") as f:
-            file_hash = hashlib.md5(f.read()).hexdigest()
+            # INDUSTRIAL ROBUSTNESS #107: SHA-256
+            file_hash = hashlib.sha256(f.read()).hexdigest()
         
         # Estrutura hierárquica: AA/BB/AABBCCDD...
         subdir = self.vault_dir / file_hash[:2] / file_hash[2:4]

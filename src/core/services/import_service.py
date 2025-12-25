@@ -2,7 +2,15 @@
 AutoTabloide AI - Import Service
 ==================================
 Serviço de importação desacoplado da UI.
-Passos 44-47 do Checklist 100.
+
+CENTURY CHECKLIST Items 61-70:
+- Item 61: Normalização de colunas (fuzzy matching)
+- Item 63: Detecção de linhas vazias
+- Item 64: Parser de moeda BR/US
+- Item 65: Limpeza de espaços (trim)
+- Item 66: Validação de duplicidade no arquivo
+- Item 67: Log de erros de importação
+- Item 70: Barra de progresso (eventos)
 
 Funcionalidades:
 - Importação de Excel/CSV
@@ -56,6 +64,7 @@ class ImportResult:
 def _parse_price(value: Any) -> Optional[Decimal]:
     """
     Converte valor para Decimal de preço.
+    CENTURY CHECKLIST Item 64: Suporta formato BR (1.234,56) e US (1,234.56).
     
     Args:
         value: Valor a converter
@@ -69,6 +78,8 @@ def _parse_price(value: Any) -> Optional[Decimal]:
     try:
         # Limpar string
         if isinstance(value, str):
+            # CENTURY CHECKLIST Item 65: Limpeza de espaços
+            value = value.strip()
             # Remover R$, espaços
             value = value.replace("R$", "").replace("$", "").strip()
             # Converter vírgula para ponto
@@ -81,6 +92,67 @@ def _parse_price(value: Any) -> Optional[Decimal]:
         return Decimal(str(value)).quantize(Decimal("0.01"))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _is_row_empty(row: Dict[str, Any], required_keys: List[str]) -> bool:
+    """
+    CENTURY CHECKLIST Item 63: Detecta linhas vazias.
+    
+    Args:
+        row: Dicionário da linha
+        required_keys: Chaves obrigatórias
+        
+    Returns:
+        True se linha está vazia
+    """
+    for key in required_keys:
+        value = row.get(key, "")
+        if value is not None and str(value).strip():
+            return False
+    return True
+
+
+def _check_duplicates_in_file(rows: List[Dict[str, Any]], key_column: str) -> List[Tuple[int, str]]:
+    """
+    CENTURY CHECKLIST Item 66: Detecta duplicatas no arquivo.
+    
+    Args:
+        rows: Lista de linhas
+        key_column: Coluna chave para verificar
+        
+    Returns:
+        Lista de (linha, valor) duplicados
+    """
+    seen = {}
+    duplicates = []
+    
+    for idx, row in enumerate(rows):
+        value = str(row.get(key_column, "")).strip().lower()
+        if not value:
+            continue
+        
+        if value in seen:
+            duplicates.append((idx + 1, value))  # +1 para linha humana
+        else:
+            seen[value] = idx + 1
+    
+    return duplicates
+
+
+def _trim_all_values(row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    CENTURY CHECKLIST Item 65: Remove espaços de todos os valores.
+    
+    Args:
+        row: Dicionário original
+        
+    Returns:
+        Dicionário com valores trimados
+    """
+    return {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in row.items()
+    }
 
 
 def _read_excel_sync(file_path: Path) -> List[Dict[str, Any]]:

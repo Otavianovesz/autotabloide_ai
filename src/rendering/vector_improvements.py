@@ -292,7 +292,12 @@ def get_gs_outline_args() -> List[str]:
 class VectorImprovementsMixin:
     """
     Mixin com melhorias para VectorEngine.
-    Inclui passos 35-40.
+    
+    CENTURY CHECKLIST:
+    - Items 35-40: Fallback fontes, CMYK, curvas, bleed, crop marks, EAN
+    - Item 46: Overprint de preto
+    - Item 56: Limpeza de SVG
+    - Item 57: Ordenação Z-Index
     """
     
     def apply_bleed(self, bleed_mm: float = 3.0) -> None:
@@ -308,3 +313,149 @@ class VectorImprovementsMixin:
     def validate_barcode(self, ean: str) -> Tuple[bool, str]:
         """Valida código de barras."""
         return validate_ean13_checksum(ean)
+    
+    def apply_black_overprint(self) -> None:
+        """
+        CENTURY CHECKLIST Item 46: Aplica overprint em textos pretos.
+        Evita contorno branco em pretos se registro da impressora falhar.
+        """
+        if self.root is None:
+            return
+        
+        ns = {'svg': 'http://www.w3.org/2000/svg'}
+        
+        # Procura todos os elementos text
+        for elem in self.root.iter():
+            fill = elem.get('fill', '')
+            style = elem.get('style', '')
+            
+            # Detecta preto puro
+            is_black = (
+                fill.lower() in ['#000000', '#000', 'black', 'rgb(0,0,0)'] or
+                'fill:#000000' in style.lower() or
+                'fill:#000' in style.lower() or
+                'fill:black' in style.lower()
+            )
+            
+            if is_black:
+                # Adiciona atributo de overprint (para PDF)
+                elem.set('fill-overprint', 'true')
+                elem.set('style', style + ';mix-blend-mode:multiply;' if style else 'mix-blend-mode:multiply;')
+        
+        logger.debug("Overprint de preto aplicado")
+    
+    def cleanup_svg_metadata(self) -> None:
+        """
+        CENTURY CHECKLIST Item 56: Remove metadados proprietários do SVG.
+        Limpa atributos Inkscape, Illustrator, etc.
+        """
+        if self.root is None:
+            return
+        
+        # Namespaces a remover
+        remove_prefixes = ['inkscape', 'sodipodi', 'adobe', 'illustrator']
+        
+        for elem in self.root.iter():
+            # Remove atributos com prefixos proprietários
+            attrs_to_remove = []
+            for attr in elem.attrib:
+                for prefix in remove_prefixes:
+                    if prefix in attr.lower():
+                        attrs_to_remove.append(attr)
+                        break
+            
+            for attr in attrs_to_remove:
+                del elem.attrib[attr]
+        
+        logger.debug("Metadados proprietários removidos do SVG")
+    
+    def ensure_price_z_order(self) -> None:
+        """
+        CENTURY CHECKLIST Item 57: Garante que preço fique acima da imagem.
+        Move elementos de preço para o final do parent (maior z-index).
+        """
+        if self.root is None:
+            return
+        
+        # Procura elementos com ID contendo "price" ou "preco"
+        for elem in self.root.iter():
+            elem_id = elem.get('id', '').lower()
+            if any(x in elem_id for x in ['price', 'preco', 'preço', 'valor']):
+                parent = elem.getparent()
+                if parent is not None:
+                    # Remove e re-adiciona no final (maior z-index)
+                    parent.remove(elem)
+                    parent.append(elem)
+        
+        logger.debug("Z-order de preços ajustado")
+    
+    def extend_bleed_elements(self, bleed_mm: float = 3.0) -> None:
+        """
+        INDUSTRIAL ROBUSTNESS #52: Extrapola elementos de borda para sangria.
+        
+        Diferente de add_bleed() que só expande o viewbox, este método
+        estende fisicamente os elementos que tocam as bordas do documento
+        para garantir que não haja borda branca no corte.
+        
+        Procura por:
+        - Retângulos com x=0 ou y=0 ou x+width=viewbox_width
+        - Backgrounds que cobrem toda a página
+        - Imagens de borda
+        """
+        if self.root is None:
+            return
+        
+        # Obtém dimensões do viewbox
+        viewbox = self.root.get('viewBox', '0 0 1000 1000')
+        parts = [float(x) for x in viewbox.split()]
+        if len(parts) < 4:
+            return
+        
+        vb_x, vb_y, vb_w, vb_h = parts
+        bleed_px = bleed_mm * 3.78  # Conversão mm para px
+        
+        # Procura elementos de borda
+        ns = '{http://www.w3.org/2000/svg}'
+        
+        for elem in self.root.iter():
+            tag = elem.tag.replace(ns, '')
+            
+            if tag in ['rect', 'image']:
+                try:
+                    x = float(elem.get('x', '0'))
+                    y = float(elem.get('y', '0'))
+                    w = float(elem.get('width', '0'))
+                    h = float(elem.get('height', '0'))
+                    
+                    extended = False
+                    
+                    # Borda esquerda
+                    if abs(x - vb_x) < 1:
+                        elem.set('x', str(x - bleed_px))
+                        elem.set('width', str(w + bleed_px))
+                        extended = True
+                    
+                    # Borda superior
+                    if abs(y - vb_y) < 1:
+                        elem.set('y', str(y - bleed_px))
+                        elem.set('height', str(h + bleed_px))
+                        extended = True
+                    
+                    # Borda direita
+                    if abs((x + w) - (vb_x + vb_w)) < 1:
+                        elem.set('width', str(w + bleed_px))
+                        extended = True
+                    
+                    # Borda inferior
+                    if abs((y + h) - (vb_y + vb_h)) < 1:
+                        elem.set('height', str(h + bleed_px))
+                        extended = True
+                    
+                    if extended:
+                        logger.debug(f"Elemento {elem.get('id', tag)} estendido para sangria")
+                        
+                except (ValueError, TypeError):
+                    continue
+        
+        logger.debug(f"Sangria real de {bleed_mm}mm aplicada aos elementos de borda")
+
