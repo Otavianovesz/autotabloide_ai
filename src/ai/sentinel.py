@@ -11,6 +11,7 @@ import json
 import hashlib
 import multiprocessing
 import logging
+from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
 from queue import Empty
 
@@ -357,7 +358,7 @@ class TheHunter:
             elif 'jpeg' in ct: ext = 'jpg'
             
             filename = f"{hashlib.md5(query.encode()).hexdigest()}.{ext}"
-            filepath = os.path.join(self.download_path, filename)
+            filepath = Path(self.download_path) / filename
             
             with open(filepath, "wb") as f:
                 f.write(response.content)

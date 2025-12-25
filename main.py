@@ -3,6 +3,7 @@ AutoTabloide AI - Entry Point Principal (Refatorado)
 =====================================================
 Conforme Vol. VI, Cap. 1 - Shell de Aplicação.
 Refatorado para usar infraestrutura industrial.
+CENTURY CHECKLIST: Items 2, 10 integrados.
 """
 
 import sys
@@ -34,6 +35,76 @@ def setup_environment() -> None:
             os.add_dll_directory(str(BIN_DIR))
         except Exception:
             pass  # Ignora silenciosamente
+
+
+def check_single_instance() -> bool:
+    """
+    CENTURY CHECKLIST ITEM 2: Verifica se já existe outra instância rodando.
+    Retorna True se pode continuar, False se já existe instância.
+    """
+    try:
+        from src.core.instance_lock import acquire_instance_lock
+        
+        if not acquire_instance_lock():
+            # Mostra popup amigável no Windows
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    ctypes.windll.user32.MessageBoxW(
+                        0, 
+                        "O AutoTabloide AI já está rodando em outra janela!\n\n"
+                        "Verifique a barra de tarefas.",
+                        "AutoTabloide AI", 
+                        0x40  # MB_ICONINFORMATION
+                    )
+                except:
+                    print("AVISO: Outra instância do AutoTabloide AI já está rodando!")
+            return False
+        return True
+    except ImportError:
+        # Módulo não disponível - permite execução
+        return True
+
+
+def check_dependencies() -> bool:
+    """
+    CENTURY CHECKLIST ITEM 10: Verifica dependências críticas.
+    Mostra popup amigável se algo estiver faltando.
+    """
+    missing = []
+    
+    # Verifica Flet
+    try:
+        import flet
+    except ImportError:
+        missing.append("flet")
+    
+    # Verifica SQLAlchemy
+    try:
+        import sqlalchemy
+    except ImportError:
+        missing.append("sqlalchemy")
+    
+    if missing:
+        msg = (
+            f"Dependências faltando:\n\n"
+            f"• {', '.join(missing)}\n\n"
+            f"Execute: poetry install\n"
+            f"Ou: pip install {' '.join(missing)}"
+        )
+        
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(0, msg, "AutoTabloide AI - Erro", 0x10)
+            except:
+                print(f"ERRO: {msg}")
+        else:
+            print(f"ERRO: {msg}")
+        
+        return False
+    
+    return True
 
 
 def setup_logging():
@@ -114,19 +185,27 @@ async def init_database():
 # ==============================================================================
 
 if __name__ == "__main__":
-    # 1. Configurar Ambiente
+    # 1. Verificar Dependências (antes de tudo!)
+    if not check_dependencies():
+        sys.exit(1)
+    
+    # 2. Verificar Instância Única (CENTURY CHECKLIST ITEM 2)
+    if not check_single_instance():
+        sys.exit(0)
+    
+    # 3. Configurar Ambiente
     setup_environment()
     
-    # 2. Configurar Logging (antes de tudo!)
+    # 4. Configurar Logging
     logger = setup_logging()
     logger.info("=" * 60)
     logger.info("AutoTabloide AI - Iniciando...")
     logger.info("=" * 60)
     
-    # 3. Integridade e Self-Healing
+    # 5. Integridade e Self-Healing
     is_safe_mode = run_integrity_checks(logger)
     
-    # 4. Registrar Serviços (DI Container)
+    # 6. Registrar Serviços (DI Container)
     lifecycle = register_services(logger)
     
     # 5. Iniciar Aplicação

@@ -24,7 +24,7 @@ from enum import Enum
 
 from sqlalchemy import (
     Integer, String, Numeric, DateTime, Text, ForeignKey, 
-    func, Index, Enum as SQLEnum, LargeBinary
+    func, Index, Enum as SQLEnum, LargeBinary, CheckConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -135,6 +135,17 @@ class Produto(Base):
     )
     data_ultima_impressao: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
+    )
+
+    # ==== CENTURY CHECKLIST ITEMS 11, 14 ====
+    # Item 11: Índices de Performance para busca rápida
+    # Item 14: CheckConstraints para preços não-negativos
+    __table_args__ = (
+        Index('idx_produtos_nome_sanitizado', 'nome_sanitizado'),
+        Index('idx_produtos_marca', 'marca_normalizada'),
+        Index('idx_produtos_status', 'status_qualidade'),
+        CheckConstraint('preco_venda_atual >= 0', name='chk_preco_positivo'),
+        CheckConstraint('preco_referencia IS NULL OR preco_referencia >= 0', name='chk_preco_ref_positivo'),
     )
 
     # Relacionamentos
