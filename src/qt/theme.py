@@ -369,6 +369,27 @@ QGroupBox::title {
 """
 
 
+from pathlib import Path
+
+
 def apply_theme(app: QApplication) -> None:
-    """Aplica o tema dark à aplicação."""
+    """
+    Aplica o tema dark à aplicação.
+    
+    Tenta carregar theme.qss externo primeiro.
+    Fallback para styles inline se arquivo não encontrar.
+    """
+    qss_file = Path(__file__).parent / "theme.qss"
+    
+    if qss_file.exists():
+        try:
+            with open(qss_file, 'r', encoding='utf-8') as f:
+                app.setStyleSheet(f.read())
+            print(f"[Theme] Carregado de {qss_file}")
+            return
+        except Exception as e:
+            print(f"[Theme] Erro ao carregar QSS: {e}")
+    
+    # Fallback para inline styles
     app.setStyleSheet(DARK_THEME_QSS)
+    print("[Theme] Usando styles inline")

@@ -197,6 +197,7 @@ class MainWindow(QMainWindow):
         """Cria e adiciona todas as views ao stack."""
         # Dashboard (implementado)
         self.dashboard = DashboardWidget(container=self.container)
+        self.dashboard.navigate_to.connect(self._navigate_to_view)
         self.stack.addWidget(self.dashboard)
         
         # Estoque (implementado)
@@ -219,6 +220,12 @@ class MainWindow(QMainWindow):
         self.settings = SettingsWidget(container=self.container)
         self.stack.addWidget(self.settings)
     
+    @Slot(int)
+    def _navigate_to_view(self, index: int) -> None:
+        """Navega para uma view específica."""
+        self.sidebar._on_nav_click(index)
+        self.stack.setCurrentIndex(index)
+    
     def _setup_status_bar(self) -> None:
         """Configura barra de status."""
         status = self.statusBar()
@@ -235,13 +242,37 @@ class MainWindow(QMainWindow):
         self.sentinel_timer.timeout.connect(self._check_sentinel_status)
         self.sentinel_timer.start(5000)  # 5 segundos
     
+    def _restore_state(self) -> None:
+        """Restaura estado da janela."""
+        try:
+            from .state import get_state_manager
+            state = get_state_manager()
+            state.restore_window_geometry(self)
+            
+            # Restaura última view
+            last_view = state.get_last_view_index()
+            if 0 <= last_view < 6:
+                self._navigate_to_view(last_view)
+        except Exception as e:
+            print(f"[MainWindow] Erro ao restaurar estado: {e}")
+    
+    def _save_state(self) -> None:
+        """Salva estado da janela."""
+        try:
+            from .state import get_state_manager
+            state = get_state_manager()
+            state.save_window_geometry(self)
+            state.set_last_view_index(self.stack.currentIndex())
+        except Exception as e:
+            print(f"[MainWindow] Erro ao salvar estado: {e}")
+    
     @Slot(int)
     def _on_navigation(self, index: int) -> None:
         """Alterna view no stack."""
         self.stack.setCurrentIndex(index)
         
         # Atualiza status bar
-        view_names = ["Dashboard", "Estoque", "Ateliê", "Fábrica", "Cofre", "Configurações"]
+        view_names = ["Dashboard", "Estoque", "Atelie", "Fabrica", "Cofre", "Configuracoes"]
         self.statusBar().showMessage(f"{view_names[index]} | Pronto")
     
     @Slot()
@@ -262,17 +293,26 @@ class MainWindow(QMainWindow):
         """Esconde indicador de progresso."""
         self.progress_label.setText("")
     
+    def showEvent(self, event) -> None:
+        """Chamado quando janela é exibida."""
+        super().showEvent(event)
+        # Restaura estado após primeiro show
+        if not hasattr(self, '_state_restored'):
+            self._state_restored = True
+            self._restore_state()
+    
     def closeEvent(self, event: QCloseEvent) -> None:
         """Handler de fechamento da janela."""
         reply = QMessageBox.question(
             self, 
-            "Confirmar Saída",
+            "Confirmar Saida",
             "Deseja realmente sair do AutoTabloide AI?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
+            self._save_state()
             self.closing.emit()
             event.accept()
         else:

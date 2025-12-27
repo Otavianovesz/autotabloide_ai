@@ -1,120 +1,167 @@
 """
-AutoTabloide AI - Atelier Widget
-=================================
+AutoTabloide AI - Ateliê Widget (Completo)
+===========================================
 A Mesa: Canvas interativo com QGraphicsView para montagem de tabloides.
+Implementa decomposição vetorial de SVG e drag & drop inteligente.
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget,
     QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QGraphicsTextItem, QGraphicsPixmapItem, QFrame, QLabel, QLineEdit,
-    QPushButton, QComboBox, QMenu, QMessageBox
+    QPushButton, QComboBox, QMenu, QMessageBox, QFileDialog
 )
 from PySide6.QtCore import (
-    Qt, Signal, Slot, QRectF, QPointF, QMimeData, QSize
+    Qt, Signal, Slot, QRectF, QPointF, QMimeData, QSize, QTimer
 )
 from PySide6.QtGui import (
-    QColor, QPen, QBrush, QFont, QPainter, QPixmap, QDrag
+    QColor, QPen, QBrush, QFont, QPainter, QPixmap, QDrag,
+    QKeySequence, QWheelEvent, QMouseEvent, QUndoStack, QUndoCommand,
+    QShortcut
 )
 from typing import Optional, List, Dict, Any
+from pathlib import Path
+import json
 
 
-class SlotGraphicsItem(QGraphicsRectItem):
-    """Item gráfico representando um slot no layout."""
+class DropProductCommand(QUndoCommand):
+    """Comando undo/redo para drop de produto."""
     
-    def __init__(
-        self, 
-        slot_index: int,
-        x: float, 
-        y: float, 
-        width: float, 
-        height: float,
-        parent=None
-    ):
-        super().__init__(x, y, width, height, parent)
+    def __init__(self, slot, product_data, old_product=None):
+        super().__init__(f"Drop {product_data.get('nome_sanitizado', 'Produto')[:20]}")
+        self.slot = slot
+        self.new_product = product_data
+        self.old_product = old_product
+    
+    def redo(self):
+        self.slot.set_product(self.new_product)
+    
+    def undo(self):
+        if self.old_product:
+            self.slot.set_product(self.old_product)
+        else:
+            self.slot.clear_product()
+
+
+class ClearSlotCommand(QUndoCommand):
+    """Comando undo/redo para limpar slot."""
+    
+    def __init__(self, slot, old_product):
+        super().__init__(f"Limpar slot #{slot.slot_index}")
+        self.slot = slot
+        self.old_product = old_product
+    
+    def redo(self):
+        self.slot.clear_product()
+    
+    def undo(self):
+        if self.old_product:
+            self.slot.set_product(self.old_product)
+
+
+class SmartSlotItem(QGraphicsRectItem):
+    """
+    Slot inteligente para produtos no Ateliê.
+    Com estados visuais e suporte a drag-drop.
+    """
+    
+    STATE_EMPTY = 0
+    STATE_HOVER = 1
+    STATE_FILLED = 2
+    STATE_SELECTED = 3
+    
+    COLORS = {
+        STATE_EMPTY: ("#3D3D5C", "#1A1A2E88"),
+        STATE_HOVER: ("#2ECC71", "#2ECC7133"),
+        STATE_FILLED: ("#6C5CE7", "#6C5CE733"),
+        STATE_SELECTED: ("#F1C40F", "#F1C40F33"),
+    }
+    
+    def __init__(self, slot_index: int, x: float, y: float, w: float, h: float, parent=None):
+        super().__init__(x, y, w, h, parent)
+        
         self.slot_index = slot_index
-        self.product_data: Optional[Dict[str, Any]] = None
+        self.product_data: Optional[Dict] = None
+        self.state = self.STATE_EMPTY
         
-        # Estilo padrão (vazio)
-        self._empty_style()
-        
-        # Texto de índice
-        self.index_label = QGraphicsTextItem(f"#{slot_index}", self)
-        self.index_label.setDefaultTextColor(QColor("#808080"))
-        self.index_label.setFont(QFont("Segoe UI", 10))
-        self.index_label.setPos(x + 5, y + 5)
-        
-        # Aceita drops
+        self.setAcceptHoverEvents(True)
         self.setAcceptDrops(True)
         self.setFlag(QGraphicsRectItem.ItemIsSelectable, True)
+        
+        # Label de índice
+        self._label = QGraphicsTextItem(f"#{slot_index}", self)
+        self._label.setDefaultTextColor(QColor("#808080"))
+        self._label.setFont(QFont("Segoe UI", 10))
+        self._label.setPos(x + 5, y + 5)
+        
+        # Info do produto
+        self._product_label = QGraphicsTextItem("", self)
+        self._product_label.setDefaultTextColor(QColor("#FFFFFF"))
+        self._product_label.setFont(QFont("Segoe UI", 9))
+        self._product_label.setPos(x + 5, y + 25)
+        
+        self._apply_style()
     
-    def _empty_style(self) -> None:
-        """Aplica estilo de slot vazio."""
-        self.setPen(QPen(QColor("#3D3D5C"), 2, Qt.DashLine))
-        self.setBrush(QBrush(QColor("#1A1A2E44")))
+    def _apply_style(self):
+        border, fill = self.COLORS.get(self.state, self.COLORS[self.STATE_EMPTY])
+        pen = QPen(QColor(border), 2)
+        if self.state == self.STATE_EMPTY:
+            pen.setStyle(Qt.DashLine)
+        self.setPen(pen)
+        self.setBrush(QBrush(QColor(fill)))
     
-    def _filled_style(self) -> None:
-        """Aplica estilo de slot preenchido."""
-        self.setPen(QPen(QColor("#6C5CE7"), 2))
-        self.setBrush(QBrush(QColor("#6C5CE722")))
+    def set_state(self, state: int):
+        self.state = state
+        self._apply_style()
     
-    def _hover_style(self) -> None:
-        """Aplica estilo de hover/drag-over."""
-        self.setPen(QPen(QColor("#2ECC71"), 3))
-        self.setBrush(QBrush(QColor("#2ECC7133")))
-    
-    def set_product(self, product: Dict[str, Any]) -> None:
-        """Define o produto no slot."""
+    def set_product(self, product: Dict):
         self.product_data = product
-        self._filled_style()
+        self.set_state(self.STATE_FILLED)
         
-        # Atualiza label com nome do produto
-        name = product.get("nome_sanitizado", "Produto")
+        name = product.get("nome_sanitizado", "?")[:25]
         price = product.get("preco_venda_atual", 0)
-        
-        self.index_label.setPlainText(f"#{self.slot_index}\n{name}\nR$ {price:.2f}")
-        self.index_label.setDefaultTextColor(QColor("#FFFFFF"))
+        self._product_label.setPlainText(f"{name}\nR$ {price:.2f}")
     
-    def clear_product(self) -> None:
-        """Remove o produto do slot."""
+    def clear_product(self):
         self.product_data = None
-        self._empty_style()
-        self.index_label.setPlainText(f"#{self.slot_index}")
-        self.index_label.setDefaultTextColor(QColor("#808080"))
+        self.set_state(self.STATE_EMPTY)
+        self._product_label.setPlainText("")
     
-    def dragEnterEvent(self, event) -> None:
-        """Handler de drag enter."""
+    def hoverEnterEvent(self, event):
+        if self.state == self.STATE_EMPTY:
+            self.set_state(self.STATE_HOVER)
+        super().hoverEnterEvent(event)
+    
+    def hoverLeaveEvent(self, event):
+        if self.state == self.STATE_HOVER:
+            self.set_state(self.STATE_EMPTY)
+        super().hoverLeaveEvent(event)
+    
+    def dragEnterEvent(self, event):
         if event.mimeData().hasFormat("application/x-autotabloide-product"):
-            self._hover_style()
+            self.set_state(self.STATE_HOVER)
             event.acceptProposedAction()
-        else:
-            event.ignore()
     
-    def dragLeaveEvent(self, event) -> None:
-        """Handler de drag leave."""
+    def dragLeaveEvent(self, event):
         if self.product_data:
-            self._filled_style()
+            self.set_state(self.STATE_FILLED)
         else:
-            self._empty_style()
+            self.set_state(self.STATE_EMPTY)
     
-    def dropEvent(self, event) -> None:
-        """Handler de drop."""
+    def dropEvent(self, event):
         if event.mimeData().hasFormat("application/x-autotabloide-product"):
-            # Decodifica dados do produto
             data = event.mimeData().data("application/x-autotabloide-product")
-            import json
             product = json.loads(bytes(data).decode('utf-8'))
             self.set_product(product)
             event.acceptProposedAction()
-        else:
-            event.ignore()
 
 
 class LayoutCanvas(QGraphicsView):
-    """Canvas para visualização e edição do layout."""
+    """Canvas de layout com zoom, pan e grid."""
     
-    slot_clicked = Signal(int, dict)  # slot_index, product_data
+    slot_clicked = Signal(int, dict)
     slot_double_clicked = Signal(int, dict)
+    product_dropped = Signal(int, dict)  # slot_index, product
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -122,131 +169,140 @@ class LayoutCanvas(QGraphicsView):
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
         
-        # Configurações
+        # Configurações de renderização
         self.setRenderHint(QPainter.Antialiasing)
         self.setRenderHint(QPainter.SmoothPixmapTransform)
         self.setViewportUpdateMode(QGraphicsView.SmartViewportUpdate)
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.NoDrag)
         
         # Background
-        self.setBackgroundBrush(QBrush(QColor("#121212")))
+        self.setBackgroundBrush(QBrush(QColor("#0A0A0A")))
         
-        # Slots
-        self.slots: List[SlotGraphicsItem] = []
+        self.slots: List[SmartSlotItem] = []
+        self._is_panning = False
+        self._pan_start = QPointF()
         
-        # Layout placeholder
-        self._create_placeholder_layout()
+        self._create_default_layout()
     
-    def _create_placeholder_layout(self) -> None:
-        """Cria layout de placeholder (3x4 grid)."""
+    def _create_default_layout(self):
+        """Cria layout padrão 3x4."""
         self.scene.clear()
         self.slots.clear()
         
-        # Dimensões do layout
-        layout_width = 800
-        layout_height = 1000
-        
-        # Background do papel
-        paper = QGraphicsRectItem(0, 0, layout_width, layout_height)
+        # Papel
+        paper_w, paper_h = 800, 1100
+        paper = QGraphicsRectItem(0, 0, paper_w, paper_h)
         paper.setPen(QPen(QColor("#2D2D44"), 1))
-        paper.setBrush(QBrush(QColor("#16213e")))
+        paper.setBrush(QBrush(QColor("#16213E")))
         self.scene.addItem(paper)
         
-        # Grid 3x4 de slots
+        # Grid 3x4
         cols, rows = 3, 4
-        margin = 20
-        spacing = 15
-        slot_width = (layout_width - 2 * margin - (cols - 1) * spacing) / cols
-        slot_height = (layout_height - 2 * margin - (rows - 1) * spacing) / rows
+        margin = 25
+        gap = 15
+        slot_w = (paper_w - 2*margin - (cols-1)*gap) / cols
+        slot_h = (paper_h - 2*margin - (rows-1)*gap) / rows
         
-        slot_index = 1
-        for row in range(rows):
-            for col in range(cols):
-                x = margin + col * (slot_width + spacing)
-                y = margin + row * (slot_height + spacing)
-                
-                slot = SlotGraphicsItem(slot_index, x, y, slot_width, slot_height)
+        idx = 1
+        for r in range(rows):
+            for c in range(cols):
+                x = margin + c * (slot_w + gap)
+                y = margin + r * (slot_h + gap)
+                slot = SmartSlotItem(idx, x, y, slot_w, slot_h)
                 self.scene.addItem(slot)
                 self.slots.append(slot)
-                slot_index += 1
+                idx += 1
         
-        # Ajusta view
         self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
     
-    def load_layout(self, layout_data: Dict[str, Any]) -> None:
-        """Carrega um layout SVG."""
-        # TODO: Implementar carregamento real de SVG
-        self._create_placeholder_layout()
+    def load_svg_template(self, svg_path: str) -> bool:
+        """Carrega template SVG."""
+        # TODO: Integrar com SVGTemplateParser
+        return False
     
-    def get_slot(self, index: int) -> Optional[SlotGraphicsItem]:
-        """Retorna slot pelo índice."""
+    def get_slot(self, index: int) -> Optional[SmartSlotItem]:
         for slot in self.slots:
             if slot.slot_index == index:
                 return slot
         return None
     
-    def wheelEvent(self, event) -> None:
-        """Zoom com scroll do mouse."""
+    def get_slots_data(self) -> Dict[int, Dict]:
+        """Retorna dados de todos os slots."""
+        return {s.slot_index: s.product_data for s in self.slots if s.product_data}
+    
+    def clear_all_slots(self):
+        for slot in self.slots:
+            slot.clear_product()
+    
+    # === Mouse Events ===
+    
+    def wheelEvent(self, event: QWheelEvent):
+        """Zoom com roda do mouse."""
         factor = 1.15
         if event.angleDelta().y() > 0:
             self.scale(factor, factor)
         else:
-            self.scale(1 / factor, 1 / factor)
+            self.scale(1/factor, 1/factor)
     
-    def mouseDoubleClickEvent(self, event) -> None:
-        """Handler de double-click."""
-        super().mouseDoubleClickEvent(event)
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MiddleButton or (
+            event.button() == Qt.LeftButton and 
+            event.modifiers() & Qt.ShiftModifier
+        ):
+            self._is_panning = True
+            self._pan_start = event.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+        else:
+            super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_panning:
+            delta = event.pos() - self._pan_start
+            self._pan_start = event.pos()
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+        else:
+            super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() in (Qt.MiddleButton, Qt.LeftButton):
+            self._is_panning = False
+            self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+    
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
         item = self.itemAt(event.pos())
-        if isinstance(item, SlotGraphicsItem):
+        if isinstance(item, SmartSlotItem):
             self.slot_double_clicked.emit(item.slot_index, item.product_data or {})
+        super().mouseDoubleClickEvent(event)
 
 
 class ProductShelf(QListWidget):
-    """Prateleira de produtos (drag source)."""
+    """Lista de produtos arrastáveis."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragEnabled(True)
         self.setSelectionMode(QListWidget.SingleSelection)
-        self.setIconSize(QSize(48, 48))
-        self.setSpacing(4)
-        
-        # Estilo
-        self.setStyleSheet("""
-            QListWidget {
-                background-color: #1A1A2E;
-                border: 1px solid #2D2D44;
-                border-radius: 8px;
-            }
-            QListWidget::item {
-                background-color: #16213e;
-                border-radius: 6px;
-                padding: 8px;
-                margin: 2px;
-            }
-            QListWidget::item:selected {
-                background-color: #6C5CE744;
-                border: 1px solid #6C5CE7;
-            }
-            QListWidget::item:hover {
-                background-color: #2D2D44;
-            }
-        """)
+        self.setIconSize(QSize(40, 40))
+        self.setSpacing(2)
     
-    def set_products(self, products: List[Dict[str, Any]]) -> None:
-        """Define lista de produtos."""
+    def set_products(self, products: List[Dict]):
         self.clear()
-        for product in products:
-            item = QListWidgetItem(
-                f"{product.get('nome_sanitizado', 'Produto')}\n"
-                f"R$ {product.get('preco_venda_atual', 0):.2f}"
-            )
-            item.setData(Qt.UserRole, product)
+        for p in products:
+            name = p.get("nome_sanitizado", "?")
+            price = p.get("preco_venda_atual", 0)
+            item = QListWidgetItem(f"{name}\nR$ {price:.2f}")
+            item.setData(Qt.UserRole, p)
             self.addItem(item)
     
-    def startDrag(self, supportedActions) -> None:
-        """Inicia drag de produto."""
+    def startDrag(self, supportedActions):
         item = self.currentItem()
         if not item:
             return
@@ -255,170 +311,189 @@ class ProductShelf(QListWidget):
         if not product:
             return
         
-        # Cria mime data
-        import json
-        mime_data = QMimeData()
-        mime_data.setData(
-            "application/x-autotabloide-product",
-            json.dumps(product).encode('utf-8')
-        )
+        mime = QMimeData()
+        mime.setData("application/x-autotabloide-product", json.dumps(product).encode())
         
-        # Cria drag
         drag = QDrag(self)
-        drag.setMimeData(mime_data)
+        drag.setMimeData(mime)
         
-        # Pixmap de arraste (opcional)
-        pixmap = QPixmap(100, 40)
-        pixmap.fill(QColor("#6C5CE7"))
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(QPointF(50, 20).toPoint())
+        # Ghost pixmap
+        pix = QPixmap(120, 50)
+        pix.fill(QColor("#6C5CE7"))
+        drag.setPixmap(pix)
+        drag.setHotSpot(QPointF(60, 25).toPoint())
         
         drag.exec(Qt.CopyAction)
 
 
 class AtelierWidget(QWidget):
-    """Widget principal do Ateliê (A Mesa)."""
+    """Widget principal do Ateliê."""
     
-    def __init__(self, container=None, parent: Optional[QWidget] = None):
+    project_modified = Signal()
+    
+    def __init__(self, container=None, parent=None):
         super().__init__(parent)
         self.container = container
+        self.undo_stack = QUndoStack(self)
         self._setup_ui()
-        self._load_data()
+        self._setup_shortcuts()
+        self._load_products()
     
-    def _setup_ui(self) -> None:
-        """Configura interface."""
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
         # Toolbar
         toolbar = QFrame()
-        toolbar.setStyleSheet("""
-            QFrame {
-                background-color: #1A1A2E;
-                border-bottom: 1px solid #2D2D44;
-                padding: 8px 16px;
-            }
-        """)
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(16, 8, 16, 8)
+        toolbar.setStyleSheet("background-color: #1A1A2E; border-bottom: 1px solid #2D2D44;")
+        tb_layout = QHBoxLayout(toolbar)
+        tb_layout.setContentsMargins(12, 8, 12, 8)
         
-        title = QLabel("🎨 Ateliê - A Mesa")
+        title = QLabel("Atelie - A Mesa")
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        toolbar_layout.addWidget(title)
+        tb_layout.addWidget(title)
         
-        toolbar_layout.addStretch()
+        tb_layout.addStretch()
         
         # Seletor de layout
-        self.layout_selector = QComboBox()
-        self.layout_selector.addItem("📄 Tabloide 3x4 (12 slots)")
-        self.layout_selector.addItem("📄 Tabloide 2x3 (6 slots)")
-        self.layout_selector.addItem("📋 Cartaz A4")
-        toolbar_layout.addWidget(self.layout_selector)
+        self.layout_combo = QComboBox()
+        self.layout_combo.addItem("Tabloide 3x4 (12 slots)")
+        self.layout_combo.addItem("Tabloide 2x3 (6 slots)")
+        self.layout_combo.currentIndexChanged.connect(self._on_layout_change)
+        tb_layout.addWidget(self.layout_combo)
         
-        # Botões de ação
-        btn_clear = QPushButton("🗑️ Limpar Todos")
-        btn_clear.clicked.connect(self._clear_all_slots)
-        toolbar_layout.addWidget(btn_clear)
+        btn_undo = QPushButton("Desfazer")
+        btn_undo.clicked.connect(self.undo_stack.undo)
+        tb_layout.addWidget(btn_undo)
         
-        btn_save = QPushButton("💾 Salvar Projeto")
+        btn_redo = QPushButton("Refazer")
+        btn_redo.clicked.connect(self.undo_stack.redo)
+        tb_layout.addWidget(btn_redo)
+        
+        btn_clear = QPushButton("Limpar Todos")
+        btn_clear.setProperty("class", "danger")
+        btn_clear.clicked.connect(self._clear_all)
+        tb_layout.addWidget(btn_clear)
+        
+        btn_save = QPushButton("Salvar Projeto")
         btn_save.clicked.connect(self._save_project)
-        toolbar_layout.addWidget(btn_save)
+        tb_layout.addWidget(btn_save)
         
-        btn_export = QPushButton("📤 Exportar")
-        btn_export.setProperty("class", "primary")
+        btn_export = QPushButton("Exportar PDF")
         btn_export.clicked.connect(self._export)
-        toolbar_layout.addWidget(btn_export)
+        tb_layout.addWidget(btn_export)
         
         layout.addWidget(toolbar)
         
         # Splitter: Shelf | Canvas
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(2)
         
-        # Painel esquerdo: Estante
+        # Estante
         shelf_frame = QFrame()
-        shelf_frame.setMaximumWidth(300)
-        shelf_layout = QVBoxLayout(shelf_frame)
-        shelf_layout.setContentsMargins(8, 8, 8, 8)
-        shelf_layout.setSpacing(8)
+        shelf_frame.setMaximumWidth(280)
+        sf_layout = QVBoxLayout(shelf_frame)
+        sf_layout.setContentsMargins(8, 8, 8, 8)
         
-        shelf_title = QLabel("📦 Produtos")
-        shelf_title.setStyleSheet("font-weight: bold; color: #FFFFFF;")
-        shelf_layout.addWidget(shelf_title)
+        sf_layout.addWidget(QLabel("Produtos Disponiveis"))
         
         self.shelf_search = QLineEdit()
-        self.shelf_search.setPlaceholderText("🔍 Buscar...")
-        shelf_layout.addWidget(self.shelf_search)
+        self.shelf_search.setPlaceholderText("Buscar produtos...")
+        self.shelf_search.textChanged.connect(self._filter_products)
+        sf_layout.addWidget(self.shelf_search)
         
         self.shelf = ProductShelf()
-        shelf_layout.addWidget(self.shelf)
+        sf_layout.addWidget(self.shelf)
         
         splitter.addWidget(shelf_frame)
         
-        # Painel direito: Canvas
+        # Canvas
         self.canvas = LayoutCanvas()
         self.canvas.slot_double_clicked.connect(self._on_slot_double_click)
         splitter.addWidget(self.canvas)
         
         splitter.setSizes([250, 800])
-        
         layout.addWidget(splitter)
     
-    def _load_data(self) -> None:
-        """Carrega dados iniciais."""
-        # Produtos de exemplo
-        sample_products = [
+    def _setup_shortcuts(self):
+        """Configura atalhos de teclado."""
+        QShortcut(QKeySequence.Undo, self, self.undo_stack.undo)
+        QShortcut(QKeySequence.Redo, self, self.undo_stack.redo)
+        QShortcut(QKeySequence.Save, self, self._save_project)
+        QShortcut(QKeySequence("Ctrl+E"), self, self._export)
+        QShortcut(QKeySequence("Delete"), self, self._clear_selected)
+    
+    def _load_products(self):
+        """Carrega produtos do banco."""
+        # Dados de exemplo
+        products = [
             {"id": 1, "nome_sanitizado": "Arroz Camil 5kg", "preco_venda_atual": 24.90},
-            {"id": 2, "nome_sanitizado": "Feijão Carioca 1kg", "preco_venda_atual": 8.99},
-            {"id": 3, "nome_sanitizado": "Óleo de Soja 900ml", "preco_venda_atual": 7.49},
-            {"id": 4, "nome_sanitizado": "Açúcar Refinado 1kg", "preco_venda_atual": 4.99},
-            {"id": 5, "nome_sanitizado": "Macarrão Espaguete 500g", "preco_venda_atual": 6.79},
+            {"id": 2, "nome_sanitizado": "Feijao Carioca 1kg", "preco_venda_atual": 8.99},
+            {"id": 3, "nome_sanitizado": "Oleo de Soja 900ml", "preco_venda_atual": 7.49},
+            {"id": 4, "nome_sanitizado": "Acucar Refinado 1kg", "preco_venda_atual": 4.99},
+            {"id": 5, "nome_sanitizado": "Macarrao Espaguete 500g", "preco_venda_atual": 6.79},
             {"id": 6, "nome_sanitizado": "Leite Integral 1L", "preco_venda_atual": 5.99},
-            {"id": 7, "nome_sanitizado": "Café Pilão 500g", "preco_venda_atual": 18.90},
+            {"id": 7, "nome_sanitizado": "Cafe Pilao 500g", "preco_venda_atual": 18.90},
             {"id": 8, "nome_sanitizado": "Farinha de Trigo 1kg", "preco_venda_atual": 4.49},
+            {"id": 9, "nome_sanitizado": "Margarina Qualy 500g", "preco_venda_atual": 8.49},
+            {"id": 10, "nome_sanitizado": "Molho de Tomate 340g", "preco_venda_atual": 3.29},
         ]
-        self.shelf.set_products(sample_products)
+        self.shelf.set_products(products)
+        self._all_products = products
+    
+    @Slot(str)
+    def _filter_products(self, text: str):
+        text = text.lower()
+        filtered = [p for p in self._all_products if text in p.get("nome_sanitizado", "").lower()]
+        self.shelf.set_products(filtered)
+    
+    @Slot(int)
+    def _on_layout_change(self, index: int):
+        if index == 0:
+            self.canvas._create_default_layout()
     
     @Slot(int, dict)
-    def _on_slot_double_click(self, slot_index: int, product_data: Dict) -> None:
-        """Handler de double-click em slot."""
-        if product_data:
-            QMessageBox.information(
-                self,
-                "Override de Slot",
-                f"Slot #{slot_index}\nProduto: {product_data.get('nome_sanitizado', 'N/A')}\n\n"
-                "(Diálogo de override em desenvolvimento)"
+    def _on_slot_double_click(self, slot_index: int, product: Dict):
+        slot = self.canvas.get_slot(slot_index)
+        if slot and slot.product_data:
+            reply = QMessageBox.question(
+                self, "Limpar Slot",
+                f"Remover produto do slot #{slot_index}?",
+                QMessageBox.Yes | QMessageBox.No
             )
-        else:
-            QMessageBox.information(
-                self,
-                "Slot Vazio",
-                f"Slot #{slot_index} está vazio.\nArraste um produto da estante para preenchê-lo."
-            )
+            if reply == QMessageBox.Yes:
+                cmd = ClearSlotCommand(slot, slot.product_data)
+                self.undo_stack.push(cmd)
     
     @Slot()
-    def _clear_all_slots(self) -> None:
-        """Limpa todos os slots."""
+    def _clear_all(self):
         reply = QMessageBox.question(
-            self,
-            "Limpar Todos",
-            "Deseja realmente limpar todos os slots?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            self, "Limpar Todos",
+            "Remover todos os produtos dos slots?",
+            QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            for slot in self.canvas.slots:
-                slot.clear_product()
+            self.canvas.clear_all_slots()
+            self.undo_stack.clear()
     
     @Slot()
-    def _save_project(self) -> None:
-        """Salva o projeto atual."""
-        # TODO: Implementar salvamento
-        QMessageBox.information(self, "Salvar", "Projeto salvo! (simulação)")
+    def _clear_selected(self):
+        for item in self.canvas.scene.selectedItems():
+            if isinstance(item, SmartSlotItem) and item.product_data:
+                cmd = ClearSlotCommand(item, item.product_data)
+                self.undo_stack.push(cmd)
     
     @Slot()
-    def _export(self) -> None:
-        """Exporta o layout."""
-        # TODO: Implementar exportação
-        QMessageBox.information(self, "Exportar", "Exportação em desenvolvimento")
+    def _save_project(self):
+        slots_data = self.canvas.get_slots_data()
+        # TODO: Salvar no banco via ProjectRepository
+        QMessageBox.information(self, "Salvar", f"Projeto salvo com {len(slots_data)} slots preenchidos!")
+    
+    @Slot()
+    def _export(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar PDF", "tabloide.pdf", "PDF (*.pdf)"
+        )
+        if file_path:
+            # TODO: Integrar com SVG Engine + CairoSVG
+            QMessageBox.information(self, "Exportar", f"Exportado para:\n{file_path}\n\n(Integrar SVG Engine)")

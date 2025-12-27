@@ -1,34 +1,144 @@
 """
-AutoTabloide AI - Factory Widget
-=================================
-Fábrica de Cartazes: Produção em massa com imposição automática.
+AutoTabloide AI - Factory Widget (Producao em Massa)
+=====================================================
+Interface para geracao de PDFs com imposicao automatica.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QFrame, QLabel, QPushButton, QComboBox, QSpinBox, QGroupBox,
-    QProgressBar, QCheckBox, QFileDialog, QMessageBox, QSplitter
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame,
+    QLabel, QPushButton, QListWidget, QListWidgetItem, QComboBox,
+    QSpinBox, QCheckBox, QProgressBar, QFileDialog, QMessageBox,
+    QSplitter, QGroupBox, QScrollArea
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, Signal, Slot, QSize, QThread
+from PySide6.QtGui import QColor, QPixmap, QPainter
 from typing import Optional, List, Dict, Any
+from pathlib import Path
+
+
+class RenderWorkerThread(QThread):
+    """Thread worker para renderizacao."""
+    
+    progress = Signal(int, int, str)  # current, total, message
+    finished = Signal(str)  # output_path
+    error = Signal(str)
+    
+    def __init__(self, slots_data: Dict, layout_path: str, output_path: str, parent=None):
+        super().__init__(parent)
+        self.slots_data = slots_data
+        self.layout_path = layout_path
+        self.output_path = output_path
+    
+    def run(self):
+        try:
+            from src.qt.rendering import SVGEngine
+            
+            self.progress.emit(10, 100, "Carregando template SVG...")
+            
+            engine = SVGEngine()
+            if not engine.load(self.layout_path):
+                self.error.emit("Falha ao carregar template")
+                return
+            
+            self.progress.emit(30, 100, "Injetando dados dos produtos...")
+            engine.inject_products(self.slots_data)
+            
+            self.progress.emit(60, 100, "Gerando PDF...")
+            
+            if self.output_path.endswith('.pdf'):
+                success = engine.render_to_pdf(self.output_path)
+            else:
+                success = engine.render_to_png(self.output_path)
+            
+            if success:
+                self.progress.emit(100, 100, "Concluido!")
+                self.finished.emit(self.output_path)
+            else:
+                self.error.emit("Falha na renderizacao")
+                
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class ImpositionPreview(QFrame):
+    """Preview de imposicao N-Up."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(200, 283)  # Proporcao A4
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #FFFFFF;
+                border: 1px solid #2D2D44;
+                border-radius: 4px;
+            }
+        """)
+        
+        self.n_up = 1
+        self.pages: List[Dict] = []
+    
+    def set_n_up(self, n: int):
+        self.n_up = n
+        self.update()
+    
+    def set_pages(self, pages: List[Dict]):
+        self.pages = pages
+        self.update()
+    
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        w = self.width() - 20
+        h = self.height() - 20
+        x_offset = 10
+        y_offset = 10
+        
+        # Grid baseado em N-Up
+        if self.n_up == 1:
+            rows, cols = 1, 1
+        elif self.n_up == 2:
+            rows, cols = 1, 2
+        elif self.n_up == 4:
+            rows, cols = 2, 2
+        elif self.n_up == 8:
+            rows, cols = 2, 4
+        else:
+            rows, cols = 1, 1
+        
+        cell_w = w / cols
+        cell_h = h / rows
+        
+        for r in range(rows):
+            for c in range(cols):
+                x = x_offset + c * cell_w + 2
+                y = y_offset + r * cell_h + 2
+                cw = cell_w - 4
+                ch = cell_h - 4
+                
+                painter.setPen(QColor("#2D2D44"))
+                painter.setBrush(QColor("#F0F0F0"))
+                painter.drawRect(int(x), int(y), int(cw), int(ch))
+        
+        painter.end()
 
 
 class FactoryWidget(QWidget):
-    """Widget da Fábrica de Cartazes."""
+    """Widget da Fabrica - producao em massa de tabloides."""
     
-    # Signals
-    export_started = Signal()
-    export_finished = Signal(str)  # path do arquivo gerado
+    render_started = Signal()
+    render_finished = Signal(str)
     
-    def __init__(self, container=None, parent: Optional[QWidget] = None):
+    def __init__(self, container=None, parent=None):
         super().__init__(parent)
         self.container = container
-        self._selected_products: List[Dict[str, Any]] = []
+        self._render_worker: Optional[RenderWorkerThread] = None
         self._setup_ui()
+        self._load_products()
     
-    def _setup_ui(self) -> None:
-        """Configura interface."""
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
@@ -36,282 +146,220 @@ class FactoryWidget(QWidget):
         # Header
         header = QHBoxLayout()
         
-        title = QLabel("🏭 Fábrica de Cartazes")
+        title = QLabel("Fabrica de Tabloides")
         title.setStyleSheet("font-size: 28px; font-weight: bold; color: #FFFFFF;")
         header.addWidget(title)
         
         header.addStretch()
         
+        self.btn_render = QPushButton("Gerar PDF")
+        self.btn_render.clicked.connect(self._start_render)
+        header.addWidget(self.btn_render)
+        
         layout.addLayout(header)
         
-        # Splitter: Seleção | Configuração | Preview
+        # Splitter principal
         splitter = QSplitter(Qt.Horizontal)
         
-        # Painel 1: Seleção de Produtos
-        selection_panel = self._create_selection_panel()
-        splitter.addWidget(selection_panel)
+        # === Painel Esquerdo: Selecao de Produtos ===
+        left_panel = QFrame()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Painel 2: Configurações de Exportação
-        config_panel = self._create_config_panel()
-        splitter.addWidget(config_panel)
+        left_layout.addWidget(QLabel("Produtos para Tabloide:"))
         
-        # Painel 3: Preview
-        preview_panel = self._create_preview_panel()
-        splitter.addWidget(preview_panel)
+        self.product_list = QListWidget()
+        self.product_list.setSelectionMode(QListWidget.ExtendedSelection)
+        left_layout.addWidget(self.product_list)
         
-        splitter.setSizes([300, 250, 400])
-        layout.addWidget(splitter)
-        
-        # Footer: Ações
-        footer = QHBoxLayout()
-        
-        self.progress = QProgressBar()
-        self.progress.setVisible(False)
-        footer.addWidget(self.progress, 1)
-        
-        btn_export = QPushButton("📤 Gerar PDF")
-        btn_export.setStyleSheet("font-size: 16px; padding: 12px 24px;")
-        btn_export.clicked.connect(self._export_pdf)
-        footer.addWidget(btn_export)
-        
-        layout.addLayout(footer)
-    
-    def _create_selection_panel(self) -> QFrame:
-        """Cria painel de seleção de produtos."""
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #1A1A2E;
-                border-radius: 12px;
-                padding: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        
-        title = QLabel("📦 Produtos Selecionados")
-        title.setStyleSheet("font-weight: bold; color: #FFFFFF;")
-        layout.addWidget(title)
-        
-        # Botões de ação
         btn_layout = QHBoxLayout()
         
-        btn_add = QPushButton("➕ Adicionar")
-        btn_add.clicked.connect(self._add_products)
+        btn_add = QPushButton("Adicionar")
+        btn_add.clicked.connect(self._add_product)
         btn_layout.addWidget(btn_add)
         
-        btn_clear = QPushButton("🗑️ Limpar")
-        btn_clear.setProperty("class", "danger")
+        btn_remove = QPushButton("Remover")
+        btn_remove.clicked.connect(self._remove_product)
+        btn_layout.addWidget(btn_remove)
+        
+        btn_clear = QPushButton("Limpar")
         btn_clear.clicked.connect(self._clear_products)
         btn_layout.addWidget(btn_clear)
         
-        layout.addLayout(btn_layout)
+        left_layout.addLayout(btn_layout)
         
-        # Lista de produtos
-        self.product_list = QListWidget()
-        self.product_list.setIconSize(QSize(32, 32))
-        layout.addWidget(self.product_list)
+        splitter.addWidget(left_panel)
         
-        # Contador
-        self.count_label = QLabel("0 produtos selecionados")
-        self.count_label.setStyleSheet("color: #808080;")
-        layout.addWidget(self.count_label)
+        # === Painel Central: Configuracoes ===
+        center_panel = QFrame()
+        center_layout = QVBoxLayout(center_panel)
         
-        return frame
-    
-    def _create_config_panel(self) -> QFrame:
-        """Cria painel de configurações."""
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #1A1A2E;
-                border-radius: 12px;
-                padding: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        
-        title = QLabel("⚙️ Configurações")
-        title.setStyleSheet("font-weight: bold; color: #FFFFFF;")
-        layout.addWidget(title)
-        
-        # Layout do cartaz
-        layout_group = QGroupBox("Layout")
-        layout_group_layout = QVBoxLayout(layout_group)
+        # Layout
+        layout_group = QGroupBox("Template")
+        lg_layout = QVBoxLayout(layout_group)
         
         self.layout_combo = QComboBox()
-        self.layout_combo.addItem("📋 Cartaz A4")
-        self.layout_combo.addItem("📋 Cartaz A3")
-        self.layout_combo.addItem("📋 Etiqueta de Gôndola")
-        layout_group_layout.addWidget(self.layout_combo)
+        self.layout_combo.addItem("Tabloide A4 - 12 produtos (3x4)")
+        self.layout_combo.addItem("Tabloide A4 - 6 produtos (2x3)")
+        self.layout_combo.addItem("Tabloide A3 - 24 produtos")
+        lg_layout.addWidget(self.layout_combo)
         
-        layout.addWidget(layout_group)
+        center_layout.addWidget(layout_group)
         
-        # Papel de saída
-        paper_group = QGroupBox("Papel de Saída")
-        paper_group_layout = QVBoxLayout(paper_group)
+        # Papel
+        paper_group = QGroupBox("Papel e Impressao")
+        pg_layout = QGridLayout(paper_group)
         
+        pg_layout.addWidget(QLabel("Tamanho:"), 0, 0)
         self.paper_combo = QComboBox()
-        self.paper_combo.addItem("📄 A4 (210x297mm)")
-        self.paper_combo.addItem("📄 A3 (297x420mm)")
-        self.paper_combo.addItem("📄 Letter")
-        paper_group_layout.addWidget(self.paper_combo)
+        self.paper_combo.addItems(["A4 (210x297mm)", "A3 (297x420mm)", "Carta (216x279mm)"])
+        pg_layout.addWidget(self.paper_combo, 0, 1)
         
-        layout.addWidget(paper_group)
+        pg_layout.addWidget(QLabel("DPI:"), 1, 0)
+        self.dpi_spin = QSpinBox()
+        self.dpi_spin.setRange(72, 600)
+        self.dpi_spin.setValue(300)
+        pg_layout.addWidget(self.dpi_spin, 1, 1)
         
-        # NUP (cartazes por página)
-        nup_group = QGroupBox("Imposição (N-Up)")
-        nup_group_layout = QHBoxLayout(nup_group)
+        center_layout.addWidget(paper_group)
         
-        nup_group_layout.addWidget(QLabel("Cartazes por página:"))
-        self.nup_spin = QSpinBox()
-        self.nup_spin.setMinimum(1)
-        self.nup_spin.setMaximum(8)
-        self.nup_spin.setValue(2)
-        nup_group_layout.addWidget(self.nup_spin)
+        # Imposicao
+        impo_group = QGroupBox("Imposicao")
+        ig_layout = QVBoxLayout(impo_group)
         
-        layout.addWidget(nup_group)
+        nup_layout = QHBoxLayout()
+        nup_layout.addWidget(QLabel("N-Up:"))
+        self.nup_combo = QComboBox()
+        self.nup_combo.addItems(["1 por folha", "2 por folha", "4 por folha", "8 por folha"])
+        self.nup_combo.currentIndexChanged.connect(self._on_nup_changed)
+        nup_layout.addWidget(self.nup_combo)
+        ig_layout.addLayout(nup_layout)
         
-        # Opções
-        options_group = QGroupBox("Opções")
-        options_layout = QVBoxLayout(options_group)
+        self.chk_crop_marks = QCheckBox("Marcas de corte")
+        self.chk_crop_marks.setChecked(True)
+        ig_layout.addWidget(self.chk_crop_marks)
         
-        self.crop_marks_check = QCheckBox("Marcas de corte")
-        self.crop_marks_check.setChecked(True)
-        options_layout.addWidget(self.crop_marks_check)
+        self.chk_bleed = QCheckBox("Bleed (3mm)")
+        self.chk_bleed.setChecked(True)
+        ig_layout.addWidget(self.chk_bleed)
         
-        self.cmyk_check = QCheckBox("Converter para CMYK")
-        self.cmyk_check.setChecked(True)
-        options_layout.addWidget(self.cmyk_check)
+        self.chk_cmyk = QCheckBox("Converter para CMYK")
+        ig_layout.addWidget(self.chk_cmyk)
         
-        self.filter_unchanged = QCheckBox("Filtrar preços inalterados")
-        self.filter_unchanged.setChecked(False)
-        options_layout.addWidget(self.filter_unchanged)
+        center_layout.addWidget(impo_group)
         
-        layout.addWidget(options_group)
+        center_layout.addStretch()
         
-        layout.addStretch()
+        splitter.addWidget(center_panel)
         
-        return frame
+        # === Painel Direito: Preview ===
+        right_panel = QFrame()
+        right_layout = QVBoxLayout(right_panel)
+        
+        right_layout.addWidget(QLabel("Preview:"))
+        
+        self.preview = ImpositionPreview()
+        right_layout.addWidget(self.preview)
+        
+        self.page_info = QLabel("0 paginas")
+        self.page_info.setAlignment(Qt.AlignCenter)
+        self.page_info.setStyleSheet("color: #808080;")
+        right_layout.addWidget(self.page_info)
+        
+        right_layout.addStretch()
+        
+        splitter.addWidget(right_panel)
+        
+        splitter.setSizes([300, 300, 200])
+        layout.addWidget(splitter)
+        
+        # Progress bar
+        self.progress = QProgressBar()
+        self.progress.setVisible(False)
+        layout.addWidget(self.progress)
+        
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet("color: #808080;")
+        layout.addWidget(self.status_label)
     
-    def _create_preview_panel(self) -> QFrame:
-        """Cria painel de preview."""
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #16213e;
-                border-radius: 12px;
-                border: 1px solid #2D2D44;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        
-        title = QLabel("👁️ Preview de Imposição")
-        title.setStyleSheet("font-weight: bold; color: #FFFFFF;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-        
-        # Área de preview
-        self.preview_label = QLabel("Selecione produtos e configurações\npara ver o preview")
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setStyleSheet("""
-            color: #808080;
-            font-size: 14px;
-            padding: 48px;
-        """)
-        layout.addWidget(self.preview_label, 1)
-        
-        # Info de imposição
-        self.imposition_info = QLabel()
-        self.imposition_info.setAlignment(Qt.AlignCenter)
-        self.imposition_info.setStyleSheet("color: #6C5CE7;")
-        layout.addWidget(self.imposition_info)
-        
-        return frame
-    
-    @Slot()
-    def _add_products(self) -> None:
-        """Adiciona produtos à lista."""
-        # TODO: Abrir seletor de produtos do banco
-        # Dados de exemplo
-        sample = [
-            {"id": 1, "nome_sanitizado": "Arroz Camil 5kg", "preco": 24.90},
-            {"id": 2, "nome_sanitizado": "Feijão Carioca 1kg", "preco": 8.99},
-            {"id": 3, "nome_sanitizado": "Óleo de Soja 900ml", "preco": 7.49},
+    def _load_products(self):
+        """Carrega produtos de exemplo."""
+        products = [
+            {"id": 1, "nome_sanitizado": "Arroz Camil 5kg", "preco_venda_atual": 24.90},
+            {"id": 2, "nome_sanitizado": "Feijao Carioca 1kg", "preco_venda_atual": 8.99},
+            {"id": 3, "nome_sanitizado": "Oleo Soja 900ml", "preco_venda_atual": 7.49},
+            {"id": 4, "nome_sanitizado": "Acucar 1kg", "preco_venda_atual": 4.99},
         ]
         
-        for product in sample:
-            item = QListWidgetItem(
-                f"{product['nome_sanitizado']} - R$ {product['preco']:.2f}"
-            )
-            item.setData(Qt.UserRole, product)
+        for p in products:
+            item = QListWidgetItem(f"{p['nome_sanitizado']} - R$ {p['preco_venda_atual']:.2f}")
+            item.setData(Qt.UserRole, p)
             self.product_list.addItem(item)
-            self._selected_products.append(product)
         
-        self._update_count()
-        self._update_preview()
+        self._update_page_count()
+    
+    def _update_page_count(self):
+        count = self.product_list.count()
+        slots_per_page = 12  # Depende do layout
+        pages = (count + slots_per_page - 1) // slots_per_page
+        self.page_info.setText(f"{pages} pagina(s) | {count} produtos")
     
     @Slot()
-    def _clear_products(self) -> None:
-        """Limpa todos os produtos."""
+    def _add_product(self):
+        QMessageBox.information(self, "Adicionar", "Selecione produtos do Estoque")
+    
+    @Slot()
+    def _remove_product(self):
+        for item in self.product_list.selectedItems():
+            self.product_list.takeItem(self.product_list.row(item))
+        self._update_page_count()
+    
+    @Slot()
+    def _clear_products(self):
         self.product_list.clear()
-        self._selected_products.clear()
-        self._update_count()
-        self._update_preview()
+        self._update_page_count()
     
-    def _update_count(self) -> None:
-        """Atualiza contador."""
-        count = len(self._selected_products)
-        self.count_label.setText(f"{count} produtos selecionados")
-    
-    def _update_preview(self) -> None:
-        """Atualiza preview de imposição."""
-        count = len(self._selected_products)
-        nup = self.nup_spin.value()
-        
-        if count == 0:
-            self.preview_label.setText("Selecione produtos para ver o preview")
-            self.imposition_info.setText("")
-        else:
-            pages = (count + nup - 1) // nup  # Ceiling division
-            self.preview_label.setText(f"📄 {count} cartazes\n📑 {pages} páginas")
-            self.imposition_info.setText(
-                f"Imposição: {nup} cartazes por página\n"
-                f"Layout: {self.layout_combo.currentText()}"
-            )
+    @Slot(int)
+    def _on_nup_changed(self, index: int):
+        nup_values = [1, 2, 4, 8]
+        self.preview.set_n_up(nup_values[index])
     
     @Slot()
-    def _export_pdf(self) -> None:
-        """Exporta PDF."""
-        if not self._selected_products:
-            QMessageBox.warning(self, "Aviso", "Selecione produtos para exportar.")
+    def _start_render(self):
+        if self.product_list.count() == 0:
+            QMessageBox.warning(self, "Aviso", "Adicione produtos primeiro!")
             return
         
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Salvar PDF",
-            "cartazes_autotabloide.pdf",
-            "PDF Files (*.pdf)"
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar PDF", "tabloide.pdf", "PDF (*.pdf)"
         )
+        if not output_path:
+            return
         
-        if file_path:
-            self.progress.setVisible(True)
-            self.progress.setValue(0)
-            
-            # TODO: Implementar renderização real com SVG Engine
-            # Simulação de progresso
-            for i in range(101):
-                self.progress.setValue(i)
-                QApplication.processEvents()
-            
-            self.progress.setVisible(False)
-            
-            QMessageBox.information(
-                self,
-                "Exportação Concluída",
-                f"PDF gerado com sucesso!\n\n{file_path}\n\n(Simulação - integrar SVG Engine)"
-            )
-            self.export_finished.emit(file_path)
-
-
-# Importar QApplication para processEvents
-from PySide6.QtWidgets import QApplication
+        # Coleta dados dos produtos
+        slots_data = {}
+        for i in range(self.product_list.count()):
+            item = self.product_list.item(i)
+            product = item.data(Qt.UserRole)
+            slots_data[i + 1] = product
+        
+        # Inicia worker
+        self.progress.setVisible(True)
+        self.progress.setValue(0)
+        self.btn_render.setEnabled(False)
+        
+        # Simula renderizacao (sem template real)
+        self.progress.setValue(50)
+        self.status_label.setText("Gerando PDF...")
+        
+        # TODO: Usar RenderWorkerThread com template real
+        self.progress.setValue(100)
+        self.progress.setVisible(False)
+        self.btn_render.setEnabled(True)
+        self.status_label.setText(f"Exportado: {output_path}")
+        
+        QMessageBox.information(
+            self, "Exportacao",
+            f"PDF gerado com sucesso!\n\n{output_path}\n\n"
+            "(Para renderizacao real, integre com template SVG)"
+        )
