@@ -481,7 +481,8 @@ if __name__ == "__main__":
                 min_width=UIConfig.RAIL_WIDTH_COLLAPSED,
                 min_extended_width=UIConfig.RAIL_WIDTH_EXPANDED,
                 extended=True,
-                expand=True,  # CRITICAL: NavigationRail needs explicit height
+                # NÃO USAR expand=True - causa erro de altura unbounded
+                # NavigationRail herda altura da Row pai
                 group_alignment=-0.9,
                 bgcolor=ColorScheme.BG_PRIMARY,
                 indicator_color=ColorScheme.ACCENT_PRIMARY,
@@ -579,34 +580,23 @@ if __name__ == "__main__":
             
             page.run_task(sentinel_subscriber)
 
-            # === Layout Principal (FIXED: proper height constraint for NavigationRail) ===
-            # Wrap rail in a container that gets height from the Row
-            rail_container = ft.Container(
-                content=rail,
-                expand=True,
-            )
+            # === Layout Principal (PADRÃO TESTADO E FUNCIONANDO) ===
+            # REGRA: NavigationRail NÃO pode ter expand=True
+            # A Row contendo ele é que deve ter expand=True
             
-            main_row = ft.Row(
+            main_content = ft.Row(
                 controls=[
-                    rail_container,
+                    rail,  # NavigationRail diretamente - SEM expand
                     ft.VerticalDivider(width=1, color=ColorScheme.BORDER_DEFAULT),
-                    body
+                    body   # Container já tem expand=True
                 ],
-                expand=True,
+                expand=True,  # Row expande para preencher página
                 spacing=0,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             )
             
-            page.add(
-                ft.Column(
-                    controls=[
-                        main_row,
-                        status_bar
-                    ],
-                    expand=True,
-                    spacing=0
-                )
-            )
+            # Adiciona layout à página
+            page.add(main_content)
+            page.add(status_bar)
             
             # === PROTOCOLO: Marcar boot como sucesso (Passo 94) ===
             try:

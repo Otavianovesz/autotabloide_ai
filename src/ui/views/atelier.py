@@ -279,9 +279,9 @@ class AtelierView(EventCleanupMixin, ft.UserControl):
             actions_alignment=ft.MainAxisAlignment.END
         )
         
-        self.page.dialog = dialog
-        dialog.open = True
-        self.page.update()
+        # FLET 0.21+: Usar page.open() em vez da API antiga
+        self._current_dialog = dialog
+        self.page.open(dialog)
     
     async def _load_available_layouts(self) -> List[Dict]:
         """Carrega layouts disponíveis do banco."""
@@ -385,10 +385,11 @@ class AtelierView(EventCleanupMixin, ft.UserControl):
         e.control.update()
     
     def _close_dialog(self):
-        """Fecha diálogo."""
-        if self.page.dialog:
-            self.page.dialog.open = False
-            self.page.update()
+        """Fecha diálogo (Flet 0.21+ API)."""
+        # FLET 0.21+: Usar page.close() em vez da API antiga
+        if hasattr(self, '_current_dialog') and self._current_dialog:
+            self.page.close(self._current_dialog)
+            self._current_dialog = None
     
     def _select_layout(self, layout: Dict):
         """Seleciona layout para novo projeto."""
@@ -695,9 +696,9 @@ class AtelierView(EventCleanupMixin, ft.UserControl):
             ]
         )
         
-        self.page.dialog = dialog
-        dialog.open = True
-        self.page.update()
+        # FLET 0.21+: Usar page.open() em vez da API antiga
+        self._current_dialog = dialog
+        self.page.open(dialog)
     
     async def _save_project(self):
         """Salva projeto atual."""
@@ -794,10 +795,13 @@ class AtelierView(EventCleanupMixin, ft.UserControl):
             e.control.update()
         
         def on_accept_drop(e):
-            """Callback quando produto é solto no slot."""
-            product = e.src.data
-            if product:
-                self._drop_product_on_slot(slot.slot_id, product)
+            """Callback quando produto é solto no slot (Flet 0.21+ API)."""
+            # FLET 0.21+: Dados vêm em e.data (string JSON), não e.src.data
+            try:
+                product_dict = json.loads(e.data)
+                self._drop_product_on_slot(slot.slot_id, product_dict)
+            except (json.JSONDecodeError, TypeError) as err:
+                print(f"[Atelier] Erro ao processar drop: {err}")
         
         def on_will_accept(e):
             """Feedback visual durante drag-over."""
@@ -1077,7 +1081,8 @@ class AtelierView(EventCleanupMixin, ft.UserControl):
                 border_radius=Spacing.RADIUS_SM,
                 shadow=ft.BoxShadow(blur_radius=10, color="#00000066"),
             ),
-            data=product,
+            # FLET 0.21+: data deve ser string JSON, não Dict
+            data=json.dumps(product, default=str),
         )
     
     def _add_to_next_empty_slot(self, product: Dict):
