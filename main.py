@@ -83,6 +83,51 @@ def setup_environment() -> None:
         pass  # Módulo não disponível
     
     # =========================================================================
+    # PROTOCOLO DE RETIFICAÇÃO: Fase 1 - Boot Safety (Passos 1-15)
+    # =========================================================================
+    try:
+        from src.core.boot_safety import initialize_boot_safety
+        boot_results = initialize_boot_safety(SYSTEM_ROOT)
+        
+        # Verificar se deve entrar em modo de recuperação
+        if boot_results.get("recovery_mode"):
+            import ctypes
+            if sys.platform == "win32":
+                result = ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "Múltiplas falhas de boot detectadas.\n\n"
+                    "Deseja resetar as configurações?",
+                    "AutoTabloide AI - Modo de Recuperação",
+                    0x04 | 0x30  # MB_YESNO | MB_ICONWARNING
+                )
+                if result == 6:  # IDYES
+                    from src.core.boot_safety import ConfigProtector
+                    ConfigProtector._get_default_config()  # Reset
+        
+        # Verificar espaço em disco
+        if not boot_results.get("disk_space", {}).get("ok", True):
+            print(f"AVISO: {boot_results['disk_space'].get('message', 'Espaço em disco baixo')}")
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Boot safety init error: {e}")
+    
+    # =========================================================================
+    # PROTOCOLO DE RETIFICAÇÃO: Fase 3 - Rendering Safety (Passos 31-50)
+    # =========================================================================
+    try:
+        from src.rendering.rendering_safety import initialize_rendering_safety
+        render_results = initialize_rendering_safety(SYSTEM_ROOT)
+        
+        if not render_results.get("icc_profiles", {}).get("ok", True):
+            missing = render_results.get("icc_profiles", {}).get("missing", [])
+            print(f"AVISO: Perfis ICC faltando: {missing}")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    
+    # =========================================================================
     # CENTURY CHECKLIST: Inicialização de Sistemas Industriais
     # =========================================================================
     try:
@@ -93,25 +138,48 @@ def setup_environment() -> None:
         pass  # Módulo não disponível
     except Exception:
         pass  # Falha silenciosa para não bloquear boot
+    
+    # =========================================================================
+    # PROTOCOLO DE RETIFICAÇÃO: Fase 6 - Resilience (Passos 91-100)
+    # =========================================================================
+    try:
+        from src.core.resilience import initialize_resilience
+        resil_results = initialize_resilience(SYSTEM_ROOT)
+        
+        if not resil_results.get("ghostscript", {}).get("ok", True):
+            msg = resil_results.get("ghostscript", {}).get("message", "GS não encontrado")
+            print(f"AVISO: {msg}")
+        
+        if not resil_results.get("system_time", {}).get("ok", True):
+            msg = resil_results.get("system_time", {}).get("message", "Relógio incorreto")
+            print(f"AVISO: {msg}")
+    except ImportError:
+        pass
+    except Exception:
+        pass
 
 
 def check_single_instance() -> bool:
     """
-    CENTURY CHECKLIST ITEM 2: Verifica se já existe outra instância rodando.
+    CENTURY CHECKLIST ITEM 2 + PASSO 4: Verifica instância única e traz foco.
+    
+    Se outra instância está rodando, traz sua janela para o primeiro plano
+    ANTES de mostrar mensagem e sair.
+    
     Retorna True se pode continuar, False se já existe instância.
     """
     try:
-        from src.core.instance_lock import acquire_instance_lock
+        from src.core.instance_lock import acquire_or_focus
         
-        if not acquire_instance_lock():
-            # Mostra popup amigável no Windows
+        if not acquire_or_focus():
+            # Mostra popup amigável no Windows (janela existente já foi focada)
             if sys.platform == "win32":
                 try:
                     import ctypes
                     ctypes.windll.user32.MessageBoxW(
                         0, 
-                        "O AutoTabloide AI já está rodando em outra janela!\n\n"
-                        "Verifique a barra de tarefas.",
+                        "O AutoTabloide AI já está rodando!\n\n"
+                        "A janela existente foi trazida para frente.",
                         "AutoTabloide AI", 
                         0x40  # MB_ICONINFORMATION
                     )
@@ -413,6 +481,7 @@ if __name__ == "__main__":
                 min_width=UIConfig.RAIL_WIDTH_COLLAPSED,
                 min_extended_width=UIConfig.RAIL_WIDTH_EXPANDED,
                 extended=True,
+                expand=True,  # CRITICAL: NavigationRail needs explicit height
                 group_alignment=-0.9,
                 bgcolor=ColorScheme.BG_PRIMARY,
                 indicator_color=ColorScheme.ACCENT_PRIMARY,
@@ -510,25 +579,41 @@ if __name__ == "__main__":
             
             page.run_task(sentinel_subscriber)
 
-            # === Layout Principal ===
+            # === Layout Principal (FIXED: proper height constraint for NavigationRail) ===
+            # Wrap rail in a container that gets height from the Row
+            rail_container = ft.Container(
+                content=rail,
+                expand=True,
+            )
+            
+            main_row = ft.Row(
+                controls=[
+                    rail_container,
+                    ft.VerticalDivider(width=1, color=ColorScheme.BORDER_DEFAULT),
+                    body
+                ],
+                expand=True,
+                spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+            )
+            
             page.add(
                 ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                rail,
-                                ft.VerticalDivider(width=1, color=ColorScheme.BORDER_DEFAULT),
-                                body
-                            ],
-                            expand=True,
-                            spacing=0
-                        ),
+                    controls=[
+                        main_row,
                         status_bar
                     ],
                     expand=True,
                     spacing=0
                 )
             )
+            
+            # === PROTOCOLO: Marcar boot como sucesso (Passo 94) ===
+            try:
+                from src.core.boot_safety import mark_boot_success
+                mark_boot_success(SYSTEM_ROOT)
+            except Exception:
+                pass
             
             # === Cleanup no Fechamento ===
             def on_window_event(e):

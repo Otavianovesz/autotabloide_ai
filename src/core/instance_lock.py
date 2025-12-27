@@ -164,3 +164,99 @@ def is_another_instance_running() -> bool:
             return True
         except OSError:
             return False
+
+
+def bring_existing_window_to_focus() -> bool:
+    """
+    PASSO 4 DO PROTOCOLO: Traz janela existente para o foco.
+    
+    Antes de matar o novo processo, tenta trazer a janela existente
+    para o primeiro plano para que o usuário saiba onde está.
+    
+    Returns:
+        True se conseguiu trazer para foco
+    """
+    if sys.platform != "win32":
+        return False
+    
+    pid = get_running_pid()
+    if pid is None:
+        return False
+    
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        
+        # Callback para EnumWindows
+        EnumWindowsProc = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+        )
+        
+        found_hwnd = None
+        
+        def enum_callback(hwnd, lparam):
+            nonlocal found_hwnd
+            
+            # Obtém PID da janela
+            window_pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
+            
+            if window_pid.value == pid:
+                # Verifica se é janela principal (não child, visível)
+                if user32.IsWindowVisible(hwnd) and not user32.GetParent(hwnd):
+                    # Verifica título contém "AutoTabloide"
+                    length = user32.GetWindowTextLengthW(hwnd) + 1
+                    title = ctypes.create_unicode_buffer(length)
+                    user32.GetWindowTextW(hwnd, title, length)
+                    
+                    if "AutoTabloide" in title.value:
+                        found_hwnd = hwnd
+                        return False  # Para enumeração
+            
+            return True
+        
+        # Enumera todas as janelas
+        user32.EnumWindows(EnumWindowsProc(enum_callback), 0)
+        
+        if found_hwnd:
+            # Restaura se minimizada
+            SW_RESTORE = 9
+            user32.ShowWindow(found_hwnd, SW_RESTORE)
+            
+            # Traz para frente
+            user32.SetForegroundWindow(found_hwnd)
+            
+            # Força foco
+            user32.BringWindowToTop(found_hwnd)
+            
+            logger.info(f"Janela existente trazida para foco (PID: {pid})")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.debug(f"Não foi possível trazer janela para foco: {e}")
+        return False
+
+
+def acquire_or_focus() -> bool:
+    """
+    Tenta adquirir lock, se falhar traz janela existente para foco.
+    
+    PASSO 4 COMPLETO: Em vez de apenas mostrar mensagem,
+    traz a janela existente para o primeiro plano.
+    
+    Returns:
+        True se adquiriu lock (pode continuar)
+        False se outra instância estava rodando (deve sair)
+    """
+    if acquire_instance_lock():
+        return True
+    
+    # Não conseguiu lock - tenta trazer janela existente para foco
+    bring_existing_window_to_focus()
+    
+    return False

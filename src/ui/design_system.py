@@ -570,7 +570,7 @@ def get_flet_theme() -> ft.Theme:
         color_scheme_seed=ColorScheme.ACCENT_PRIMARY,
         font_family=Typography.FONT_BODY,
         use_material3=True,
-        visual_density=ft.VisualDensity.COMFORTABLE,
+        visual_density=ft.ThemeVisualDensity.COMFORTABLE,
     )
 
 
@@ -588,3 +588,36 @@ def apply_page_theme(page: ft.Page):
         "Inter": "/assets/fonts/Inter-Regular.ttf",
         "JetBrains Mono": "/assets/fonts/JetBrainsMono-Regular.ttf",
     }
+
+
+# ==============================================================================
+# COMPATIBILIDADE: DesignTokens (alias para ColorScheme)
+# ==============================================================================
+
+class DesignTokens:
+    """
+    Alias de compatibilidade para módulos que esperam DesignTokens.
+    Mapeia para as classes principais do design system.
+    """
+    # Cores principais
+    PRIMARY = ColorScheme.ACCENT_PRIMARY
+    BACKGROUND = ColorScheme.BG_PRIMARY
+    SURFACE = ColorScheme.BG_SECONDARY
+    SURFACE_LIGHT = ColorScheme.BG_ELEVATED
+    BORDER = ColorScheme.BORDER_DEFAULT
+    
+    # Cores de status
+    SUCCESS = ColorScheme.SUCCESS
+    WARNING = ColorScheme.WARNING
+    ERROR = ColorScheme.ERROR
+    INFO = ColorScheme.INFO
+    
+    # Cores de texto
+    TEXT_PRIMARY = ColorScheme.TEXT_PRIMARY
+    TEXT_SECONDARY = ColorScheme.TEXT_SECONDARY
+    TEXT_MUTED = ColorScheme.TEXT_MUTED
+    TEXT_DISABLED = ColorScheme.TEXT_DISABLED
+    
+    # Aliases adicionais usados pelos componentes
+    ACCENT = ColorScheme.ACCENT_PRIMARY
+    ACCENT_SECONDARY = ColorScheme.ACCENT_SECONDARY

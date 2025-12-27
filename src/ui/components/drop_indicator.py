@@ -105,7 +105,7 @@ class SlotDropZone(ft.DragTarget):
             on_leave=self._handle_leave
         )
     
-    def _handle_will_accept(self, e: ft.DragTargetEvent) -> None:
+    def _handle_will_accept(self, e) -> None:
         """Chamado quando item entra na zona."""
         # Valida se pode aceitar
         is_valid = self._validate_drop(e.data)
@@ -115,7 +115,7 @@ class SlotDropZone(ft.DragTarget):
         else:
             self._indicator.set_drop_state("invalid")
     
-    def _handle_accept(self, e: ft.DragTargetEvent) -> None:
+    def _handle_accept(self, e) -> None:
         """Chamado quando item é solto."""
         if self._indicator.is_valid_drop():
             self._on_drop(self.slot_id, e.data)

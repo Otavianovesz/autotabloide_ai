@@ -1,0 +1,18 @@
+{
+  "system_root": "./AutoTabloide_System_Root",
+  "title_case_enabled": true,
+  "unit_case_uppercase": false,
+  "ai_model_quantization": "Q4_K_M",
+  "ai_fuzzy_threshold": 70.0,
+  "alcohol_categories": [
+    "Bebida Alcoólica",
+    "Cerveja",
+    "Vinho",
+    "Destilado"
+  ],
+  "theme_mode": "dark",
+  "autosave_enabled": true,
+  "autosave_delay_seconds": 3,
+  "default_color_mode": "cmyk",
+  "default_dpi": 300
+}

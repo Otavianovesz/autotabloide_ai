@@ -40,7 +40,9 @@ class EventType(Enum):
     
     # IA
     AI_TASK_START = auto()
+    AI_TASK_PROGRESS = auto()  # Added for progress modal
     AI_TASK_COMPLETE = auto()
+    AI_TASK_ERROR = auto()     # Added for progress modal
     AI_SANITIZATION_DONE = auto()
     AI_IMAGE_FOUND = auto()
     
@@ -55,6 +57,10 @@ class EventType(Enum):
     SNACKBAR_SHOW = auto()
     DIALOG_OPEN = auto()
     DIALOG_CLOSE = auto()
+    
+    # Slots (added for slot controller)
+    SLOT_UPDATED = auto()
+    SLOT_CLEARED = auto()
 
 
 @dataclass

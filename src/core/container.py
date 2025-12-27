@@ -241,7 +241,7 @@ async def bootstrap_services() -> None:
     - ProjectManager: Gestão de projetos
     """
     from src.core.settings_service import SettingsService, get_settings
-    from src.core.event_bus import event_bus
+    from src.core.event_bus import get_event_bus, EventBus
     from src.core.project_manager import ProjectManager
     
     container = get_container()
@@ -251,7 +251,7 @@ async def bootstrap_services() -> None:
     container.register_instance(SettingsService, settings)
     
     # EventBus (já é singleton global)
-    from src.core.event_bus import EventBus
+    event_bus = get_event_bus()
     container.register_instance(EventBus, event_bus)
     
     # ProjectManager (factory)

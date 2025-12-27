@@ -144,11 +144,11 @@ class DPIValidator:
 # ==============================================================================
 
 class WindowsPathSanitizer:
-    """
+    r"""
     Gerencia caminhos longos no Windows (MAX_PATH = 260 chars).
     
     PROBLEMA: Caminhos como 
-    "C:\\Users\\usuario\\Documents\\Projetos\\cliente_muito_longo\\assets\\imagens\\"
+    "C:\Users\usuario\Documents\Projetos\cliente_muito_longo\assets\imagens\"
     estouram o limite e causam "FileNotFoundError" inexplicáveis.
     
     SOLUÇÃO: 

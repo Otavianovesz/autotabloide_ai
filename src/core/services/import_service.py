@@ -27,7 +27,7 @@ from decimal import Decimal, InvalidOperation
 from concurrent.futures import ThreadPoolExecutor
 
 from src.core.logging_config import get_logger
-from src.core.event_bus import event_bus, EventType
+from src.core.event_bus import get_event_bus, EventType
 from src.core.database import AsyncSessionLocal
 from src.core.models import Produto
 from sqlalchemy import select
@@ -287,10 +287,7 @@ class ImportService:
             ImportResult com estatísticas
         """
         # Emitir evento de início
-        event_bus.emit(EventType.AI_TASK_START, {
-            "task": "import",
-            "file": file_path.name
-        })
+        get_event_bus().emit(EventType.AI_TASK_START, task="import", file=file_path.name)
         
         # Ler arquivo
         logger.info(f"Iniciando importação: {file_path.name}")
@@ -356,12 +353,12 @@ class ImportService:
                 
                 # Emitir progresso a cada 10 linhas
                 if (i + 1) % 10 == 0:
-                    event_bus.emit(EventType.AI_TASK_PROGRESS, {
-                        "task": "import",
-                        "current": i + 1,
-                        "total": len(rows),
-                        "percent": (i + 1) / len(rows) * 100
-                    })
+                    get_event_bus().emit(EventType.AI_TASK_PROGRESS, 
+                        task="import",
+                        current=i + 1,
+                        total=len(rows),
+                        percent=(i + 1) / len(rows) * 100
+                    )
                     
             except Exception as e:
                 error_count += 1
@@ -374,13 +371,13 @@ class ImportService:
                 logger.error(f"Erro na linha {i + 1}: {e}")
         
         # Emitir evento de conclusão
-        event_bus.emit(EventType.AI_TASK_COMPLETE, {
-            "task": "import",
-            "new": new_count,
-            "updated": updated_count,
-            "matched": matched_count,
-            "errors": error_count
-        })
+        get_event_bus().emit(EventType.AI_TASK_COMPLETE, 
+            task="import",
+            new=new_count,
+            updated=updated_count,
+            matched=matched_count,
+            errors=error_count
+        )
         
         logger.info(f"Importação concluída: {new_count} novos, {updated_count} atualizados, {matched_count} correspondidos, {error_count} erros")
         

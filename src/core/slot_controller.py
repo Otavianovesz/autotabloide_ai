@@ -16,7 +16,7 @@ from enum import Enum, auto
 import asyncio
 
 from src.core.logging_config import get_logger
-from src.core.event_bus import EventBus, get_event_bus
+from src.core.event_bus import EventBus, get_event_bus, EventType
 
 logger = get_logger("SlotController")
 
@@ -140,7 +140,7 @@ class SlotController:
         )
         
         self._notify_listeners(slot_id)
-        self._event_bus.emit("slot_updated", {"slot_id": slot_id, "action": "filled"})
+        self._event_bus.emit(EventType.SLOT_UPDATED, slot_id=slot_id, action="filled")
         
         logger.debug(f"Produto {product_id} adicionado a {slot_id}")
         return True
@@ -152,7 +152,7 @@ class SlotController:
         
         self._slots[slot_id] = SlotData(slot_id=slot_id, state=SlotState.EMPTY)
         self._notify_listeners(slot_id)
-        self._event_bus.emit("slot_updated", {"slot_id": slot_id, "action": "cleared"})
+        self._event_bus.emit(EventType.SLOT_CLEARED, slot_id=slot_id, action="cleared")
         
         return True
     

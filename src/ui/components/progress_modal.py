@@ -15,7 +15,7 @@ import flet as ft
 from typing import Optional, Callable
 from dataclasses import dataclass
 
-from src.core.event_bus import event_bus, EventType
+from src.core.event_bus import get_event_bus, EventType
 from src.core.logging_config import get_logger
 from src.ui.design_system import DesignTokens
 
@@ -57,10 +57,11 @@ class GlobalProgressModal(ft.UserControl):
     
     def _setup_listeners(self) -> None:
         """Configura listeners do EventBus."""
-        event_bus.subscribe(EventType.AI_TASK_START, self._on_task_start)
-        event_bus.subscribe(EventType.AI_TASK_PROGRESS, self._on_task_progress)
-        event_bus.subscribe(EventType.AI_TASK_COMPLETE, self._on_task_complete)
-        event_bus.subscribe(EventType.AI_TASK_ERROR, self._on_task_error)
+        bus = get_event_bus()
+        bus.subscribe(EventType.AI_TASK_START, self._on_task_start)
+        bus.subscribe(EventType.AI_TASK_PROGRESS, self._on_task_progress)
+        bus.subscribe(EventType.AI_TASK_COMPLETE, self._on_task_complete)
+        bus.subscribe(EventType.AI_TASK_ERROR, self._on_task_error)
     
     def _on_task_start(self, data: dict) -> None:
         """Handler para início de tarefa."""
