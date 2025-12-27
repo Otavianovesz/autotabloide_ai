@@ -102,10 +102,10 @@ def validate_model_integrity(model_path: Path, expected_hash: Optional[str] = No
 # DOWNLOAD AUTOMÁTICO (Passo 26)
 # ==============================================================================
 
-# URLs de modelos conhecidos
+# URLs de modelos conhecidos (Hugging Face)
 MODEL_URLS = {
-    # Exemplo - URLs reais devem ser adicionadas
-    "Llama-3-8b-instruct.Q4_K_M.gguf": None,  # Modelo local - sem download
+    # Llama 3 8B Instruct Q4_K_M - Modelo principal
+    "Llama-3-8b-instruct.Q4_K_M.gguf": "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
 }
 
 

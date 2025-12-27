@@ -479,6 +479,7 @@ class SentinelProcess(multiprocessing.Process):
     def _load_llm(self):
         """
         Carrega modelo LLM se disponível.
+        AUTO-DOWNLOAD: Se modelo não existir, baixa automaticamente do Hugging Face.
         
         GPU AUTO-OFFLOAD (#59 Industrial Robustness):
         Calcula n_gpu_layers dinamicamente baseado em VRAM disponível.
@@ -488,9 +489,13 @@ class SentinelProcess(multiprocessing.Process):
             return
         
         model_path = self.config.get("model_path")
+        
+        # AUTO-DOWNLOAD: Se modelo não existir, tenta baixar
         if not model_path or not os.path.exists(model_path):
             logger.warning(f"Modelo LLM não encontrado: {model_path}")
-            return
+            model_path = self._auto_download_llm(model_path)
+            if not model_path:
+                return
         
         # Calcular GPU layers baseado em VRAM
         n_gpu_layers = self._calculate_gpu_layers()
@@ -561,6 +566,84 @@ class SentinelProcess(multiprocessing.Process):
         
         # Fallback: tenta usar GPU com valor conservador
         return 20
+    
+    def _auto_download_llm(self, expected_path: str) -> Optional[str]:
+        """
+        Auto-download do modelo LLM do Hugging Face em BACKGROUND.
+        NÃO BLOQUEIA a inicialização do Sentinel.
+        
+        Args:
+            expected_path: Caminho onde o modelo deveria estar
+            
+        Returns:
+            None - download é feito em background, modelo será carregado quando pronto
+        """
+        from pathlib import Path
+        import threading
+        
+        model_name = "Llama-3-8b-instruct.Q4_K_M.gguf"
+        
+        # Determina diretório de destino
+        if expected_path:
+            dest_dir = Path(expected_path).parent
+        else:
+            dest_dir = Path(os.getcwd()) / "AutoTabloide_System_Root" / "bin"
+        
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / model_name
+        
+        # Se já existe, retorna caminho imediatamente
+        if dest_path.exists():
+            file_size = dest_path.stat().st_size / (1024 * 1024)
+            if file_size > 100:  # Maior que 100MB é provavelmente válido
+                logger.info(f"Modelo encontrado: {dest_path} ({file_size:.0f}MB)")
+                return str(dest_path)
+            else:
+                logger.warning(f"Arquivo incompleto encontrado, removendo: {dest_path}")
+                dest_path.unlink()
+        
+        # URL do Hugging Face
+        url = "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+        
+        logger.info("LLM não encontrado. Download será feito em BACKGROUND (~4.5GB)")
+        logger.info(f"Destino: {dest_path}")
+        logger.info("Sentinel continuará funcionando sem LLM até download completar.")
+        
+        # Função de download em background
+        def download_in_background():
+            try:
+                from urllib.request import urlretrieve
+                
+                last_percent = [0]
+                
+                def progress_hook(count, block_size, total_size):
+                    if total_size > 0:
+                        percent = int(count * block_size * 100 / total_size)
+                        if percent >= last_percent[0] + 10:
+                            logger.info(f"Download LLM: {percent}%")
+                            last_percent[0] = percent
+                
+                logger.info("Iniciando download do modelo LLM em background...")
+                urlretrieve(url, str(dest_path), reporthook=progress_hook)
+                
+                logger.info(f"Download CONCLUÍDO: {dest_path}")
+                logger.info("Modelo LLM estará disponível na próxima inicialização.")
+                
+            except Exception as e:
+                logger.error(f"Falha no download do modelo: {e}")
+                # Remove arquivo parcial
+                if dest_path.exists():
+                    try:
+                        dest_path.unlink()
+                    except:
+                        pass
+        
+        # Inicia download em thread separada (não bloqueia)
+        download_thread = threading.Thread(target=download_in_background, daemon=True)
+        download_thread.start()
+        
+        # Retorna None - LLM não disponível ainda
+        return None
 
     def _process_task(self, task: Dict) -> Dict:
         """Processa uma tarefa da fila."""

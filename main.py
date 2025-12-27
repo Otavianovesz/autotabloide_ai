@@ -633,10 +633,14 @@ if __name__ == "__main__":
                     close_logger.info("Shutdown concluído")
                     page.window_destroy()
             
-            page.window_prevent_close = True
-            page.on_window_event = on_window_event
+            # Window events only for desktop mode (not web)
+            if page.web:
+                pass  # Skip window events in web mode
+            else:
+                page.window_prevent_close = True
+                page.on_window_event = on_window_event
 
-        # Inicia aplicação Flet
+        # Inicia aplicação Flet (modo desktop)
         logger.info("Iniciando interface Flet...")
         ft.app(target=main)
         

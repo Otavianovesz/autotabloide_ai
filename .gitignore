@@ -56,3 +56,4 @@ logs/
 tmp/
 temp/
 *.tmp
+AutoTabloide_System_Root/bin/Llama-3-8b-instruct.Q4_K_M.gguf
