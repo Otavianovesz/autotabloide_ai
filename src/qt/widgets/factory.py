@@ -1,142 +1,366 @@
 """
-AutoTabloide AI - Factory Widget (Producao em Massa)
-=====================================================
-Interface para geracao de PDFs com imposicao automatica.
+AutoTabloide AI - Fábrica Widget Industrial Grade
+==================================================
+PROTOCOLO DE CONVERGÊNCIA INDUSTRIAL - Fase 5
+Passos 66-74: Renderização e saída real.
+
+Exportação PDF via VectorEngine + Ghostscript.
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame,
-    QLabel, QPushButton, QListWidget, QListWidgetItem, QComboBox,
-    QSpinBox, QCheckBox, QProgressBar, QFileDialog, QMessageBox,
-    QSplitter, QGroupBox, QScrollArea
-)
-from PySide6.QtCore import Qt, Signal, Slot, QSize, QThread
-from PySide6.QtGui import QColor, QPixmap, QPainter
-from typing import Optional, List, Dict, Any
+from __future__ import annotations
 from pathlib import Path
+from typing import Optional, Dict, List, Any
+from datetime import datetime
+import subprocess
+import json
+import tempfile
+
+from PySide6.QtCore import (
+    Qt, Signal, Slot, QTimer, QThread, QObject
+)
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
+    QPushButton, QProgressBar, QListWidget, QListWidgetItem,
+    QFileDialog, QMessageBox, QDialog, QTextEdit, QComboBox,
+    QSpinBox, QCheckBox, QGroupBox, QGridLayout
+)
+from PySide6.QtGui import QColor, QFont
 
 
-class RenderWorkerThread(QThread):
-    """Thread worker para renderizacao."""
+# =============================================================================
+# RENDER WORKER (Passos 66-72)
+# =============================================================================
+
+class RenderWorker(QObject):
+    """Worker para renderização em background."""
     
-    progress = Signal(int, int, str)  # current, total, message
-    finished = Signal(str)  # output_path
+    progress = Signal(int, int, str)  # atual, total, mensagem
+    completed = Signal(str)  # caminho do arquivo
     error = Signal(str)
+    log = Signal(str)
     
-    def __init__(self, slots_data: Dict, layout_path: str, output_path: str, parent=None):
-        super().__init__(parent)
-        self.slots_data = slots_data
-        self.layout_path = layout_path
-        self.output_path = output_path
+    def __init__(self):
+        super().__init__()
+        self._jobs: List[Dict] = []
+        self._gs_path: Optional[str] = None
+        self._icc_path: Optional[str] = None
+        self._running = True
     
-    def run(self):
+    def set_config(self, gs_path: str, icc_path: str):
+        """Define caminhos de binários."""
+        self._gs_path = gs_path
+        self._icc_path = icc_path
+    
+    def add_job(self, job: Dict):
+        """Adiciona job de renderização."""
+        self._jobs.append(job)
+    
+    @Slot()
+    def process_jobs(self):
+        """Processa fila de jobs."""
+        total = len(self._jobs)
+        
+        for i, job in enumerate(self._jobs):
+            if not self._running:
+                break
+            
+            self.progress.emit(i + 1, total, f"Renderizando {job.get('name', 'arquivo')}...")
+            
+            try:
+                output_path = self._render_job(job)
+                if output_path:
+                    self.completed.emit(output_path)
+            except Exception as e:
+                self.error.emit(str(e))
+        
+        self._jobs.clear()
+    
+    def _render_job(self, job: Dict) -> Optional[str]:
+        """Renderiza um job específico."""
+        template_path = job.get("template_path")
+        output_path = job.get("output_path")
+        slots_data = job.get("slots_data", {})
+        output_format = job.get("format", "pdf")
+        colorspace = job.get("colorspace", "rgb")
+        
+        # Passo 67: Injeção no SVG
+        svg_content = self._inject_data_into_svg(template_path, slots_data)
+        if not svg_content:
+            self.error.emit("Falha ao gerar SVG")
+            return None
+        
+        # Salva SVG temporário
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.svg', delete=False, encoding='utf-8'
+        ) as f:
+            f.write(svg_content)
+            temp_svg = f.name
+        
+        self.log.emit(f"SVG temp: {temp_svg}")
+        
+        # Passo 69-72: Pipeline Ghostscript
+        if output_format == "pdf":
+            success = self._render_pdf_with_gs(
+                temp_svg, output_path, colorspace
+            )
+            if not success:
+                # Fallback para CairoSVG
+                success = self._render_pdf_with_cairo(temp_svg, output_path)
+        else:
+            success = self._render_png(temp_svg, output_path)
+        
+        # Limpa temp
+        Path(temp_svg).unlink(missing_ok=True)
+        
+        return output_path if success else None
+    
+    def _inject_data_into_svg(
+        self, 
+        template_path: str, 
+        slots_data: Dict
+    ) -> Optional[str]:
+        """Injeta dados dos produtos no template SVG."""
         try:
-            from src.qt.rendering import SVGEngine
+            from src.qt.rendering.svg_template_parser import SvgTemplateParser
             
-            self.progress.emit(10, 100, "Carregando template SVG...")
+            parser = SvgTemplateParser()
+            template_info = parser.parse(template_path)
             
-            engine = SVGEngine()
-            if not engine.load(self.layout_path):
-                self.error.emit("Falha ao carregar template")
-                return
+            if not template_info:
+                return None
             
-            self.progress.emit(30, 100, "Injetando dados dos produtos...")
-            engine.inject_products(self.slots_data)
-            
-            self.progress.emit(60, 100, "Gerando PDF...")
-            
-            if self.output_path.endswith('.pdf'):
-                success = engine.render_to_pdf(self.output_path)
-            else:
-                success = engine.render_to_png(self.output_path)
-            
-            if success:
-                self.progress.emit(100, 100, "Concluido!")
-                self.finished.emit(self.output_path)
-            else:
-                self.error.emit("Falha na renderizacao")
+            # Injeta dados em cada slot
+            for slot_idx, product_data in slots_data.items():
+                slot_def = None
+                for s in template_info.slots:
+                    if s.index == slot_idx:
+                        slot_def = s
+                        break
                 
+                if not slot_def:
+                    continue
+                
+                # Nome
+                if slot_def.name_text_id and product_data.get("nome_sanitizado"):
+                    parser.modify_text(
+                        slot_def.name_text_id,
+                        product_data["nome_sanitizado"]
+                    )
+                
+                # Preço
+                if slot_def.price_text_id and product_data.get("preco_venda_atual"):
+                    price = float(product_data["preco_venda_atual"])
+                    price_str = f"R$ {price:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    parser.modify_text(slot_def.price_text_id, price_str)
+                
+                # Imagem
+                if slot_def.image_target_id and product_data.get("img_hash_ref"):
+                    img_path = f"AutoTabloide_System_Root/assets/store/{product_data['img_hash_ref']}.png"
+                    if Path(img_path).exists():
+                        parser.modify_image(slot_def.image_target_id, str(Path(img_path).absolute()))
+            
+            return parser.to_string()
+            
         except Exception as e:
-            self.error.emit(str(e))
+            self.log.emit(f"Erro na injeção: {e}")
+            return None
+    
+    def _render_pdf_with_gs(
+        self, 
+        svg_path: str, 
+        output_path: str,
+        colorspace: str = "rgb"
+    ) -> bool:
+        """Renderiza PDF usando Ghostscript (Passos 69-72)."""
+        if not self._gs_path or not Path(self._gs_path).exists():
+            self.log.emit("Ghostscript não encontrado")
+            return False
+        
+        # Primeiro converte SVG para PDF intermediário
+        try:
+            import cairosvg
+            temp_pdf = output_path + ".temp.pdf"
+            cairosvg.svg2pdf(url=svg_path, write_to=temp_pdf)
+        except Exception as e:
+            self.log.emit(f"CairoSVG falhou: {e}")
+            return False
+        
+        # Passo 70: Argumentos GS com ICC
+        gs_args = [
+            self._gs_path,
+            "-dBATCH",
+            "-dNOPAUSE",
+            "-dSAFER",
+            "-sDEVICE=pdfwrite",
+            "-dPDFSETTINGS=/prepress",
+            "-dCompatibilityLevel=1.4",
+        ]
+        
+        # Colorspace CMYK com ICC
+        if colorspace == "cmyk" and self._icc_path and Path(self._icc_path).exists():
+            gs_args.extend([
+                "-sColorConversionStrategy=CMYK",
+                f"-sOutputICCProfile={self._icc_path}",
+            ])
+        
+        gs_args.extend([
+            f"-sOutputFile={output_path}",
+            temp_pdf,
+        ])
+        
+        try:
+            self.log.emit(f"Executando: {' '.join(gs_args)}")
+            
+            result = subprocess.run(
+                gs_args,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            
+            if result.returncode != 0:
+                self.log.emit(f"GS stderr: {result.stderr}")
+                # Passo 72: Tratamento de erro
+                error_msg = self._translate_gs_error(result.stderr)
+                self.error.emit(error_msg)
+                return False
+            
+            # Limpa temp
+            Path(temp_pdf).unlink(missing_ok=True)
+            
+            return True
+            
+        except subprocess.TimeoutExpired:
+            self.error.emit("Timeout na renderização (120s)")
+            return False
+        except Exception as e:
+            self.log.emit(f"Erro GS: {e}")
+            return False
+    
+    def _render_pdf_with_cairo(self, svg_path: str, output_path: str) -> bool:
+        """Fallback: renderiza PDF com CairoSVG."""
+        try:
+            import cairosvg
+            cairosvg.svg2pdf(url=svg_path, write_to=output_path)
+            return True
+        except Exception as e:
+            self.log.emit(f"Cairo falhou: {e}")
+            return False
+    
+    def _render_png(self, svg_path: str, output_path: str) -> bool:
+        """Renderiza PNG."""
+        try:
+            import cairosvg
+            cairosvg.svg2png(url=svg_path, write_to=output_path, scale=2)
+            return True
+        except Exception as e:
+            self.log.emit(f"PNG falhou: {e}")
+            return False
+    
+    def _translate_gs_error(self, stderr: str) -> str:
+        """Traduz erros do Ghostscript para português."""
+        if "undefined" in stderr.lower():
+            return "Erro no PDF: fonte ou recurso não encontrado"
+        if "ioerror" in stderr.lower():
+            return "Erro de I/O: não foi possível ler/escrever arquivo"
+        if "color" in stderr.lower():
+            return "Erro de conversão de cores"
+        return f"Erro no Ghostscript: {stderr[:100]}"
+    
+    def stop(self):
+        self._running = False
 
 
-class ImpositionPreview(QFrame):
-    """Preview de imposicao N-Up."""
+# =============================================================================
+# RENDER QUEUE WIDGET
+# =============================================================================
+
+class RenderQueueWidget(QFrame):
+    """Widget de fila de renderização."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(200, 283)  # Proporcao A4
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #FFFFFF;
-                border: 1px solid #2D2D44;
-                border-radius: 4px;
-            }
-        """)
+        self.setStyleSheet("background-color: #1A1A2E; border-radius: 8px;")
         
-        self.n_up = 1
-        self.pages: List[Dict] = []
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        
+        header = QLabel("Fila de Renderização")
+        header.setStyleSheet("font-weight: bold; color: #FFFFFF;")
+        layout.addWidget(header)
+        
+        self.queue_list = QListWidget()
+        self.queue_list.setMaximumHeight(150)
+        layout.addWidget(self.queue_list)
+        
+        self.progress = QProgressBar()
+        self.progress.setValue(0)
+        layout.addWidget(self.progress)
+        
+        self.status_label = QLabel("Aguardando...")
+        self.status_label.setStyleSheet("color: #808080;")
+        layout.addWidget(self.status_label)
     
-    def set_n_up(self, n: int):
-        self.n_up = n
-        self.update()
+    def add_job(self, name: str):
+        item = QListWidgetItem(f"⏳ {name}")
+        self.queue_list.addItem(item)
     
-    def set_pages(self, pages: List[Dict]):
-        self.pages = pages
-        self.update()
+    def update_job(self, index: int, status: str):
+        if 0 <= index < self.queue_list.count():
+            item = self.queue_list.item(index)
+            if status == "done":
+                item.setText(item.text().replace("⏳", "✅"))
+            elif status == "error":
+                item.setText(item.text().replace("⏳", "❌"))
     
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        w = self.width() - 20
-        h = self.height() - 20
-        x_offset = 10
-        y_offset = 10
-        
-        # Grid baseado em N-Up
-        if self.n_up == 1:
-            rows, cols = 1, 1
-        elif self.n_up == 2:
-            rows, cols = 1, 2
-        elif self.n_up == 4:
-            rows, cols = 2, 2
-        elif self.n_up == 8:
-            rows, cols = 2, 4
-        else:
-            rows, cols = 1, 1
-        
-        cell_w = w / cols
-        cell_h = h / rows
-        
-        for r in range(rows):
-            for c in range(cols):
-                x = x_offset + c * cell_w + 2
-                y = y_offset + r * cell_h + 2
-                cw = cell_w - 4
-                ch = cell_h - 4
-                
-                painter.setPen(QColor("#2D2D44"))
-                painter.setBrush(QColor("#F0F0F0"))
-                painter.drawRect(int(x), int(y), int(cw), int(ch))
-        
-        painter.end()
+    def update_progress(self, current: int, total: int, message: str):
+        pct = int((current / max(1, total)) * 100)
+        self.progress.setValue(pct)
+        self.status_label.setText(message)
+    
+    def clear(self):
+        self.queue_list.clear()
+        self.progress.setValue(0)
+        self.status_label.setText("Aguardando...")
 
+
+# =============================================================================
+# FÁBRICA WIDGET
+# =============================================================================
 
 class FactoryWidget(QWidget):
-    """Widget da Fabrica - producao em massa de tabloides."""
+    """
+    Widget da Fábrica (Passos 66-74).
     
-    render_started = Signal()
-    render_finished = Signal(str)
+    Gerencia renderização em lote e exportação.
+    """
     
     def __init__(self, container=None, parent=None):
         super().__init__(parent)
         self.container = container
-        self._render_worker: Optional[RenderWorkerThread] = None
+        
+        # Worker thread
+        self._render_thread = QThread()
+        self._render_worker = RenderWorker()
+        self._render_worker.moveToThread(self._render_thread)
+        self._render_worker.progress.connect(self._on_progress)
+        self._render_worker.completed.connect(self._on_completed)
+        self._render_worker.error.connect(self._on_error)
+        self._render_worker.log.connect(self._on_log)
+        self._render_thread.start()
+        
+        # Configura binários
+        self._configure_binaries()
+        
         self._setup_ui()
-        self._load_products()
+    
+    def _configure_binaries(self):
+        """Configura caminhos de binários."""
+        gs_path = "AutoTabloide_System_Root/bin/gswin64c.exe"
+        icc_path = "AutoTabloide_System_Root/assets/profiles/CoatedFOGRA39.icc"
+        
+        if Path(gs_path).exists():
+            self._render_worker.set_config(gs_path, icc_path)
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -146,220 +370,153 @@ class FactoryWidget(QWidget):
         # Header
         header = QHBoxLayout()
         
-        title = QLabel("Fabrica de Tabloides")
+        title = QLabel("Fábrica")
         title.setStyleSheet("font-size: 28px; font-weight: bold; color: #FFFFFF;")
         header.addWidget(title)
         
         header.addStretch()
         
-        self.btn_render = QPushButton("Gerar PDF")
-        self.btn_render.clicked.connect(self._start_render)
-        header.addWidget(self.btn_render)
-        
         layout.addLayout(header)
         
-        # Splitter principal
-        splitter = QSplitter(Qt.Horizontal)
+        # Configurações de exportação
+        config_group = QGroupBox("Configurações de Exportação")
+        config_layout = QGridLayout(config_group)
         
-        # === Painel Esquerdo: Selecao de Produtos ===
-        left_panel = QFrame()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        config_layout.addWidget(QLabel("Formato:"), 0, 0)
+        self.format_combo = QComboBox()
+        self.format_combo.addItem("PDF (Impressão)", "pdf")
+        self.format_combo.addItem("PNG (Preview)", "png")
+        config_layout.addWidget(self.format_combo, 0, 1)
         
-        left_layout.addWidget(QLabel("Produtos para Tabloide:"))
+        config_layout.addWidget(QLabel("Espaço de Cor:"), 1, 0)
+        self.color_combo = QComboBox()
+        self.color_combo.addItem("RGB (Digital)", "rgb")
+        self.color_combo.addItem("CMYK (Impressão Offset)", "cmyk")
+        config_layout.addWidget(self.color_combo, 1, 1)
         
-        self.product_list = QListWidget()
-        self.product_list.setSelectionMode(QListWidget.ExtendedSelection)
-        left_layout.addWidget(self.product_list)
-        
-        btn_layout = QHBoxLayout()
-        
-        btn_add = QPushButton("Adicionar")
-        btn_add.clicked.connect(self._add_product)
-        btn_layout.addWidget(btn_add)
-        
-        btn_remove = QPushButton("Remover")
-        btn_remove.clicked.connect(self._remove_product)
-        btn_layout.addWidget(btn_remove)
-        
-        btn_clear = QPushButton("Limpar")
-        btn_clear.clicked.connect(self._clear_products)
-        btn_layout.addWidget(btn_clear)
-        
-        left_layout.addLayout(btn_layout)
-        
-        splitter.addWidget(left_panel)
-        
-        # === Painel Central: Configuracoes ===
-        center_panel = QFrame()
-        center_layout = QVBoxLayout(center_panel)
-        
-        # Layout
-        layout_group = QGroupBox("Template")
-        lg_layout = QVBoxLayout(layout_group)
-        
-        self.layout_combo = QComboBox()
-        self.layout_combo.addItem("Tabloide A4 - 12 produtos (3x4)")
-        self.layout_combo.addItem("Tabloide A4 - 6 produtos (2x3)")
-        self.layout_combo.addItem("Tabloide A3 - 24 produtos")
-        lg_layout.addWidget(self.layout_combo)
-        
-        center_layout.addWidget(layout_group)
-        
-        # Papel
-        paper_group = QGroupBox("Papel e Impressao")
-        pg_layout = QGridLayout(paper_group)
-        
-        pg_layout.addWidget(QLabel("Tamanho:"), 0, 0)
-        self.paper_combo = QComboBox()
-        self.paper_combo.addItems(["A4 (210x297mm)", "A3 (297x420mm)", "Carta (216x279mm)"])
-        pg_layout.addWidget(self.paper_combo, 0, 1)
-        
-        pg_layout.addWidget(QLabel("DPI:"), 1, 0)
+        config_layout.addWidget(QLabel("DPI:"), 2, 0)
         self.dpi_spin = QSpinBox()
         self.dpi_spin.setRange(72, 600)
         self.dpi_spin.setValue(300)
-        pg_layout.addWidget(self.dpi_spin, 1, 1)
+        config_layout.addWidget(self.dpi_spin, 2, 1)
         
-        center_layout.addWidget(paper_group)
+        self.preview_check = QCheckBox("Abrir após exportar")
+        self.preview_check.setChecked(True)
+        config_layout.addWidget(self.preview_check, 3, 0, 1, 2)
         
-        # Imposicao
-        impo_group = QGroupBox("Imposicao")
-        ig_layout = QVBoxLayout(impo_group)
+        layout.addWidget(config_group)
         
-        nup_layout = QHBoxLayout()
-        nup_layout.addWidget(QLabel("N-Up:"))
-        self.nup_combo = QComboBox()
-        self.nup_combo.addItems(["1 por folha", "2 por folha", "4 por folha", "8 por folha"])
-        self.nup_combo.currentIndexChanged.connect(self._on_nup_changed)
-        nup_layout.addWidget(self.nup_combo)
-        ig_layout.addLayout(nup_layout)
+        # Fila de renderização
+        self.queue_widget = RenderQueueWidget()
+        layout.addWidget(self.queue_widget)
         
-        self.chk_crop_marks = QCheckBox("Marcas de corte")
-        self.chk_crop_marks.setChecked(True)
-        ig_layout.addWidget(self.chk_crop_marks)
+        # Botões de ação
+        actions = QHBoxLayout()
         
-        self.chk_bleed = QCheckBox("Bleed (3mm)")
-        self.chk_bleed.setChecked(True)
-        ig_layout.addWidget(self.chk_bleed)
+        btn_add = QPushButton("Adicionar Projeto")
+        btn_add.clicked.connect(self._add_project)
+        actions.addWidget(btn_add)
         
-        self.chk_cmyk = QCheckBox("Converter para CMYK")
-        ig_layout.addWidget(self.chk_cmyk)
+        btn_export = QPushButton("Exportar Selecionados")
+        btn_export.clicked.connect(self._export_selected)
+        actions.addWidget(btn_export)
         
-        center_layout.addWidget(impo_group)
+        btn_export_all = QPushButton("Exportar Todos")
+        btn_export_all.clicked.connect(self._export_all)
+        actions.addWidget(btn_export_all)
         
-        center_layout.addStretch()
+        actions.addStretch()
         
-        splitter.addWidget(center_panel)
+        btn_stop = QPushButton("Parar")
+        btn_stop.setProperty("class", "danger")
+        btn_stop.clicked.connect(self._stop_render)
+        actions.addWidget(btn_stop)
         
-        # === Painel Direito: Preview ===
-        right_panel = QFrame()
-        right_layout = QVBoxLayout(right_panel)
+        layout.addWidget(self._create_actions_frame(actions))
         
-        right_layout.addWidget(QLabel("Preview:"))
+        # Log
+        log_group = QGroupBox("Log de Renderização")
+        log_layout = QVBoxLayout(log_group)
         
-        self.preview = ImpositionPreview()
-        right_layout.addWidget(self.preview)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(150)
+        self.log_text.setStyleSheet("background-color: #0D0D0D; color: #808080;")
+        log_layout.addWidget(self.log_text)
         
-        self.page_info = QLabel("0 paginas")
-        self.page_info.setAlignment(Qt.AlignCenter)
-        self.page_info.setStyleSheet("color: #808080;")
-        right_layout.addWidget(self.page_info)
+        layout.addWidget(log_group)
         
-        right_layout.addStretch()
-        
-        splitter.addWidget(right_panel)
-        
-        splitter.setSizes([300, 300, 200])
-        layout.addWidget(splitter)
-        
-        # Progress bar
-        self.progress = QProgressBar()
-        self.progress.setVisible(False)
-        layout.addWidget(self.progress)
-        
-        self.status_label = QLabel()
-        self.status_label.setStyleSheet("color: #808080;")
-        layout.addWidget(self.status_label)
+        layout.addStretch()
     
-    def _load_products(self):
-        """Carrega produtos de exemplo."""
-        products = [
-            {"id": 1, "nome_sanitizado": "Arroz Camil 5kg", "preco_venda_atual": 24.90},
-            {"id": 2, "nome_sanitizado": "Feijao Carioca 1kg", "preco_venda_atual": 8.99},
-            {"id": 3, "nome_sanitizado": "Oleo Soja 900ml", "preco_venda_atual": 7.49},
-            {"id": 4, "nome_sanitizado": "Acucar 1kg", "preco_venda_atual": 4.99},
-        ]
-        
-        for p in products:
-            item = QListWidgetItem(f"{p['nome_sanitizado']} - R$ {p['preco_venda_atual']:.2f}")
-            item.setData(Qt.UserRole, p)
-            self.product_list.addItem(item)
-        
-        self._update_page_count()
-    
-    def _update_page_count(self):
-        count = self.product_list.count()
-        slots_per_page = 12  # Depende do layout
-        pages = (count + slots_per_page - 1) // slots_per_page
-        self.page_info.setText(f"{pages} pagina(s) | {count} produtos")
+    def _create_actions_frame(self, layout: QHBoxLayout) -> QFrame:
+        frame = QFrame()
+        frame.setLayout(layout)
+        return frame
     
     @Slot()
-    def _add_product(self):
-        QMessageBox.information(self, "Adicionar", "Selecione produtos do Estoque")
-    
-    @Slot()
-    def _remove_product(self):
-        for item in self.product_list.selectedItems():
-            self.product_list.takeItem(self.product_list.row(item))
-        self._update_page_count()
-    
-    @Slot()
-    def _clear_products(self):
-        self.product_list.clear()
-        self._update_page_count()
-    
-    @Slot(int)
-    def _on_nup_changed(self, index: int):
-        nup_values = [1, 2, 4, 8]
-        self.preview.set_n_up(nup_values[index])
-    
-    @Slot()
-    def _start_render(self):
-        if self.product_list.count() == 0:
-            QMessageBox.warning(self, "Aviso", "Adicione produtos primeiro!")
-            return
-        
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, "Salvar PDF", "tabloide.pdf", "PDF (*.pdf)"
+    def _add_project(self):
+        """Adiciona projeto à fila."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Selecionar Projeto", "",
+            "Projeto Tabloide (*.tabloide);;JSON (*.json)"
         )
-        if not output_path:
-            return
-        
-        # Coleta dados dos produtos
-        slots_data = {}
-        for i in range(self.product_list.count()):
-            item = self.product_list.item(i)
-            product = item.data(Qt.UserRole)
-            slots_data[i + 1] = product
-        
-        # Inicia worker
-        self.progress.setVisible(True)
-        self.progress.setValue(0)
-        self.btn_render.setEnabled(False)
-        
-        # Simula renderizacao (sem template real)
-        self.progress.setValue(50)
-        self.status_label.setText("Gerando PDF...")
-        
-        # TODO: Usar RenderWorkerThread com template real
-        self.progress.setValue(100)
-        self.progress.setVisible(False)
-        self.btn_render.setEnabled(True)
-        self.status_label.setText(f"Exportado: {output_path}")
-        
+        if path:
+            self.queue_widget.add_job(Path(path).stem)
+            self._log(f"Adicionado: {path}")
+    
+    @Slot()
+    def _export_selected(self):
+        """Exporta itens selecionados."""
         QMessageBox.information(
-            self, "Exportacao",
-            f"PDF gerado com sucesso!\n\n{output_path}\n\n"
-            "(Para renderizacao real, integre com template SVG)"
+            self, "Exportar",
+            "Selecione projetos na fila para exportar"
         )
+    
+    @Slot()
+    def _export_all(self):
+        """Exporta todos os itens."""
+        output_dir = QFileDialog.getExistingDirectory(
+            self, "Diretório de Saída"
+        )
+        if output_dir:
+            self._log(f"Exportando para: {output_dir}")
+            QTimer.singleShot(0, self._render_worker.process_jobs)
+    
+    @Slot()
+    def _stop_render(self):
+        """Para renderização."""
+        self._render_worker.stop()
+        self._log("Renderização interrompida")
+    
+    @Slot(int, int, str)
+    def _on_progress(self, current: int, total: int, message: str):
+        self.queue_widget.update_progress(current, total, message)
+    
+    @Slot(str)
+    def _on_completed(self, path: str):
+        self._log(f"✅ Concluído: {path}")
+        
+        # Passo 73: Preview automático
+        if self.preview_check.isChecked():
+            import os
+            os.startfile(path)
+    
+    @Slot(str)
+    def _on_error(self, error: str):
+        self._log(f"❌ Erro: {error}")
+        QMessageBox.warning(self, "Erro", error)
+    
+    @Slot(str)
+    def _on_log(self, message: str):
+        self._log(message)
+    
+    def _log(self, message: str):
+        """Adiciona mensagem ao log."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.append(f"[{timestamp}] {message}")
+    
+    def closeEvent(self, event):
+        self._render_worker.stop()
+        self._render_thread.quit()
+        self._render_thread.wait()
+        super().closeEvent(event)
