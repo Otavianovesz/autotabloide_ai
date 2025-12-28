@@ -20,16 +20,16 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsLineItem, QWidget,
     QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton,
     QComboBox, QSpinBox, QSplitter, QListWidget, QListWidgetItem,
-    QFileDialog, QMessageBox, QUndoStack, QUndoCommand,
+    QFileDialog, QMessageBox,
     QMenu
 )
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QPixmap,
     QKeySequence, QWheelEvent, QMouseEvent, QDragEnterEvent,
-    QDropEvent, QShortcut, QTransform, QCursor
+    QDropEvent, QShortcut, QTransform, QCursor, QUndoStack, QUndoCommand
 )
 
-from .smart_items import (
+from ..graphics.smart_items import (
     SmartGraphicsItem, SmartSlotItem, SmartImageItem,
     SmartTextItem, SmartPriceItem
 )
@@ -240,7 +240,7 @@ class AtelierScene(QGraphicsScene):
         # Cria slots baseados no template
         for slot_def in template_info.slots:
             slot = SmartSlotItem(
-                slot_index=slot_def.index,
+                slot_index=slot_def.slot_index,
                 element_id=slot_def.slot_id,
                 x=slot_def.x,
                 y=slot_def.y,
@@ -250,7 +250,7 @@ class AtelierScene(QGraphicsScene):
             
             # Conecta sinais
             slot.product_assigned.connect(
-                lambda data, idx=slot_def.index: self.slot_modified.emit(idx, data)
+                lambda data, idx=slot_def.slot_index: self.slot_modified.emit(idx, data)
             )
             slot.content_changed.connect(self.scene_modified.emit)
             
@@ -780,17 +780,49 @@ class AtelierWidget(QWidget):
         QShortcut(QKeySequence("Ctrl+1"), self, self.canvas.zoom_to_fit)
     
     def _load_products(self):
-        """Carrega produtos para a prateleira."""
-        # Exemplo - substituir por carregamento real
-        self._all_products = [
-            {"id": 1, "nome_sanitizado": "Arroz Camil 5kg", "preco_venda_atual": 24.90},
-            {"id": 2, "nome_sanitizado": "Feijao Carioca 1kg", "preco_venda_atual": 8.99},
-            {"id": 3, "nome_sanitizado": "Oleo de Soja 900ml", "preco_venda_atual": 7.49},
-            {"id": 4, "nome_sanitizado": "Acucar Refinado 1kg", "preco_venda_atual": 4.99},
-            {"id": 5, "nome_sanitizado": "Macarrao Espaguete 500g", "preco_venda_atual": 6.79},
-            {"id": 6, "nome_sanitizado": "Leite Integral 1L", "preco_venda_atual": 5.99},
-        ]
-        self._update_shelf()
+        """Carrega produtos reais do banco para a prateleira."""
+        import asyncio
+        import threading
+        from PySide6.QtCore import QTimer
+        
+        async def _fetch_products():
+            from src.core.database import AsyncSessionLocal
+            from src.core.repositories import ProductRepository
+            
+            async with AsyncSessionLocal() as session:
+                repo = ProductRepository(session)
+                products = await repo.search(limit=200)
+                
+                result = []
+                for p in products:
+                    result.append({
+                        "id": p.id,
+                        "nome_sanitizado": p.nome_sanitizado,
+                        "preco_venda_atual": float(p.preco_venda_atual or 0),
+                        "preco_referencia": float(p.preco_referencia or 0) if p.preco_referencia else None,
+                        "marca_normalizada": p.marca_normalizada,
+                        "detalhe_peso": p.detalhe_peso,
+                        "img_hash_ref": p.img_hash_ref,
+                    })
+                return result
+        
+        def _on_loaded(products):
+            self._all_products = products
+            self._update_shelf()
+        
+        def _run():
+            loop = asyncio.new_event_loop()
+            try:
+                products = loop.run_until_complete(_fetch_products())
+                QTimer.singleShot(0, lambda: _on_loaded(products))
+            except Exception as e:
+                print(f"[Atelier] Erro ao carregar produtos: {e}")
+                QTimer.singleShot(0, lambda: _on_loaded([]))
+            finally:
+                loop.close()
+        
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
     
     def _update_shelf(self, products: List[Dict] = None):
         products = products or self._all_products
@@ -877,5 +909,29 @@ class AtelierWidget(QWidget):
         
         path, _ = QFileDialog.getSaveFileName(self, "Exportar PDF", "tabloide.pdf", "PDF (*.pdf)")
         if path:
-            # TODO: Integrar com PDF pipeline
-            QMessageBox.information(self, "Exportar", f"Exportar para: {path}")
+            scene_data = self.canvas.get_scene().serialize()
+            template_path = getattr(self.canvas.get_scene(), '_template_path', None)
+            
+            if not template_path:
+                # Usa template default se não tem SVG carregado
+                QMessageBox.warning(self, "Aviso", "Exporte requer um template SVG carregado.")
+                return
+            
+            try:
+                from src.rendering.pdf_export import export_atelier_to_pdf
+                
+                success, message = export_atelier_to_pdf(
+                    scene_data=scene_data,
+                    template_path=template_path,
+                    output_path=path,
+                    system_root="AutoTabloide_System_Root"
+                )
+                
+                if success:
+                    QMessageBox.information(self, "Exportação Concluída", message)
+                else:
+                    QMessageBox.warning(self, "Erro na Exportação", message)
+                    
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao exportar:\n{str(e)}")
+

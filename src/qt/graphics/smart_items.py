@@ -812,9 +812,106 @@ class SmartSlotItem(SmartGraphicsItem):
             self.set_state(self.STATE_NORMAL)
     
     def dropEvent(self, event):
-        """Processa drop de produto."""
+        """Processa drop de produto com undo/redo."""
         if event.mimeData().hasFormat("application/x-autotabloide-product"):
             data = event.mimeData().data("application/x-autotabloide-product")
-            product = json.loads(bytes(data).decode('utf-8'))
+            payload = json.loads(bytes(data).decode('utf-8'))
+            
+            # ProductsTableModel envia lista - pega primeiro item
+            if isinstance(payload, list) and len(payload) > 0:
+                product = payload[0]
+            else:
+                product = payload
+            
+            # Registra undo antes de modificar
+            old_data = self.product_data.copy() if self.product_data else None
+            
+            try:
+                from src.qt.core.undo_redo import get_undo_manager
+                get_undo_manager().record_drop(self, product, old_data)
+            except ImportError:
+                pass
+            
             self.set_product(product)
             event.acceptProposedAction()
+    
+    def contextMenuEvent(self, event):
+        """Menu de contexto completo para slot."""
+        menu = QMenu()
+        
+        has_product = self.product_data is not None
+        
+        # Ações para slot com produto
+        if has_product:
+            action_edit_price = menu.addAction("✏️ Editar Preço")
+            action_view_stock = menu.addAction("📦 Ver no Estoque")
+            menu.addSeparator()
+            action_copy_style = menu.addAction("🎨 Copiar Estilo")
+            action_apply_all = menu.addAction("📋 Aplicar Preço em Todos")
+            menu.addSeparator()
+            action_clear = menu.addAction("🗑️ Limpar Slot")
+        else:
+            action_edit_price = None
+            action_view_stock = None
+            action_copy_style = None
+            action_apply_all = None
+            action_clear = None
+        
+        menu.addSeparator()
+        action_lock = menu.addAction("🔒 Travar Slot")
+        action_lock.setCheckable(True)
+        action_lock.setChecked(getattr(self, '_locked', False))
+        
+        # Executa menu
+        action = menu.exec(event.screenPos())
+        
+        if action == action_clear and has_product:
+            self._clear_with_undo()
+        elif action == action_edit_price and has_product:
+            self._show_price_editor()
+        elif action == action_lock:
+            self._locked = not getattr(self, '_locked', False)
+    
+    def _clear_with_undo(self):
+        """Limpa slot registrando undo."""
+        if self.product_data:
+            old_data = self.product_data.copy()
+            
+            try:
+                from src.qt.core.undo_redo import get_undo_manager
+                get_undo_manager().record_clear(self, old_data)
+            except ImportError:
+                pass
+            
+            self.clear_product()
+    
+    def _show_price_editor(self):
+        """Mostra editor inline de preço."""
+        from PySide6.QtWidgets import QInputDialog
+        
+        if not self.product_data:
+            return
+        
+        old_price = float(self.product_data.get('preco_venda_atual', 0))
+        
+        new_price, ok = QInputDialog.getDouble(
+            None,
+            "Editar Preço",
+            "Novo preço (R$):",
+            old_price,
+            0.0,
+            99999.99,
+            2
+        )
+        
+        if ok and new_price != old_price:
+            try:
+                from src.qt.core.undo_redo import get_undo_manager
+                get_undo_manager().record_price_edit(self, old_price, new_price)
+            except ImportError:
+                pass
+            
+            self.product_data['preco_venda_atual'] = new_price
+            self.update()
+
+

@@ -572,6 +572,19 @@ def run_boot_sequence(app: QApplication) -> BootReport:
         asyncio.set_event_loop(loop)
         try:
             report.database_ok = loop.run_until_complete(init_database(splash))
+            
+            # Passo 11b: Seed database with demo products if empty
+            if report.database_ok:
+                splash.update_progress(11, "Verificando dados iniciais...")
+                try:
+                    from src.core.seed_data import seed_database
+                    loop2 = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop2)
+                    loop2.run_until_complete(seed_database())
+                    loop2.close()
+                except Exception as seed_err:
+                    print(f"[Seed] Aviso: {seed_err}")
+                    
         except Exception as e:
             report.database_ok = False
             report.warnings.append(f"Banco de dados: {e}")
@@ -667,6 +680,29 @@ def main():
     
     # Injeta report de boot
     window.boot_report = report
+    
+    # === INTEGRAÇÃO DOS NOVOS MÓDULOS ===
+    
+    # GlobalKeyFilter para atalhos globais (Ctrl+1-6, Ctrl+S, etc)
+    try:
+        from src.qt.core.global_input import GlobalKeyFilter, get_signals
+        
+        key_filter = GlobalKeyFilter.install(app)
+        
+        # Conecta atalhos à janela
+        key_filter.save_requested.connect(window.save_project if hasattr(window, 'save_project') else lambda: None)
+        key_filter.undo_requested.connect(lambda: None)  # Conectar UndoManager
+        key_filter.redo_requested.connect(lambda: None)
+        key_filter.help_requested.connect(lambda: (
+            __import__('src.qt.dialogs.help_system', fromlist=['show_shortcuts_dialog']).show_shortcuts_dialog(window)
+        ))
+        key_filter.navigate_requested.connect(
+            lambda idx: window.switch_view(idx) if hasattr(window, 'switch_view') else None
+        )
+        
+        print("[Main] GlobalKeyFilter instalado")
+    except ImportError as e:
+        print(f"[Main] GlobalKeyFilter não disponível: {e}")
     
     # Watchdog
     watchdog = UIWatchdog(threshold_ms=200, parent=window)

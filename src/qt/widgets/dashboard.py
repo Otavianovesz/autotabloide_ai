@@ -32,51 +32,56 @@ class StatsWorker(QObject):
     
     @Slot()
     def fetch_stats(self):
-        """Busca estatísticas do banco."""
-        try:
+        """Busca estatísticas do banco em thread dedicada."""
+        import threading
+        
+        def _run():
+            import asyncio
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
             try:
                 stats = loop.run_until_complete(self._async_fetch_stats())
-                self.stats_ready.emit(stats)
+                # Usa QTimer.singleShot para emitir no thread principal
+                QTimer.singleShot(0, lambda: self.stats_ready.emit(stats))
             except Exception as e:
                 print(f"[Dashboard] Stats erro: {e}")
-                self.stats_ready.emit(self._fallback_stats())
+                fallback = self._fallback_stats()
+                QTimer.singleShot(0, lambda: self.stats_ready.emit(fallback))
             finally:
                 loop.close()
-                
-        except Exception as e:
-            print(f"[Dashboard] Erro geral: {e}")
-            self.stats_ready.emit(self._fallback_stats())
+        
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
     
     @Slot()
     def check_health(self):
-        """Verifica saúde dos serviços."""
-        try:
+        """Verifica saúde dos serviços em thread dedicada."""
+        import threading
+        
+        def _run():
+            import asyncio
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
             try:
                 health = loop.run_until_complete(self._async_check_health())
-                self.health_ready.emit(health)
+                QTimer.singleShot(0, lambda: self.health_ready.emit(health))
             except Exception as e:
                 print(f"[Dashboard] Health erro: {e}")
-                self.health_ready.emit(self._fallback_health())
+                fallback = self._fallback_health()
+                QTimer.singleShot(0, lambda: self.health_ready.emit(fallback))
             finally:
                 loop.close()
-        except:
-            self.health_ready.emit(self._fallback_health())
+        
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
     
     async def _async_fetch_stats(self) -> Dict:
         """Busca contagens reais do banco."""
         try:
-            from src.core.database import get_db
+            from src.core.database import AsyncSessionLocal
             from sqlalchemy import text
             
             stats = {"products": 0, "layouts": 0, "projects": 0, "images": 0}
             
-            async with get_db() as session:
+            async with AsyncSessionLocal() as session:
                 # Conta produtos
                 result = await session.execute(text("SELECT COUNT(*) FROM produtos"))
                 stats["products"] = result.scalar() or 0

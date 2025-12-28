@@ -163,31 +163,34 @@ class DatabaseQueryWorker(QObject):
     
     @Slot()
     def fetch_products(self):
-        """Busca produtos no banco."""
-        try:
+        """Busca produtos no banco em thread dedicada."""
+        import threading
+        from PySide6.QtCore import QTimer
+        
+        def _run():
+            import asyncio
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
             try:
                 data, count = loop.run_until_complete(self._async_fetch())
-                self.results_ready.emit(data, count)
+                # Emite no thread principal via QTimer
+                QTimer.singleShot(0, lambda: self.results_ready.emit(data, count))
             except Exception as e:
                 print(f"[DB Worker] Erro interno: {e}")
                 data, count = self._get_fallback_data()
-                self.results_ready.emit(data, count)
+                QTimer.singleShot(0, lambda: self.results_ready.emit(data, count))
             finally:
                 loop.close()
-                
-        except Exception as e:
-            self.error_occurred.emit(str(e))
+        
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
     
     async def _async_fetch(self) -> Tuple[List[Dict], int]:
         """Busca assíncrona."""
         try:
-            from src.core.database import get_db
+            from src.core.database import AsyncSessionLocal
             from src.core.repositories import ProductRepository
             
-            async with get_db() as session:
+            async with AsyncSessionLocal() as session:
                 repo = ProductRepository(session)
                 
                 products = await repo.search(
@@ -752,15 +755,105 @@ class EstoqueWidget(QWidget):
     
     @Slot()
     def _import_excel(self):
+        """Importação via O Juiz."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Importar Excel", "",
-            "Excel (*.xlsx *.xls);;CSV (*.csv)"
+            "Excel (*.xlsx *.xls);;CSV (*.csv);;Todos os Arquivos (*)"
         )
-        if file_path:
+        if not file_path:
+            return
+        
+        # Parse a planilha
+        try:
+            from src.core.excel_parser import parse_spreadsheet
+            items, errors = parse_spreadsheet(file_path)
+            
+            if errors:
+                QMessageBox.warning(
+                    self, "Avisos na Importação",
+                    f"Encontrados {len(errors)} problemas:\n" + "\n".join(errors[:5])
+                )
+            
+            if not items:
+                QMessageBox.warning(self, "Importação", "Nenhum item válido encontrado na planilha.")
+                return
+            
+            # Abre o JudgeModal para reconciliação
+            from src.qt.dialogs.judge_modal import JudgeModal
+            modal = JudgeModal(self)
+            modal.process_items(items)
+            
+            def _on_confirmed(confirmed_items):
+                """Processa itens confirmados."""
+                self._create_products_from_import(confirmed_items)
+            
+            modal.import_confirmed.connect(_on_confirmed)
+            modal.exec()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao importar:\n{str(e)}")
+    
+    def _create_products_from_import(self, items: list):
+        """Cria produtos a partir dos itens confirmados."""
+        import asyncio
+        from decimal import Decimal
+        from src.core.database import AsyncSessionLocal
+        from src.core.repositories import ProductRepository
+        from src.qt.dialogs.judge_modal import MatchStatus
+        
+        async def _async_create():
+            async with AsyncSessionLocal() as session:
+                repo = ProductRepository(session)
+                created = 0
+                updated = 0
+                
+                for item in items:
+                    original = item.get("original", {})
+                    status = item.get("status")
+                    product_id = item.get("product_id")
+                    
+                    # Se é match exato ou fuzzy confirmado, apenas registra alias
+                    if status in [MatchStatus.EXACT, MatchStatus.FUZZY] and product_id:
+                        raw = item.get("raw", "")
+                        if raw:
+                            await repo.add_alias(product_id, raw, confidence=0.9)
+                        updated += 1
+                    
+                    # Se é novo, cria produto
+                    elif status == MatchStatus.NEW:
+                        nome = item.get("suggestion", original.get("nome", ""))
+                        preco = original.get("preco", Decimal("0"))
+                        if isinstance(preco, str):
+                            preco = Decimal(preco)
+                        
+                        await repo.create_or_update(
+                            sku=original.get("sku", ""),
+                            nome=nome,
+                            preco=preco,
+                            marca=original.get("marca"),
+                            peso=original.get("peso"),
+                            preco_ref=original.get("preco_ref"),
+                            categoria=original.get("categoria")
+                        )
+                        created += 1
+                
+                await session.commit()
+                return created, updated
+        
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            created, updated = loop.run_until_complete(_async_create())
+            loop.close()
+            
             QMessageBox.information(
-                self, "Importar",
-                f"Arquivo: {file_path}\n\nImplementar O Juiz"
+                self, "Importação Concluída",
+                f"✓ {created} produtos criados\n✓ {updated} aliases registrados"
             )
+            self._refresh()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao criar produtos:\n{str(e)}")
     
     @Slot()
     def _add_product(self):
