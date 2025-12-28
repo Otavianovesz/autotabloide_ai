@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 210 297" 
+     width="210mm" 
+     height="297mm">
+  
+  <!-- 
+    AutoTabloide AI - Template A4 Básico (4 Produtos)
+    Protocolo de Convergência Industrial - Step 11-20
+    
+    IDs Padronizados:
+    - #SLOT_XX: Grupo do slot
+    - #IMG_XX: Área da imagem
+    - #TXT_NOME_XX: Nome do produto
+    - #TXT_PRECO_INT_XX: Preço inteiro
+    - #TXT_PRECO_DEC_XX: Centavos
+    - #TXT_MOEDA_XX: Símbolo R$
+    - #TXT_PRECO_DE_XX: Preço "de" (riscado)
+  -->
+  
+  <defs>
+    <style type="text/css">
+      .slot-bg { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 0.5; }
+      .img-placeholder { fill: #F5F5F5; stroke: #CCCCCC; stroke-width: 0.25; }
+      .txt-nome { font-family: 'Roboto', sans-serif; font-size: 4mm; fill: #333333; font-weight: 500; }
+      .txt-preco-int { font-family: 'Roboto', sans-serif; font-size: 10mm; fill: #E53935; font-weight: 700; }
+      .txt-preco-dec { font-family: 'Roboto', sans-serif; font-size: 5mm; fill: #E53935; font-weight: 700; }
+      .txt-moeda { font-family: 'Roboto', sans-serif; font-size: 4mm; fill: #E53935; font-weight: 500; }
+      .txt-preco-de { font-family: 'Roboto', sans-serif; font-size: 3mm; fill: #999999; text-decoration: line-through; }
+    </style>
+    
+    <!-- Clip paths para máscaras de imagem -->
+    <clipPath id="clip_img_01">
+      <rect x="10" y="15" width="85" height="70"/>
+    </clipPath>
+    <clipPath id="clip_img_02">
+      <rect x="115" y="15" width="85" height="70"/>
+    </clipPath>
+    <clipPath id="clip_img_03">
+      <rect x="10" y="160" width="85" height="70"/>
+    </clipPath>
+    <clipPath id="clip_img_04">
+      <rect x="115" y="160" width="85" height="70"/>
+    </clipPath>
+  </defs>
+  
+  <!-- Background -->
+  <rect id="BACKGROUND" x="0" y="0" width="210" height="297" fill="#FFFFFF"/>
+  
+  <!-- Header -->
+  <rect id="HEADER_BG" x="0" y="0" width="210" height="12" fill="#FFC107"/>
+  <text id="HEADER_TEXT" x="105" y="8" text-anchor="middle" font-family="Roboto" font-size="6mm" fill="#000000" font-weight="700">OFERTAS DA SEMANA</text>
+  
+  <!-- ============================================ -->
+  <!-- SLOT 01 - Superior Esquerdo -->
+  <!-- ============================================ -->
+  <g id="SLOT_01" transform="translate(5, 14)">
+    <rect class="slot-bg" x="0" y="0" width="95" height="125" rx="2"/>
+    
+    <!-- Área de Imagem -->
+    <rect id="IMG_01" class="img-placeholder" x="5" y="5" width="85" height="70"/>
+    
+    <!-- Nome do Produto -->
+    <text id="TXT_NOME_01" class="txt-nome" x="47.5" y="85" text-anchor="middle">Nome do Produto</text>
+    
+    <!-- Preço "De" (Riscado) -->
+    <text id="TXT_PRECO_DE_01" class="txt-preco-de" x="47.5" y="95" text-anchor="middle">De R$ 0,00</text>
+    
+    <!-- Bloco de Preço -->
+    <g id="PRECO_BLOCK_01" transform="translate(47.5, 115)">
+      <text id="TXT_MOEDA_01" class="txt-moeda" x="-25" y="0" text-anchor="start">R$</text>
+      <text id="TXT_PRECO_INT_01" class="txt-preco-int" x="-15" y="0" text-anchor="start">0</text>
+      <text id="TXT_PRECO_DEC_01" class="txt-preco-dec" x="15" y="-4" text-anchor="start">,00</text>
+    </g>
+  </g>
+  
+  <!-- ============================================ -->
+  <!-- SLOT 02 - Superior Direito -->
+  <!-- ============================================ -->
+  <g id="SLOT_02" transform="translate(110, 14)">
+    <rect class="slot-bg" x="0" y="0" width="95" height="125" rx="2"/>
+    
+    <rect id="IMG_02" class="img-placeholder" x="5" y="5" width="85" height="70"/>
+    
+    <text id="TXT_NOME_02" class="txt-nome" x="47.5" y="85" text-anchor="middle">Nome do Produto</text>
+    <text id="TXT_PRECO_DE_02" class="txt-preco-de" x="47.5" y="95" text-anchor="middle">De R$ 0,00</text>
+    
+    <g id="PRECO_BLOCK_02" transform="translate(47.5, 115)">
+      <text id="TXT_MOEDA_02" class="txt-moeda" x="-25" y="0" text-anchor="start">R$</text>
+      <text id="TXT_PRECO_INT_02" class="txt-preco-int" x="-15" y="0" text-anchor="start">0</text>
+      <text id="TXT_PRECO_DEC_02" class="txt-preco-dec" x="15" y="-4" text-anchor="start">,00</text>
+    </g>
+  </g>
+  
+  <!-- ============================================ -->
+  <!-- SLOT 03 - Inferior Esquerdo -->
+  <!-- ============================================ -->
+  <g id="SLOT_03" transform="translate(5, 155)">
+    <rect class="slot-bg" x="0" y="0" width="95" height="125" rx="2"/>
+    
+    <rect id="IMG_03" class="img-placeholder" x="5" y="5" width="85" height="70"/>
+    
+    <text id="TXT_NOME_03" class="txt-nome" x="47.5" y="85" text-anchor="middle">Nome do Produto</text>
+    <text id="TXT_PRECO_DE_03" class="txt-preco-de" x="47.5" y="95" text-anchor="middle">De R$ 0,00</text>
+    
+    <g id="PRECO_BLOCK_03" transform="translate(47.5, 115)">
+      <text id="TXT_MOEDA_03" class="txt-moeda" x="-25" y="0" text-anchor="start">R$</text>
+      <text id="TXT_PRECO_INT_03" class="txt-preco-int" x="-15" y="0" text-anchor="start">0</text>
+      <text id="TXT_PRECO_DEC_03" class="txt-preco-dec" x="15" y="-4" text-anchor="start">,00</text>
+    </g>
+  </g>
+  
+  <!-- ============================================ -->
+  <!-- SLOT 04 - Inferior Direito -->
+  <!-- ============================================ -->
+  <g id="SLOT_04" transform="translate(110, 155)">
+    <rect class="slot-bg" x="0" y="0" width="95" height="125" rx="2"/>
+    
+    <rect id="IMG_04" class="img-placeholder" x="5" y="5" width="85" height="70"/>
+    
+    <text id="TXT_NOME_04" class="txt-nome" x="47.5" y="85" text-anchor="middle">Nome do Produto</text>
+    <text id="TXT_PRECO_DE_04" class="txt-preco-de" x="47.5" y="95" text-anchor="middle">De R$ 0,00</text>
+    
+    <g id="PRECO_BLOCK_04" transform="translate(47.5, 115)">
+      <text id="TXT_MOEDA_04" class="txt-moeda" x="-25" y="0" text-anchor="start">R$</text>
+      <text id="TXT_PRECO_INT_04" class="txt-preco-int" x="-15" y="0" text-anchor="start">0</text>
+      <text id="TXT_PRECO_DEC_04" class="txt-preco-dec" x="15" y="-4" text-anchor="start">,00</text>
+    </g>
+  </g>
+  
+  <!-- Footer -->
+  <rect id="FOOTER_BG" x="0" y="285" width="210" height="12" fill="#333333"/>
+  <text id="FOOTER_TEXT" x="105" y="293" text-anchor="middle" font-family="Roboto" font-size="3mm" fill="#FFFFFF">Válido enquanto durarem os estoques</text>
+  
+</svg>

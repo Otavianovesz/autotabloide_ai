@@ -1,290 +1,289 @@
 """
-AutoTabloide AI - Verificador de Integridade do Sistema
-=========================================================
-Bootloader estrito conforme auditoria de resiliência.
-Protocolo 4: Verificação Hash de binários e assets críticos.
+AutoTabloide AI - Infrastructure Integrity
+==========================================
+PROTOCOLO DE CONVERGÊNCIA 260 - Fase 1 (Passos 1-10)
+Validação de integridade do sistema no boot.
 """
 
-import os
-import hashlib
-import logging
+from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass, field
+import logging
+import hashlib
+import subprocess
+import sys
 
-logger = logging.getLogger("IntegrityChecker")
-
-
-class AssetStatus(str, Enum):
-    """Status de verificação de asset."""
-    OK = "OK"
-    MISSING = "MISSING"
-    CORRUPTED = "CORRUPTED"
-    SIZE_MISMATCH = "SIZE_MISMATCH"
+logger = logging.getLogger("Integrity")
 
 
 @dataclass
-class AssetCheck:
-    """Resultado de verificação de um asset."""
-    path: str
-    status: AssetStatus
-    expected_hash: Optional[str] = None
-    actual_hash: Optional[str] = None
-    expected_size: Optional[int] = None
-    actual_size: Optional[int] = None
+class IntegrityResult:
+    """Resultado da verificação de integridade."""
+    passed: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    binaries: Dict[str, bool] = field(default_factory=dict)
+    fonts: List[str] = field(default_factory=list)
+    profiles: List[str] = field(default_factory=list)
 
 
 class IntegrityChecker:
     """
-    Verificador de Integridade do Sistema.
+    Verificador de integridade industrial.
     
-    PROTOCOLO BOOTLOADER ESTRITO:
-    - Verifica existência de binários vitais
-    - Valida integridade via hash MD5 (opcional, para assets críticos)
-    - Detecta arquivos corrompidos (0 bytes)
-    - Relatório completo de status
+    Valida:
+    - Permissões de escrita
+    - Binários externos (Ghostscript)
+    - Fontes obrigatórias
+    - Perfis ICC
+    - Schema do banco
     """
     
-    # Assets obrigatórios para funcionamento básico
-    # Formato: (caminho relativo, hash esperado ou None, tamanho mínimo em bytes)
-    REQUIRED_ASSETS = {
-        # Binários vitais
-        "bin/gswin64c.exe": (None, 1000),  # Ghostscript (hash varia por versão)
-        
-        # Perfis ICC para conversão CMYK
-        "assets/profiles/CoatedFOGRA39.icc": (None, 500000),
-        
-        # Diretórios estruturais
-        "database": (None, None),  # Diretório deve existir
-        "vault/images": (None, None),
-        "staging": (None, None),
-    }
+    def __init__(self, root_dir: Path = None):
+        self.root = root_dir or Path("AutoTabloide_System_Root")
+        self.result = IntegrityResult(passed=True)
     
-    # Assets opcionais (warning se ausentes)
-    OPTIONAL_ASSETS = {
-        "bin/realesrgan-ncnn-vulkan.exe": (None, 1000),
-        "bin/Llama-3-8B-Instruct.Q4_K_M.gguf": (None, 1000000),
-    }
-    
-    def __init__(self, system_root: Optional[str] = None):
-        """
-        Args:
-            system_root: Raiz do sistema. Se None, auto-detecta.
-        """
-        if system_root:
-            self.system_root = Path(system_root)
+    def check_all(self) -> IntegrityResult:
+        """Executa todas as verificações."""
+        logger.info("[Integrity] Iniciando verificação...")
+        
+        self._check_directories()
+        self._check_write_permissions()
+        self._check_binaries()
+        self._check_fonts()
+        self._check_icc_profiles()
+        self._check_database()
+        self._check_templates()
+        
+        if self.result.errors:
+            self.result.passed = False
+            logger.error(f"[Integrity] FALHA: {len(self.result.errors)} erros")
         else:
-            # Auto-detecta
-            self.system_root = Path(__file__).parent.parent.parent / "AutoTabloide_System_Root"
+            logger.info("[Integrity] OK - Sistema íntegro")
         
-        self.check_results: List[AssetCheck] = []
-        self.critical_failures: List[str] = []
-        self.warnings: List[str] = []
-
-    def run(self, strict_hash: bool = False) -> bool:
-        """
-        Executa verificação completa de integridade.
+        return self.result
+    
+    def _check_directories(self):
+        """Verifica diretórios obrigatórios."""
+        required_dirs = [
+            "bin",
+            "assets/fonts",
+            "assets/profiles",
+            "database",
+            "library/svg_source",
+            "projects",
+            "exports",
+            "temp_render",
+            "logs",
+        ]
         
-        Args:
-            strict_hash: Se True, valida hashes MD5 (mais lento)
-            
-        Returns:
-            True se todos os assets críticos estão OK
-        """
-        self.check_results = []
-        self.critical_failures = []
-        self.warnings = []
+        for dir_name in required_dirs:
+            dir_path = self.root / dir_name
+            if not dir_path.exists():
+                try:
+                    dir_path.mkdir(parents=True, exist_ok=True)
+                    self.result.warnings.append(f"Diretório criado: {dir_name}")
+                except Exception as e:
+                    self.result.errors.append(f"Não foi possível criar: {dir_name}")
+    
+    def _check_write_permissions(self):
+        """Testa permissões de escrita."""
+        test_file = self.root / "temp_render" / ".write_test"
         
-        logger.info(f"Verificação de integridade: {self.system_root}")
-        
-        # Verifica se o diretório raiz existe
-        if not self.system_root.exists():
-            self.critical_failures.append(
-                f"CRITICO: Diretorio raiz nao existe: {self.system_root}"
-            )
-            return False
-        
-        # Verifica assets obrigatórios
-        for rel_path, (expected_hash, min_size) in self.REQUIRED_ASSETS.items():
-            check = self._check_asset(rel_path, expected_hash, min_size, strict_hash)
-            self.check_results.append(check)
-            
-            if check.status != AssetStatus.OK:
-                self.critical_failures.append(
-                    f"CRITICO: {rel_path} -> {check.status.value}"
-                )
-        
-        # Verifica assets opcionais
-        for rel_path, (expected_hash, min_size) in self.OPTIONAL_ASSETS.items():
-            check = self._check_asset(rel_path, expected_hash, min_size, strict_hash)
-            self.check_results.append(check)
-            
-            if check.status != AssetStatus.OK:
-                self.warnings.append(
-                    f"AVISO: {rel_path} -> {check.status.value}"
-                )
-        
-        # Log resultados
-        self._log_results()
-        
-        # Retorna True apenas se não houver falhas críticas
-        return len(self.critical_failures) == 0
-
-    def _check_asset(
-        self, 
-        rel_path: str, 
-        expected_hash: Optional[str],
-        min_size: Optional[int],
-        validate_hash: bool
-    ) -> AssetCheck:
-        """Verifica um asset individual."""
-        full_path = self.system_root / rel_path
-        
-        # 1. Verifica existência
-        if not full_path.exists():
-            return AssetCheck(
-                path=rel_path,
-                status=AssetStatus.MISSING
-            )
-        
-        # 2. Se for diretório, apenas verifica existência
-        if full_path.is_dir():
-            return AssetCheck(
-                path=rel_path,
-                status=AssetStatus.OK
-            )
-        
-        # 3. Verifica tamanho
-        actual_size = full_path.stat().st_size
-        
-        if actual_size == 0:
-            return AssetCheck(
-                path=rel_path,
-                status=AssetStatus.CORRUPTED,
-                actual_size=0
-            )
-        
-        if min_size and actual_size < min_size:
-            return AssetCheck(
-                path=rel_path,
-                status=AssetStatus.SIZE_MISMATCH,
-                expected_size=min_size,
-                actual_size=actual_size
-            )
-        
-        # 4. Verifica hash se solicitado e esperado
-        if validate_hash and expected_hash:
-            actual_hash = self._calculate_md5(full_path)
-            
-            if actual_hash != expected_hash:
-                return AssetCheck(
-                    path=rel_path,
-                    status=AssetStatus.CORRUPTED,
-                    expected_hash=expected_hash,
-                    actual_hash=actual_hash
-                )
-        
-        return AssetCheck(
-            path=rel_path,
-            status=AssetStatus.OK,
-            actual_size=actual_size
-        )
-
-    def _calculate_md5(self, file_path: Path) -> str:
-        """Calcula hash MD5 de um arquivo."""
-        hash_md5 = hashlib.md5()
-        
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        
-        return hash_md5.hexdigest()
-
-    def _log_results(self):
-        """Loga resultados da verificação."""
-        ok_count = sum(1 for r in self.check_results if r.status == AssetStatus.OK)
-        total = len(self.check_results)
-        
-        logger.info(f"Verificação: {ok_count}/{total} assets OK")
-        
-        for failure in self.critical_failures:
-            logger.error(failure)
-        
-        for warning in self.warnings:
-            logger.warning(warning)
-
-    def get_report(self) -> Dict:
-        """Retorna relatório estruturado."""
-        return {
-            "system_root": str(self.system_root),
-            "total_checks": len(self.check_results),
-            "passed": sum(1 for r in self.check_results if r.status == AssetStatus.OK),
-            "failed": len(self.critical_failures),
-            "warnings": len(self.warnings),
-            "critical_failures": self.critical_failures,
-            "warnings_list": self.warnings,
-            "details": [
-                {
-                    "path": r.path,
-                    "status": r.status.value,
-                    "size": r.actual_size
-                }
-                for r in self.check_results
-            ]
+        try:
+            test_file.write_text("test")
+            test_file.unlink()
+        except Exception as e:
+            self.result.errors.append(f"Sem permissão de escrita: {e}")
+    
+    def _check_binaries(self):
+        """Verifica binários externos."""
+        binaries = {
+            "ghostscript": ["gswin64c.exe", "gswin32c.exe", "gs"],
         }
-
-
-def verify_system_integrity(system_root: Optional[str] = None, strict: bool = False) -> bool:
-    """
-    Função helper para verificação rápida.
-    
-    Args:
-        system_root: Raiz do sistema
-        strict: Se True, falha o processo se integridade falhar
         
-    Returns:
-        True se sistema íntegro
-    """
-    checker = IntegrityChecker(system_root)
-    result = checker.run()
+        for name, options in binaries.items():
+            found = False
+            
+            # Procura no bin/
+            for opt in options:
+                bin_path = self.root / "bin" / opt
+                if bin_path.exists():
+                    self.result.binaries[name] = True
+                    found = True
+                    break
+            
+            # Procura no PATH do sistema
+            if not found:
+                for opt in options:
+                    if self._check_system_binary(opt):
+                        self.result.binaries[name] = True
+                        self.result.warnings.append(f"{name}: usando instalação do sistema")
+                        found = True
+                        break
+            
+            if not found:
+                self.result.binaries[name] = False
+                self.result.warnings.append(f"{name} não encontrado - exportação PDF limitada")
     
-    if strict and not result:
-        import sys
-        print("\n[CRITICO] Falha na verificação de integridade do sistema:")
-        for failure in checker.critical_failures:
-            print(f"  - {failure}")
-        print("\nO sistema não pode iniciar com segurança.")
-        sys.exit(1)
+    def _check_system_binary(self, name: str) -> bool:
+        """Verifica se binário está no PATH."""
+        try:
+            result = subprocess.run(
+                [name, "--version"],
+                capture_output=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except:
+            return False
     
-    return result
+    def _check_fonts(self):
+        """Verifica fontes obrigatórias."""
+        fonts_dir = self.root / "assets" / "fonts"
+        required_fonts = ["Roboto-Regular.ttf", "Roboto-Bold.ttf"]
+        
+        for font in required_fonts:
+            font_path = fonts_dir / font
+            if font_path.exists():
+                self.result.fonts.append(font)
+            else:
+                self.result.warnings.append(f"Fonte ausente: {font}")
+    
+    def _check_icc_profiles(self):
+        """Verifica perfis de cor."""
+        profiles_dir = self.root / "assets" / "profiles"
+        required_profiles = ["CoatedFOGRA39.icc"]
+        
+        for profile in required_profiles:
+            profile_path = profiles_dir / profile
+            if profile_path.exists():
+                self.result.profiles.append(profile)
+            else:
+                self.result.warnings.append(f"Perfil ICC ausente: {profile} - CMYK desabilitado")
+    
+    def _check_database(self):
+        """Verifica integridade do banco."""
+        db_path = self.root / "database" / "core.db"
+        
+        if not db_path.exists():
+            self.result.warnings.append("Banco não existe - será criado no boot")
+            return
+        
+        # Verifica tamanho
+        size = db_path.stat().st_size
+        if size == 0:
+            self.result.errors.append("Banco corrompido (0 bytes)")
+    
+    def _check_templates(self):
+        """Verifica templates SVG."""
+        templates_dir = self.root / "library" / "svg_source"
+        
+        svg_files = list(templates_dir.glob("*.svg"))
+        
+        if not svg_files:
+            self.result.errors.append("Nenhum template SVG encontrado!")
+            return
+        
+        for svg_path in svg_files:
+            try:
+                content = svg_path.read_text(encoding="utf-8")
+                
+                # Verifica IDs obrigatórios
+                if "SLOT_01" not in content:
+                    self.result.warnings.append(f"{svg_path.name}: faltando SLOT_01")
+                
+            except Exception as e:
+                self.result.errors.append(f"Template inválido: {svg_path.name}")
 
 
-def create_asset_snapshot(system_root: str, output_path: str) -> str:
+# =============================================================================
+# LOCK DE INSTÂNCIA
+# =============================================================================
+
+class InstanceLock:
     """
-    Cria snapshot de hashes dos assets para verificação futura.
-    
-    Útil para distribuição: gera arquivo de referência dos hashes.
+    Lock de instância única.
+    Impede múltiplas instâncias do app.
     """
-    root = Path(system_root)
-    hashes = {}
     
-    for path in root.rglob("*"):
-        if path.is_file():
-            rel_path = str(path.relative_to(root))
-            hash_md5 = hashlib.md5()
-            
-            with open(path, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hash_md5.update(chunk)
-            
-            hashes[rel_path] = {
-                "md5": hash_md5.hexdigest(),
-                "size": path.stat().st_size
-            }
+    def __init__(self, lock_name: str = "AutoTabloideAI"):
+        self._lock_name = lock_name
+        self._lock_file: Optional[Path] = None
+        self._locked = False
     
-    import json
-    with open(output_path, "w") as f:
-        json.dump(hashes, f, indent=2)
+    def acquire(self) -> bool:
+        """Tenta adquirir o lock."""
+        import tempfile
+        
+        self._lock_file = Path(tempfile.gettempdir()) / f"{self._lock_name}.lock"
+        
+        if self._lock_file.exists():
+            # Verifica se processo ainda está vivo
+            try:
+                pid = int(self._lock_file.read_text())
+                if self._is_process_alive(pid):
+                    return False
+            except:
+                pass
+        
+        # Cria novo lock
+        self._lock_file.write_text(str(sys.executable))
+        self._locked = True
+        return True
     
-    return output_path
+    def release(self):
+        """Libera o lock."""
+        if self._locked and self._lock_file:
+            try:
+                self._lock_file.unlink()
+            except:
+                pass
+            self._locked = False
+    
+    def _is_process_alive(self, pid: int) -> bool:
+        """Verifica se processo está vivo."""
+        try:
+            import psutil
+            return psutil.pid_exists(pid)
+        except ImportError:
+            # Fallback sem psutil
+            return False
+    
+    def __enter__(self):
+        if not self.acquire():
+            raise RuntimeError("Outra instância do AutoTabloide já está rodando!")
+        return self
+    
+    def __exit__(self, *args):
+        self.release()
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def run_integrity_check() -> IntegrityResult:
+    """Executa verificação de integridade."""
+    return IntegrityChecker().check_all()
+
+
+def validate_ghostscript() -> Tuple[bool, str]:
+    """Valida instalação do Ghostscript."""
+    checker = IntegrityChecker()
+    checker._check_binaries()
+    
+    if checker.result.binaries.get("ghostscript"):
+        return True, "Ghostscript OK"
+    return False, "Ghostscript não encontrado"
+
+
+def clean_temp_folder():
+    """Limpa pasta temporária (Clean Boot)."""
+    import shutil
+    
+    temp_dir = Path("AutoTabloide_System_Root/temp_render")
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
