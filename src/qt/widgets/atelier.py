@@ -9,8 +9,10 @@ Este é o editor vetorial real, não uma visualização estática.
 
 from __future__ import annotations
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 import json
+import math
 
 from PySide6.QtCore import (
     Qt, Signal, Slot, QRectF, QPointF, QSizeF, QTimer
@@ -20,13 +22,13 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsLineItem, QWidget,
     QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton,
     QComboBox, QSpinBox, QSplitter, QListWidget, QListWidgetItem,
-    QFileDialog, QMessageBox,
-    QMenu
+    QFileDialog, QMessageBox, QMenu, QOpenGLWidget
 )
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QPixmap,
     QKeySequence, QWheelEvent, QMouseEvent, QDragEnterEvent,
-    QDropEvent, QShortcut, QTransform, QCursor, QUndoStack, QUndoCommand
+    QDropEvent, QShortcut, QTransform, QCursor, QUndoStack, QUndoCommand,
+    QKeyEvent
 )
 
 from ..graphics.smart_items import (
@@ -136,7 +138,20 @@ class RulerWidget(QWidget):
 
 
 # =============================================================================
-# ATELIER SCENE - Passo 17
+# SMART GUIDES LOGIC (Passo 71)
+# =============================================================================
+
+@dataclass
+class SmartGuide:
+    """Representa uma linha guia inteligente."""
+    orientation: int  # 0=Vertical, 1=Horizontal
+    pos: float
+    start: float
+    end: float
+    active: bool = False
+
+# =============================================================================
+# ATELIER SCENE
 # =============================================================================
 
 class AtelierScene(QGraphicsScene):
@@ -175,6 +190,87 @@ class AtelierScene(QGraphicsScene):
         
         # Cria cena inicial
         self._setup_scene()
+        
+        # Smart Guides
+        self._guides: List[SmartGuide] = []
+        self._guide_pen = QPen(QColor("#FF00FF"), 1, Qt.DashLine)
+    
+    def update_smart_guides(self, moving_item: QGraphicsItem, proposed_pos: QPointF = None):
+        """Calcula e desenha guias inteligentes."""
+        if not self._snap_enabled:
+            self._guides.clear()
+            self.update()
+            return None, None
+            
+        # Determina rect proposto
+        if proposed_pos:
+            curr_pos = moving_item.pos()
+            offset = proposed_pos - curr_pos
+            my_rect = moving_item.sceneBoundingRect().translated(offset)
+        else:
+            my_rect = moving_item.sceneBoundingRect()
+            
+        threshold = 5.0 / (self.views()[0].transform().m11() if self.views() else 1.0)
+        # my_rect = moving_item.sceneBoundingRect() # Substituído acima
+        
+        guides = []
+        snap_x = None
+        snap_y = None
+        
+        # Pontos de interesse do item movido
+        x_points = [my_rect.left(), my_rect.center().x(), my_rect.right()]
+        y_points = [my_rect.top(), my_rect.center().y(), my_rect.bottom()]
+        
+        for item in self.items():
+            if item == moving_item or item == self._paper_item:
+                continue
+                
+            other_rect = item.sceneBoundingRect()
+            other_center = other_rect.center()
+            
+            # Comparação X (Guias Verticais)
+            ox_points = [other_rect.left(), other_rect.center().x(), other_rect.right()]
+            
+            # Use enumerate para saber qual ponto estamos comparando (0=Esq, 1=Centro, 2=Dir)
+            # Para snap correto, precisamos saber QUAL ponto do meu item daria snap em QUAL ponto do outro
+            # Simplificação: se houver match, ajustamos o rect inteiro baseados na diferença
+            
+            for mx in x_points:
+                for ox in ox_points:
+                    if abs(mx - ox) < threshold:
+                        if snap_x is None: # Prioriza primeiro snap
+                            snap_x = proposed_pos.x() + (ox - mx)
+                        guides.append(SmartGuide(0, ox, min(my_rect.top(), other_rect.top()), max(my_rect.bottom(), other_rect.bottom()), True))
+            
+            # Comparação Y (Guias Horizontais)
+            oy_points = [other_rect.top(), other_rect.center().y(), other_rect.bottom()]
+            
+            for my in y_points:
+                for oy in oy_points:
+                    if abs(my - oy) < threshold:
+                         if snap_y is None:
+                            snap_y = proposed_pos.y() + (oy - my)
+                         guides.append(SmartGuide(1, oy, min(my_rect.left(), other_rect.left()), max(my_rect.right(), other_rect.right()), True))
+        
+        self._guides = guides
+        self.update()
+        
+        return snap_x, snap_y
+
+    def drawForeground(self, painter: QPainter, rect: QRectF):
+        """Desenha guias sobre a cena."""
+        super().drawForeground(painter, rect)
+        
+        if not self._guides:
+            return
+            
+        painter.setPen(self._guide_pen)
+        for guide in self._guides:
+            if guide.orientation == 0: # Vertical
+                painter.drawLine(QPointF(guide.pos, guide.start), QPointF(guide.pos, guide.end))
+            else: # Horizontal
+                painter.drawLine(QPointF(guide.start, guide.pos), QPointF(guide.end, guide.pos))
+
     
     def _setup_scene(self):
         """Configura cena inicial."""
@@ -424,8 +520,14 @@ class AtelierView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         
-        # Drag & Drop (Passo 37)
-        self.setDragMode(QGraphicsView.NoDrag)
+        # Viewport OpenGL (Passo 66)
+        try:
+            self.setViewport(QOpenGLWidget())
+        except ImportError:
+            pass  # Fallback para Raster
+        
+        # Drag & Drop (Passo 37) and Selection (Passo 72)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
         self.setAcceptDrops(True)
         
         # Background
@@ -505,41 +607,54 @@ class AtelierView(QGraphicsView):
             
             self.zoom_changed.emit(self._current_zoom)
     
-    # === PAN (Passo 34) ===
+    # === PAN & SELECTION (Passo 68 & 72) ===
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Espaço ativa Hand Tool e Delete remove itens."""
+        if event.key() == Qt.Key_Delete:
+            scene = self.scene()
+            items = scene.selectedItems()
+            if items:
+                from ..core.undo_commands import RemoveItemCommand, get_undo_manager
+                mgr = get_undo_manager()
+                mgr.stack.beginMacro("Delete Items")
+                for item in items:
+                    if hasattr(item, "is_locked") and item.is_locked:
+                        continue
+                    mgr.push(RemoveItemCommand(scene, item))
+                mgr.stack.endMacro()
+            return
+
+        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+            self._is_panning = True
+        super().keyPressEvent(event)
+        
+    def keyReleaseEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+            self.setDragMode(QGraphicsView.RubberBandDrag)
+            self._is_panning = False
+        super().keyReleaseEvent(event)
     
     def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MiddleButton or (
-            event.button() == Qt.LeftButton and
-            event.modifiers() & Qt.ShiftModifier
-        ):
-            self._is_panning = True
-            self._pan_start = event.position()
-            self.setCursor(Qt.ClosedHandCursor)
-        else:
-            super().mousePressEvent(event)
-    
-    def mouseMoveEvent(self, event: QMouseEvent):
-        # Emite posição para réguas
-        scene_pos = self.mapToScene(event.position().toPoint())
-        self.mouse_moved.emit(scene_pos.x(), scene_pos.y())
-        
         if self._is_panning:
-            delta = event.position() - self._pan_start
-            self._pan_start = event.position()
-            
-            self.horizontalScrollBar().setValue(
-                int(self.horizontalScrollBar().value() - delta.x())
-            )
-            self.verticalScrollBar().setValue(
-                int(self.verticalScrollBar().value() - delta.y())
-            )
-        else:
-            super().mouseMoveEvent(event)
+            # Garante que evento vá para ScrollHandDrag
+            pass
+        elif event.button() == Qt.MiddleButton:
+             self.setDragMode(QGraphicsView.ScrollHandDrag)
+             self._is_panning = True
+             # Simula press fake para iniciar drag
+             fake = QMouseEvent(event.type(), event.position(), Qt.LeftButton, Qt.LeftButton, event.modifiers())
+             super().mousePressEvent(fake)
+             return
+             
+        super().mousePressEvent(event)
     
     def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() in (Qt.MiddleButton, Qt.LeftButton):
+        if event.button() == Qt.MiddleButton:
+            self.setDragMode(QGraphicsView.RubberBandDrag)
             self._is_panning = False
-            self.setCursor(Qt.ArrowCursor)
+            
         super().mouseReleaseEvent(event)
     
     # === DRAG & DROP (Passos 37-40) ===
@@ -564,18 +679,48 @@ class AtelierView(QGraphicsView):
         if event.mimeData().hasFormat("application/x-autotabloide-product"):
             scene_pos = self.mapToScene(event.position().toPoint())
             
-            # Encontra slot sob o cursor
+            # Lazy import to avoid circular dependency
+            from ..core.undo_commands import (
+                DropProductCommand, AddItemCommand, get_undo_manager
+            )
+            
+            data = event.mimeData().data("application/x-autotabloide-product")
+            product = json.loads(bytes(data).decode('utf-8'))
+            
+            # 1. Tenta encontrar slot sob o cursor
             items = self._scene.items(scene_pos)
             for item in items:
                 if isinstance(item, SmartSlotItem):
-                    data = event.mimeData().data("application/x-autotabloide-product")
-                    product = json.loads(bytes(data).decode('utf-8'))
-                    item.set_product(product)
+                    # Check if slot is occupied
+                    previous_data = item.product_data.copy() if item.product_data else None
+                    
+                    # Se ocupado, pergunta (Item 81 - Troca Rápida)
+                    # IMPLEMENTAR DEPOIS: Dialog de confirmação se previous_data
+                    
+                    cmd = DropProductCommand(item, product, previous_data)
+                    get_undo_manager().push(cmd)
+                    
                     event.acceptProposedAction()
                     self._clear_highlights()
                     return
             
-            event.ignore()
+            # 2. Se não caiu em slot, cria novo item (Item 79)
+            new_slot_index = len(self._scene.get_slots()) + 1
+            new_item = SmartSlotItem(
+                slot_index=new_slot_index,
+                element_id=f"FREE_{new_slot_index}",
+                x=scene_pos.x() - 100, # Centraliza (assumindo 200 width)
+                y=scene_pos.y() - 125, # Centraliza (assumindo 250 height)
+                width=200,
+                height=250
+            )
+            new_item.set_product(product)
+            
+            # Adiciona via undo
+            cmd = AddItemCommand(self._scene, new_item)
+            get_undo_manager().push(cmd)
+            
+            event.acceptProposedAction()
         else:
             event.ignore()
         
@@ -622,7 +767,7 @@ class AtelierWidget(QWidget):
     def __init__(self, container=None, parent=None):
         super().__init__(parent)
         self.container = container
-        self.undo_stack = QUndoStack(self)
+        # self.undo_stack = QUndoStack(self) # Replaced by global UndoManager
         
         self._all_products: List[Dict] = []
         
@@ -631,6 +776,31 @@ class AtelierWidget(QWidget):
         
         # Carrega produtos
         QTimer.singleShot(500, self._load_products)
+        
+        # Conecta Scrollbars para Réguas (Passo 69)
+        self.canvas.horizontalScrollBar().valueChanged.connect(self._update_rulers)
+        self.canvas.verticalScrollBar().valueChanged.connect(self._update_rulers)
+        
+    def _update_rulers(self):
+        """Sincroniza réguas com viewport."""
+        # Viewport Rect em Scene Coords
+        view_rect = self.canvas.mapToScene(self.canvas.viewport().rect()).boundingRect()
+        
+        # Offset (Esquerda/Topo Visível)
+        self.h_ruler.set_offset(view_rect.left())
+        self.v_ruler.set_offset(view_rect.top())
+        
+        # Scale
+        zoom = self.canvas.get_current_zoom()
+        self.h_ruler.set_scale(zoom)
+        self.v_ruler.set_scale(zoom)
+    
+    def _on_view_zoom_changed(self, zoom: float):
+        """Atualiza zoom nos controles."""
+        self.zoom_spin.blockSignals(True)
+        self.zoom_spin.setValue(int(zoom * 100))
+        self.zoom_spin.blockSignals(False)
+        self._update_rulers()
     
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -698,6 +868,31 @@ class AtelierWidget(QWidget):
         btn_clear.setToolTip("Remove todos os produtos dos slots")
         btn_clear.clicked.connect(self._clear_all)
         layout.addWidget(btn_clear)
+        
+        # Separador visual
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setProperty("class", "separator-v")
+        layout.addWidget(sep)
+        
+        # Z-Order Commands
+        btn_bring_front = QPushButton("⬆️")
+        btn_bring_front.setToolTip("Trazer para Frente (Ctrl+Shift+])")
+        btn_bring_front.setFixedWidth(36)
+        btn_bring_front.clicked.connect(self._bring_to_front)
+        layout.addWidget(btn_bring_front)
+        
+        btn_send_back = QPushButton("⬇️")
+        btn_send_back.setToolTip("Enviar para Trás (Ctrl+Shift+[)")
+        btn_send_back.setFixedWidth(36)
+        btn_send_back.clicked.connect(self._send_to_back)
+        layout.addWidget(btn_send_back)
+        
+        # Separador visual
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.VLine)
+        sep2.setProperty("class", "separator-v")
+        layout.addWidget(sep2)
         
         btn_save = QPushButton("Salvar")
         btn_save.setToolTip("Salvar projeto atual (Ctrl+S)")
@@ -774,8 +969,11 @@ class AtelierWidget(QWidget):
         return widget
     
     def _setup_shortcuts(self):
-        QShortcut(QKeySequence.Undo, self, self.undo_stack.undo)
-        QShortcut(QKeySequence.Redo, self, self.undo_stack.redo)
+        from src.qt.core.undo_commands import get_undo_manager
+        mgr = get_undo_manager()
+        
+        QShortcut(QKeySequence.Undo, self, mgr.undo)
+        QShortcut(QKeySequence.Redo, self, mgr.redo)
         QShortcut(QKeySequence.Save, self, self._save_project)
         QShortcut(QKeySequence("Ctrl+E"), self, self._export_pdf)
         QShortcut(QKeySequence("Ctrl+="), self, self.canvas.zoom_in)
@@ -929,37 +1127,103 @@ class AtelierWidget(QWidget):
                     QMessageBox.critical(self, "Erro", f"Erro ao salvar:\n{str(e)}")
     
     @Slot()
+    def _bring_to_front(self):
+        """Traz itens selecionados para frente (aumenta Z-value)."""
+        scene = self.canvas.get_scene()
+        for item in scene.selectedItems():
+            if hasattr(item, "bring_to_front"):
+                item.bring_to_front()
+        scene.scene_modified.emit()
+    
+    @Slot()
+    def _send_to_back(self):
+        """Envia itens selecionados para trás (diminui Z-value)."""
+        scene = self.canvas.get_scene()
+        for item in scene.selectedItems():
+            if hasattr(item, "send_to_back"):
+                item.send_to_back()
+        scene.scene_modified.emit()
+    
+    @Slot()
     def _export_pdf(self):
-        filled = self.canvas.get_scene().get_filled_slots()
+        """Exporta para PDF com verificação e async."""
+        scene = self.canvas.get_scene()
+        filled = scene.get_filled_slots()
+        
         if not filled:
             QMessageBox.warning(self, "Aviso", "Nenhum slot preenchido!")
             return
-        
-        path, _ = QFileDialog.getSaveFileName(self, "Exportar PDF", "tabloide.pdf", "PDF (*.pdf)")
-        if path:
-            scene_data = self.canvas.get_scene().serialize()
-            template_path = getattr(self.canvas.get_scene(), '_template_path', None)
-            
-            if not template_path:
-                # Usa template default se não tem SVG carregado
-                QMessageBox.warning(self, "Aviso", "Exporte requer um template SVG carregado.")
-                return
-            
-            try:
-                from src.rendering.pdf_export import export_atelier_to_pdf
-                
-                success, message = export_atelier_to_pdf(
-                    scene_data=scene_data,
-                    template_path=template_path,
-                    output_path=path,
-                    system_root="AutoTabloide_System_Root"
-                )
-                
-                if success:
-                    QMessageBox.information(self, "Exportação Concluída", message)
-                else:
-                    QMessageBox.warning(self, "Erro na Exportação", message)
-                    
-            except Exception as e:
-                QMessageBox.critical(self, "Erro", f"Erro ao exportar:\n{str(e)}")
 
+        # 1. Preflight Check (Item 87)
+        from src.qt.core.preflight import PreflightInspector
+        from src.qt.dialogs.preflight_dialog import PreflightDialog
+        
+        inspector = PreflightInspector()
+        issues = inspector.inspect(scene)
+        
+        if issues:
+            dlg = PreflightDialog(issues, self)
+            if dlg.exec() != QDialog.Accepted:
+                return # Cancelado pelo usuário
+        
+        # 2. Escolher Arquivo (Item 88)
+        from src.qt.core.project_manager import get_project_manager
+        pm = get_project_manager()
+        
+        default_name = pm.get_export_filename()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar PDF", default_name, "PDF Files (*.pdf)"
+        )
+        
+        if not path:
+            return
+            
+        # 3. Exportação Assíncrona (Item 86)
+        from PySide6.QtWidgets import QProgressDialog
+        from src.qt.workers.render_worker import RenderWorker
+        import threading
+        
+        # Setup Progress Dialog
+        progress = QProgressDialog("Gerando PDF...", "Cancelar", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        
+        # Setup Worker
+        # Copia dados do projeto para o worker (evita acesso à GUI thread)
+        scene_data = pm.get_scene_data()
+        # Precisa passar ProjectData completo ou reconstituir
+        # RenderWorker espera ProjectData. Vamos criar um temporário atualizado
+        project = pm.current_project
+        if not project:
+            return
+            
+        # Atualiza slots atuais no objeto projeto (sem salvar em disco)
+        project.slots = scene.serialize()["slots"]
+        
+        worker = RenderWorker(project, path)
+        
+        # Thread
+        thread = threading.Thread(target=worker.run, daemon=True)
+        
+        # Signals
+        def on_progress(value, msg):
+            progress.setValue(value)
+            progress.setLabelText(msg)
+            
+        def on_finished(success, result):
+            progress.close()
+            if success:
+                QMessageBox.information(self, "Sucesso", f"PDF exportado com sucesso:\n{result}")
+            else:
+                QMessageBox.critical(self, "Erro", f"Falha na exportação:\n{result}")
+        
+        worker.progress.connect(on_progress, Qt.QueuedConnection)
+        worker.finished.connect(on_finished, Qt.QueuedConnection)
+        progress.canceled.connect(worker.cancel)
+        
+        thread.start()
+        
+        # Mantém referência para não ser coletado
+        self._current_render_worker = worker
+        

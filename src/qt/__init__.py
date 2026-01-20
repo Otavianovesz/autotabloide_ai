@@ -5,7 +5,7 @@ Componentes PySide6 para interface gráfica.
 """
 
 from .main_window import MainWindow
-from .theme import DARK_THEME_QSS, apply_theme
+from .styles.theme import DARK_THEME_QSS, apply_theme
 
 # Widgets
 from .widgets import (

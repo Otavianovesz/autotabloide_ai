@@ -46,6 +46,8 @@ class ProjectManager:
         # Cria diretórios
         os.makedirs(self.projects_dir, exist_ok=True)
         os.makedirs(self.packages_dir, exist_ok=True)
+        self.previews_dir = self.system_root / "projects" / "previews"
+        os.makedirs(self.previews_dir, exist_ok=True)
         
         # Repositórios
         self.project_repo = ProjectRepository(session)
@@ -239,6 +241,37 @@ class ProjectManager:
                 enriched[slot_id] = slot_data
         
         return enriched
+
+    async def save_preview(self, project_id: int, image_bytes: bytes) -> str:
+        """
+        Salva imagem de preview do projeto.
+        
+        Args:
+            project_id: ID do projeto
+            image_bytes: Bytes da imagem (PNG)
+            
+        Returns:
+            Caminho do arquivo salvo
+        """
+        project = await self.project_repo.get_by_id(project_id)
+        if not project:
+            raise ValueError("Projeto nao encontrado")
+            
+        filename = f"{project.uuid}.png"
+        path = self.previews_dir / filename
+        
+        # Salva arquivo de forma síncrona (IO rápido) ou poderia usar run_in_executor
+        with open(path, "wb") as f:
+            f.write(image_bytes)
+            
+        return str(path)
+
+    def get_preview_path(self, project_uuid: str) -> Optional[str]:
+        """Retorna caminho do preview se existir."""
+        if not project_uuid:
+            return None
+        path = self.previews_dir / f"{project_uuid}.png"
+        return str(path) if path.exists() else None
 
     # ==========================================================================
     # AUTOSAVE COM DEBOUNCE
@@ -549,7 +582,8 @@ class ProjectManager:
                 "last_modified": p.last_modified.isoformat() if p.last_modified else None,
                 "is_locked": bool(p.is_locked),
                 "is_dirty": bool(p.is_dirty),
-                "slot_count": len(p.get_slots())
+                "slot_count": len(p.get_slots()),
+                "preview_path": self.get_preview_path(p.uuid)
             })
         
         return result

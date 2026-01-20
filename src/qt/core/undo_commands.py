@@ -145,14 +145,31 @@ class BatchClearCommand(QUndoCommand):
 # UNDO STACK MANAGER
 # =============================================================================
 
-class UndoManager:
-    """Gerenciador de undo/redo."""
+
+from PySide6.QtCore import QObject, Signal
+
+# =============================================================================
+# UNDO STACK MANAGER
+# =============================================================================
+
+class UndoManager(QObject):
+    """Gerenciador de undo/redo com Sinais."""
+    
+    can_undo_changed = Signal(bool)
+    can_redo_changed = Signal(bool)
+    stack_changed = Signal()
     
     _instance: Optional['UndoManager'] = None
     
     def __init__(self):
+        super().__init__()
         self._stack = QUndoStack()
         self._stack.setUndoLimit(100)
+        
+        # Conecta sinais do QUndoStack aos nossos sinais
+        self._stack.canUndoChanged.connect(self.can_undo_changed.emit)
+        self._stack.canRedoChanged.connect(self.can_redo_changed.emit)
+        self._stack.indexChanged.connect(lambda _: self.stack_changed.emit())
     
     @classmethod
     def instance(cls) -> 'UndoManager':
@@ -163,6 +180,14 @@ class UndoManager:
     @property
     def stack(self) -> QUndoStack:
         return self._stack
+    
+    @property
+    def count(self) -> int:
+        return self._stack.count()
+        
+    @property
+    def index(self) -> int:
+        return self._stack.index()
     
     def push(self, command: QUndoCommand):
         """Adiciona comando."""
@@ -199,5 +224,75 @@ class UndoManager:
         return self._stack.redoText()
 
 
+
+class AddItemCommand(QUndoCommand):
+    """Comando: Adicionar item à cena."""
+    
+    def __init__(self, scene, item):
+        super().__init__("Add Item")
+        self._scene = scene
+        self._item = item
+    
+    def redo(self):
+        self._scene.addItem(self._item)
+    
+    def undo(self):
+        self._scene.removeItem(self._item)
+
+
+class RemoveItemCommand(QUndoCommand):
+    """Comando: Remover item da cena."""
+    
+    def __init__(self, scene, item):
+        super().__init__("Remove Item")
+        self._scene = scene
+        self._item = item
+    
+    def redo(self):
+        self._scene.removeItem(self._item)
+    
+    def undo(self):
+        self._scene.addItem(self._item)
+
+
+class ResizeItemCommand(QUndoCommand):
+    """Comando: Redimensionar item."""
+    
+    def __init__(self, item, old_rect, new_rect):
+        super().__init__("Resize Item")
+        self._item = item
+        self._old_rect = old_rect
+        self._new_rect = new_rect
+    
+    def redo(self):
+        self._item._rect = self._new_rect
+        self._item._update_handles()
+        self._item.size_changed.emit(self._new_rect.width(), self._new_rect.height())
+        self._item.update()
+    
+    def undo(self):
+        self._item._rect = self._old_rect
+        self._item._update_handles()
+        self._item.size_changed.emit(self._old_rect.width(), self._old_rect.height())
+        self._item.update()
+
+
+class MoveItemCommand(QUndoCommand):
+    """Comando: Mover item (genérico)."""
+    
+    def __init__(self, item, old_pos, new_pos):
+        super().__init__("Move Item")
+        self._item = item
+        self._old_pos = old_pos
+        self._new_pos = new_pos
+    
+    def redo(self):
+        self._item.setPos(self._new_pos)
+    
+    def undo(self):
+        self._item.setPos(self._old_pos)
+
+
 def get_undo_manager() -> UndoManager:
     return UndoManager.instance()
+

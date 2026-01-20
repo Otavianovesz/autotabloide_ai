@@ -45,6 +45,19 @@ class IntelligentStatusBar(QStatusBar):
         permanent_layout.setContentsMargins(0, 0, 0, 0)
         permanent_layout.setSpacing(16)
         
+        # Mouse coordinates (for Ateliê precision)
+        self.coords_label = QLabel("📍 ---, ---")
+        self.coords_label.setToolTip("Coordenadas do mouse no canvas (X, Y)")
+        self.coords_label.setProperty("class", "hint")
+        self.coords_label.setMinimumWidth(100)
+        permanent_layout.addWidget(self.coords_label)
+        
+        # Separator
+        sep_coords = QFrame()
+        sep_coords.setFrameShape(QFrame.VLine)
+        sep_coords.setProperty("class", "separator-v")
+        permanent_layout.addWidget(sep_coords)
+        
         # Undo indicator
         self.undo_label = QLabel("⟲ 0/50")
         self.undo_label.setToolTip("Ações na pilha de undo (Ctrl+Z / Ctrl+Shift+Z)")
@@ -84,6 +97,18 @@ class IntelligentStatusBar(QStatusBar):
         sep3.setProperty("class", "separator-v")
         permanent_layout.addWidget(sep3)
         
+        # Network status indicator
+        self.network_label = QLabel("🌐")
+        self.network_label.setToolTip("Status da conexão de rede")
+        self.network_label.setProperty("class", "status-ok")
+        permanent_layout.addWidget(self.network_label)
+        
+        # Separator
+        sep4 = QFrame()
+        sep4.setFrameShape(QFrame.VLine)
+        sep4.setProperty("class", "separator-v")
+        permanent_layout.addWidget(sep4)
+        
         # DB status
         self.db_label = QLabel("💾 OK")
         self.db_label.setToolTip("Status do banco de dados")
@@ -98,7 +123,7 @@ class IntelligentStatusBar(QStatusBar):
     def _connect_signals(self):
         """Conecta aos sinais globais."""
         try:
-            from src.qt.core.undo_redo import get_undo_manager
+            from src.qt.core.undo_commands import get_undo_manager
             
             undo_mgr = get_undo_manager()
             undo_mgr.stack_changed.connect(self._update_undo_display)
@@ -122,7 +147,7 @@ class IntelligentStatusBar(QStatusBar):
     def _update_undo_display(self):
         """Atualiza indicador de undo."""
         try:
-            from src.qt.core.undo_redo import get_undo_manager
+            from src.qt.core.undo_commands import get_undo_manager
             mgr = get_undo_manager()
             
             count = mgr.count
@@ -180,6 +205,35 @@ class IntelligentStatusBar(QStatusBar):
     def set_modified(self, modified: bool):
         """API pública para modificação."""
         self._set_modified(modified)
+    
+    def set_coordinates(self, x: float, y: float):
+        """Atualiza coordenadas do mouse no canvas.
+        
+        Chamado pelo AtelierWidget quando o mouse se move.
+        """
+        self.coords_label.setText(f"📍 {x:.0f}, {y:.0f}")
+    
+    def clear_coordinates(self):
+        """Limpa coordenadas (quando não está no Ateliê)."""
+        self.coords_label.setText("📍 ---, ---")
+    
+    def set_network_status(self, ok: bool, message: str = None):
+        """Atualiza indicador de status de rede.
+        
+        Args:
+            ok: True se conectado, False se offline/erro
+            message: Tooltip opcional com detalhes
+        """
+        if ok:
+            self.network_label.setText("🌐")
+            self.network_label.setProperty("class", "status-ok")
+            self.network_label.setToolTip(message or "Conexão de rede OK")
+        else:
+            self.network_label.setText("🌐⚠")
+            self.network_label.setProperty("class", "status-error")
+            self.network_label.setToolTip(message or "Sem conexão de rede")
+        self.network_label.style().unpolish(self.network_label)
+        self.network_label.style().polish(self.network_label)
     
     # =========================================================================
     # MESSAGE OVERRIDES

@@ -336,6 +336,12 @@ class ProjectManager(QObject):
         """Retorna lista de projetos recentes."""
         return self._recent_projects.copy()
     
+    def get_export_filename(self, version: int = 1) -> str:
+        """Gera nome de arquivo padrão para exportação (Item 88)."""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        name = self.project_name.replace(" ", "_")
+        return f"{date_str}_{name}_v{version}.pdf"
+
     # =========================================================================
     # PROPERTIES
     # =========================================================================

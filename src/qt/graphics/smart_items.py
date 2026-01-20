@@ -63,13 +63,24 @@ class ResizeHandle(QGraphicsRectItem):
         
         self.hide()
     
-    def hoverEnterEvent(self, event):
-        self.setBrush(QBrush(QColor("#6C5CE7")))
-        super().hoverEnterEvent(event)
+    def mousePressEvent(self, event):
+        """Inicia redimensionamento."""
+        self._start_pos = event.scenePos()
+        self.parentItem().start_resize()
+        event.accept()
     
-    def hoverLeaveEvent(self, event):
-        self.setBrush(QBrush(QColor("#FFFFFF")))
-        super().hoverLeaveEvent(event)
+    def mouseMoveEvent(self, event):
+        """Calcula novo retângulo."""
+        if not self.parentItem() or self.parentItem().is_locked:
+            return
+
+        diff = event.scenePos() - self._start_pos
+        self.parentItem().resize_step(self.position, diff)
+    
+    def mouseReleaseEvent(self, event):
+        self.parentItem().end_resize()
+        super().mouseReleaseEvent(event)
+
 
 
 # =============================================================================
@@ -127,6 +138,9 @@ class SmartGraphicsItem(QGraphicsObject):
         
         # Dados do produto
         self.product_data: Optional[Dict] = None
+        self._drag_start_pos: Optional[QPointF] = None
+        
+        self._locked = False
         
         # Configuração
         self.setPos(x, y)
@@ -138,6 +152,128 @@ class SmartGraphicsItem(QGraphicsObject):
         # Handles de resize
         self._handles: List[ResizeHandle] = []
         self._create_handles()
+        
+    def mousePressEvent(self, event):
+        """Captura posição inicial para undo."""
+        self._drag_start_pos = self.pos()
+        super().mousePressEvent(event)
+        
+    def mouseReleaseEvent(self, event):
+        """Detecta fim do move e cria undo command."""
+        super().mouseReleaseEvent(event)
+        
+        if self._drag_start_pos is not None:
+             final_pos = self.pos()
+             if final_pos != self._drag_start_pos:
+                 from ..core.undo_commands import MoveItemCommand, get_undo_manager
+                 # Usa lazy import para evitar ciclo
+                 cmd = MoveItemCommand(self, self._drag_start_pos, final_pos)
+                 get_undo_manager().push(cmd)
+             self._drag_start_pos = None
+
+        
+    @property
+    def is_locked(self) -> bool:
+        return self._locked
+        
+    def set_locked(self, locked: bool):
+        """Define estado de bloqueio."""
+        self._locked = locked
+        self.setFlag(QGraphicsItem.ItemIsMovable, not locked)
+        self.setFlag(QGraphicsItem.ItemIsSelectable, not locked)
+        
+        if locked:
+            self.set_state(self.STATE_NORMAL)
+            self._show_handles(False)
+            
+    def check_overflow(self) -> bool:
+        """Verifica se conteúdo excede limites (Preflight)."""
+        return False
+        
+    def get_image_dpi(self) -> Optional[float]:
+        """Calcula DPI efetivo da imagem (Preflight)."""
+        return None
+            
+    def start_resize(self):
+        """Inicia ciclo de resize."""
+        self._is_resizing = True
+        self._resize_start_rect = QRectF(self._rect)
+        
+    def resize_step(self, handle_pos: int, diff: QPointF):
+        """Aplica passo de resize."""
+        if not self._is_resizing or not self._resize_start_rect:
+            return
+            
+        self.prepareGeometryChange()
+        
+        r = self._resize_start_rect
+        dx = diff.x()
+        dy = diff.y()
+        
+        new_x, new_y = r.x(), r.y()
+        new_w, new_h = r.width(), r.height()
+        
+        # Mapa de lógica por handle
+        if handle_pos == ResizeHandle.TOP_LEFT:
+            new_x += dx
+            new_y += dy
+            new_w -= dx
+            new_h -= dy
+        elif handle_pos == ResizeHandle.TOP_RIGHT:
+            new_y += dy
+            new_w += dx
+            new_h -= dy
+        elif handle_pos == ResizeHandle.BOTTOM_LEFT:
+            new_x += dx
+            new_w -= dx
+            new_h += dy
+        elif handle_pos == ResizeHandle.BOTTOM_RIGHT:
+            new_w += dx
+            new_h += dy
+            
+        # Limita tamanho mínimo
+        if new_w < 10: new_w = 10
+        if new_h < 10: new_h = 10
+        
+        self._rect = QRectF(new_x, new_y, new_w, new_h)
+        self._update_handles()
+        self.size_changed.emit(new_w, new_h)
+        self.update()
+        
+    def end_resize(self):
+        """Finaliza resize."""
+        if not self._is_resizing or not self._resize_start_rect:
+            return
+
+        from ..core.undo_commands import ResizeItemCommand, get_undo_manager
+        
+        # Cria comando de undo
+        final_rect = self._rect
+        start_rect = self._resize_start_rect
+        
+        if final_rect != start_rect:
+            cmd = ResizeItemCommand(self, start_rect, final_rect)
+            get_undo_manager().push(cmd)
+            
+        self._is_resizing = False
+        self._resize_start_rect = None
+        self.content_changed.emit()
+        
+    def bring_to_front(self):
+        """Traz item para frente."""
+        if not self.scene(): return
+        
+        items = self.scene().items()
+        max_z = max((i.zValue() for i in items), default=0)
+        self.setZValue(max_z + 1)
+        
+    def send_to_back(self):
+        """Envia item para trás."""
+        if not self.scene(): return
+        
+        items = self.scene().items()
+        min_z = min((i.zValue() for i in items), default=0)
+        self.setZValue(min_z - 1)
     
     def _create_handles(self):
         """Cria handles de redimensionamento nos cantos."""
@@ -215,6 +351,14 @@ class SmartGraphicsItem(QGraphicsObject):
                 self.set_state(self.STATE_NORMAL)
         
         elif change == QGraphicsItem.ItemPositionChange:
+            # Smart Snapping (Passo 71)
+            if self.scene() and hasattr(self.scene(), "update_smart_guides"):
+                 # Apenas snap se estiver sendo movido pelo usuário (selecionado e não redimensionando)
+                 if self.isSelected() and not self._is_resizing:
+                        snap_x, snap_y = self.scene().update_smart_guides(self, value)
+                        if snap_x is not None: value.setX(snap_x)
+                        if snap_y is not None: value.setY(snap_y)
+            
             self.position_changed.emit(value.x(), value.y())
         
         return super().itemChange(change, value)
@@ -306,7 +450,7 @@ class SmartImageItem(SmartGraphicsItem):
     ):
         super().__init__(element_id, x, y, width, height, parent)
         
-        self._pixmap: Optional[QPixmap] = None
+        self._image: Optional[QImage] = None
         self._image_path: Optional[str] = None
         self._fit_mode = "contain"  # contain, cover, stretch
     
@@ -317,25 +461,34 @@ class SmartImageItem(SmartGraphicsItem):
             print(f"[SmartImage] Imagem não encontrada: {image_path}")
             return False
         
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
+        image = QImage(str(path))
+        if image.isNull():
             print(f"[SmartImage] Falha ao carregar: {image_path}")
             return False
         
-        self._pixmap = pixmap
+        self._image = image
         self._image_path = image_path
         self.update()
         return True
     
     def set_pixmap(self, pixmap: QPixmap):
-        """Define pixmap diretamente."""
-        self._pixmap = pixmap
+        """Define via pixmap (converte para QImage)."""
+        self._image = pixmap.toImage()
         self._image_path = None
         self.update()
+        
+    def get_image_dpi(self) -> Optional[float]:
+        """Calcula DPI baseado no tamanho atual."""
+        if not self._image or self._image.isNull():
+            return None
+            
+        w_dpi = (self._image.width() * 96) / max(1, self._rect.width())
+        h_dpi = (self._image.height() * 96) / max(1, self._rect.height())
+        return min(w_dpi, h_dpi)
     
     def clear_image(self):
         """Remove imagem."""
-        self._pixmap = None
+        self._image = None
         self._image_path = None
         self.update()
     
@@ -348,9 +501,9 @@ class SmartImageItem(SmartGraphicsItem):
         # Background
         painter.fillRect(self._rect, QBrush(QColor("#16213E")))
         
-        if self._pixmap and not self._pixmap.isNull():
+        if self._image and not self._image.isNull():
             # Aspect-Fit
-            scaled = self._pixmap.scaled(
+            scaled = self._image.scaled(
                 int(self._rect.width()),
                 int(self._rect.height()),
                 Qt.KeepAspectRatio,
@@ -361,7 +514,7 @@ class SmartImageItem(SmartGraphicsItem):
             x = self._rect.x() + (self._rect.width() - scaled.width()) / 2
             y = self._rect.y() + (self._rect.height() - scaled.height()) / 2
             
-            painter.drawPixmap(int(x), int(y), scaled)
+            painter.drawImage(int(x), int(y), scaled)
         
         else:
             # Placeholder
@@ -835,6 +988,44 @@ class SmartSlotItem(SmartGraphicsItem):
             self.set_product(product)
             event.acceptProposedAction()
     
+    def check_overflow(self) -> bool:
+        """Verifica se nome do produto estoura área."""
+        if not self.product_data:
+            return False
+            
+        name = self.product_data.get("nome_sanitizado", "?")
+        font = QFont("Roboto", 11)
+        metrics = QFontMetrics(font)
+        
+        # Área definida no paint (aprox)
+        name_rect = QRectF(
+            self._rect.x() + 5,
+            self._rect.bottom() - 60,
+            self._rect.width() - 10,
+            25
+        )
+        
+        text_rect = metrics.boundingRect(
+            name_rect.toRect(),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            name
+        )
+        
+        # Se bounding rect do texto for maior que o rect disponível
+        return text_rect.width() > name_rect.width() or text_rect.height() > name_rect.height()
+
+    def get_image_dpi(self) -> Optional[float]:
+        """Tenta calcular DPI da imagem do produto."""
+        # Se tiver sub-item
+        if self._image_item:
+            return self._image_item.get_image_dpi()
+            
+        # Se tiver produto mas sem sub-item (preview mode)
+        # Teria que carregar a imagem para saber resolução.
+        # Por performance, ignoramos ou carregamos sob demanda?
+        # Vamos assumir que se não tem sub-item, não tem checagem visual precisa.
+        return None  # TODO: Implementar check lazy loading
+        
     def contextMenuEvent(self, event):
         """Menu de contexto completo para slot."""
         menu = QMenu()

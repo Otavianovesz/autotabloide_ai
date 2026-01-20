@@ -49,6 +49,19 @@ THEME_VARS = {
     "--border-focus": "#6C5CE7",
 }
 
+# ==============================================================================
+# SEMANTIC PALETTE (Mapeado para variáveis acima)
+# ==============================================================================
+PRIMARY = "#6C5CE7"
+SECONDARY = "#00CEC9"
+SUCCESS = "#2ECC71"
+WARNING = "#F1C40F"
+ERROR = "#E74C3C"
+BACKGROUND = "#0D0D0D"
+SURFACE = "#1A1A2E"
+TEXT_PRIMARY = "#FFFFFF"
+TEXT_SECONDARY = "#A0A0A0"
+
 
 # ==============================================================================
 # WAIT CURSOR CONTEXT MANAGER

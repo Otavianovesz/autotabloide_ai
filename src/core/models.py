@@ -24,9 +24,11 @@ from enum import Enum
 
 from sqlalchemy import (
     Integer, String, Numeric, DateTime, Text, ForeignKey, 
-    func, Index, Enum as SQLEnum, LargeBinary, CheckConstraint
+    func, Index, Enum as SQLEnum, LargeBinary, CheckConstraint, Boolean
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from src.core.soft_delete import SoftDeleteMixin
 
 
 # ==============================================================================
@@ -86,10 +88,12 @@ class TipoEntidade(str, Enum):
 # Vol. I, Cap. 4.1 - A "Fonte da Verdade" para renderização
 # ==============================================================================
 
-class Produto(Base):
+class Produto(Base, SoftDeleteMixin):
     """
     Tabela principal de inventário.
     Nenhum preço ou nome vai para cartaz sem existir como registro validado aqui.
+    
+    FASE 2 DB: Integra SoftDeleteMixin para soft delete (nada é deletado fisicamente).
     """
     __tablename__ = "produtos"
 
@@ -137,13 +141,15 @@ class Produto(Base):
         DateTime, nullable=True
     )
 
-    # ==== CENTURY CHECKLIST ITEMS 11, 14 ====
+    # ==== CENTURY CHECKLIST ITEMS 11, 14, 17 ====
     # Item 11: Índices de Performance para busca rápida
     # Item 14: CheckConstraints para preços não-negativos
+    # Item 17: Índice composto para busca instantânea no estoque
     __table_args__ = (
         Index('idx_produtos_nome_sanitizado', 'nome_sanitizado'),
         Index('idx_produtos_marca', 'marca_normalizada'),
         Index('idx_produtos_status', 'status_qualidade'),
+        Index('idx_produtos_nome_marca', 'nome_sanitizado', 'marca_normalizada'),  # FASE 2: Composite index
         CheckConstraint('preco_venda_atual >= 0', name='chk_preco_positivo'),
         CheckConstraint('preco_referencia IS NULL OR preco_referencia >= 0', name='chk_preco_ref_positivo'),
     )
@@ -358,10 +364,12 @@ class LayoutMeta(Base):
 # Vol. V, Cap. 3 - Snapshot imutável para fidelidade histórica
 # ==============================================================================
 
-class ProjetoSalvo(Base):
+class ProjetoSalvo(Base, SoftDeleteMixin):
     """
     Persistência do trabalho em andamento.
     O estado_slots armazena um SNAPSHOT IMUTÁVEL dos dados no momento do save.
+    
+    FASE 2 DB: Integra SoftDeleteMixin para soft delete (nada é deletado fisicamente).
     """
     __tablename__ = "projetos_salvos"
 

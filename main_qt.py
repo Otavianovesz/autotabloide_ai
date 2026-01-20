@@ -24,6 +24,16 @@ os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 # Adiciona src ao path para imports corretos
 sys.path.insert(0, str(Path(__file__).parent))
 
+# === BOOT SAFETY IMPORTS (FASE 1: BUNKER) ===
+from src.core.logging_config import setup_logging as setup_industrial_logging, get_logger
+from src.core.boot_safety import (
+    CrashDumpHandler,
+    SelectiveTempCleaner,
+    initialize_boot_safety,
+    mark_boot_success,
+)
+from src.core.instance_lock import acquire_or_focus, release_instance_lock
+
 from PySide6.QtWidgets import (
     QApplication, QSplashScreen, QMessageBox, QSystemTrayIcon
 )
@@ -399,32 +409,35 @@ def load_settings(splash: IndustrialSplashScreen) -> Dict:
 def setup_logging(splash: IndustrialSplashScreen):
     """
     Passo 8: Configura logging centralizado.
+    FASE 1 BUNKER: Usa logging_config com rotação de 10MB.
     """
-    splash.update_progress(8, "Configurando sistema de logs...")
-    
-    import logging
+    splash.update_progress(8, "Configurando sistema de logs com rotação...")
     
     log_dir = SYSTEM_ROOT / "logs"
-    log_file = log_dir / f"autotabloide_{datetime.now():%Y%m%d}.log"
     
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        handlers=[
-            logging.FileHandler(str(log_file), encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
+    # FASE 1: Usar logging industrial com rotação de 10MB
+    setup_industrial_logging(
+        log_dir=log_dir,
+        console_output=True,
+        file_output=True,
+        async_mode=True  # Non-blocking I/O
     )
+    
+    # Instalar CrashDumpHandler para sys.excepthook
+    crashes_dir = log_dir / "crashes"
+    CrashDumpHandler.install(crashes_dir)
 
 
 def check_single_instance(splash: IndustrialSplashScreen) -> bool:
     """
     Passo 9: Verifica instância única.
+    FASE 1 BUNKER: Usa instance_lock com focus restore no Windows.
     """
     splash.update_progress(9, "Verificando instância única...")
     
-    lock = SingleInstanceLock()
-    return lock.try_lock()
+    # FASE 1: Usar instance_lock.acquire_or_focus()
+    # Se outra instância existir, traz a janela para foco no Windows
+    return acquire_or_focus()
 
 
 def detect_gpu(splash: IndustrialSplashScreen) -> bool:
@@ -497,7 +510,7 @@ def apply_master_style(app: QApplication, splash: IndustrialSplashScreen, settin
     splash.update_progress(15, "Aplicando tema visual...")
     
     try:
-        from src.qt.theme import apply_theme
+        from src.qt.styles.theme import apply_theme
         apply_theme(app)
     except Exception as e:
         print(f"[Theme] Erro: {e}")
@@ -515,6 +528,13 @@ def run_boot_sequence(app: QApplication) -> BootReport:
     app.processEvents()
     
     try:
+        # FASE 1 BUNKER: Limpeza de arquivos temporários > 24h ANTES de tudo
+        temp_dir = SYSTEM_ROOT / "temp_render"
+        if temp_dir.exists():
+            cleanup_stats = SelectiveTempCleaner.clean_temp_render(temp_dir, max_age_hours=24)
+            if cleanup_stats["removed"] > 0:
+                print(f"[Boot] Temp cleanup: {cleanup_stats['removed']} arquivos removidos")
+        
         # Passo 1-2: Diretórios e Integridade
         dirs_ok, dir_errors = ensure_directories(splash)
         report.directories_ok = dirs_ok
@@ -637,6 +657,11 @@ def main():
     # Multiprocessing fix para Windows
     multiprocessing.freeze_support()
     
+    # PASSO 52: Tratamento de DPI (Industrial Grade)
+    # Habilita suporte a monitores 4K e scaling do OS
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
     # Cria aplicação
     app = QApplication(sys.argv)
     app.setApplicationName("AutoTabloide AI")
@@ -715,6 +740,28 @@ def main():
     
     # Mostra janela
     window.show()
+    
+    # FASE 1 BUNKER: Marcar boot como sucesso (reseta contador de falhas)
+    mark_boot_success(SYSTEM_ROOT)
+    
+    # FASE 2 DB: Registrar backup automático no fechamento do app
+    import atexit
+    from src.core.database_safety import DatabaseBackupManager
+    from src.core.database import CORE_DB_PATH, DB_DIR
+    
+    def _backup_on_close():
+        """Cria backup do banco ao fechar o app (mantém últimos 5 dias)."""
+        try:
+            backup_dir = DB_DIR / "backups"
+            DatabaseBackupManager.MAX_BACKUPS = 5  # Últimos 5 backups
+            result = DatabaseBackupManager.create_backup(CORE_DB_PATH, backup_dir)
+            if result:
+                print(f"[Shutdown] Backup criado: {result}")
+        except Exception as e:
+            print(f"[Shutdown] Erro no backup: {e}")
+    
+    atexit.register(_backup_on_close)
+    atexit.register(release_instance_lock)  # Liberar lock de instância também
     
     # Atualiza status
     status_parts = []

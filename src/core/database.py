@@ -80,6 +80,7 @@ core_engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour to prevent zombies
 )
 
 # Aplica PRAGMAs na engine core
@@ -100,6 +101,7 @@ learning_engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour to prevent zombies
 )
 
 # Aplica PRAGMAs na engine learning
