@@ -561,19 +561,27 @@ class EstoqueWidget(QWidget):
         header = QHBoxLayout()
         
         title = QLabel("Estoque de Produtos")
-        title.setStyleSheet("font-size: 28px; font-weight: bold; color: #FFFFFF;")
+        title.setProperty("class", "title-lg")
         header.addWidget(title)
         
         header.addStretch()
         
         btn_import = QPushButton("Importar Excel")
+        btn_import.setToolTip("Importar produtos de planilha Excel/CSV via O Juiz")
         btn_import.clicked.connect(self._import_excel)
         header.addWidget(btn_import)
         
         btn_add = QPushButton("Novo Produto")
         btn_add.setProperty("class", "secondary")
+        btn_add.setToolTip("Adicionar um novo produto manualmente")
         btn_add.clicked.connect(self._add_product)
         header.addWidget(btn_add)
+        
+        btn_refresh = QPushButton("Atualizar")
+        btn_refresh.setProperty("class", "secondary")
+        btn_refresh.setToolTip("Atualizar lista de produtos")
+        btn_refresh.clicked.connect(self._refresh)
+        header.addWidget(btn_refresh)
         
         btn_refresh = QPushButton("Atualizar")
         btn_refresh.setProperty("class", "secondary")
@@ -612,7 +620,7 @@ class EstoqueWidget(QWidget):
         filter_layout.addStretch()
         
         self.count_label = QLabel("Carregando...")
-        self.count_label.setStyleSheet("color: #808080;")
+        self.count_label.setProperty("class", "hint")
         filter_layout.addWidget(self.count_label)
         
         layout.addLayout(filter_layout)

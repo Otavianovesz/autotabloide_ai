@@ -657,14 +657,14 @@ class AtelierWidget(QWidget):
     
     def _create_toolbar(self) -> QFrame:
         toolbar = QFrame()
-        toolbar.setStyleSheet("background-color: #1A1A2E; border-bottom: 1px solid #2D2D44;")
+        toolbar.setProperty("class", "panel")
         
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(12, 8, 12, 8)
         
         # Título
         title = QLabel("Ateliê - A Mesa")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
+        title.setProperty("class", "title-sm")
         layout.addWidget(title)
         
         layout.addStretch()
@@ -689,19 +689,23 @@ class AtelierWidget(QWidget):
         
         # Botões
         btn_auto = QPushButton("Auto-Preencher")
+        btn_auto.setToolTip("Preenche slots vazios automaticamente com produtos disponíveis")
         btn_auto.clicked.connect(self._auto_fill)
         layout.addWidget(btn_auto)
         
         btn_clear = QPushButton("Limpar")
         btn_clear.setProperty("class", "danger")
+        btn_clear.setToolTip("Remove todos os produtos dos slots")
         btn_clear.clicked.connect(self._clear_all)
         layout.addWidget(btn_clear)
         
         btn_save = QPushButton("Salvar")
+        btn_save.setToolTip("Salvar projeto atual (Ctrl+S)")
         btn_save.clicked.connect(self._save_project)
         layout.addWidget(btn_save)
         
         btn_export = QPushButton("Exportar PDF")
+        btn_export.setToolTip("Exportar tabloides selecionados como PDF (Ctrl+E)")
         btn_export.clicked.connect(self._export_pdf)
         layout.addWidget(btn_export)
         
@@ -726,7 +730,7 @@ class AtelierWidget(QWidget):
         layout.addWidget(self.shelf_list)
         
         self.shelf_count = QLabel("0 produtos")
-        self.shelf_count.setStyleSheet("color: #808080;")
+        self.shelf_count.setProperty("class", "hint")
         layout.addWidget(self.shelf_count)
         
         return frame

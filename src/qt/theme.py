@@ -1,11 +1,191 @@
 """
-AutoTabloide AI - Dark Theme QSS
-================================
-Estética Adobe-like com tema dark profissional.
+AutoTabloide AI - Industrial Theme System
+==========================================
+Sistema centralizado de temas com:
+- Variáveis CSS processadas via Python
+- WaitCursor para feedback visual
+- Utilitários de estilização
 """
 
-from PySide6.QtWidgets import QApplication
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Optional
+from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import Qt
 
+
+# ==============================================================================
+# THEME VARIABLES (CSS-like variables processed by Python)
+# ==============================================================================
+
+THEME_VARS = {
+    # Background colors
+    "--bg-dark": "#0D0D0D",
+    "--bg-panel": "#1A1A2E",
+    "--bg-surface": "#16213E",
+    "--bg-hover": "#2D2D44",
+    "--bg-elevated": "#3D3D5C",
+    
+    # Accent colors
+    "--accent-primary": "#6C5CE7",
+    "--accent-secondary": "#00CEC9",
+    "--accent-hover": "#7D6DF8",
+    "--accent-pressed": "#5B4BD5",
+    
+    # Semantic colors
+    "--color-success": "#2ECC71",
+    "--color-warning": "#F39C12",
+    "--color-error": "#E74C3C",
+    "--color-info": "#3498DB",
+    
+    # Text colors
+    "--text-primary": "#FFFFFF",
+    "--text-secondary": "#A0A0A0",
+    "--text-muted": "#606060",
+    "--text-disabled": "#808080",
+    
+    # Border colors
+    "--border-default": "#2D2D44",
+    "--border-focus": "#6C5CE7",
+}
+
+
+# ==============================================================================
+# WAIT CURSOR CONTEXT MANAGER
+# ==============================================================================
+
+@contextmanager
+def wait_cursor():
+    """
+    Context manager for showing wait cursor during long operations.
+    
+    Usage:
+        with wait_cursor():
+            # Long operation here
+            do_something_slow()
+    """
+    try:
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
+        yield
+    finally:
+        QApplication.restoreOverrideCursor()
+
+
+def set_wait_cursor():
+    """Set wait cursor manually."""
+    QApplication.setOverrideCursor(Qt.WaitCursor)
+    QApplication.processEvents()
+
+
+def restore_cursor():
+    """Restore cursor after manual set."""
+    QApplication.restoreOverrideCursor()
+
+
+# ==============================================================================
+# STYLE UTILITIES
+# ==============================================================================
+
+def set_class(widget: QWidget, class_name: str) -> None:
+    """
+    Set CSS class on a widget.
+    
+    Args:
+        widget: The widget to style
+        class_name: CSS class name (e.g., "title-lg", "status-ok")
+        
+    Example:
+        set_class(label, "title-lg")
+    """
+    widget.setProperty("class", class_name)
+    # Force style refresh
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def add_class(widget: QWidget, class_name: str) -> None:
+    """
+    Add a CSS class to widget's existing classes.
+    
+    Args:
+        widget: The widget to style
+        class_name: CSS class name to add
+    """
+    current = widget.property("class") or ""
+    classes = set(current.split()) if current else set()
+    classes.add(class_name)
+    widget.setProperty("class", " ".join(classes))
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def remove_class(widget: QWidget, class_name: str) -> None:
+    """
+    Remove a CSS class from widget.
+    
+    Args:
+        widget: The widget to modify
+        class_name: CSS class name to remove
+    """
+    current = widget.property("class") or ""
+    classes = set(current.split()) if current else set()
+    classes.discard(class_name)
+    widget.setProperty("class", " ".join(classes) if classes else "")
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def has_class(widget: QWidget, class_name: str) -> bool:
+    """Check if widget has a specific CSS class."""
+    current = widget.property("class") or ""
+    return class_name in current.split()
+
+
+# ==============================================================================
+# COLOR UTILITIES
+# ==============================================================================
+
+def get_color(var_name: str) -> str:
+    """
+    Get color value from theme variables.
+    
+    Args:
+        var_name: Variable name (with or without --)
+        
+    Returns:
+        Hex color string
+    """
+    if not var_name.startswith("--"):
+        var_name = f"--{var_name}"
+    return THEME_VARS.get(var_name, "#FFFFFF")
+
+
+def get_status_color(status: str) -> str:
+    """
+    Get semantic color for status.
+    
+    Args:
+        status: One of "success", "warning", "error", "info"
+        
+    Returns:
+        Hex color string
+    """
+    status_map = {
+        "success": THEME_VARS["--color-success"],
+        "ok": THEME_VARS["--color-success"],
+        "warning": THEME_VARS["--color-warning"],
+        "error": THEME_VARS["--color-error"],
+        "danger": THEME_VARS["--color-error"],
+        "info": THEME_VARS["--color-info"],
+        "muted": THEME_VARS["--text-muted"],
+    }
+    return status_map.get(status.lower(), THEME_VARS["--text-secondary"])
+
+
+# ==============================================================================
+# INLINE STYLE QSS (Fallback)
+# ==============================================================================
 
 DARK_THEME_QSS = """
 /* === Global === */
@@ -369,27 +549,39 @@ QGroupBox::title {
 """
 
 
-from pathlib import Path
-
+# ==============================================================================
+# THEME APPLICATION
+# ==============================================================================
 
 def apply_theme(app: QApplication) -> None:
     """
-    Aplica o tema dark à aplicação.
+    Apply the industrial dark theme to the application.
     
-    Tenta carregar theme.qss externo primeiro.
-    Fallback para styles inline se arquivo não encontrar.
+    Tries to load theme.qss first, falls back to inline styles.
     """
     qss_file = Path(__file__).parent / "theme.qss"
     
     if qss_file.exists():
         try:
             with open(qss_file, 'r', encoding='utf-8') as f:
-                app.setStyleSheet(f.read())
-            print(f"[Theme] Carregado de {qss_file}")
+                qss_content = f.read()
+            
+            # Process CSS variables (future enhancement)
+            # for var_name, var_value in THEME_VARS.items():
+            #     qss_content = qss_content.replace(f"var({var_name})", var_value)
+            
+            app.setStyleSheet(qss_content)
+            print(f"[Theme] Loaded from {qss_file} ({len(qss_content)} bytes)")
             return
         except Exception as e:
-            print(f"[Theme] Erro ao carregar QSS: {e}")
+            print(f"[Theme] Error loading QSS: {e}")
     
-    # Fallback para inline styles
+    # Fallback to inline styles
     app.setStyleSheet(DARK_THEME_QSS)
-    print("[Theme] Usando styles inline")
+    print("[Theme] Using inline styles (fallback)")
+
+
+def reload_theme(app: QApplication) -> None:
+    """Reload theme from QSS file (useful for development)."""
+    apply_theme(app)
+

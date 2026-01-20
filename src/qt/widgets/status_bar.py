@@ -36,17 +36,8 @@ class IntelligentStatusBar(QStatusBar):
     
     def _setup_ui(self):
         """Cria widgets permanentes."""
-        self.setStyleSheet("""
-            QStatusBar {
-                background-color: #0F0F1A;
-                color: #808080;
-                border-top: 1px solid #2D2D44;
-            }
-            QLabel {
-                color: #808080;
-                font-size: 11px;
-            }
-        """)
+        # Use global QStatusBar style from theme.qss instead of inline
+        # (QStatusBar is styled in theme.qss)
         
         # Container para widgets permanentes
         permanent_widget = QWidget()
@@ -57,12 +48,13 @@ class IntelligentStatusBar(QStatusBar):
         # Undo indicator
         self.undo_label = QLabel("⟲ 0/50")
         self.undo_label.setToolTip("Ações na pilha de undo (Ctrl+Z / Ctrl+Shift+Z)")
+        self.undo_label.setProperty("class", "hint")
         permanent_layout.addWidget(self.undo_label)
         
         # Separator
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.VLine)
-        sep1.setStyleSheet("background-color: #2D2D44;")
+        sep1.setProperty("class", "separator-v")
         permanent_layout.addWidget(sep1)
         
         # Sentinel indicator
@@ -77,18 +69,19 @@ class IntelligentStatusBar(QStatusBar):
         # Separator
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.VLine)
-        sep2.setStyleSheet("background-color: #2D2D44;")
+        sep2.setProperty("class", "separator-v")
         permanent_layout.addWidget(sep2)
         
         # Zoom indicator
         self.zoom_label = QLabel("🔍 100%")
         self.zoom_label.setToolTip("Nível de zoom (+/- para ajustar)")
+        self.zoom_label.setProperty("class", "hint")
         permanent_layout.addWidget(self.zoom_label)
         
         # Separator
         sep3 = QFrame()
         sep3.setFrameShape(QFrame.VLine)
-        sep3.setStyleSheet("background-color: #2D2D44;")
+        sep3.setProperty("class", "separator-v")
         permanent_layout.addWidget(sep3)
         
         # DB status
@@ -138,11 +131,13 @@ class IntelligentStatusBar(QStatusBar):
             
             self.undo_label.setText(f"⟲ {index}/{count}")
             
-            # Cor baseada no estado
+            # Cor baseada no estado via CSS class
             if count > 0:
-                self.undo_label.setStyleSheet("color: #2ECC71; font-size: 11px;")
+                self.undo_label.setProperty("class", "status-ok")
             else:
-                self.undo_label.setStyleSheet("color: #808080; font-size: 11px;")
+                self.undo_label.setProperty("class", "hint")
+            self.undo_label.style().unpolish(self.undo_label)
+            self.undo_label.style().polish(self.undo_label)
         except ImportError:
             pass
     
@@ -160,10 +155,12 @@ class IntelligentStatusBar(QStatusBar):
         """Atualiza status do DB."""
         if ok:
             self.db_label.setText("💾 OK")
-            self.db_label.setStyleSheet("color: #2ECC71; font-size: 11px;")
+            self.db_label.setProperty("class", "status-ok")
         else:
             self.db_label.setText("💾 !")
-            self.db_label.setStyleSheet("color: #E74C3C; font-size: 11px;")
+            self.db_label.setProperty("class", "status-error")
+        self.db_label.style().unpolish(self.db_label)
+        self.db_label.style().polish(self.db_label)
         
         if message:
             self.db_label.setToolTip(message)
@@ -172,10 +169,13 @@ class IntelligentStatusBar(QStatusBar):
         """Mostra indicador de modificação."""
         if modified:
             self.modified_label.setText("●")
-            self.modified_label.setStyleSheet("color: #F39C12; font-size: 16px;")
+            self.modified_label.setProperty("class", "modified-indicator")
             self.modified_label.setToolTip("Projeto não salvo")
         else:
             self.modified_label.setText("")
+            self.modified_label.setProperty("class", "")
+        self.modified_label.style().unpolish(self.modified_label)
+        self.modified_label.style().polish(self.modified_label)
     
     def set_modified(self, modified: bool):
         """API pública para modificação."""

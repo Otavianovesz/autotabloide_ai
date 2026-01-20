@@ -172,18 +172,10 @@ class StatCard(QFrame):
         super().__init__(parent)
         self.accent_color = accent_color
         self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(f"Clique para ver detalhes de {title}")
         
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: #1A1A2E;
-                border: 1px solid #2D2D44;
-                border-radius: 12px;
-                padding: 16px;
-            }}
-            QFrame:hover {{
-                border-color: {accent_color};
-            }}
-        """)
+        # Use CSS class instead of inline style
+        self.setProperty("class", "stat-card")
         
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -191,22 +183,22 @@ class StatCard(QFrame):
         header = QHBoxLayout()
         if icon:
             icon_label = QLabel(icon)
-            icon_label.setStyleSheet("font-size: 24px;")
+            icon_label.setProperty("class", "icon-sm")
             header.addWidget(icon_label)
         
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #808080; font-size: 12px; font-weight: 600;")
+        title_label.setProperty("class", "card-title")
         header.addWidget(title_label)
         header.addStretch()
         layout.addLayout(header)
         
         self.value_label = QLabel(value)
-        self.value_label.setStyleSheet(f"font-size: 36px; font-weight: bold; color: {accent_color};")
+        self.value_label.setProperty("class", "value-accent")
         layout.addWidget(self.value_label)
         
         if subtitle:
             sub = QLabel(subtitle)
-            sub.setStyleSheet("color: #606060; font-size: 11px;")
+            sub.setProperty("class", "card-subtitle")
             layout.addWidget(sub)
     
     def set_value(self, value: str):
@@ -228,29 +220,35 @@ class StatusIndicator(QFrame):
         
         self.led = QLabel()
         self.led.setFixedSize(10, 10)
+        self.led.setProperty("class", "led")
         layout.addWidget(self.led)
         
         self.name_label = QLabel(name)
-        self.name_label.setStyleSheet("color: #A0A0A0; font-size: 12px;")
+        self.name_label.setProperty("class", "description")
         layout.addWidget(self.name_label)
         
         layout.addStretch()
         
         self.status_label = QLabel("Verificando...")
-        self.status_label.setStyleSheet("font-size: 11px; color: #606060;")
+        self.status_label.setProperty("class", "hint")
         layout.addWidget(self.status_label)
         
         self.set_status(False)
     
     def set_status(self, active: bool, message: str = ""):
         if active:
-            self.led.setStyleSheet("background-color: #2ECC71; border-radius: 5px;")
+            self.led.setProperty("class", "led-ok")
             self.status_label.setText(message or "Online")
-            self.status_label.setStyleSheet("color: #2ECC71; font-size: 11px;")
+            self.status_label.setProperty("class", "status-ok")
         else:
-            self.led.setStyleSheet("background-color: #E74C3C; border-radius: 5px;")
+            self.led.setProperty("class", "led-error")
             self.status_label.setText(message or "Offline")
-            self.status_label.setStyleSheet("color: #E74C3C; font-size: 11px;")
+            self.status_label.setProperty("class", "status-error")
+        # Force style refresh
+        self.led.style().unpolish(self.led)
+        self.led.style().polish(self.led)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
 
 
 # =============================================================================
@@ -289,13 +287,13 @@ class DashboardWidget(QWidget):
         header = QHBoxLayout()
         
         title = QLabel("Dashboard")
-        title.setStyleSheet("font-size: 32px; font-weight: bold; color: #FFFFFF;")
+        title.setProperty("class", "title-lg")
         header.addWidget(title)
         
         header.addStretch()
         
         self.last_update = QLabel("Carregando...")
-        self.last_update.setStyleSheet("color: #606060;")
+        self.last_update.setProperty("class", "hint")
         header.addWidget(self.last_update)
         
         layout.addLayout(header)
@@ -322,11 +320,11 @@ class DashboardWidget(QWidget):
         
         # Status
         status_frame = QFrame()
-        status_frame.setStyleSheet("background-color: #1A1A2E; border-radius: 12px; padding: 16px;")
+        status_frame.setProperty("class", "panel")
         status_layout = QVBoxLayout(status_frame)
         
         status_title = QLabel("Status do Sistema")
-        status_title.setStyleSheet("font-weight: bold; color: #FFFFFF; font-size: 14px;")
+        status_title.setProperty("class", "header")
         status_layout.addWidget(status_title)
         
         self.status_db = StatusIndicator("Banco de Dados (SQLite WAL)")
@@ -342,11 +340,11 @@ class DashboardWidget(QWidget):
         
         # Ações rápidas
         actions = QFrame()
-        actions.setStyleSheet("background-color: #1A1A2E; border-radius: 12px; padding: 16px;")
+        actions.setProperty("class", "panel")
         actions_layout = QVBoxLayout(actions)
         
         actions_title = QLabel("Ações Rápidas")
-        actions_title.setStyleSheet("font-weight: bold; color: #FFFFFF;")
+        actions_title.setProperty("class", "header")
         actions_layout.addWidget(actions_title)
         
         btns = QHBoxLayout()

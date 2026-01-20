@@ -484,3 +484,361 @@ QLabel.warning {
 QLabel.error {
     color: #E74C3C;
 }
+
+/* ============================================================
+   UTILITY CLASSES FOR INLINE STYLE MIGRATION
+   ============================================================
+   These classes replace setStyleSheet() calls in Python code.
+   Use with setProperty("class", "class-name")
+   ============================================================ */
+
+/* === Title Variants === */
+QLabel.title-lg {
+    font-size: 28px;
+    font-weight: bold;
+    color: #FFFFFF;
+}
+
+QLabel.title-md {
+    font-size: 24px;
+    font-weight: bold;
+    color: #FFFFFF;
+}
+
+QLabel.title-sm {
+    font-size: 16px;
+    font-weight: bold;
+    color: #6C5CE7;
+}
+
+QLabel.title-sidebar {
+    font-size: 16px;
+    font-weight: bold;
+    color: #6C5CE7;
+    padding: 16px;
+}
+
+/* === Subtitle/Description Variants === */
+QLabel.subtitle-muted {
+    font-size: 14px;
+    color: #808080;
+}
+
+QLabel.version-label {
+    font-size: 11px;
+    color: #606060;
+    margin-bottom: 16px;
+}
+
+QLabel.description {
+    font-size: 12px;
+    color: #808080;
+}
+
+QLabel.hint {
+    font-size: 11px;
+    color: #606060;
+}
+
+/* === Status Indicators === */
+QLabel.status-ok, QLabel.status-success {
+    font-size: 11px;
+    color: #2ECC71;
+}
+
+QLabel.status-error, QLabel.status-danger {
+    font-size: 11px;
+    color: #E74C3C;
+}
+
+QLabel.status-warning {
+    font-size: 11px;
+    color: #F39C12;
+}
+
+QLabel.status-info {
+    font-size: 11px;
+    color: #6C5CE7;
+}
+
+QLabel.status-muted, QLabel.status-offline {
+    font-size: 11px;
+    color: #808080;
+}
+
+/* === Icon Labels (Emoji/Font Awesome) === */
+QLabel.icon-lg {
+    font-size: 64px;
+}
+
+QLabel.icon-md {
+    font-size: 32px;
+}
+
+QLabel.icon-sm {
+    font-size: 24px;
+}
+
+QLabel.icon-xs {
+    font-size: 18px;
+}
+
+/* === Value Display (Stats/Numbers) === */
+QLabel.value-lg {
+    font-size: 36px;
+    font-weight: bold;
+}
+
+QLabel.value-md {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+QLabel.value-accent {
+    font-size: 36px;
+    font-weight: bold;
+    color: #6C5CE7;
+}
+
+/* === Card Elements === */
+QLabel.card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #808080;
+}
+
+QLabel.card-subtitle {
+    font-size: 11px;
+    color: #606060;
+}
+
+/* === Stat Card Specific === */
+QFrame.stat-card {
+    background-color: #1A1A2E;
+    border: 1px solid #2D2D44;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+QFrame.stat-card:hover {
+    border-color: #6C5CE7;
+}
+
+/* === LED/Status Dots === */
+QLabel.led {
+    min-width: 10px;
+    max-width: 10px;
+    min-height: 10px;
+    max-height: 10px;
+    border-radius: 5px;
+}
+
+QLabel.led-ok {
+    background-color: #2ECC71;
+    border-radius: 5px;
+}
+
+QLabel.led-error {
+    background-color: #E74C3C;
+    border-radius: 5px;
+}
+
+QLabel.led-warning {
+    background-color: #F39C12;
+    border-radius: 5px;
+}
+
+/* === Separators === */
+QFrame.separator, QFrame.divider {
+    background-color: #2D2D44;
+}
+
+QFrame.separator-h {
+    background-color: #2D2D44;
+    max-height: 1px;
+}
+
+QFrame.separator-v {
+    background-color: #2D2D44;
+    max-width: 1px;
+}
+
+/* === Panel/Surface Variants === */
+QWidget.surface {
+    background-color: #1A1A2E;
+}
+
+QWidget.elevated {
+    background-color: #2D2D44;
+}
+
+QFrame.panel {
+    background-color: #1A1A2E;
+    border-radius: 8px;
+}
+
+QFrame.panel-dark {
+    background-color: #0D0D0D;
+    border-radius: 8px;
+}
+
+/* === Log/Console Text === */
+QPlainTextEdit.console, QTextEdit.console {
+    background-color: #0D0D0D;
+    color: #808080;
+    font-family: "Consolas", "Fira Code", monospace;
+    font-size: 11px;
+}
+
+/* === Header Labels === */
+QLabel.header {
+    font-size: 14px;
+    font-weight: bold;
+    color: #FFFFFF;
+}
+
+QLabel.section-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: #A0A0A0;
+    text-transform: uppercase;
+}
+
+/* === Toast/Notification Specific === */
+QFrame.toast {
+    background-color: #1A1A2E;
+    border: 1px solid #2D2D44;
+    border-radius: 8px;
+}
+
+QFrame.toast-success {
+    background-color: #1A3D2E;
+    border: 1px solid #2ECC71;
+    border-radius: 8px;
+}
+
+QFrame.toast-error {
+    background-color: #3D1A1A;
+    border: 1px solid #E74C3C;
+    border-radius: 8px;
+}
+
+QFrame.toast-warning {
+    background-color: #3D3D1A;
+    border: 1px solid #F39C12;
+    border-radius: 8px;
+}
+
+QPushButton.toast-close {
+    background-color: transparent;
+    border: none;
+    color: #808080;
+    font-size: 16px;
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    border-radius: 12px;
+    padding: 0;
+}
+
+QPushButton.toast-close:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #FFFFFF;
+}
+
+/* === Zoom/Control Widgets === */
+QWidget.zoom-controls {
+    background-color: rgba(26, 26, 46, 0.95);
+    border: 1px solid #2D2D44;
+    border-radius: 8px;
+}
+
+/* === Sentinel UI === */
+QFrame.sentinel-panel {
+    background-color: #1A1A2E;
+    border: 1px solid #2D2D44;
+    border-radius: 8px;
+}
+
+/* === Empty State === */
+QWidget.empty-state {
+    background-color: transparent;
+}
+
+QLabel.empty-state-icon {
+    font-size: 64px;
+    color: #3D3D5C;
+}
+
+QLabel.empty-state-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #808080;
+}
+
+QLabel.empty-state-subtitle {
+    font-size: 14px;
+    color: #606060;
+}
+
+QPushButton.empty-state-action {
+    background-color: #6C5CE7;
+    font-size: 14px;
+    padding: 12px 24px;
+}
+
+/* === Splash Screen === */
+QLabel.splash-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #6C5CE7;
+}
+
+QLabel.splash-subtitle {
+    font-size: 14px;
+    color: #888888;
+}
+
+QLabel.splash-status {
+    font-size: 12px;
+    color: #AAAAAA;
+}
+
+QLabel.splash-version {
+    font-size: 10px;
+    color: #666666;
+}
+
+QProgressBar.splash-progress {
+    background-color: #1A1A2E;
+    border: none;
+    border-radius: 4px;
+    height: 6px;
+}
+
+QProgressBar.splash-progress::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #6C5CE7, stop:1 #00CEC9);
+    border-radius: 4px;
+}
+
+/* === Context Menu === */
+QMenu.context-menu {
+    background-color: #1A1A2E;
+    border: 1px solid #2D2D44;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+/* === Properties Dock === */
+QLabel.no-selection {
+    color: #808080;
+    padding: 20px;
+}
+
+/* === Modified Indicator === */
+QLabel.modified-indicator {
+    font-size: 16px;
+    color: #F39C12;
+}

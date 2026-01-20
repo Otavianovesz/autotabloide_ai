@@ -47,20 +47,16 @@ class Sidebar(QFrame):
         layout.setContentsMargins(0, 16, 0, 16)
         layout.setSpacing(4)
         
-        # Logo/Título
+        # Logo/Título - using CSS class instead of inline style
         title = QLabel("AutoTabloide AI")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("""
-            font-size: 16px; 
-            font-weight: bold; 
-            color: #6C5CE7; 
-            padding: 16px;
-        """)
+        title.setProperty("class", "title-sidebar")
         layout.addWidget(title)
         
+        # Version label - using CSS class
         version = QLabel("v2.0.0 Qt Edition")
         version.setAlignment(Qt.AlignCenter)
-        version.setStyleSheet("color: #606060; font-size: 11px; margin-bottom: 16px;")
+        version.setProperty("class", "version-label")
         layout.addWidget(version)
         
         layout.addSpacing(8)
@@ -85,10 +81,10 @@ class Sidebar(QFrame):
         # Spacer
         layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         
-        # Status do Sentinel
+        # Status do Sentinel - using CSS class
         self.sentinel_indicator = QLabel("● Sentinel: Ativo")
         self.sentinel_indicator.setAlignment(Qt.AlignCenter)
-        self.sentinel_indicator.setStyleSheet("color: #2ECC71; font-size: 11px;")
+        self.sentinel_indicator.setProperty("class", "status-ok")
         layout.addWidget(self.sentinel_indicator)
         
         # Seleciona primeiro botão
@@ -101,13 +97,16 @@ class Sidebar(QFrame):
         self.navigation_changed.emit(index)
     
     def set_sentinel_status(self, active: bool) -> None:
-        """Atualiza status do Sentinel."""
+        """Atualiza status do Sentinel using CSS classes."""
         if active:
             self.sentinel_indicator.setText("● Sentinel: Ativo")
-            self.sentinel_indicator.setStyleSheet("color: #2ECC71; font-size: 11px;")
+            self.sentinel_indicator.setProperty("class", "status-ok")
         else:
             self.sentinel_indicator.setText("● Sentinel: Offline")
-            self.sentinel_indicator.setStyleSheet("color: #E74C3C; font-size: 11px;")
+            self.sentinel_indicator.setProperty("class", "status-error")
+        # Force style refresh
+        self.sentinel_indicator.style().unpolish(self.sentinel_indicator)
+        self.sentinel_indicator.style().polish(self.sentinel_indicator)
 
 
 class PlaceholderWidget(QWidget):
@@ -118,7 +117,7 @@ class PlaceholderWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         
-        # Ícone grande
+        # Ícone grande - using CSS class
         icon_map = {
             "Estoque": "📦",
             "Ateliê": "🎨",
@@ -127,17 +126,17 @@ class PlaceholderWidget(QWidget):
             "Configurações": "⚙️"
         }
         icon = QLabel(icon_map.get(name, "🔧"))
-        icon.setStyleSheet("font-size: 64px;")
+        icon.setProperty("class", "icon-lg")
         icon.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon)
         
         title = QLabel(name)
-        title.setStyleSheet("font-size: 28px; font-weight: bold; color: #FFFFFF;")
+        title.setProperty("class", "title-lg")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
         subtitle = QLabel(description or "Módulo em desenvolvimento...")
-        subtitle.setStyleSheet("font-size: 14px; color: #808080;")
+        subtitle.setProperty("class", "subtitle-muted")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
@@ -148,14 +147,21 @@ class MainWindow(QMainWindow):
     # Signals
     closing = Signal()
     
+    # Version
+    VERSION = "2.0.0"
+    
     def __init__(self, container=None):
         super().__init__()
         
         # Injeção de Dependência
         self.container = container
         
+        # Project state tracking
+        self._current_project_name: str = None
+        self._is_dirty: bool = False
+        
         # Configuração da janela
-        self.setWindowTitle("AutoTabloide AI v2.0.0")
+        self._update_window_title()
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         
@@ -167,6 +173,27 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
         self._setup_timers()
         self._setup_sentinel_integration()
+    
+    def _update_window_title(self) -> None:
+        """Update window title with project name and dirty indicator."""
+        dirty_marker = " *" if self._is_dirty else ""
+        project = f" - {self._current_project_name}" if self._current_project_name else " - Sem Projeto"
+        self.setWindowTitle(f"AutoTabloide AI v{self.VERSION}{project}{dirty_marker}")
+    
+    def set_project_name(self, name: str) -> None:
+        """Set current project name and update title."""
+        self._current_project_name = name
+        self._update_window_title()
+    
+    def set_dirty(self, dirty: bool) -> None:
+        """Mark project as having unsaved changes."""
+        if self._is_dirty != dirty:
+            self._is_dirty = dirty
+            self._update_window_title()
+    
+    def is_dirty(self) -> bool:
+        """Check if project has unsaved changes."""
+        return self._is_dirty
     
     def _setup_ui(self) -> None:
         """Configura interface principal."""
