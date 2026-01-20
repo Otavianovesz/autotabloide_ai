@@ -266,9 +266,57 @@ class SmartSlotItem(QGraphicsRectItem):
         self.update()
     
     def _show_override_dialog(self):
-        """Mostra diálogo de override."""
-        # TODO: Implementar modal de override
-        pass
+        """Mostra diálogo de override para nome e preço customizados."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QFormLayout, QLineEdit, QDialogButtonBox
+        
+        if not self.slot_data.product:
+            return
+        
+        dialog = QDialog()
+        dialog.setWindowTitle("Override de Produto")
+        dialog.setMinimumWidth(350)
+        
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        
+        # Nome override
+        name_input = QLineEdit()
+        current_name = self.slot_data.override_name or self.slot_data.product.get("nome_sanitizado", "")
+        name_input.setText(current_name)
+        name_input.setPlaceholderText("Nome customizado...")
+        form.addRow("Nome:", name_input)
+        
+        # Preço override
+        price_input = QLineEdit()
+        current_price = self.slot_data.override_price or self.slot_data.product.get("preco_venda_atual", 0)
+        price_input.setText(f"{float(current_price):.2f}")
+        price_input.setPlaceholderText("Preço customizado...")
+        form.addRow("Preço:", price_input)
+        
+        layout.addLayout(form)
+        
+        # Botões
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        
+        if dialog.exec() == QDialog.Accepted:
+            # Aplica overrides
+            new_name = name_input.text().strip()
+            if new_name and new_name != self.slot_data.product.get("nome_sanitizado", ""):
+                self.slot_data.override_name = new_name
+                self._name_item.setPlainText(self._truncate_text(new_name, 50))
+            
+            try:
+                new_price = float(price_input.text().replace(",", "."))
+                if new_price != self.slot_data.product.get("preco_venda_atual", 0):
+                    self.slot_data.override_price = new_price
+                    self._price_item.setHtml(self._format_price(new_price))
+            except ValueError:
+                pass  # Mantém preço original se inválido
+            
+            self.update()
     
     def _toggle_lock(self):
         """Alterna bloqueio."""

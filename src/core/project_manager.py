@@ -419,11 +419,34 @@ class ProjectManager:
             with open(manifest_path, 'r', encoding='utf-8') as f:
                 manifest = json.load(f)
             
-            # Cria projeto
+            # Lê informações do projeto do manifest
             project_info = manifest.get("project", {})
             
-            # Busca ou cria layout
-            layout_id = 1  # Fallback - TODO: implementar busca/criação de layout
+            # Busca ou cria layout baseado no manifest
+            layout_path = project_info.get("layout_path")
+            layout_id = None
+            
+            if layout_path:
+                # Tenta encontrar layout pelo arquivo
+                layout = await self.layout_repo.find_by_path(layout_path)
+                if layout:
+                    layout_id = layout.id
+            
+            if not layout_id:
+                # Tenta encontrar qualquer layout disponível
+                layouts = await self.layout_repo.list_all(limit=1)
+                if layouts:
+                    layout_id = layouts[0].id
+                else:
+                    # Cria layout padrão se nenhum existir
+                    default_layout = await self.layout_repo.create(
+                        nome="Layout Padrão (Importado)",
+                        arquivo_fonte=layout_path or "",
+                        tipo_midia="TABLOIDE",
+                        capacidade_slots=1
+                    )
+                    layout_id = default_layout.id
+                    logger.info(f"Layout padrão criado para importação: {layout_id}")
             
             project = await self.project_repo.create(
                 nome=project_info.get("nome", "Projeto Importado"),

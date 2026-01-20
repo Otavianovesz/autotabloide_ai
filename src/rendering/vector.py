@@ -1037,8 +1037,21 @@ class VectorEngine(PagePaginationMixin, VectorImprovementsMixin):
                     if alvo_id not in self.slots:
                         alvo_id = "ALVO_IMAGEM"
                     if alvo_id in self.slots:
-                        # Placeholder para injeção de imagem
-                        pass
+                        # Resolve caminho da imagem a partir do hash
+                        from pathlib import Path
+                        assets_dir = Path("AutoTabloide_System_Root/assets/store")
+                        img_path = None
+                        for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                            candidate = assets_dir / f"{img_hash}{ext}"
+                            if candidate.exists():
+                                img_path = str(candidate)
+                                break
+                        
+                        if img_path:
+                            target = self.slots[alvo_id]
+                            w = float(target.get('width', '100'))
+                            h = float(target.get('height', '100'))
+                            self.place_image(alvo_id, img_path, w, h)
             
             result = self.to_string()
             

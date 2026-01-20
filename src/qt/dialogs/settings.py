@@ -289,8 +289,37 @@ class SettingsDialog(QDialog):
             "Isso vai remover todos os thumbnails em cache.\nContinuar?"
         )
         if reply == QMessageBox.Yes:
-            # TODO: Implementar limpeza
-            QMessageBox.information(self, "Cache", "Cache limpo com sucesso!")
+            from pathlib import Path
+            import shutil
+            
+            cleared = 0
+            cache_dirs = [
+                Path("AutoTabloide_System_Root/temp/cache"),
+                Path("AutoTabloide_System_Root/temp/thumbnails"),
+                Path("AutoTabloide_System_Root/temp/render"),
+            ]
+            
+            for cache_dir in cache_dirs:
+                if cache_dir.exists():
+                    try:
+                        for item in cache_dir.iterdir():
+                            if item.is_file():
+                                item.unlink()
+                                cleared += 1
+                            elif item.is_dir():
+                                shutil.rmtree(item)
+                                cleared += 1
+                    except Exception as e:
+                        logging.getLogger("Settings").warning(f"Erro ao limpar {cache_dir}: {e}")
+            
+            # Limpa cache em memória também
+            try:
+                from src.qt.widgets.estoque import _thumbnail_cache
+                _thumbnail_cache.clear()
+            except Exception:
+                pass
+            
+            QMessageBox.information(self, "Cache", f"Cache limpo com sucesso!\n{cleared} itens removidos.")
     
     def _reset_defaults(self):
         """Restaura configurações padrão."""

@@ -382,18 +382,57 @@ class SettingsWidget(QWidget):
     
     @Slot()
     def _save_settings(self) -> None:
-        """Salva configurações."""
-        # TODO: Integrar com SettingsService
-        QMessageBox.information(
-            self,
-            "Configurações Salvas",
-            "As configurações foram salvas com sucesso!\n\n(Integrar com SettingsService)"
-        )
-        self.settings_changed.emit()
+        """Salva configurações no banco via SettingsService."""
+        import asyncio
+        from src.core.settings_service import get_settings
+        
+        async def _async_save():
+            settings = await get_settings()
+            
+            # Geral
+            await settings.set("paths.assets_dir", self.assets_path.text())
+            await settings.set("paths.templates_dir", self.templates_path.text())
+            await settings.set("backup.auto_enabled", self.auto_backup.isChecked())
+            await settings.set("backup.interval_hours", self.backup_interval.value())
+            await settings.set("backup.max_snapshots", self.backup_retention.value())
+            
+            # Renderização
+            await settings.set("render.dpi_web", self.dpi_web.value())
+            await settings.set("render.dpi_print", self.dpi_print.value())
+            await settings.set("render.preserve_black", self.preserve_black.isChecked())
+            await settings.set("render.convert_to_outlines", self.embed_fonts.isChecked())
+            await settings.set("render.add_crop_marks", self.add_crop_marks.isChecked())
+            await settings.set("render.bleed_mm", self.bleed_mm.value())
+            
+            # IA
+            await settings.set("llm.model_path", self.llm_path.text())
+            await settings.set("llm.n_gpu_layers", self.gpu_layers.value())
+            await settings.set("llm.context_size", self.ctx_size.value())
+            await settings.set("image.auto_remove_bg", self.auto_remove_bg.isChecked())
+            await settings.set("image.auto_crop", self.auto_crop.isChecked())
+            await settings.set("image.min_resolution", self.min_resolution.value())
+            
+            # Importação
+            await settings.set("import.auto_sanitize", self.auto_sanitize.isChecked())
+            await settings.set("import.detect_duplicates", self.detect_duplicates.isChecked())
+            await settings.set("import.update_prices", self.update_prices.isChecked())
+            await settings.set("hunter.rate_limit_per_minute", self.scraping_timeout.value())
+            await settings.set("hunter.rotate_ua", self.rotate_ua.isChecked())
+        
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_async_save())
+            loop.close()
+            
+            QMessageBox.information(self, "Configurações Salvas", "Todas as configurações foram salvas com sucesso!")
+            self.settings_changed.emit()
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao salvar configurações:\n{str(e)}")
     
     @Slot()
     def _reset_defaults(self) -> None:
-        """Reseta para valores padrão."""
+        """Reseta para valores padrão via SettingsService."""
         reply = QMessageBox.question(
             self,
             "Resetar Padrões",
@@ -402,5 +441,42 @@ class SettingsWidget(QWidget):
             QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            # TODO: Implementar reset
-            QMessageBox.information(self, "Reset", "Configurações restauradas!")
+            import asyncio
+            from src.core.settings_service import get_settings
+            
+            async def _async_reset():
+                settings = await get_settings()
+                await settings.reset_to_defaults()
+            
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(_async_reset())
+                loop.close()
+                
+                QMessageBox.information(self, "Reset", "Configurações restauradas para os valores padrão!")
+                # Recarrega UI com novos valores
+                self._load_settings_to_ui()
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao resetar configurações:\n{str(e)}")
+    
+    def _load_settings_to_ui(self):
+        """Carrega valores do SettingsService para os campos da UI."""
+        import asyncio
+        from src.core.settings_service import get_settings
+        
+        async def _async_load():
+            settings = await get_settings()
+            
+            self.dpi_web.setValue(settings.get("render.dpi_web", 96))
+            self.dpi_print.setValue(settings.get("render.dpi_print", 300))
+            self.gpu_layers.setValue(settings.get("llm.n_gpu_layers", 0))
+            self.ctx_size.setValue(settings.get("llm.context_size", 2048))
+        
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_async_load())
+            loop.close()
+        except Exception:
+            pass  # Usa valores padrão da UI

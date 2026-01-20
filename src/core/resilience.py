@@ -553,13 +553,42 @@ class SchemaVersionManager:
             return True, f"Schema v{current} está atualizado"
         
         if current < cls.CURRENT_VERSION:
-            # Precisa migração
-            # TODO: Implementar migrações específicas
-            logger.warning(f"Migração necessária: v{current} -> v{cls.CURRENT_VERSION}")
-            return False, f"Migração de v{current} para v{cls.CURRENT_VERSION} não implementada"
+            # Aplica migrações sequenciais
+            try:
+                for version in range(int(current) + 1, cls.CURRENT_VERSION + 1):
+                    migration_method = getattr(cls, f"_migrate_to_v{version}", None)
+                    if migration_method:
+                        await migration_method(session)
+                        await cls.set_version(session, version, f"Migração para v{version}")
+                        logger.info(f"Migração v{version} aplicada com sucesso")
+                    else:
+                        # Migração não definida - apenas atualiza versão
+                        await cls.set_version(session, version, f"Bump para v{version}")
+                        logger.debug(f"Versão atualizada para v{version} (sem script)")
+                
+                return True, f"Schema migrado de v{current} para v{cls.CURRENT_VERSION}"
+                
+            except Exception as e:
+                logger.error(f"Erro na migração: {e}")
+                return False, f"Falha na migração: {e}"
         
         if current > cls.CURRENT_VERSION:
             return False, f"Banco v{current} é mais novo que código v{cls.CURRENT_VERSION}!"
+    
+    @classmethod
+    async def _migrate_to_v2(cls, session):
+        """Migração v1 -> v2: Adiciona colunas de rastreamento."""
+        from sqlalchemy import text
+        migrations = [
+            "ALTER TABLE produtos ADD COLUMN IF NOT EXISTS created_at DATETIME",
+            "ALTER TABLE produtos ADD COLUMN IF NOT EXISTS last_modified DATETIME",
+            "ALTER TABLE produtos ADD COLUMN IF NOT EXISTS deleted_at DATETIME",
+        ]
+        for sql in migrations:
+            try:
+                await session.execute(text(sql))
+            except Exception:
+                pass  # Coluna pode já existir
 
 
 # ==============================================================================

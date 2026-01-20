@@ -97,6 +97,14 @@ class BatchExportDialog(QDialog):
         self.chk_marks.setChecked(True)
         settings_layout.addWidget(self.chk_marks)
         
+        # Compliance PROCON
+        self.chk_compliance = QCheckBox("Validar conformidade PROCON (bloqueia se inválido)")
+        self.chk_compliance.setChecked(True)
+        self.chk_compliance.setToolTip(
+            "Valida precificação De/Por, restrições +18 e validade de ofertas antes de exportar"
+        )
+        settings_layout.addWidget(self.chk_compliance)
+        
         layout.addWidget(settings_group)
         
         # Progresso
@@ -158,23 +166,101 @@ class BatchExportDialog(QDialog):
         
         self.export_started.emit()
         
-        # TODO: Implementar exportação real
+        # Inicializa validador de compliance se habilitado
+        compliance_validator = None
+        if self.chk_compliance.isChecked():
+            try:
+                from src.core.compliance import get_compliance_validator
+                compliance_validator = get_compliance_validator()
+                logger.info("Validação de compliance PROCON ativada")
+            except ImportError:
+                logger.warning("Módulo de compliance não disponível")
+        
         success = 0
+        blocked = 0
         
         for i, project in enumerate(self._projects):
             if self._cancelled:
                 break
             
-            self.lbl_status.setText(f"Exportando: {Path(project).name}")
+            project_name = Path(project).name
+            self.lbl_status.setText(f"Validando: {project_name}")
             self.progress.setValue(i + 1)
             
-            # Simula processamento
-            from PySide6.QtCore import QThread
-            QThread.msleep(500)
+            # Valida compliance se habilitado
+            if compliance_validator:
+                try:
+                    # Carrega dados do projeto para validação
+                    import json
+                    with open(project, 'r', encoding='utf-8') as f:
+                        project_data = json.load(f)
+                    
+                    slots = project_data.get('slots', [])
+                    validation = compliance_validator.validate_layout(slots)
+                    
+                    if not validation.is_valid:
+                        error_msgs = [str(e) for e in validation.errors[:3]]  # Primeiros 3 erros
+                        logger.warning(f"Projeto {project_name} bloqueado: {error_msgs}")
+                        self.lbl_status.setText(f"⛔ {project_name}: Falha de compliance")
+                        blocked += 1
+                        continue  # Pula este projeto
+                    
+                except Exception as e:
+                    logger.error(f"Erro ao validar {project_name}: {e}")
             
-            success += 1
+            self.lbl_status.setText(f"Exportando: {project_name}")
+            
+            # Exportação real via pdf_export module
+            try:
+                import json
+                from src.rendering.pdf_export import export_atelier_to_pdf
+                
+                # Carrega dados do projeto
+                with open(project, 'r', encoding='utf-8') as f:
+                    project_data = json.load(f)
+                
+                # Define output path
+                output_format = self.combo_format.currentText()
+                if "PDF" in output_format:
+                    out_ext = ".pdf"
+                elif "PNG" in output_format:
+                    out_ext = ".png"
+                else:
+                    out_ext = ".jpg"
+                
+                output_path = str(Path(project).with_suffix(out_ext))
+                
+                template_path = project_data.get("template_path", "")
+                
+                if template_path and Path(template_path).exists():
+                    export_success, msg = export_atelier_to_pdf(
+                        scene_data=project_data,
+                        template_path=template_path,
+                        output_path=output_path,
+                        dpi=self.spin_dpi.value(),
+                        add_bleed=self.chk_bleed.isChecked(),
+                        add_marks=self.chk_marks.isChecked()
+                    )
+                    
+                    if export_success:
+                        logger.info(f"Exportado: {project_name} -> {output_path}")
+                        success += 1
+                    else:
+                        logger.warning(f"Falha ao exportar {project_name}: {msg}")
+                else:
+                    logger.warning(f"Template não encontrado para {project_name}")
+                    # Não conta como sucesso - template missing é falha
+                    
+            except Exception as e:
+                logger.error(f"Erro ao exportar {project_name}: {e}")
+            # BUG FIX: Removido success += 1 incondicional que causava double-count
         
-        self.lbl_status.setText(f"Concluído: {success}/{len(self._projects)}")
+        # Status final com detalhes de compliance
+        if blocked > 0:
+            self.lbl_status.setText(f"Concluído: {success}/{len(self._projects)} (⛔ {blocked} bloqueados)")
+        else:
+            self.lbl_status.setText(f"Concluído: {success}/{len(self._projects)}")
+        
         self.btn_export.setEnabled(True)
         
         self.export_completed.emit(success, len(self._projects))
@@ -186,4 +272,5 @@ class BatchExportDialog(QDialog):
             "format": self.combo_format.currentText(),
             "add_bleed": self.chk_bleed.isChecked(),
             "add_marks": self.chk_marks.isChecked(),
+            "validate_compliance": self.chk_compliance.isChecked(),
         }

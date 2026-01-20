@@ -404,6 +404,13 @@ class FactoryWidget(QWidget):
         self.preview_check.setChecked(True)
         config_layout.addWidget(self.preview_check, 3, 0, 1, 2)
         
+        # Filtro "Já Impresso" - Mostra apenas produtos com preço alterado (Fase 4)
+        self.changed_only_check = QCheckBox("Mostrar apenas preços alterados (Já Impresso)")
+        self.changed_only_check.setToolTip(
+            "Filtra para mostrar apenas produtos cujo preço mudou desde a última impressão"
+        )
+        config_layout.addWidget(self.changed_only_check, 4, 0, 1, 2)
+        
         layout.addWidget(config_group)
         
         # Fila de renderização

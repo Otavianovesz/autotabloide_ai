@@ -170,15 +170,56 @@ def get_learning_session_sync():
 # INICIALIZAÇÃO DO SCHEMA (Dual-Database)
 # ==============================================================================
 
+async def _run_auto_migrations(conn):
+    """
+    Auto-migração para adicionar colunas que faltam em tabelas existentes.
+    Isso garante compatibilidade quando modelos são atualizados.
+    """
+    # Colunas a verificar/adicionar na tabela produtos
+    # NOTA: SQLite não permite DEFAULT CURRENT_TIMESTAMP em ALTER TABLE
+    # Usamos NULL como default e o ORM define o valor
+    produtos_migrations = [
+        ("created_at", "DATETIME"),  # SQLite não permite dynamic default em ALTER
+        ("last_modified", "DATETIME"),
+        ("ultimo_preco_impresso", "DECIMAL(10,2)"),
+        ("data_ultima_impressao", "DATETIME"),
+        ("categoria", "VARCHAR(100)"),
+        ("deleted_at", "DATETIME"),  # Para soft-delete
+    ]
+    
+    try:
+        # Verifica colunas existentes
+        result = await conn.execute(text("PRAGMA table_info(produtos)"))
+        existing_cols = {row[1] for row in result.fetchall()}
+        
+        for col_name, col_def in produtos_migrations:
+            if col_name not in existing_cols:
+                try:
+                    await conn.execute(text(
+                        f"ALTER TABLE produtos ADD COLUMN {col_name} {col_def}"
+                    ))
+                    logger.info(f"Migração: Adicionada coluna '{col_name}' à tabela produtos")
+                except Exception as e:
+                    logger.debug(f"Coluna {col_name} talvez já exista: {e}")
+                    
+    except Exception as e:
+        logger.debug(f"Auto-migração: tabela produtos pode não existir ainda: {e}")
+
+
 async def init_db():
     """
     Inicializa os Schemas em ambos os Bancos de Dados.
     Cria todas as tabelas definidas em models.py se não existirem.
+    Aplica migrações automáticas para colunas adicionadas após criação inicial.
     """
     from src.core.models import Base, LearningBase
     
     # Inicializa core.db (Produtos, Projetos, Layouts, SystemConfig)
     async with core_engine.begin() as conn:
+        # Primeiro, aplica migrações em tabelas existentes
+        await _run_auto_migrations(conn)
+        
+        # Depois, cria tabelas novas se não existirem
         await conn.run_sync(Base.metadata.create_all)
         logger.info(f"Schema CORE inicializado em: {CORE_DB_PATH}")
     

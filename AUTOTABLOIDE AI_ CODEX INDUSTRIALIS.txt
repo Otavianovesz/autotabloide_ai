@@ -3,6 +3,33 @@ ESPECIFICAÇÃO DE ENGENHARIA E GOVERNANÇA ARQUITETURAL UNIFICADA
 Classificação: EXECUÇÃO CRÍTICA (Nível 0)
 Status: DEFINITIVO
 Autoridade: Fonte Única da Verdade (Single Source of Truth)
+
+================================================================================
+                    ADDENDUM: ATUALIZAÇÃO ARQUITETURAL CRÍTICA
+                             Data: Janeiro 2026
+================================================================================
+
+> [IMPORTANTE] MIGRAÇÃO DO FRAMEWORK DE UI: Flet → Qt (PySide6)
+>
+> Este documento foi originalmente redigido especificando o framework Flet como
+> a base da interface gráfica. Desde então, o projeto migrou para Qt (PySide6).
+>
+> SUBSTITUIÇÕES CONCEITUAIS:
+> - "Flet"           → "PySide6/Qt"
+> - "Flutter/Skia"   → "Qt Quick/QPainter"
+> - "ft.Image"       → "QLabel/QPixmap"
+> - "ft.DataGrid"    → "QTableView com QAbstractTableModel"
+> - "Event Loop"     → "Qt Event Loop (via qasync para asyncio)"
+>
+> ARQUIVOS DE ENTRADA:
+> - main.py          → Launcher unificado
+> - main_qt.py       → Entry point real com Boot Sequence Qt
+>
+> O restante da especificação (Persistência SQLite WAL, Sentinela AI,
+> Motor Vetorial lxml, etc.) permanece INALTERADO e VIGENTE.
+
+================================================================================
+
 PREFÁCIO: A DOUTRINA DA SOBERANIA E EXECUÇÃO CRÍTICA
 Este documento estabelece a especificação técnica normativa e inviolável para o sistema Autotabloide AI. A natureza deste projeto transcende a trivialidade de um software de design assistido; trata-se da engenharia de uma Engine de Automação Gráfica Varejista de alta frequência. Em um ambiente operacional onde erros de precificação resultam em passivos legais imediatos e a latência impacta diretamente a receita, a estabilidade do sistema não é uma feature, mas um requisito existencial.
 A arquitetura aqui delineada rejeita a fragilidade das dependências em nuvem em favor de uma filosofia de Soberania Cognitiva Local (Local-First AI) e Operação Offline-First. O sistema deve operar como um bunker digital: capaz de ingerir dados caóticos, higienizá-los através de redes neurais locais, manipular vetores matemáticos complexos e renderizar saídas industriais (CMYK) sem depender de conectividade externa ou APIs de terceiros.

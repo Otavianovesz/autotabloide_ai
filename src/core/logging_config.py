@@ -51,20 +51,27 @@ def setup_logging(
     log_dir: Path,
     level: int = logging.INFO,
     console_output: bool = True,
-    file_output: bool = True
+    file_output: bool = True,
+    async_mode: bool = True  # GAP-04 FIX: Enable truly async logging
 ) -> logging.Logger:
     """
     Configura o sistema de logging da aplicação.
+    
+    GAP-04 FIX: Implementa logging assíncrono via QueueHandler.
+    Isso evita que I/O de arquivo bloqueie a thread principal (Qt).
     
     Args:
         log_dir: Diretório para arquivos de log
         level: Nível mínimo de log (INFO padrão)
         console_output: Se deve logar no console
         file_output: Se deve logar em arquivo
+        async_mode: Se deve usar QueueHandler para I/O não-bloqueante
         
     Returns:
         Logger raiz configurado
     """
+    global _log_queue, _log_listener
+    
     # Criar diretório se não existir
     log_dir.mkdir(parents=True, exist_ok=True)
     
@@ -75,6 +82,9 @@ def setup_logging(
     # Limpar handlers existentes
     root_logger.handlers.clear()
     
+    # Lista de handlers "reais" que farão o I/O
+    real_handlers = []
+    
     # Handler de console (stderr colorido)
     if console_output:
         console_handler = logging.StreamHandler(sys.stderr)
@@ -82,7 +92,7 @@ def setup_logging(
         console_handler.setFormatter(
             ColoredFormatter(LoggingConfig.FORMAT_CONSOLE)
         )
-        root_logger.addHandler(console_handler)
+        real_handlers.append(console_handler)
     
     # Handler de arquivo rotacionado
     if file_output:
@@ -100,7 +110,7 @@ def setup_logging(
                 datefmt=LoggingConfig.FORMAT_DATE
             )
         )
-        root_logger.addHandler(file_handler)
+        real_handlers.append(file_handler)
     
     # Handler separado para erros críticos
     if file_output:
@@ -117,12 +127,47 @@ def setup_logging(
                 datefmt=LoggingConfig.FORMAT_DATE
             )
         )
-        root_logger.addHandler(error_handler)
+        real_handlers.append(error_handler)
+    
+    # GAP-04 FIX: Async mode via QueueHandler
+    if async_mode and real_handlers:
+        # Cria a fila e o listener
+        _log_queue = queue.Queue(-1)  # Sem limite
+        
+        # QueueHandler: todos os logs vão para a fila (não-bloqueante)
+        queue_handler = logging.handlers.QueueHandler(_log_queue)
+        root_logger.addHandler(queue_handler)
+        
+        # QueueListener: processa a fila em thread separada
+        _log_listener = logging.handlers.QueueListener(
+            _log_queue,
+            *real_handlers,
+            respect_handler_level=True
+        )
+        _log_listener.start()
+        
+        # Garante que o listener é parado no shutdown
+        atexit.register(_shutdown_logging)
+        
+        root_logger.debug("Logging assíncrono inicializado via QueueHandler")
+    else:
+        # Modo síncrono: adiciona handlers diretamente
+        for handler in real_handlers:
+            root_logger.addHandler(handler)
     
     # CENTURY CHECKLIST Item 5: Limpar logs antigos (> 30 dias)
     cleanup_old_logs(log_dir, max_age_days=30)
     
     return root_logger
+
+
+def _shutdown_logging():
+    """Desliga o QueueListener de forma limpa."""
+    global _log_listener
+    if _log_listener:
+        _log_listener.stop()
+        _log_listener = None
+
 
 
 def cleanup_old_logs(log_dir: Path, max_age_days: int = 30) -> int:

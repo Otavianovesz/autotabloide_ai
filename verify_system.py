@@ -157,7 +157,7 @@ class SystemVerifier:
             ("aiosqlite", "AsyncIO SQLite"),
             ("lxml", "XML/HTML Parser"),
             ("llama_cpp", "Llama CPP (AI)"),
-            ("flet", "Flet (UI)"),
+            ("PySide6", "PySide6 (UI)"),
             ("PIL", "Pillow (Imagens)"),
             ("pypdf", "PyPDF (PDF)"),
             ("loguru", "Loguru (Logs)"),

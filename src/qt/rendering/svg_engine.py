@@ -89,12 +89,13 @@ class SVGSlot:
             elif "UNIDADE" in elem_id or "PESO" in elem_id:
                 self.unit_text = elem
     
-    def inject_product(self, product: Dict[str, Any]) -> None:
+    def inject_product(self, product: Dict[str, Any], assets_dir: str = "AutoTabloide_System_Root/assets/store") -> None:
         """Injeta dados do produto no slot."""
         name = product.get("nome_sanitizado", "")
         price = product.get("preco_venda_atual", 0)
         unit = product.get("unidade", "")
         img_hash = product.get("img_hash_ref", "")
+        img_path = product.get("caminho_imagem_final", "")
         
         # Nome
         if self.name_text is not None:
@@ -114,8 +115,47 @@ class SVGSlot:
         if self.unit_text is not None and unit:
             self._set_text_content(self.unit_text, unit)
         
-        # Imagem - requer processamento adicional
-        # TODO: Injetar xlink:href com caminho da imagem
+        # Imagem - injetar xlink:href
+        if self.image_target is not None:
+            self._inject_image(img_hash, img_path, assets_dir)
+    
+    def _inject_image(self, img_hash: str, img_path: str, assets_dir: str) -> None:
+        """Injeta imagem no elemento target via xlink:href."""
+        from pathlib import Path
+        import base64
+        
+        # Prioridade: caminho direto > hash > nada
+        final_path = None
+        
+        if img_path and Path(img_path).exists():
+            final_path = Path(img_path)
+        elif img_hash:
+            # Tenta encontrar pelo hash
+            for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                candidate = Path(assets_dir) / f"{img_hash}{ext}"
+                if candidate.exists():
+                    final_path = candidate
+                    break
+        
+        if final_path is None:
+            return  # Sem imagem disponível
+        
+        # Define xlink:href com caminho absoluto ou base64
+        xlink_ns = "{http://www.w3.org/1999/xlink}"
+        
+        try:
+            # Tenta usar caminho relativo primeiro (melhor para portabilidade)
+            self.image_target.set(f"{xlink_ns}href", str(final_path.absolute()))
+            
+            # Fallback para base64 se arquivo for pequeno (<500KB)
+            if final_path.stat().st_size < 500_000:
+                with open(final_path, 'rb') as f:
+                    data = base64.b64encode(f.read()).decode('utf-8')
+                    suffix = final_path.suffix.lower().replace('.', '')
+                    mime = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'webp': 'image/webp'}.get(suffix, 'image/png')
+                    self.image_target.set(f"{xlink_ns}href", f"data:{mime};base64,{data}")
+        except Exception:
+            pass  # Mantém href vazio se falhar
     
     def _set_text_content(self, element: ET.Element, text: str) -> None:
         """Define texto em elemento, considerando tspan."""

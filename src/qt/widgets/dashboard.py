@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pathlib import Path
 import asyncio
+import logging
 
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QThread, QObject
 from PySide6.QtWidgets import (
@@ -30,6 +31,10 @@ class StatsWorker(QObject):
     stats_ready = Signal(dict)
     health_ready = Signal(dict)
     
+    def __init__(self):
+        super().__init__()
+        self._logger = logging.getLogger("AutoTabloide.Dashboard")
+    
     @Slot()
     def fetch_stats(self):
         """Busca estatísticas do banco em thread dedicada."""
@@ -43,7 +48,7 @@ class StatsWorker(QObject):
                 # Usa QTimer.singleShot para emitir no thread principal
                 QTimer.singleShot(0, lambda: self.stats_ready.emit(stats))
             except Exception as e:
-                print(f"[Dashboard] Stats erro: {e}")
+                self._logger.warning(f"Stats fetch error: {e}", exc_info=True)
                 fallback = self._fallback_stats()
                 QTimer.singleShot(0, lambda: self.stats_ready.emit(fallback))
             finally:
@@ -64,7 +69,7 @@ class StatsWorker(QObject):
                 health = loop.run_until_complete(self._async_check_health())
                 QTimer.singleShot(0, lambda: self.health_ready.emit(health))
             except Exception as e:
-                print(f"[Dashboard] Health erro: {e}")
+                self._logger.warning(f"Health check error: {e}", exc_info=True)
                 fallback = self._fallback_health()
                 QTimer.singleShot(0, lambda: self.health_ready.emit(fallback))
             finally:
@@ -108,7 +113,7 @@ class StatsWorker(QObject):
             return stats
             
         except Exception as e:
-            print(f"[Stats] Erro: {e}")
+            self._logger.error(f"Stats fetch error: {e}", exc_info=True)
             return self._fallback_stats()
     
     async def _async_check_health(self) -> Dict:

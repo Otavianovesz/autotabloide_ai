@@ -690,9 +690,11 @@ def main():
         key_filter = GlobalKeyFilter.install(app)
         
         # Conecta atalhos à janela
+        from src.qt.core.undo_redo import get_undo_manager
+        
         key_filter.save_requested.connect(window.save_project if hasattr(window, 'save_project') else lambda: None)
-        key_filter.undo_requested.connect(lambda: None)  # Conectar UndoManager
-        key_filter.redo_requested.connect(lambda: None)
+        key_filter.undo_requested.connect(get_undo_manager().undo)
+        key_filter.redo_requested.connect(get_undo_manager().redo)
         key_filter.help_requested.connect(lambda: (
             __import__('src.qt.dialogs.help_system', fromlist=['show_shortcuts_dialog']).show_shortcuts_dialog(window)
         ))

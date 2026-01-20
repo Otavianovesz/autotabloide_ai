@@ -1,12 +1,12 @@
 """
 AutoTabloide AI - UI Automation Tests
 =======================================
-Testes automatizados de UI.
-Passo 99 do Checklist 100.
+Testes automatizados de UI para Qt/PySide6.
+Atualizado para refletir migração de Flet para PySide6.
 
 Funcionalidades:
-- Testes de navegação
-- Testes de interação
+- Testes de imports críticos
+- Testes de widgets Qt
 - Smoke tests de UI
 """
 
@@ -31,10 +31,7 @@ class UITestResult:
 class UITestSuite:
     """
     Suite de testes automatizados de UI.
-    Passo 99 do Checklist - Teste UI automático.
-    
-    Nota: Testes reais de Flet requerem ambiente gráfico.
-    Esta é uma implementação de framework para testes.
+    Testes de importação e estrutura para Qt/PySide6.
     """
     
     def __init__(self):
@@ -45,7 +42,6 @@ class UITestSuite:
         try:
             # Verifica imports críticos
             from src.core.constants import AppInfo
-            from src.ui.design_system import DesignTokens
             from src.core.container import get_service, ServiceContainer
             
             return UITestResult(
@@ -61,100 +57,57 @@ class UITestSuite:
                 message=f"Import error: {e}"
             )
     
-    async def test_navigation_rail_exists(self) -> UITestResult:
-        """Testa se NavigationRail foi definido."""
+    async def test_qt_framework_available(self) -> UITestResult:
+        """Testa se PySide6 está disponível."""
         try:
-            from src.ui.design_system import DesignTokens
-            
-            # Verifica se configurações de UI existem
-            assert hasattr(DesignTokens, 'PRIMARY')
-            assert hasattr(DesignTokens, 'BACKGROUND')
+            from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+            from PySide6.QtCore import Qt, Signal
+            from PySide6.QtGui import QPainter, QColor
             
             return UITestResult(
-                test_name="Navigation Rail",
+                test_name="Qt Framework",
                 passed=True,
-                message="Design tokens configurados"
+                message="PySide6 disponível"
             )
             
-        except Exception as e:
+        except ImportError as e:
             return UITestResult(
-                test_name="Navigation Rail",
+                test_name="Qt Framework",
+                passed=False,
+                message=f"PySide6 não instalado: {e}"
+            )
+    
+    async def test_main_window_imports(self) -> UITestResult:
+        """Testa se MainWindow pode ser importada."""
+        try:
+            from src.qt.main_window import MainWindow
+            
+            return UITestResult(
+                test_name="MainWindow Import",
+                passed=True,
+                message="MainWindow importada com sucesso"
+            )
+            
+        except ImportError as e:
+            return UITestResult(
+                test_name="MainWindow Import",
                 passed=False,
                 message=f"Erro: {e}"
             )
     
-    async def test_keyboard_shortcuts_defined(self) -> UITestResult:
-        """Testa se atalhos de teclado estão definidos."""
-        try:
-            from src.ui.keyboard import DEFAULT_KEYBINDINGS
-            
-            required_shortcuts = ['s', 'z', 'y', 'e']
-            missing = []
-            
-            for key in required_shortcuts:
-                if key not in [kb.key for kb in DEFAULT_KEYBINDINGS]:
-                    missing.append(key)
-            
-            if missing:
-                return UITestResult(
-                    test_name="Keyboard Shortcuts",
-                    passed=False,
-                    message=f"Atalhos faltando: {missing}"
-                )
-            
-            return UITestResult(
-                test_name="Keyboard Shortcuts",
-                passed=True,
-                message=f"{len(DEFAULT_KEYBINDINGS)} atalhos definidos"
-            )
-            
-        except Exception as e:
-            return UITestResult(
-                test_name="Keyboard Shortcuts",
-                passed=False,
-                message=f"Erro: {e}"
-            )
-    
-    async def test_views_importable(self) -> UITestResult:
-        """Testa se todas as views podem ser importadas."""
-        views_to_test = [
-            "src.ui.views.atelier",
-            "src.ui.views.estoque",
-            "src.ui.views.fabrica",
+    async def test_widgets_importable(self) -> UITestResult:
+        """Testa se widgets Qt podem ser importados."""
+        widgets_to_test = [
+            ("AtelierWidget", "src.qt.widgets.atelier"),
+            ("EstoqueWidget", "src.qt.widgets.estoque"),
+            ("FactoryWidget", "src.qt.widgets.factory"),
+            ("CofreWidget", "src.qt.widgets.cofre"),
+            ("SettingsWidget", "src.qt.widgets.settings"),
         ]
         
         failed = []
         
-        for view_module in views_to_test:
-            try:
-                __import__(view_module)
-            except ImportError as e:
-                failed.append(f"{view_module}: {e}")
-        
-        if failed:
-            return UITestResult(
-                test_name="Views Import",
-                passed=False,
-                message=f"Falhas: {len(failed)}"
-            )
-        
-        return UITestResult(
-            test_name="Views Import",
-            passed=True,
-            message=f"{len(views_to_test)} views OK"
-        )
-    
-    async def test_components_importable(self) -> UITestResult:
-        """Testa se componentes podem ser importados."""
-        components = [
-            ("ProgressModal", "src.ui.components.progress_modal"),
-            ("DiffView", "src.ui.components.diff_view"),
-            ("DropIndicator", "src.ui.components.drop_indicator"),
-        ]
-        
-        failed = []
-        
-        for name, module in components:
+        for name, module in widgets_to_test:
             try:
                 __import__(module)
             except ImportError as e:
@@ -162,15 +115,74 @@ class UITestSuite:
         
         if failed:
             return UITestResult(
-                test_name="Components Import",
+                test_name="Widgets Import",
                 passed=False,
                 message=f"Falhas: {len(failed)}"
             )
         
         return UITestResult(
-            test_name="Components Import",
+            test_name="Widgets Import",
             passed=True,
-            message=f"{len(components)} componentes OK"
+            message=f"{len(widgets_to_test)} widgets OK"
+        )
+    
+    async def test_dialogs_importable(self) -> UITestResult:
+        """Testa se dialogs Qt podem ser importados."""
+        dialogs = [
+            ("ExcelImportDialog", "src.qt.dialogs.excel_import"),
+            ("JudgeModal", "src.qt.dialogs.judge_modal"),
+            ("ImageHandlerDialog", "src.qt.dialogs.image_handler"),
+            ("BatchExportDialog", "src.qt.dialogs.batch_export"),
+        ]
+        
+        failed = []
+        
+        for name, module in dialogs:
+            try:
+                __import__(module)
+            except ImportError as e:
+                failed.append(f"{name}: {e}")
+        
+        if failed:
+            return UITestResult(
+                test_name="Dialogs Import",
+                passed=False,
+                message=f"Falhas: {len(failed)}"
+            )
+        
+        return UITestResult(
+            test_name="Dialogs Import",
+            passed=True,
+            message=f"{len(dialogs)} dialogs OK"
+        )
+    
+    async def test_graphics_importable(self) -> UITestResult:
+        """Testa se módulos graphics podem ser importados."""
+        graphics = [
+            ("SmartSlot", "src.qt.graphics.smart_slot"),
+            ("SmartItems", "src.qt.graphics.smart_items"),
+            ("SceneBuilder", "src.qt.graphics.scene_builder"),
+        ]
+        
+        failed = []
+        
+        for name, module in graphics:
+            try:
+                __import__(module)
+            except ImportError as e:
+                failed.append(f"{name}: {e}")
+        
+        if failed:
+            return UITestResult(
+                test_name="Graphics Import",
+                passed=False,
+                message=f"Falhas: {len(failed)}"
+            )
+        
+        return UITestResult(
+            test_name="Graphics Import",
+            passed=True,
+            message=f"{len(graphics)} graphics OK"
         )
     
     async def run_all(self) -> Tuple[bool, List[UITestResult]]:
@@ -186,10 +198,11 @@ class UITestSuite:
         
         # Testes
         self.results.append(await self.test_app_starts())
-        self.results.append(await self.test_navigation_rail_exists())
-        self.results.append(await self.test_keyboard_shortcuts_defined())
-        self.results.append(await self.test_views_importable())
-        self.results.append(await self.test_components_importable())
+        self.results.append(await self.test_qt_framework_available())
+        self.results.append(await self.test_main_window_imports())
+        self.results.append(await self.test_widgets_importable())
+        self.results.append(await self.test_dialogs_importable())
+        self.results.append(await self.test_graphics_importable())
         
         all_passed = all(r.passed for r in self.results)
         
@@ -226,13 +239,31 @@ def test_app_starts():
     assert result.passed, result.message
 
 
-def test_navigation():
-    """Teste pytest: navegação."""
-    result = asyncio.run(UITestSuite().test_navigation_rail_exists())
+def test_qt_framework():
+    """Teste pytest: Qt framework."""
+    result = asyncio.run(UITestSuite().test_qt_framework_available())
     assert result.passed, result.message
 
 
-def test_keyboard():
-    """Teste pytest: atalhos."""
-    result = asyncio.run(UITestSuite().test_keyboard_shortcuts_defined())
+def test_main_window():
+    """Teste pytest: MainWindow."""
+    result = asyncio.run(UITestSuite().test_main_window_imports())
+    assert result.passed, result.message
+
+
+def test_widgets():
+    """Teste pytest: widgets."""
+    result = asyncio.run(UITestSuite().test_widgets_importable())
+    assert result.passed, result.message
+
+
+def test_dialogs():
+    """Teste pytest: dialogs."""
+    result = asyncio.run(UITestSuite().test_dialogs_importable())
+    assert result.passed, result.message
+
+
+def test_graphics():
+    """Teste pytest: graphics."""
+    result = asyncio.run(UITestSuite().test_graphics_importable())
     assert result.passed, result.message

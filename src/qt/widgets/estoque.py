@@ -14,6 +14,7 @@ from pathlib import Path
 import json
 import asyncio
 import locale
+import logging
 
 from PySide6.QtCore import (
     Qt, Signal, Slot, QAbstractTableModel, QModelIndex,
@@ -141,6 +142,7 @@ class DatabaseQueryWorker(QObject):
     
     def __init__(self):
         super().__init__()
+        self._logger = logging.getLogger("AutoTabloide.Estoque")
         self._query = ""
         self._offset = 0
         self._limit = 50
@@ -175,7 +177,7 @@ class DatabaseQueryWorker(QObject):
                 # Emite no thread principal via QTimer
                 QTimer.singleShot(0, lambda: self.results_ready.emit(data, count))
             except Exception as e:
-                print(f"[DB Worker] Erro interno: {e}")
+                self._logger.error(f"DB Worker error: {e}", exc_info=True)
                 data, count = self._get_fallback_data()
                 QTimer.singleShot(0, lambda: self.results_ready.emit(data, count))
             finally:
@@ -219,7 +221,7 @@ class DatabaseQueryWorker(QObject):
                 return data, total
                 
         except Exception as e:
-            print(f"[DB] Erro: {e}")
+            self._logger.error(f"DB async fetch error: {e}", exc_info=True)
             return self._get_fallback_data()
     
     def _get_fallback_data(self) -> Tuple[List[Dict], int]:
@@ -598,6 +600,15 @@ class EstoqueWidget(QWidget):
         self.filter_status.currentIndexChanged.connect(self._apply_filters)
         filter_layout.addWidget(self.filter_status)
         
+        # Filtro "Já Impresso" - mostra apenas produtos com preço alterado
+        from PySide6.QtWidgets import QCheckBox
+        self.price_changed_check = QCheckBox("Preço Alterado")
+        self.price_changed_check.setToolTip(
+            "Mostra apenas produtos cujo preço mudou desde a última impressão (Já Impresso)"
+        )
+        self.price_changed_check.stateChanged.connect(self._apply_filters)
+        filter_layout.addWidget(self.price_changed_check)
+        
         filter_layout.addStretch()
         
         self.count_label = QLabel("Carregando...")
@@ -646,8 +657,13 @@ class EstoqueWidget(QWidget):
             header_view.resizeSection(i, width)
         header_view.setStretchLastSection(True)
         
-        self.table.setRowHeight(0, 56)
+        # VIRTUALIZATION: Linhas uniformes para performance em listas longas
         self.table.verticalHeader().setDefaultSectionSize(56)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)  # Crucial para virtualization
+        
+        # ScrollPerPixel melhora performance de virtualization
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         
         layout.addWidget(self.table)
         
@@ -692,13 +708,28 @@ class EstoqueWidget(QWidget):
         self.model.set_data(data, total_count)
         self._update_pagination()
         
-        # Solicita thumbnails
+        # Solicita thumbnails com resolução correta de caminho
+        from pathlib import Path
+        
+        # Obtém diretório de assets (usa padrão se não configurado)
+        try:
+            from src.core.settings_service import settings_service
+            assets_dir = Path(settings_service.get("paths.assets_dir", "AutoTabloide_System_Root/assets/store"))
+        except Exception:
+            assets_dir = Path("AutoTabloide_System_Root/assets/store")
+        
         for i, row in enumerate(data):
             img_hash = row.get("img_hash_ref")
             if img_hash:
-                # TODO: Construir caminho correto
-                img_path = f"AutoTabloide_System_Root/assets/store/{img_hash}.png"
-                self._img_worker.add_request(i, img_hash, img_path)
+                # Tenta múltiplas extensões
+                for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                    candidate = assets_dir / f"{img_hash}{ext}"
+                    if candidate.exists():
+                        self._img_worker.add_request(i, img_hash, str(candidate))
+                        break
+                else:
+                    # Fallback para PNG se nenhum encontrado (worker lida com não-existente)
+                    self._img_worker.add_request(i, img_hash, str(assets_dir / f"{img_hash}.png"))
         
         QTimer.singleShot(100, self._img_worker.process_queue)
     
@@ -709,7 +740,7 @@ class EstoqueWidget(QWidget):
     
     @Slot(str)
     def _on_query_error(self, error: str):
-        print(f"[Estoque] Erro: {error}")
+        logging.getLogger("AutoTabloide.Estoque").error(f"Query error: {error}")
         self.count_label.setText("Erro ao carregar")
     
     def _update_pagination(self):
@@ -860,9 +891,39 @@ class EstoqueWidget(QWidget):
         dialog = ProductEditDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
-            # TODO: Salvar no banco
-            QMessageBox.information(self, "Produto", f"Criado: {data['nome_sanitizado']}")
-            self._refresh()
+            
+            # Salvar no banco de forma assíncrona
+            import asyncio
+            from decimal import Decimal
+            from src.core.database import AsyncSessionLocal
+            from src.core.repositories import ProductRepository
+            
+            async def _async_create():
+                async with AsyncSessionLocal() as session:
+                    repo = ProductRepository(session)
+                    preco = Decimal(str(data.get("preco_venda_atual", 0)))
+                    preco_ref = Decimal(str(data.get("preco_referencia", 0))) if data.get("preco_referencia") else None
+                    
+                    await repo.create_or_update(
+                        sku=data.get("sku_origem", ""),
+                        nome=data.get("nome_sanitizado", ""),
+                        preco=preco,
+                        marca=data.get("marca_normalizada"),
+                        peso=data.get("detalhe_peso"),
+                        preco_ref=preco_ref
+                    )
+                    await session.commit()
+            
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(_async_create())
+                loop.close()
+                
+                QMessageBox.information(self, "Produto", f"Produto criado: {data['nome_sanitizado']}")
+                self._refresh()
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao criar produto:\n{str(e)}")
     
     @Slot()
     def _show_context_menu(self, position):

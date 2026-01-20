@@ -15,6 +15,7 @@ from pathlib import Path
 import threading
 import time
 import json
+import logging
 
 from PySide6.QtCore import QObject, Signal, Slot, QTimer, QThread
 
@@ -69,6 +70,9 @@ class SentinelBridge(QObject):
         self._pending_tasks: Dict[str, Dict] = {}
         self._task_counter = 0
         
+        # Logger
+        self._logger = logging.getLogger("AutoTabloide.SentinelBridge")
+        
         # Thread para escutar output queue
         self._listener_thread: Optional[QThread] = None
         self._listener: Optional[QueueListener] = None
@@ -93,7 +97,7 @@ class SentinelBridge(QObject):
             True se iniciado com sucesso
         """
         if self._sentinel_process is not None and self._sentinel_process.is_alive():
-            print("[Bridge] Sentinel já está rodando")
+            self._logger.info("Sentinel já está rodando")
             return True
         
         try:
@@ -101,12 +105,20 @@ class SentinelBridge(QObject):
             self._input_queue = Queue()
             self._output_queue = Queue()
             
-            # Config padrão
+            # GAP-07 FIX: Usa constantes centralizadas ao invés de hardcoding
             if config is None:
-                config = {
-                    "download_path": str(Path("AutoTabloide_System_Root/staging")),
-                    "models_path": str(Path("AutoTabloide_System_Root/bin/models")),
-                }
+                try:
+                    from src.core.constants import STAGING_DIR, SYSTEM_ROOT
+                    config = {
+                        "download_path": str(STAGING_DIR),
+                        "models_path": str(SYSTEM_ROOT / "bin" / "models"),
+                    }
+                except ImportError:
+                    # Fallback para compat
+                    config = {
+                        "download_path": str(Path("AutoTabloide_System_Root/staging")),
+                        "models_path": str(Path("AutoTabloide_System_Root/bin/models")),
+                    }
             
             # Inicia Sentinel em processo separado
             from src.ai.sentinel import SentinelProcess
@@ -127,7 +139,7 @@ class SentinelBridge(QObject):
             return True
             
         except Exception as e:
-            print(f"[Bridge] Erro ao iniciar Sentinel: {e}")
+            self._logger.error(f"Erro ao iniciar Sentinel: {e}", exc_info=True)
             self.status_changed.emit(f"Erro: {e}")
             return False
     

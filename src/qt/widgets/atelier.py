@@ -896,9 +896,33 @@ class AtelierWidget(QWidget):
     
     @Slot()
     def _save_project(self):
-        data = self.canvas.get_scene().serialize()
-        # TODO: Salvar via ProjectManager
-        QMessageBox.information(self, "Salvar", f"Projeto com {len(data.get('slots', []))} slots")
+        from src.qt.core.project_manager import get_project_manager
+        
+        scene_data = self.canvas.get_scene().serialize()
+        pm = get_project_manager()
+        
+        # Se já tem path, salva; senão abre dialog
+        if pm.current_project and pm.current_project.path:
+            pm.update_from_scene(scene_data)
+            try:
+                pm.save_project()
+                self.statusBar().showMessage("Projeto salvo!", 3000) if hasattr(self, 'statusBar') else None
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao salvar:\n{str(e)}")
+        else:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Salvar Projeto",
+                "projeto.tabloide",
+                "Projeto AutoTabloide (*.tabloide);;JSON (*.json)"
+            )
+            if path:
+                pm.new_project(Path(path).stem)
+                pm.update_from_scene(scene_data)
+                try:
+                    pm.save_project(path)
+                    QMessageBox.information(self, "Salvo", f"Projeto salvo em:\n{path}")
+                except Exception as e:
+                    QMessageBox.critical(self, "Erro", f"Erro ao salvar:\n{str(e)}")
     
     @Slot()
     def _export_pdf(self):

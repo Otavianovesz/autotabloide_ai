@@ -32,12 +32,35 @@ MODELS_DIR.mkdir(parents=True, exist_ok=True)
 # HASHES CONHECIDOS DE MODELOS (Passo 25)
 # ==============================================================================
 
-KNOWN_MODEL_HASHES = {
-    # Llama 3 8B Instruct Q4_K_M
-    "Llama-3-8b-instruct.Q4_K_M.gguf": "sha256:...",  # Placeholder
-    
-    # Adicionar hashes conforme modelos são validados
-}
+# Arquivo que armazena hashes calculados dinamicamente
+MODEL_HASHES_FILE = MODELS_DIR / ".model_hashes.json"
+
+
+def _load_or_create_model_hashes() -> dict:
+    """Carrega hashes do arquivo ou retorna dict vazio."""
+    import json
+    if MODEL_HASHES_FILE.exists():
+        try:
+            with open(MODEL_HASHES_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def _save_model_hash(model_name: str, hash_value: str):
+    """Salva hash calculado para uso futuro."""
+    import json
+    hashes = _load_or_create_model_hashes()
+    hashes[model_name] = hash_value
+    with open(MODEL_HASHES_FILE, 'w') as f:
+        json.dump(hashes, f, indent=2)
+
+
+def get_known_hash(model_name: str) -> Optional[str]:
+    """Retorna hash conhecido para um modelo ou None se não existir."""
+    hashes = _load_or_create_model_hashes()
+    return hashes.get(model_name)
 
 
 def calculate_file_sha256(file_path: Path) -> str:

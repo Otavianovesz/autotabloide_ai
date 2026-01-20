@@ -5,6 +5,7 @@ Janela principal com navegação, views e integração de serviços.
 """
 
 import sys
+import logging
 from typing import Optional
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -158,10 +159,14 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         
+        # Logger
+        self._logger = logging.getLogger("AutoTabloide.MainWindow")
+        
         # Setup
         self._setup_ui()
         self._setup_status_bar()
         self._setup_timers()
+        self._setup_sentinel_integration()
     
     def _setup_ui(self) -> None:
         """Configura interface principal."""
@@ -242,6 +247,25 @@ class MainWindow(QMainWindow):
         self.sentinel_timer.timeout.connect(self._check_sentinel_status)
         self.sentinel_timer.start(5000)  # 5 segundos
     
+    def _setup_sentinel_integration(self) -> None:
+        """
+        Integra com SentinelBridge real.
+        GAP-02 FIX: Conecta sinais do SentinelBridge à Sidebar.
+        """
+        try:
+            from .sentinel_bridge import SentinelBridge
+            self._sentinel_bridge = SentinelBridge.instance()
+            self._sentinel_bridge.ready.connect(self.sidebar.set_sentinel_status)
+            self._sentinel_bridge.status_changed.connect(
+                lambda msg: self.statusBar().showMessage(f"Sentinel: {msg}", 5000)
+            )
+            # Verificação inicial
+            self.sidebar.set_sentinel_status(self._sentinel_bridge.is_ready())
+            self._logger.info("SentinelBridge integrado à MainWindow")
+        except ImportError as e:
+            self._logger.warning(f"SentinelBridge não disponível: {e}")
+            self._sentinel_bridge = None
+    
     def _restore_state(self) -> None:
         """Restaura estado da janela."""
         try:
@@ -254,7 +278,7 @@ class MainWindow(QMainWindow):
             if 0 <= last_view < 6:
                 self._navigate_to_view(last_view)
         except Exception as e:
-            print(f"[MainWindow] Erro ao restaurar estado: {e}")
+            self._logger.error(f"Erro ao restaurar estado: {e}", exc_info=True)
     
     def _save_state(self) -> None:
         """Salva estado da janela."""
@@ -264,7 +288,7 @@ class MainWindow(QMainWindow):
             state.save_window_geometry(self)
             state.set_last_view_index(self.stack.currentIndex())
         except Exception as e:
-            print(f"[MainWindow] Erro ao salvar estado: {e}")
+            self._logger.error(f"Erro ao salvar estado: {e}", exc_info=True)
     
     @Slot(int)
     def _on_navigation(self, index: int) -> None:
@@ -277,10 +301,17 @@ class MainWindow(QMainWindow):
     
     @Slot()
     def _check_sentinel_status(self) -> None:
-        """Verifica status do Sentinel."""
-        # TODO: Integrar com serviço real do Sentinel
-        # Por enquanto, sempre mostra como ativo
-        self.sidebar.set_sentinel_status(True)
+        """
+        Verifica status do Sentinel.
+        GAP-02 FIX: Usa SentinelBridge real ao invés de mock.
+        """
+        if hasattr(self, '_sentinel_bridge') and self._sentinel_bridge:
+            self.sidebar.set_sentinel_status(self._sentinel_bridge.is_ready())
+        else:
+            # Fallback: tenta verificar via lock file (GAP-03 unification)
+            from pathlib import Path
+            lock_file = Path("AutoTabloide_System_Root/temp_render/.sentinel.lock")
+            self.sidebar.set_sentinel_status(lock_file.exists())
     
     def show_progress(self, message: str, progress: int = -1) -> None:
         """Mostra progresso na status bar."""

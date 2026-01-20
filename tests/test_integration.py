@@ -121,14 +121,14 @@ class TestIntegration:
     def test_database_models_import(self):
         """Testa que todos os models importam."""
         from src.core.models import (
-            Base, LearningBase, Product, ProductAlias,
-            LayoutMeta, SavedProject, SystemConfig,
+            Base, LearningBase, Produto, ProdutoAlias,
+            LayoutMeta, ProjetoSalvo, SystemConfig,
             AuditLog, KnowledgeVector, HumanCorrection
         )
         
         assert Base is not None
         assert LearningBase is not None
-        assert Product is not None
+        assert Produto is not None
     
     def test_services_import(self):
         """Testa que todos os serviços importam."""
@@ -150,14 +150,15 @@ class TestIntegration:
         assert OutputEngine is not None
     
     def test_ui_components_import(self):
-        """Testa que componentes de UI importam."""
-        from src.ui.components.progress_modal import GlobalProgressModal
-        from src.ui.components.diff_view import DiffView
-        from src.ui.components.drop_indicator import DropIndicator
+        """Testa que componentes de UI (Qt) importam."""
+        from src.qt.widgets.toast import ToastWidget, ToastManager
+        from src.qt.widgets.status_bar import IntelligentStatusBar
+        from src.qt.dialogs.batch_export import BatchExportDialog
         
-        assert GlobalProgressModal is not None
-        assert DiffView is not None
-        assert DropIndicator is not None
+        assert ToastWidget is not None
+        assert ToastManager is not None
+        assert IntelligentStatusBar is not None
+        assert BatchExportDialog is not None
     
     def test_ai_modules_import(self):
         """Testa que módulos de IA importam."""
@@ -180,19 +181,22 @@ class TestIntegration:
     
     def test_event_bus_works(self):
         """Testa que EventBus funciona."""
-        from src.core.event_bus import EventBus, get_event_bus
+        from src.core.event_bus import EventBus, get_event_bus, EventType
         
         bus = get_event_bus()
         received = []
         
-        def handler(data):
-            received.append(data)
+        def handler(event):
+            received.append(event.data)
         
-        bus.on("test_event", handler)
-        bus.emit("test_event", {"value": 42})
+        unsubscribe = bus.subscribe(EventType.SLOT_UPDATED, handler)
+        bus.emit(EventType.SLOT_UPDATED, value=42)
         
         assert len(received) == 1
         assert received[0]["value"] == 42
+        
+        # Cleanup
+        unsubscribe()
     
     def test_slot_controller_works(self):
         """Testa que SlotController funciona."""

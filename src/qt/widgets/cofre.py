@@ -585,13 +585,53 @@ class CofreWidget(QWidget):
                 self.snapshots_list.addItem(item)
     
     def _load_trash(self):
-        """Carrega itens da lixeira."""
-        # Dados de exemplo - integrar com banco real
-        trash = [
-            {"name": "Produto Teste", "type": "Produto", "deleted_at": "27/12/2025 12:00"},
-            {"name": "Layout Antigo", "type": "Projeto", "deleted_at": "26/12/2025 15:30"},
-        ]
-        self.trash_model.set_data(trash)
+        """Carrega itens da lixeira do banco de dados."""
+        import threading
+        
+        def _fetch():
+            import asyncio
+            loop = asyncio.new_event_loop()
+            try:
+                from src.core.database import AsyncSessionLocal
+                
+                async def get_deleted():
+                    try:
+                        async with AsyncSessionLocal() as session:
+                            from sqlalchemy import text
+                            # Query para produtos soft-deleted
+                            result = await session.execute(text("""
+                                SELECT id, nome_sanitizado, 'Produto' as type, deleted_at 
+                                FROM produtos 
+                                WHERE deleted_at IS NOT NULL 
+                                ORDER BY deleted_at DESC 
+                                LIMIT 50
+                            """))
+                            rows = result.fetchall()
+                            return [{
+                                "id": r[0],
+                                "name": r[1],
+                                "type": r[2],
+                                "deleted_at": r[3].strftime("%d/%m/%Y %H:%M") if r[3] else ""
+                            } for r in rows]
+                    except Exception as e:
+                        logging.getLogger("Cofre").debug(f"Trash query error: {e}")
+                        return []
+                
+                data = loop.run_until_complete(get_deleted())
+                # Atualiza UI no thread principal
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.trash_model.set_data(data))
+                
+            except Exception as e:
+                logging.getLogger("Cofre").debug(f"Trash load error: {e}")
+                # Fallback para lista vazia
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self.trash_model.set_data([]))
+            finally:
+                loop.close()
+        
+        thread = threading.Thread(target=_fetch, daemon=True)
+        thread.start()
     
     @Slot()
     def _verify_integrity(self):
@@ -677,7 +717,32 @@ class CofreWidget(QWidget):
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            QMessageBox.information(self, "Restaurar", "Funcionalidade em implementação")
+            try:
+                import shutil
+                snapshot_path = Path(item.data(Qt.UserRole))
+                
+                # Caminho do banco atual
+                db_path = Path("AutoTabloide_System_Root/data/autotabloide.db")
+                
+                if not snapshot_path.exists():
+                    QMessageBox.warning(self, "Erro", "Snapshot não encontrado!")
+                    return
+                
+                # Cria backup do banco atual antes de restaurar
+                if db_path.exists():
+                    backup_path = db_path.with_suffix('.db.bak')
+                    shutil.copy2(db_path, backup_path)
+                
+                # Restaura snapshot
+                shutil.copy2(snapshot_path, db_path)
+                
+                QMessageBox.information(
+                    self, "Restaurar",
+                    f"✅ Snapshot restaurado com sucesso!\n\nReinicie o aplicativo para aplicar as alterações."
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Falha ao restaurar: {e}")
     
     @Slot()
     def _delete_snapshot(self):

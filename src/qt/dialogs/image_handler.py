@@ -17,36 +17,70 @@ from pathlib import Path
 
 
 class ImageProcessThread(QThread):
-    """Thread para processamento de imagem."""
+    """Thread para processamento de imagem com integração real."""
     
     progress = Signal(int, str)  # valor, mensagem
     finished = Signal(str)  # hash do resultado
     error = Signal(str)
     
-    def __init__(self, image_path: str, operations: list, parent=None):
+    def __init__(self, image_path: str, operations: list, output_dir: str = None, parent=None):
         super().__init__(parent)
         self.image_path = image_path
         self.operations = operations
+        self.output_dir = output_dir or "AutoTabloide_System_Root/assets/store"
     
     def run(self):
-        """Executa processamento."""
+        """Executa processamento real com PIL e rembg."""
         try:
+            import hashlib
+            from PIL import Image
+            
             self.progress.emit(10, "Carregando imagem...")
-            # TODO: Carregar imagem real
+            img = Image.open(self.image_path)
             
             if "remove_bg" in self.operations:
                 self.progress.emit(40, "Removendo fundo (U2-Net)...")
-                # TODO: Integrar rembg
+                try:
+                    from rembg import remove
+                    img = remove(img)
+                except ImportError:
+                    self.progress.emit(45, "rembg não disponível, pulando remoção de fundo")
             
             if "autocrop" in self.operations:
-                self.progress.emit(70, "Auto-crop inteligente...")
-                # TODO: Integrar OpenCV crop
+                self.progress.emit(60, "Auto-crop inteligente...")
+                bbox = img.getbbox()
+                if bbox:
+                    img = img.crop(bbox)
+            
+            if "upscale" in self.operations:
+                self.progress.emit(75, "Upscale 2x (Lanczos)...")
+                new_size = (img.width * 2, img.height * 2)
+                img = img.resize(new_size, Image.LANCZOS)
             
             self.progress.emit(90, "Salvando no cofre...")
-            # TODO: Calcular hash e salvar
+            
+            # Calcula hash do conteúdo
+            from io import BytesIO
+            buffer = BytesIO()
+            if img.mode == 'RGBA':
+                img.save(buffer, 'PNG')
+                ext = '.png'
+            else:
+                img.save(buffer, 'JPEG', quality=95)
+                ext = '.jpg'
+            
+            image_bytes = buffer.getvalue()
+            img_hash = hashlib.md5(image_bytes).hexdigest()[:16]
+            
+            # Salva com nome baseado no hash
+            output_path = Path(self.output_dir) / f"{img_hash}{ext}"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'wb') as f:
+                f.write(image_bytes)
             
             self.progress.emit(100, "Concluído!")
-            self.finished.emit("abc123hash")
+            self.finished.emit(img_hash)
             
         except Exception as e:
             self.error.emit(str(e))
@@ -351,12 +385,40 @@ class ImageHandlerDialog(QDialog):
         if not query:
             return
         
-        # TODO: Integrar com Google Custom Search ou scraper
-        QMessageBox.information(
-            self,
-            "Busca",
-            f"Buscando: {query}\n\n(Integrar scraper web)"
-        )
+        # Verifica se há API key configurada para busca web
+        try:
+            from src.core.settings_service import get_settings
+            settings = get_settings()
+            api_key = settings.get("google_api_key", "")
+            
+            if not api_key:
+                QMessageBox.information(
+                    self,
+                    "Configuração Necessária",
+                    "🔍 Busca Web de Imagens\n\n"
+                    "Esta funcionalidade requer configuração:\n\n"
+                    "1. Acesse Configurações → Avançado\n"
+                    "2. Insira sua Google Custom Search API Key\n"
+                    "3. Configure o Search Engine ID\n\n"
+                    "Alternativas disponíveis:\n"
+                    "• Use a aba 'Upload Manual' para carregar imagens\n"
+                    "• Use Ctrl+V para colar do clipboard"
+                )
+                return
+            
+            # Se API key configurada, tentar busca (implementação futura)
+            QMessageBox.information(
+                self,
+                "Em Desenvolvimento", 
+                f"Buscando: {query}\n\nIntegração com API em desenvolvimento."
+            )
+        except Exception:
+            QMessageBox.information(
+                self,
+                "Busca Não Disponível",
+                "Use a aba 'Upload Manual' para carregar imagens do seu computador,\n"
+                "ou cole uma imagem do clipboard com Ctrl+V."
+            )
     
     @Slot(str)
     def _select_image(self, path: str) -> None:
@@ -379,15 +441,21 @@ class ImageHandlerDialog(QDialog):
     
     @Slot()
     def _paste_from_clipboard(self) -> None:
-        """Cola imagem do clipboard."""
+        """Cola imagem do clipboard e salva temporariamente."""
         from PySide6.QtWidgets import QApplication
+        import tempfile
+        
         clipboard = QApplication.clipboard()
         image = clipboard.image()
         
         if image.isNull():
             QMessageBox.warning(self, "Clipboard", "Nenhuma imagem no clipboard!")
         else:
-            # TODO: Salvar temporariamente e carregar
+            # Salva temporariamente
+            temp_path = Path(tempfile.gettempdir()) / "autotabloide_clipboard.png"
+            image.save(str(temp_path), "PNG")
+            self.current_image_path = str(temp_path)
+            self._load_preview(str(temp_path))
             self.status_label.setText("Imagem carregada do clipboard")
             self.btn_save.setEnabled(True)
     
@@ -405,33 +473,117 @@ class ImageHandlerDialog(QDialog):
     
     @Slot()
     def _remove_background(self) -> None:
-        """Remove fundo da imagem."""
+        """Remove fundo da imagem usando rembg via thread."""
         if not self.current_image_path:
             QMessageBox.warning(self, "Aviso", "Selecione uma imagem primeiro!")
             return
         
         self.progress.setVisible(True)
         self.progress.setValue(0)
-        self.status_label.setText("Removendo fundo com U2-Net...")
         
-        # TODO: Implementar com rembg em QThread
-        self.progress.setValue(100)
-        self.status_label.setText("Fundo removido! (simulação)")
+        # Usa ImageProcessThread para processamento real
+        self._process_thread = ImageProcessThread(
+            self.current_image_path,
+            ["remove_bg"]
+        )
+        self._process_thread.progress.connect(self._on_process_progress)
+        self._process_thread.finished.connect(self._on_process_finished)
+        self._process_thread.error.connect(self._on_process_error)
+        self._process_thread.start()
     
     @Slot()
     def _autocrop(self) -> None:
-        """Auto-crop inteligente."""
-        self.status_label.setText("Auto-crop aplicado! (simulação)")
+        """Auto-crop inteligente usando PIL via thread."""
+        if not self.current_image_path:
+            QMessageBox.warning(self, "Aviso", "Selecione uma imagem primeiro!")
+            return
+        
+        self.progress.setVisible(True)
+        self._process_thread = ImageProcessThread(
+            self.current_image_path,
+            ["autocrop"]
+        )
+        self._process_thread.progress.connect(self._on_process_progress)
+        self._process_thread.finished.connect(self._on_process_finished)
+        self._process_thread.error.connect(self._on_process_error)
+        self._process_thread.start()
     
     @Slot()
     def _upscale(self) -> None:
-        """Upscale 2x."""
-        self.status_label.setText("Upscale 2x aplicado! (simulação)")
+        """Upscale 2x usando Lanczos via thread."""
+        if not self.current_image_path:
+            QMessageBox.warning(self, "Aviso", "Selecione uma imagem primeiro!")
+            return
+        
+        self.progress.setVisible(True)
+        self._process_thread = ImageProcessThread(
+            self.current_image_path,
+            ["upscale"]
+        )
+        self._process_thread.progress.connect(self._on_process_progress)
+        self._process_thread.finished.connect(self._on_process_finished)
+        self._process_thread.error.connect(self._on_process_error)
+        self._process_thread.start()
+    
+    @Slot(int, str)
+    def _on_process_progress(self, value: int, message: str) -> None:
+        """Atualiza progresso do processamento."""
+        self.progress.setValue(value)
+        self.status_label.setText(message)
+    
+    @Slot(str)
+    def _on_process_finished(self, img_hash: str) -> None:
+        """Processamento concluído."""
+        self.progress.setVisible(False)
+        self.status_label.setText(f"Processado! Hash: {img_hash}")
+        self._last_hash = img_hash
+        
+        # Atualiza preview processado
+        assets_dir = Path("AutoTabloide_System_Root/assets/store")
+        for ext in ['.png', '.jpg']:
+            processed_path = assets_dir / f"{img_hash}{ext}"
+            if processed_path.exists():
+                self._load_processed_preview(str(processed_path))
+                break
+    
+    @Slot(str)
+    def _on_process_error(self, error: str) -> None:
+        """Erro no processamento."""
+        self.progress.setVisible(False)
+        self.status_label.setText(f"Erro: {error}")
+        QMessageBox.critical(self, "Erro", f"Erro no processamento:\n{error}")
+    
+    def _load_processed_preview(self, path: str) -> None:
+        """Carrega preview da imagem processada."""
+        pixmap = QPixmap(path)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
+                QSize(250, 250),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            self.processed_preview.setPixmap(scaled)
     
     @Slot()
     def _save_image(self) -> None:
-        """Salva imagem no cofre."""
-        # TODO: Calcular hash e salvar
-        self.image_saved.emit("new_image_hash")
-        QMessageBox.information(self, "Salvo", "Imagem salva no cofre!")
+        """Salva imagem no cofre com hash calculado."""
+        if not self.current_image_path:
+            QMessageBox.warning(self, "Aviso", "Nenhuma imagem para salvar!")
+            return
+        
+        # Usa thread para processar e salvar
+        self._save_thread = ImageProcessThread(
+            self.current_image_path,
+            []  # Sem operações, apenas calcula hash e copia
+        )
+        self._save_thread.finished.connect(self._on_save_finished)
+        self._save_thread.error.connect(self._on_process_error)
+        self._save_thread.start()
+    
+    @Slot(str)
+    def _on_save_finished(self, img_hash: str) -> None:
+        """Imagem salva com sucesso."""
+        self.image_saved.emit(img_hash)
+        QMessageBox.information(self, "Salvo", f"Imagem salva no cofre!\nHash: {img_hash}")
         self.accept()
+
