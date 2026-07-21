@@ -161,12 +161,26 @@ class PainelCamadas(QWidget):
         return w
 
     def _clicou_na_lista(self, item) -> None:
-        """R-025 (passo 56): clicar na linha seleciona a região no canvas."""
+        """R-025 (passo 56): clicar na linha seleciona a região no canvas.
+
+        Em MODO DE ISOLAMENTO, uma região FORA do escopo não é selecionável
+        (o setSelected seria no-op e o painel esvaziaria em silêncio —
+        violação do RG-55 achada pela frota): o clique na camada TROCA o
+        isolamento para o contexto dela, como o duplo clique faz."""
         if self._sincronizando:
             return
         reg = item.data(Qt.ItemDataRole.UserRole)
         if reg is None:
             return
+        if self.canvas.em_isolamento():
+            escopo = self.canvas.escopo_isolamento() or set()
+            slot = self.canvas._slot_de(reg)
+            if slot is not None and slot.id not in escopo:
+                self.canvas.isolar_por_duplo_clique(reg)   # troca o contexto
+                escopo = self.canvas.escopo_isolamento()
+                if escopo is not None and slot.id not in escopo:
+                    # nada isolável no alvo: o clique do dono vence o modo
+                    self.canvas.sair_isolamento(tudo=True)
         self._sincronizando = True
         try:
             for it in self.canvas._itens:

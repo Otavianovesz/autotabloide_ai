@@ -1525,3 +1525,67 @@ def test_adversarial_f11_relampago_produto_certo(raiz_tmp, tmp_path):
     x, y, w, h = _rect_px(reg.rect, lay.dpi)
     r, g, b = img.getpixel((x + w // 2, y + h // 2))
     assert b > 150 and r < 100        # AZUL (produto B), não vermelho (A)
+
+
+def test_adversarial_isolamento_nao_quebra_vinculo_nem_propagacao(
+        raiz_tmp, tmp_path):
+    """MODO DE ISOLAMENTO (21/07, gesto do Illustrator — I5): editar DENTRO do
+    isolamento não pode trocar conteúdo de lugar nem quebrar mestra↔cópia.
+    O teste entra no grupo, entra na célula, MOVE uma peça de cópia (vira
+    ajuste consciente, I4), edita a MESTRA (propaga em quem não tem ajuste),
+    sai, e confere o trio POR CONTEÚDO (cor da imagem por slot) + os vínculos
+    por uid — nunca por ausência de exceção."""
+    from app.qt.canvas import CanvasView
+    QApplication.instance() or QApplication([])
+    lay = _grade_4()
+    itens = _itens(tmp_path)[:4]
+    mapa = {f"celula_{i}": itens[i].uid for i in range(4)}
+    por_uid = {it.uid: it for it in itens}
+    dados = {sid: DadosProduto(por_uid[u].nome,
+                               preco_por=servico.preco_decimal(por_uid[u].preco),
+                               imagem_path=por_uid[u].imagem)
+             for sid, u in mapa.items()}
+    c = CanvasView()
+    c.carregar(lay, dados)
+    c.mapa.update(mapa)
+    pag = lay.paginas[0]
+    mestra_nome = next(r for r in pag.slots[0].regioes
+                       if r.tipo == TipoRegiao.NOME)
+
+    # nível 1 (grupo) → nível 2 (a CÓPIA celula_1)
+    reg_c1 = next(r for r in pag.slots[1].regioes
+                  if r.tipo == TipoRegiao.PRECO)
+    assert c.isolar_por_duplo_clique(reg_c1)          # grupo (4 células)
+    assert c.escopo_isolamento() == {f"celula_{i}" for i in range(4)}
+    assert c.isolar_por_duplo_clique(reg_c1)          # a célula da cópia
+    assert c.celula_isolada(pag.slots[1])
+
+    # move a peça PREÇO da cópia dentro do isolamento (o gesto do dono)
+    it_preco = next(it for it in c._itens if it.regiao is reg_c1)
+    ref_antes = reg_c1.ref_mestre                     # o vínculo I4, por uid
+    c._scene.clearSelection()
+    it_preco.setSelected(True)
+    dx = c.mm_para_cena(4, 0)[0]
+    it_preco.setPos(it_preco.pos().x() + dx, it_preco.pos().y())
+    c._commit_regiao(it_preco)
+    assert reg_c1.ref_mestre == ref_antes             # I4: o uid não mudou
+    assert "rect" in reg_c1.overrides                 # ajuste CONSCIENTE
+
+    # edita a MESTRA: duplo clique nela TROCA o alvo preservando a
+    # profundidade (frota: célula→célula do mesmo grupo é UM gesto)
+    assert c.isolar_por_duplo_clique(mestra_nome)     # direto na célula dela
+    assert c.celula_isolada(pag.slots[0])
+    mestra_nome.rect.x_mm += 2
+    c.notificar_edicao(mestra_nome, "rect")           # propaga nas cópias
+    for i in (2, 3):                                  # cópias SEM ajuste seguem
+        nome_i = next(r for r in pag.slots[i].regioes
+                      if r.tipo == TipoRegiao.NOME)
+        assert nome_i.rect.x_mm == pytest.approx(
+            mestra_nome.rect.x_mm + pag.slots[i].origem_mm[0]
+            - pag.slots[0].origem_mm[0], abs=0.01)
+    preco_c1_x = reg_c1.rect.x_mm                     # o ajuste da cópia FICOU
+    c.sair_isolamento(tudo=True)
+    assert reg_c1.rect.x_mm == preco_c1_x
+
+    # o veredito final é o PIXEL: cada célula com a imagem do SEU produto
+    _conferir(lay, c.mapa, itens)

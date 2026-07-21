@@ -324,7 +324,9 @@ class RegiaoItem(QGraphicsItem):
     def _selecao_por_clique(self, com_modificador: bool, ponto_cena=None) -> None:
         """RG-15 ("clico e dá errado"): o 1º clique numa célula seleciona o
         TRIO inteiro; o 2º clique (sem arrastar) entra na região. Chamado
-        APÓS a seleção padrão do Qt; Ctrl/Shift preservam o gesto multi."""
+        APÓS a seleção padrão do Qt; Ctrl/Shift preservam o gesto multi.
+        DENTRO da célula ISOLADA (duplo clique, estilo Illustrator) o clique
+        é DIRETO na peça — o trio não acende nem colapsa."""
         self._colapsar_no_release = False
         from app.qt.design import diag_selecao
         if com_modificador or not self.isSelected():
@@ -340,6 +342,13 @@ class RegiaoItem(QGraphicsItem):
         prim = (self.canvas.resolver_selecao(ponto_cena)
                 if ponto_cena is not None else None)
         self.canvas._primaria = prim if prim is not None else self.regiao
+        # Isolamento de CÉLULA: cada peça edita sozinha (RG-55 intacto — a
+        # primária já é a região clicada; o painel a mostra)
+        if self.canvas.celula_isolada(self.canvas._slot_de(self.regiao)):
+            if diag_selecao.ligado():
+                diag_selecao.anotar(
+                    "clique_isolado", **self.canvas._contexto_regiao(self.regiao))
+            return
         irmas = self._irmas()
         if not irmas:
             if diag_selecao.ligado():
@@ -378,6 +387,10 @@ class RegiaoItem(QGraphicsItem):
         self._colapsar_no_release = False
 
     def _marcar_hover_grupo(self, ligado: bool) -> None:
+        # dentro da célula isolada o trio não acende nem no hover — cada
+        # peça é uma peça (o véu já conta a história do resto)
+        if self.canvas.celula_isolada(self.canvas._slot_de(self.regiao)):
+            return
         for it in self._irmas():
             it._hover_grupo = ligado
             it.update()
@@ -460,6 +473,19 @@ class RegiaoItem(QGraphicsItem):
         self._colapsar_se_clique_parado()
         self.canvas._commit_regiao(self)
 
+    def mouseDoubleClickEvent(self, event) -> None:
+        """O gesto do Illustrator: duplo clique ENTRA no grupo/célula (modo
+        de isolamento — cada peça edita sozinha; Esc sai). O press do duplo
+        já rodou a seleção normal; aqui só empilhamos o nível e desarmamos o
+        colapso do RG-15 (senão os dois gestos brigariam no release)."""
+        if (event.button() == Qt.MouseButton.LeftButton
+                and not event.modifiers()
+                and self.canvas.isolar_por_duplo_clique(self.regiao)):
+            self._colapsar_no_release = False
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     def montar_menu_contexto(self):
         """Constrói o menu de contexto da região e o mapa ação→callable. UMA
         fonte de verdade (RG-56 passo 15): usada pelo clique e pela foto dos
@@ -494,6 +520,31 @@ class RegiaoItem(QGraphicsItem):
             a_trav = menu.addAction(icone("cadeado", tamanho=16), "Travar")
         acoes[a_trav] = lambda: self.canvas.set_travado(
             self.regiao, not self.regiao.travado)
+
+        # Modo de isolamento (estilo Illustrator) — RG-56: todo estado tem o
+        # inverso a UM clique; o menu ensina o gesto do duplo clique. A
+        # condição BATE com a capacidade real do gesto (achado da frota:
+        # oferecer "isolar" onde o isolar não faz nada é clique morto, I2):
+        # grupo com 2+ células OU célula com 2+ peças.
+        if self.canvas.em_isolamento():
+            a_sair = menu.addAction(icone("restaurar", tamanho=16),
+                                    "Sair do isolamento")
+            a_sair.setShortcut("Esc")
+            acoes[a_sair] = lambda: self.canvas.sair_isolamento(tudo=True)
+        elif slot is not None:
+            from app.rendering.grade import mestre_do_slot, slots_do_grupo
+            pagina = self.canvas._pagina()
+            mestre = mestre_do_slot(pagina, slot)
+            grupo_2mais = (mestre is not None
+                           and len(slots_do_grupo(pagina, mestre)) >= 1)
+            if grupo_2mais or len(slot.regioes) >= 2:
+                a_iso = menu.addAction(icone("grade", tamanho=16),
+                                       "Entrar no grupo (isolar)")
+                a_iso.setToolTip("Edita cada peça sozinha, com o resto da "
+                                 "página fora de foco — o duplo clique faz "
+                                 "o mesmo; Esc sai")
+                acoes[a_iso] = lambda: self.canvas.isolar_por_duplo_clique(
+                    self.regiao)
 
         # R-031 (Fase 5): conta-gotas de estilo — copia SÓ estilo (nunca
         # geometria/conteúdo); colar vale na seleção inteira (lote).

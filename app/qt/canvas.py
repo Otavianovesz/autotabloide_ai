@@ -97,6 +97,12 @@ class CanvasView(QGraphicsView):
         # RG-55 (Fase 4): a região efetivamente CLICADA. Com o trio da célula
         # selecionado (RG-15), é ela que o painel mostra — nunca "órfão" (I2).
         self._primaria = None
+        # MODO DE ISOLAMENTO (estilo Illustrator): pilha de níveis; cada nível
+        # é {"ids": tuple[str] (ids de SLOT — I1), "nivel": "grupo"|"celula"}.
+        # Vazio = sem isolamento. Chip e véu nascem sob demanda.
+        self._pilha_isolamento: list[dict] = []
+        self._chip_isolamento = None
+        self._veu_isolamento = None
         self._raio_x = False             # R-040: modo estrutura (sem a arte)
         self._arte_travada = True        # R-039: a arte de fundo é protegida
         self._ajuste_pendente = False    # RG-05: fit pedido antes do 1º layout real
@@ -190,6 +196,11 @@ class CanvasView(QGraphicsView):
         self._itens = []
         self._guias = []          # scene.clear() já removeu os itens de guia
         self._guias_usuario = []
+        # arte nova = mundo novo: o isolamento não atravessa layouts
+        self._pilha_isolamento = []
+        self._veu_isolamento = None      # o clear() já o destruiu
+        if self._chip_isolamento is not None:
+            self._chip_isolamento.hide()
         self._compor_fundo()
         self._scene.setSceneRect(self._bg.boundingRect())
         self._construir_itens()
@@ -225,6 +236,7 @@ class CanvasView(QGraphicsView):
         i = max(0, min(i, len(self._layout.paginas) - 1))
         if i == self._pagina_atual:
             return
+        self.sair_isolamento(tudo=True)  # o isolamento é da página em tela
         self._pagina_atual = i
         self._scene.clearSelection()
         self._compor_fundo()
@@ -417,6 +429,11 @@ class CanvasView(QGraphicsView):
             item.setToolTip(self.legenda_de_grupo(reg))   # RG-56 passo 21
             self._scene.addItem(item)
             self._itens.append(item)
+        # o isolamento sobrevive à reconstrução (undo/edição/propagação):
+        # revalida os ids (slot removido derruba o nível) e reaplica
+        if self._pilha_isolamento:
+            self._validar_isolamento()
+            self._aplicar_isolamento()
 
     def legenda_de_grupo(self, reg) -> str:
         """Passo 21: a legenda PT-BR simples do estado agrupável (tooltip do
@@ -436,15 +453,59 @@ class CanvasView(QGraphicsView):
         self._construir_itens()
 
     def _commit_regiao(self, item: RegiaoItem) -> None:
-        """Ao soltar: muta o modelo (mm) e recompõe pelo Pillow (WYSIWYG)."""
-        r = item.rect_cena()
-        reg = item.regiao
-        reg.rect.x_mm, reg.rect.y_mm = self.cena_para_mm(r.x(), r.y())
-        reg.rect.larg_mm, reg.rect.alt_mm = self.cena_para_mm(r.width(), r.height())
-        self._apos_edicao(reg, "rect")
+        """Ao soltar: muta o modelo (mm) e recompõe pelo Pillow (WYSIWYG).
+
+        DOIS consertos de bug latente (provados por teste de conteúdo):
+        1. O arrasto do TRIO move as irmãs pelo Qt, mas só a região AGARRADA
+           era commitada — as irmãs voltavam ao lugar no modelo (a composição
+           ficava defasada do contorno). Agora TODAS as selecionadas que
+           saíram do lugar commitam juntas (1 estado de undo).
+        2. Um clique PARADO numa região de cópia gravava override 'rect' sem
+           edição nenhuma — a cópia parava de seguir a mestra em silêncio
+           (violação de I2/I4). Agora só commita o que REALMENTE mudou."""
+        eps = 1e-3                       # 1 µm: nada visível muda abaixo disso
+
+        def _mudou(it: RegiaoItem) -> tuple | None:
+            r = it.rect_cena()
+            x, y = self.cena_para_mm(r.x(), r.y())
+            w, h = self.cena_para_mm(r.width(), r.height())
+            reg = it.regiao
+            if (abs(x - reg.rect.x_mm) < eps and abs(y - reg.rect.y_mm) < eps
+                    and abs(w - reg.rect.larg_mm) < eps
+                    and abs(h - reg.rect.alt_mm) < eps):
+                return None
+            return (x, y, w, h)
+
+        ultima = None
+        # 1) o AGARRADO commita pela posição própria (com o snap dele)
+        novo_ag = _mudou(item)
+        delta = (0.0, 0.0)
+        if novo_ag is not None:
+            reg = item.regiao
+            delta = (novo_ag[0] - reg.rect.x_mm, novo_ag[1] - reg.rect.y_mm)
+            reg.rect.x_mm, reg.rect.y_mm = novo_ag[0], novo_ag[1]
+            reg.rect.larg_mm, reg.rect.alt_mm = novo_ag[2], novo_ag[3]
+            self._apos_edicao(reg, "rect")
+            ultima = reg
+        # 2) as IRMÃS selecionadas seguem o MESMO delta do agarrado (achado
+        # da frota: o snap individual de cada irmã divergia até 6px e o
+        # commit multi gravaria a célula "desmontada" no modelo — o delta
+        # uniforme preserva o desenho interno do trio exatamente)
+        for it in self.selecionados():
+            if it is item or _mudou(it) is None:
+                continue
+            reg = it.regiao
+            reg.rect.x_mm += delta[0]
+            reg.rect.y_mm += delta[1]
+            self._apos_edicao(reg, "rect")
+            ultima = reg
+        if ultima is None:
+            return                       # clique parado: nada mudou, nada grava
         self._registrar_hist()
         self._compor_fundo()
-        self.editou.emit(reg)
+        if self.em_isolamento():         # o buraco do véu acompanha a peça
+            self._atualizar_veu_isolamento()
+        self.editou.emit(ultima)
 
     # --- histórico (F5.10): desfazer/refazer + copiar/colar ---------------------
 
@@ -731,6 +792,278 @@ class CanvasView(QGraphicsView):
             mostrar_tutorial_agrupar(self, so_se_primeira_vez=primeira_vez)
         except Exception:
             pass                          # headless: nunca derruba o gesto
+
+    # --- MODO DE ISOLAMENTO (estilo Illustrator) ---------------------------------
+    #
+    # A dor real do dono: clicar numa peça de um grupo seleciona o conjunto e
+    # ele não consegue editar isoladamente. O gesto do Illustrator: DUPLO
+    # CLIQUE entra no grupo (uma PILHA de níveis: grupo replicável → célula),
+    # o resto da página fica sob um véu e não responde; dentro, cada peça
+    # edita sozinha; Esc volta UM nível; duplo clique fora sai/troca. Um chip
+    # visível diz onde você está (I2: modo nunca silencioso). O escopo guarda
+    # IDs de slot (I1: identidade, nunca posição/índice) e sobrevive à
+    # reconstrução dos itens (_construir_itens revalida e reaplica).
+
+    def em_isolamento(self) -> bool:
+        return bool(self._pilha_isolamento)
+
+    def escopo_isolamento(self) -> set[str] | None:
+        """Os ids de slot do nível ATUAL da pilha (None = sem isolamento)."""
+        if not self._pilha_isolamento:
+            return None
+        return set(self._pilha_isolamento[-1]["ids"])
+
+    def celula_isolada(self, slot) -> bool:
+        """True se o nível atual é a CÉLULA `slot` (clique direto na peça,
+        sem o gesto do trio RG-15)."""
+        escopo = self.escopo_isolamento()
+        return bool(slot is not None and escopo is not None
+                    and escopo == {slot.id})
+
+    def isolar_por_duplo_clique(self, reg) -> bool:
+        """O gesto: decide o PRÓXIMO nível a isolar a partir da região
+        clicada — grupo replicável (mestre+cópias) primeiro, depois a
+        célula. Duplo clique numa região FORA do escopo atual troca o
+        isolamento (sai de tudo e entra no alvo). Devolve True se entrou
+        num nível novo."""
+        slot = self._slot_de(reg)
+        if slot is None or self._layout is None:
+            return False
+        escopo = self.escopo_isolamento()
+        if escopo is not None and slot.id not in escopo:
+            # troca de alvo preservando a PROFUNDIDADE (achado da frota):
+            # sobe a pilha só até um nível que CONTENHA o alvo (célula B do
+            # mesmo grupo → fica no grupo e desce direto na célula B); alvo
+            # de outro contexto → sai de tudo e recomeça do nível 1
+            while (self._pilha_isolamento
+                   and slot.id not in self._pilha_isolamento[-1]["ids"]):
+                self.sair_isolamento()
+            escopo = self.escopo_isolamento()
+        from app.rendering.grade import mestre_do_slot, slots_do_grupo
+        pagina = self._pagina()
+        mestre = mestre_do_slot(pagina, slot)
+        ids_grupo = None
+        if mestre is not None:
+            ids_grupo = {mestre.id} | {s.id for s in
+                                       slots_do_grupo(pagina, mestre)}
+        # nível 1: o GRUPO inteiro (2+ células), se ainda não estamos nele
+        if ids_grupo and len(ids_grupo) >= 2 and escopo is None:
+            return self._empilhar_isolamento(ids_grupo, "grupo", reg)
+        # nível 2 (ou único): a CÉLULA — só faz sentido com 2+ peças
+        if len(slot.regioes) >= 2 and (escopo is None
+                                       or escopo != {slot.id}):
+            return self._empilhar_isolamento({slot.id}, "celula", reg)
+        return False
+
+    def _empilhar_isolamento(self, ids: set[str], nivel: str, reg) -> bool:
+        self._pilha_isolamento.append(
+            {"ids": tuple(sorted(ids)), "nivel": nivel})
+        from app.qt.design import diag_selecao
+        if diag_selecao.ligado():
+            diag_selecao.anotar("isolamento_entrou", nivel=nivel,
+                                n_slots=len(ids),
+                                **self._contexto_regiao(reg))
+        # a região clicada vira A seleção (e a primária — o painel a mostra,
+        # RG-55); no nível de grupo o trio continua valendo nos cliques
+        # seguintes, então aqui só focamos a peça clicada
+        self._scene.blockSignals(True)
+        try:
+            for it in self._itens:
+                it.setSelected(it.regiao is reg)
+        finally:
+            self._scene.blockSignals(False)
+        self._primaria = reg
+        self._aplicar_isolamento()
+        self._emitir_selecao()
+        return True
+
+    def sair_isolamento(self, tudo: bool = False) -> bool:
+        """Esc / duplo clique fora: volta UM nível (`tudo` esvazia a pilha).
+        A seleção atual fica como está (o painel não 'apaga' — RG-55).
+        Devolve False se já não havia isolamento (o Esc segue adiante)."""
+        if not self._pilha_isolamento:
+            return False
+        from app.qt.design import diag_selecao
+        if tudo:
+            self._pilha_isolamento.clear()
+        else:
+            self._pilha_isolamento.pop()
+        if diag_selecao.ligado():
+            diag_selecao.anotar("isolamento_saiu", tudo=tudo,
+                                niveis_restantes=len(self._pilha_isolamento))
+        self._aplicar_isolamento()
+        return True
+
+    def _validar_isolamento(self) -> None:
+        """A pilha só vale para slots que AINDA existem na página atual —
+        undo/exclusão/troca de arte derrubam os níveis órfãos (sem crash,
+        sem prender o dono num escopo fantasma)."""
+        if not self._pilha_isolamento or self._layout is None:
+            return
+        ids_pagina = {s.id for s in self._pagina().slots}
+        valida: list[dict] = []
+        for nivel in self._pilha_isolamento:
+            vivos = tuple(i for i in nivel["ids"] if i in ids_pagina)
+            if not vivos:
+                break                    # este nível (e os de dentro) caem
+            # grupo que encolheu a 1 célula É uma célula (o chip não mente
+            # e o gesto ensinado bate com o comportamento real)
+            nome = "celula" if len(vivos) == 1 else nivel["nivel"]
+            # nível idêntico ao de fora é ruído (um Esc "que não faz nada")
+            if valida and set(valida[-1]["ids"]) == set(vivos):
+                continue
+            valida.append({**nivel, "ids": vivos, "nivel": nome})
+        self._pilha_isolamento = valida
+
+    def _aplicar_isolamento(self) -> None:
+        """Aplica o estado do nível atual aos itens: fora do escopo =
+        esmaecido, não-selecionável, não-móvel; dentro = normal (travado
+        continua travado). Véu com buracos sobre a arte + chip visível."""
+        escopo = self.escopo_isolamento()
+        from PySide6.QtWidgets import QGraphicsItem as _GI
+        self._scene.blockSignals(True)
+        mudou_selecao = False
+        try:
+            for it in self._itens:
+                slot = self._slot_de(it.regiao)
+                dentro = escopo is None or (slot is not None
+                                            and slot.id in escopo)
+                it.setOpacity(1.0 if dentro else 0.35)
+                it.setFlag(_GI.GraphicsItemFlag.ItemIsSelectable, dentro)
+                it.setFlag(_GI.GraphicsItemFlag.ItemIsMovable,
+                           dentro and not it.regiao.travado)
+                it.setAcceptHoverEvents(dentro)
+                # a frota provou: flag não basta — a ALÇA de resize e o menu
+                # entram pelo press direto no item. Fora do escopo o item não
+                # aceita botão NENHUM (inerte de verdade, no dispatch do Qt).
+                it.setAcceptedMouseButtons(
+                    Qt.MouseButton.AllButtons if dentro
+                    else Qt.MouseButton.NoButton)
+                if not dentro and it.isSelected():
+                    it.setSelected(False)
+                    mudou_selecao = True
+        finally:
+            self._scene.blockSignals(False)
+        self._atualizar_veu_isolamento()
+        self._atualizar_chip_isolamento()
+        if mudou_selecao:
+            self._emitir_selecao()       # uma emissão só (sem tempestade)
+
+    def _atualizar_veu_isolamento(self) -> None:
+        """O véu translúcido cobre a página com BURACOS nas peças do escopo
+        (o resto literalmente sai de foco, como no Illustrator). Cor segue o
+        tema. Nunca intercepta o mouse."""
+        if self._veu_isolamento is not None:
+            if self._veu_isolamento.scene() is self._scene:
+                self._scene.removeItem(self._veu_isolamento)
+            self._veu_isolamento = None
+        escopo = self.escopo_isolamento()
+        if escopo is None or self._layout is None:
+            return
+        from PySide6.QtGui import QColor, QPainterPath
+        from PySide6.QtWidgets import QGraphicsPathItem
+        # SUBTRAÇÃO, não OddEven (achado da frota): com preço/selo sobreposto
+        # à foto — o desenho mais comum de célula — a paridade re-pintava o
+        # véu exatamente no miolo isolado; a união dos buracos é imune
+        pagina = QPainterPath()
+        pw, ph = self.mm_para_cena(self._layout.largura_mm,
+                                   self._layout.altura_mm)
+        pagina.addRect(0, 0, pw, ph)
+        buracos = QPainterPath()
+        for slot in self._pagina().slots:
+            if slot.id not in escopo:
+                continue
+            for r in slot.regioes:
+                x, y = self.mm_para_cena(r.rect.x_mm, r.rect.y_mm)
+                w, h = self.mm_para_cena(r.rect.larg_mm, r.rect.alt_mm)
+                um = QPainterPath()
+                um.addRect(x - 2, y - 2, w + 4, h + 4)
+                buracos = buracos.united(um)
+        veu = QGraphicsPathItem(pagina.subtracted(buracos))
+        from app.qt.design import tokens as _t
+        escuro = getattr(_t, "TEMA_ATUAL", "claro") == "escuro"
+        veu.setBrush(QColor(0, 0, 0, 150) if escuro
+                     else QColor(255, 255, 255, 150))
+        veu.setPen(Qt.PenStyle.NoPen)
+        veu.setZValue(5)                 # sobre a arte (0), sob as alças (10)
+        veu.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._scene.addItem(veu)
+        self._veu_isolamento = veu
+
+    def _atualizar_chip_isolamento(self) -> None:
+        """O chip no topo do canvas: diz o nível e como sair (I2 — o modo
+        nunca é silencioso). Botão 'Sair' para quem não lembra do Esc."""
+        if not self._pilha_isolamento:
+            if self._chip_isolamento is not None:
+                self._chip_isolamento.hide()
+            return
+        from app.qt.design import tokens as _t
+        if self._chip_isolamento is None:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton
+            chip = QWidget(self)
+            chip.setObjectName("chip_isolamento")
+            h = QHBoxLayout(chip)
+            h.setContentsMargins(12, 4, 6, 4)
+            h.setSpacing(6)
+            rotulo = QLabel("")
+            rotulo.setProperty("papel", "legenda")
+            botao = QToolButton()
+            botao.setText("Sair ✕")
+            botao.setToolTip("Sair do isolamento (Esc volta um nível)")
+            botao.setAutoRaise(True)
+            botao.clicked.connect(lambda: self.sair_isolamento(tudo=True))
+            h.addWidget(rotulo)
+            h.addWidget(botao)
+            chip._rotulo = rotulo
+            self._chip_isolamento = chip
+        # o stylesheet REGENERA a cada atualização (achado da frota: os
+        # tokens interpolados na criação congelavam o chip no tema antigo)
+        self._chip_isolamento.setStyleSheet(
+            f"#chip_isolamento {{ background: {_t.SUPERFICIE}; "
+            f"border: 1px solid {_t.BORDA_FORTE}; border-radius: 14px; }}")
+        nivel = self._pilha_isolamento[-1]
+        if nivel["nivel"] == "grupo":
+            n = len(nivel["ids"])
+            plural = "células" if n > 1 else "célula"
+            texto = (f"Dentro do GRUPO ({n} {plural}) — "
+                     "duplo clique entra numa célula · Esc sai")
+        else:
+            texto = ("Dentro da CÉLULA — cada peça edita sozinha · "
+                     "Tab pula entre elas · Esc sai")
+        self._chip_isolamento._rotulo.setText(texto)
+        self._chip_isolamento.adjustSize()
+        self._posicionar_chip_isolamento()
+        self._chip_isolamento.show()
+        self._chip_isolamento.raise_()
+
+    def _posicionar_chip_isolamento(self) -> None:
+        if self._chip_isolamento is not None and self._chip_isolamento.isVisible():
+            self._chip_isolamento.move(
+                max(8, (self.width() - self._chip_isolamento.width()) // 2), 10)
+
+    def _circular_isolamento(self) -> bool:
+        """Tab dentro da CÉLULA isolada: pula para a próxima peça (na ordem
+        do slot), seleciona e vira a primária (o painel acompanha)."""
+        escopo = self.escopo_isolamento()
+        if escopo is None or len(escopo) != 1:
+            return False
+        sid = next(iter(escopo))
+        slot = next((s for s in self._pagina().slots if s.id == sid), None)
+        if slot is None or len(slot.regioes) < 2:
+            return False
+        itens = [it for it in self._itens if it.regiao in slot.regioes]
+        itens.sort(key=lambda it: slot.regioes.index(it.regiao))
+        atual = next((i for i, it in enumerate(itens) if it.isSelected()), -1)
+        alvo = itens[(atual + 1) % len(itens)]
+        self._scene.blockSignals(True)
+        try:
+            for it in itens:
+                it.setSelected(it is alvo)
+        finally:
+            self._scene.blockSignals(False)
+        self._primaria = alvo.regiao
+        self._emitir_selecao()
+        return True
 
     def copiar_selecao(self) -> bool:
         reg = self.selecionada()
@@ -1152,13 +1485,37 @@ class CanvasView(QGraphicsView):
 
     def mousePressEvent(self, ev) -> None:  # noqa: N802 (Qt)
         # OS F11.5 #36: Alt+arrastar numa célula OCUPADA inicia a TROCA
-        # (Alt não conflita: seleção/movimento seguem sem modificador)
+        # (Alt não conflita: seleção/movimento seguem sem modificador).
+        # Em ISOLAMENTO a troca fica suspensa (achado da frota): o "resto que
+        # não responde" respondia ao Alt — contradizia a promessa do chip.
         if (ev.button() == Qt.MouseButton.LeftButton
                 and ev.modifiers() & Qt.KeyboardModifier.AltModifier
+                and not self.em_isolamento()
                 and self.iniciar_troca_por_arrasto(
                     self.mapToScene(ev.position().toPoint()))):
             return
         super().mousePressEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        """O duplo clique que NÃO caiu numa peça ativa: em isolamento, fora
+        do escopo = trocar de alvo (se acertou uma região esmaecida) ou sair
+        um nível (área vazia) — o gesto do Illustrator. Sem isolamento, o
+        fluxo padrão segue (o duplo clique numa região vai ao item)."""
+        if ev.button() == Qt.MouseButton.LeftButton and self.em_isolamento():
+            ponto = self.mapToScene(ev.position().toPoint())
+            reg = self.resolver_selecao(ponto)   # ignora a interatividade
+            escopo = self.escopo_isolamento()
+            if reg is not None:
+                slot = self._slot_de(reg)
+                if slot is not None and slot.id not in (escopo or set()):
+                    self.isolar_por_duplo_clique(reg)   # troca de alvo
+                    ev.accept()
+                    return
+            elif reg is None:
+                self.sair_isolamento()               # vazio: volta um nível
+                ev.accept()
+                return
+        super().mouseDoubleClickEvent(ev)
 
     def _slot_no_ponto(self, ponto_cena):
         """O slot cuja região está no topo do z sob o ponto (mesmo picking da
@@ -1298,7 +1655,26 @@ class CanvasView(QGraphicsView):
 
     # --- pan com espaço + zoom -------------------------------------------------
 
+    def focusNextPrevChild(self, proximo: bool) -> bool:  # noqa: N802 (Qt)
+        """O Tab do isolamento vive AQUI (achado da frota): o QWidget consome
+        o Tab para a travessia de foco ANTES do keyPressEvent — no app real a
+        tecla nunca chegava lá. Em isolamento, o Tab circula as peças e o
+        foco FICA no canvas; fora do modo, a travessia segue normal."""
+        if self.em_isolamento() and self._circular_isolamento():
+            return True                  # tratado: circulou, o foco não sai
+        return super().focusNextPrevChild(proximo)
+
     def keyPressEvent(self, event) -> None:
+        # Isolamento (estilo Illustrator): Esc volta UM nível; Tab pula entre
+        # as peças da célula isolada (o caminho REAL do Tab é o
+        # focusNextPrevChild acima; este ramo cobre plataformas/foco em que o
+        # evento chega direto). Sem isolamento, nada é engolido à toa.
+        if event.key() == Qt.Key.Key_Escape and self.sair_isolamento():
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Tab and self._circular_isolamento():
+            event.accept()
+            return
         if event.key() == Qt.Key.Key_Space:
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         if (event.key() == Qt.Key.Key_0
@@ -1437,6 +1813,8 @@ class CanvasView(QGraphicsView):
             self._commit_regiao_sem_hist(it)
         self._registrar_hist()
         self._compor_fundo()
+        if self.em_isolamento():         # o buraco do véu acompanha a peça
+            self._atualizar_veu_isolamento()
         self.editou.emit(itens[0].regiao)
         return True
 
@@ -1698,6 +2076,7 @@ class CanvasView(QGraphicsView):
                 and self.viewport().width() >= 80
                 and self.viewport().height() >= 80):
             self.ajustar()               # RG-05: o fit adiado do boot acontece aqui
+        self._posicionar_chip_isolamento()
         self.transformou.emit()
 
     def scrollContentsBy(self, dx: int, dy: int) -> None:
