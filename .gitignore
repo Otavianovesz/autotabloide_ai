@@ -96,3 +96,5 @@ AutoTabloide_System_Root/backups/
 AutoTabloide_System_Root/biblioteca_imagens/
 AutoTabloide_System_Root/projetos/
 AutoTabloide_System_Root/logs/
+_lixo_claude/
+.audit_snapshot_*
