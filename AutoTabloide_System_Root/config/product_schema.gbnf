@@ -4,9 +4,7 @@
 
 root ::= object
 
-object ::= "{" ws pair_list "}" ws
-
-pair_list ::= pair ("," ws pair)*
+object ::= "{" ws (pair ("," ws pair)*)? "}" ws
 
 pair ::= string ":" ws value
 

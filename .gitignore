@@ -51,9 +51,48 @@ logs/
 # Database
 *.db
 *.sqlite3
+*.db-wal
+*.db-shm
+
+# AutoTabloide — dados de runtime (não versionar)
+AutoTabloide_System_Root/banco/
+AutoTabloide_System_Root/biblioteca_imagens/
+AutoTabloide_System_Root/projetos/
+AutoTabloide_System_Root/backups/
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 AutoTabloide_System_Root/bin/Llama-3-8b-instruct.Q4_K_M.gguf
+
+# Pesos de modelos (não versionar — baixados sob demanda)
+*.pth
+*.onnx
+*.gguf
+AutoTabloide_System_Root/modelos/
+
+# --- Material pessoal / bancada (nunca sobe ao remoto) ---
+revisão/
+revisao/
+arte/
+*.jpeg
+Frente*.png
+Verso*.png
+test_ean.xlsx
+verify_*.py
+verification_*.py
+
+# Galerias de artefatos das fases (grandes; geradas por script)
+saida_*/
+
+# Runtime da raiz gerenciada (dados do usuário; a logo em assets/ VAI)
+AutoTabloide_System_Root/fontes/
+AutoTabloide_System_Root/layouts/
+AutoTabloide_System_Root/config/fontes_cache.json
+AutoTabloide_System_Root/assets/store/
+AutoTabloide_System_Root/*.db*
+AutoTabloide_System_Root/backups/
+AutoTabloide_System_Root/biblioteca_imagens/
+AutoTabloide_System_Root/projetos/
+AutoTabloide_System_Root/logs/

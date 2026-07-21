@@ -1,0 +1,168 @@
+{
+  "_aviso": "RESPOSTAS DE EXEMPLO ESCRITAS À MÃO — NÃO É O MODELO. Servem para validar o encanamento do enriquecimento (entra texto -> sai estrutura). A qualidade real só se prova com o Qwen no LM Studio.",
+  "respostas": {
+    "DE SODORANTE AEROSOL ABOVE ONE MEN 150 ml": {
+      "nome_sanitizado": "Desodorante Aerosol Above One Men 150ml",
+      "tipo": "Desodorante Aerosol", "marca": "Above", "sabor": "One Men",
+      "categoria": "Higiene", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": [], "confianca": 0.88,
+      "observacoes": "corrigido 'DE SODORANTE' -> Desodorante"
+    },
+    "OLE O de SOJA LIZA 900 ml": {
+      "nome_sanitizado": "Óleo de Soja Liza 900ml",
+      "tipo": "Óleo de Soja", "marca": "Liza", "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": [], "confianca": 0.9,
+      "observacoes": "corrigido 'OLE O' -> Óleo"
+    },
+    "DE SINFETANTE URCA 2 Lts VARIOS": {
+      "nome_sanitizado": "Desinfetante Urca 2L",
+      "tipo": "Desinfetante", "marca": "Urca", "sabor": null,
+      "categoria": "Limpeza", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": ["(vários aromas — escolher)"], "confianca": 0.82,
+      "observacoes": "corrigido 'DE SINFETANTE' -> Desinfetante; 'VARIOS' indica múltiplos aromas"
+    },
+    "PÃO CASEIRO BB X ___À___100 g___SÓ___": {
+      "nome_sanitizado": "Pão Caseiro 100g",
+      "tipo": "Pão Caseiro", "marca": null, "sabor": null,
+      "categoria": "Padaria", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": [], "confianca": 0.7,
+      "observacoes": "removido texto promocional/lixo de OCR"
+    },
+    "CUECA VIRADA DOCE BB X ___À___100 g___SÓ___": {
+      "nome_sanitizado": "Cueca Virada Doce 100g",
+      "tipo": "Cueca Virada", "marca": null, "sabor": "Doce",
+      "categoria": "Padaria", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": [], "confianca": 0.7,
+      "observacoes": "removido texto promocional; 'Cueca Virada' é o doce frito regional"
+    },
+    "ARROZ SOMAR e CAIBI 5 Kgs T-1": {
+      "nome_sanitizado": "Arroz Somar e Caibi Tipo 1 5kg",
+      "tipo": "Arroz Tipo 1", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Arroz Somar Tipo 1 5kg", "marca": "Somar"},
+        {"nome_sanitizado": "Arroz Caibi Tipo 1 5kg", "marca": "Caibi"}
+      ],
+      "variantes": [], "confianca": 0.86,
+      "observacoes": "duas marcas no mesmo preço -> dois produtos que vão juntos no slot"
+    },
+    "MOLHO TOMATE FUJINI e CAJAMAR 300 g ORIGINAL": {
+      "nome_sanitizado": "Molho de Tomate Fujini e Cajamar Original 300g",
+      "tipo": "Molho de Tomate", "marca": null, "sabor": "Original",
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Molho de Tomate Fujini Original 300g", "marca": "Fujini"},
+        {"nome_sanitizado": "Molho de Tomate Cajamar Original 300g", "marca": "Cajamar"}
+      ],
+      "variantes": [], "confianca": 0.85, "observacoes": "duas marcas"
+    },
+    "AZEITE E. VIRGEM CARBONELL e GALLO CLÁSSICO 500 ml": {
+      "nome_sanitizado": "Azeite Extra Virgem Carbonell e Gallo Clássico 500ml",
+      "tipo": "Azeite Extra Virgem", "marca": null, "sabor": "Clássico",
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Azeite Extra Virgem Carbonell Clássico 500ml", "marca": "Carbonell"},
+        {"nome_sanitizado": "Azeite Extra Virgem Gallo Clássico 500ml", "marca": "Gallo"}
+      ],
+      "variantes": [], "confianca": 0.87,
+      "observacoes": "'E. VIRGEM' -> Extra Virgem; duas marcas"
+    },
+    "MILHO VERDE CAJAMAR e ETTI 170 g LATA": {
+      "nome_sanitizado": "Milho Verde Cajamar e Etti 170g Lata",
+      "tipo": "Milho Verde em Lata", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Milho Verde Cajamar 170g Lata", "marca": "Cajamar"},
+        {"nome_sanitizado": "Milho Verde Etti 170g Lata", "marca": "Etti"}
+      ],
+      "variantes": [], "confianca": 0.84, "observacoes": "duas marcas"
+    },
+    "CAFÉ PILÃO e CABOCLO 500 g A VACUO": {
+      "nome_sanitizado": "Café Pilão e Caboclo a Vácuo 500g",
+      "tipo": "Café a Vácuo", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Café Pilão a Vácuo 500g", "marca": "Pilão"},
+        {"nome_sanitizado": "Café Caboclo a Vácuo 500g", "marca": "Caboclo"}
+      ],
+      "variantes": [], "confianca": 0.85,
+      "observacoes": "'A VACUO' -> a Vácuo; duas marcas"
+    },
+    "FEIJÃO BULNEZ e REI CARIOCA 1 KG": {
+      "nome_sanitizado": "Feijão Carioca Bulnez e Rei 1kg",
+      "tipo": "Feijão Carioca", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Feijão Carioca Bulnez 1kg", "marca": "Bulnez"},
+        {"nome_sanitizado": "Feijão Carioca Rei 1kg", "marca": "Rei"}
+      ],
+      "variantes": [], "confianca": 0.85, "observacoes": "duas marcas"
+    },
+    "BOMBOM GAROTO e NESTLE 220 g": {
+      "nome_sanitizado": "Bombom Garoto e Nestlé 220g",
+      "tipo": "Bombom", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Bombom Garoto 220g", "marca": "Garoto"},
+        {"nome_sanitizado": "Bombom Nestlé 220g", "marca": "Nestlé"}
+      ],
+      "variantes": [], "confianca": 0.86,
+      "observacoes": "'NESTLE' -> Nestlé; duas marcas"
+    },
+    "VINAGRE GALO e NEVAL ALCOOL e COLORIDO 750 ml": {
+      "nome_sanitizado": "Vinagre Galo e Neval 750ml",
+      "tipo": "Vinagre", "marca": null, "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [
+        {"nome_sanitizado": "Vinagre Galo 750ml", "marca": "Galo"},
+        {"nome_sanitizado": "Vinagre Neval 750ml", "marca": "Neval"}
+      ],
+      "variantes": ["Álcool", "Colorido"], "confianca": 0.8,
+      "observacoes": "duas marcas E dois tipos (álcool/colorido)"
+    },
+    "ROSQUINHA MABEL 600 g COCO e LEITE": {
+      "nome_sanitizado": "Rosquinha Mabel 600g",
+      "tipo": "Rosquinha", "marca": "Mabel", "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": ["Coco", "Leite"], "confianca": 0.9,
+      "observacoes": "mesmo produto, dois sabores"
+    },
+    "REQUEIJÃO BATAVO 200 g ORIGINAL e LIGHT": {
+      "nome_sanitizado": "Requeijão Batavo 200g",
+      "tipo": "Requeijão", "marca": "Batavo", "sabor": null,
+      "categoria": "Frios", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": ["Original", "Light"], "confianca": 0.9,
+      "observacoes": "mesmo produto, duas versões"
+    },
+    "AMACIANTE YPÊ 5 LTS FRAGRÂNCIAS": {
+      "nome_sanitizado": "Amaciante Ypê 5L",
+      "tipo": "Amaciante", "marca": "Ypê", "sabor": null,
+      "categoria": "Limpeza", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": ["(fragrâncias variadas — escolher)"], "confianca": 0.85,
+      "observacoes": "múltiplas fragrâncias"
+    },
+    "SABÃO PÓ TIXAN 1.6 Kgs CAIXETA MACIEZ / PRIMAVERA": {
+      "nome_sanitizado": "Sabão em Pó Tixan Caixeta 1,6kg",
+      "tipo": "Sabão em Pó", "marca": "Tixan", "sabor": null,
+      "categoria": "Limpeza", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [], "variantes": ["Maciez", "Primavera"], "confianca": 0.86,
+      "observacoes": "mesmo produto, duas fragrâncias"
+    },
+    "BISCOITO BULNEZ 270 g C. CRACKER/LEITE/AGUA e SAL / MAISENA": {
+      "nome_sanitizado": "Biscoito Bulnez 270g",
+      "tipo": "Biscoito", "marca": "Bulnez", "sabor": null,
+      "categoria": "Mercearia", "bebida_alcoolica": false, "mais18": false,
+      "componentes": [],
+      "variantes": ["Cream Cracker", "Leite", "Água e Sal", "Maisena"],
+      "confianca": 0.83, "observacoes": "mesma marca, vários tipos"
+    },
+    "CERVEJA AMSTEL 269 ml PALITO": {
+      "nome_sanitizado": "Cerveja Amstel Palito 269ml",
+      "tipo": "Cerveja", "marca": "Amstel", "sabor": null,
+      "categoria": "Bebidas", "bebida_alcoolica": true, "mais18": true,
+      "componentes": [], "variantes": [], "confianca": 0.95,
+      "observacoes": "bebida alcoólica -> selo +18"
+    }
+  }
+}

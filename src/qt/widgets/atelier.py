@@ -22,8 +22,9 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsLineItem, QWidget,
     QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton,
     QComboBox, QSpinBox, QSplitter, QListWidget, QListWidgetItem,
-    QFileDialog, QMessageBox, QMenu, QOpenGLWidget
+    QFileDialog, QMessageBox, QMenu
 )
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QPixmap,
     QKeySequence, QWheelEvent, QMouseEvent, QDragEnterEvent,
@@ -36,6 +37,8 @@ from ..graphics.smart_items import (
     SmartTextItem, SmartPriceItem
 )
 from ..rendering.svg_template_parser import SvgTemplateParser, TemplateInfo
+from src.core.services.project_service import get_project_service
+from src.core.signals import get_signal_bus
 
 
 # =============================================================================
@@ -767,7 +770,14 @@ class AtelierWidget(QWidget):
     def __init__(self, container=None, parent=None):
         super().__init__(parent)
         self.container = container
-        # self.undo_stack = QUndoStack(self) # Replaced by global UndoManager
+        
+        # Services & Signals (Phase 0)
+        self.project_service = get_project_service()
+        self.bus = get_signal_bus()
+        
+        # Connect Signals
+        self.bus.project_loaded.connect(self.on_project_loaded)
+        self.bus.project_saved.connect(self.on_project_saved)
         
         self._all_products: List[Dict] = []
         
@@ -780,6 +790,38 @@ class AtelierWidget(QWidget):
         # Conecta Scrollbars para Réguas (Passo 69)
         self.canvas.horizontalScrollBar().valueChanged.connect(self._update_rulers)
         self.canvas.verticalScrollBar().valueChanged.connect(self._update_rulers)
+
+        # Check for existing project
+        if self.project_service.current_project:
+            self.on_project_loaded(self.project_service.current_project)
+            
+    @Slot(object)
+    def on_project_loaded(self, project_data):
+        """Handler para sinal project_loaded."""
+        # Limpa cena atual
+        self.canvas.get_scene().clear_slots()
+        
+        # Carrega template se houver
+        if project_data.template_path:
+             self.canvas.get_scene().load_template(project_data.template_path)
+             
+        # Restaura slots (Data)
+        scene = self.canvas.get_scene()
+        for slot_data in project_data.slots:
+             slot_index = slot_data.get("slot_index")
+             slot = scene.get_slot(slot_index)
+             if slot:
+                 slot.deserialize(slot_data)
+                 
+        if self.container:
+             self.container.setWindowTitle(f"AutoTabloide AI - {project_data.name}")
+             
+    @Slot(str)
+    def on_project_saved(self, path):
+        """Handler para sinal project_saved."""
+        if self.container and self.project_service.current_project:
+            name = self.project_service.current_project.name
+            self.container.setWindowTitle(f"AutoTabloide AI - {name} (Salvo)")
         
     def _update_rulers(self):
         """Sincroniza réguas com viewport."""
@@ -1098,33 +1140,35 @@ class AtelierWidget(QWidget):
     
     @Slot()
     def _save_project(self):
-        from src.qt.core.project_manager import get_project_manager
-        
+        """Salva o projeto atual via Service."""
+        project = self.project_service.current_project
+        if not project:
+            return
+            
+        # Sincroniza estado da cena
+        # (Em arquitetura pura isso seria automático via binding, mas sync explícito é robusto aqui)
         scene_data = self.canvas.get_scene().serialize()
-        pm = get_project_manager()
+        project.slots = scene_data.get("slots", [])
+        project.template_path = scene_data.get("template_path")
         
         # Se já tem path, salva; senão abre dialog
-        if pm.current_project and pm.current_project.path:
-            pm.update_from_scene(scene_data)
-            try:
-                pm.save_project()
-                self.statusBar().showMessage("Projeto salvo!", 3000) if hasattr(self, 'statusBar') else None
-            except Exception as e:
-                QMessageBox.critical(self, "Erro", f"Erro ao salvar:\n{str(e)}")
+        if project.path:
+            success = self.project_service.save_project()
         else:
             path, _ = QFileDialog.getSaveFileName(
                 self, "Salvar Projeto",
-                "projeto.tabloide",
+                project.name,
                 "Projeto AutoTabloide (*.tabloide);;JSON (*.json)"
             )
-            if path:
-                pm.new_project(Path(path).stem)
-                pm.update_from_scene(scene_data)
-                try:
-                    pm.save_project(path)
-                    QMessageBox.information(self, "Salvo", f"Projeto salvo em:\n{path}")
-                except Exception as e:
-                    QMessageBox.critical(self, "Erro", f"Erro ao salvar:\n{str(e)}")
+            if not path:
+                return
+            success = self.project_service.save_project(path)
+            
+        if success:
+             # O sinal project_saved cuidará do feedback
+             pass
+        else:
+            QMessageBox.critical(self, "Erro", "Erro ao salvar projeto.")
     
     @Slot()
     def _bring_to_front(self):
@@ -1167,8 +1211,8 @@ class AtelierWidget(QWidget):
                 return # Cancelado pelo usuário
         
         # 2. Escolher Arquivo (Item 88)
-        from src.qt.core.project_manager import get_project_manager
-        pm = get_project_manager()
+        from src.core.services.project_service import get_project_service
+        pm = get_project_service()
         
         default_name = pm.get_export_filename()
         path, _ = QFileDialog.getSaveFileName(
@@ -1191,7 +1235,6 @@ class AtelierWidget(QWidget):
         
         # Setup Worker
         # Copia dados do projeto para o worker (evita acesso à GUI thread)
-        scene_data = pm.get_scene_data()
         # Precisa passar ProjectData completo ou reconstituir
         # RenderWorker espera ProjectData. Vamos criar um temporário atualizado
         project = pm.current_project
@@ -1199,7 +1242,9 @@ class AtelierWidget(QWidget):
             return
             
         # Atualiza slots atuais no objeto projeto (sem salvar em disco)
-        project.slots = scene.serialize()["slots"]
+        # Nota: Idealmente o Service faria isso, mas para exportação rápida:
+        current_slots = scene.serialize()["slots"]
+        project.slots = current_slots
         
         worker = RenderWorker(project, path)
         
