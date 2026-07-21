@@ -353,3 +353,22 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   Galeria `saida_fase11/` claro/escuro + GIF do relâmpago. Subagentes: 4 scouts + 4
   revisores (inline). Próxima após o selo: `docs/FASE_12.md` (a última — precisa do
   Otaviano). **Aguardando a reauditoria final.**
+- **ORDEM DE SERVIÇO F11.5 (auditoria fase-a-fase do arquiteto)**: ▶ **EXECUTADA
+  INTEGRALMENTE (2026-07-21); PARADA no fechamento aguardando a reauditoria.**
+  Baseline `6d03370`; execução INLINE (sem subagentes), branch `polimento-pre-f12`,
+  8 commits (`8b22838`→`8d4aa46`). Os 3 GATES (crash do badge no enum inteiro;
+  5 testes-máscara reescritos por conteúdo — a régua da barra achou o bug real do
+  modo compacto; pré-voo social) + TODOS os itens §2–§10 das fases F4→F11+polimento:
+  74 testes novos em `app/tests/test_os_f11_5.py`, cada correção com teste
+  mutation-proof por conteúdo (pixel/byte/uid). Destaques: destino do resto no
+  encher página; checklist/relatório em PDF (tinta provada por Ghostscript);
+  carrossel selecionável + faixa/story-MP4 (pulso isolado do preço); aprovação por
+  HASH da versão; FilaIA com prioridade viva; guardas anti-invenção
+  (sigla/protocolo/dica); sinônimos regionais do dono APLICADOS na conciliação;
+  correções aprendidas reais; WebP com migração reversível; pincel de refino;
+  sombra por tema; metas na saúde do acervo; 3 bugs latentes achados e corrigidos
+  (BarraEditor prendia a janela a 1665px; rascunho não relativizava caminhos — I3;
+  Configurações zerava `frases.validade` ao salvar). **Suíte: 801 verdes ×5, ZERO
+  skips, exit-0 limpo** (714 → 801). Resposta completa item-a-item no fim de
+  `docs/ORDEM_SERVICO_F11_5.md`. 5 itens [MÁQUINA DO DONO] prontos-para-validar
+  listados lá (entram no roteiro do Marco/F12). **A Fase 12 NÃO foi aberta.**
