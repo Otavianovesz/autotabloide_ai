@@ -260,17 +260,41 @@ class MesaTela(QWidget):
         self.chk_sem_preco = QCheckBox("Sem preço")
         self.chk_sem_foto.toggled.connect(self._aplicar_filtro)
         self.chk_sem_preco.toggled.connect(self._aplicar_filtro)
+        # OS F11.5 #31: filtro por CATEGORIA na barra (o motor sempre aceitou)
+        from PySide6.QtWidgets import QComboBox as _QCB
+        self.filtro_categoria = _QCB()
+        self.filtro_categoria.addItem("Todas")
+        self.filtro_categoria.setToolTip("Mostrar só uma categoria")
+        self.filtro_categoria.currentTextChanged.connect(
+            lambda _t: self._aplicar_filtro())
         self.campo_busca = QLineEdit()
         self.campo_busca.setPlaceholderText("Buscar por nome…")
         self.campo_busca.setClearButtonEnabled(True)
         self.campo_busca.textChanged.connect(self._aplicar_filtro)
+        # OS F11.5 #33: limpar TODOS os filtros num clique
+        self.btn_limpar_filtros = QPushButton("Limpar")
+        self.btn_limpar_filtros.setToolTip("Limpa todos os filtros (1 clique)")
+        self.btn_limpar_filtros.clicked.connect(self._limpar_filtros)
         fbl.addWidget(self.chk_sem_foto)
         fbl.addWidget(self.chk_sem_preco)
+        fbl.addWidget(self.filtro_categoria)
         fbl.addWidget(self.campo_busca, 1)
+        fbl.addWidget(self.btn_limpar_filtros)
         self._chip_filtro = QLabel("")
         self._chip_filtro.setProperty("papel", "legenda")
+        # OS F11.5 #43: o PULSO da estante ("· 12 sem foto · 3 sem preço")
+        self._pulso_filtro = QLabel("")
+        self._pulso_filtro.setProperty("papel", "legenda")
         vi.addWidget(self._filtro_barra)
+        vi.addWidget(self._pulso_filtro)
         vi.addWidget(self._chip_filtro)
+        # OS F11.5 #40: estado vazio DE FILTRO (nada passou — limpar)
+        from app.qt.design.componentes import EstadoVazio as _EV
+        self._vazio_filtro = _EV(
+            "busca", "Nada passa nesse filtro",
+            "Ajuste os filtros ou limpe-os para ver a estante inteira.")
+        self._vazio_filtro.hide()
+        vi.addWidget(self._vazio_filtro)
         self._filtro_barra.hide()
         vi.addWidget(self._vazio)
         vi.addWidget(self.lista)
@@ -279,6 +303,11 @@ class MesaTela(QWidget):
         # o mapa slot→uid segue a nova ordem por uid (I1)
         self.lista.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.lista.model().rowsMoved.connect(self._estante_reordenada)
+        # OS F11.5 #44: MULTI-seleção na estante — excluir/duplicar operam
+        # no BLOCO selecionado (por uid, nunca por posição)
+        from PySide6.QtWidgets import QAbstractItemView
+        self.lista.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # RG-07: gestão da estante — limpar tudo (cabeçalho) + contagem viva
         btn_limpar = QPushButton()
@@ -377,9 +406,17 @@ class MesaTela(QWidget):
     # --- gestão da estante (RG-07) --------------------------------------------------
 
     def _excluir_item_selecionado(self) -> None:
-        linha = self.lista.currentRow()
-        if 0 <= linha < len(self._itens):
-            self._excluir_item(linha)
+        # OS F11.5 #44: com MULTI-seleção, exclui o bloco inteiro (de trás
+        # para frente, para os índices não escorregarem; cada exclusão segue
+        # tendo o "Desfazer" do toast por uid)
+        linhas = sorted({ix.row() for ix in self.lista.selectedIndexes()},
+                        reverse=True)
+        if not linhas:
+            linha = self.lista.currentRow()
+            linhas = [linha] if 0 <= linha < len(self._itens) else []
+        for linha in linhas:
+            if 0 <= linha < len(self._itens):
+                self._excluir_item(linha)
 
     def _excluir_item(self, linha: int) -> None:
         """Tira o item da estante; a célula dele (se houver) esvazia à vista.
@@ -1206,6 +1243,17 @@ class MesaTela(QWidget):
             ("cofre", "Salvar projeto", "", self._salvar_projeto),
             ("abrir", "Abrir projeto", "", self._abrir_projeto),
         ]
+        # OS F11.5 #57: navegar por página e abrir Configurações pela paleta
+        canvas = self.area.canvas
+        for n in range(canvas.total_paginas()):
+            acoes.append(("grade", f"Ir para a página {n + 1}", "",
+                          lambda p=n: canvas.ir_para_pagina(p)))
+        def _abrir_config():
+            shell = self.window()
+            if hasattr(shell, "ir_para"):
+                shell.ir_para("configuracoes")
+        acoes.append(("propriedades", "Abrir Configurações", "",
+                      _abrir_config))
         for i, it in enumerate(self._itens):
             acoes.append(("caixa", f"Item: {it.nome}", "",
                           lambda idx=i: self.lista.setCurrentRow(idx)))
@@ -1360,6 +1408,7 @@ class MesaTela(QWidget):
         self._vazio.setVisible(not self._itens)
         self.lista.setVisible(bool(self._itens))
         self._filtro_barra.setVisible(bool(self._itens))
+        self._atualizar_categorias_filtro()      # OS #31: combo vivo
         self.btn_fotos_lote.setEnabled(bool(self._sem_foto()))   # RG-03
         self.btn_planilha.setEnabled(bool(self._itens))          # R-051
         # RG-07: contagem viva no título do painel
@@ -1398,26 +1447,69 @@ class MesaTela(QWidget):
         self._reconstruindo = False
         self._aplicar_filtro()
 
+    def _limpar_filtros(self) -> None:
+        """OS F11.5 #33: zera TODOS os filtros num clique."""
+        self.chk_sem_foto.setChecked(False)
+        self.chk_sem_preco.setChecked(False)
+        self.filtro_categoria.setCurrentIndex(0)
+        self.campo_busca.clear()
+
+    def _atualizar_categorias_filtro(self) -> None:
+        """#31: as categorias PRESENTES na estante povoam o combo (mantém a
+        escolha atual quando possível)."""
+        atual = self.filtro_categoria.currentText()
+        cats = sorted({(it.categoria or servico.OUTROS)
+                       for it in self._itens})
+        self.filtro_categoria.blockSignals(True)
+        self.filtro_categoria.clear()
+        self.filtro_categoria.addItem("Todas")
+        self.filtro_categoria.addItems(cats)
+        i = self.filtro_categoria.findText(atual)
+        self.filtro_categoria.setCurrentIndex(i if i >= 0 else 0)
+        self.filtro_categoria.blockSignals(False)
+
     def _aplicar_filtro(self) -> None:
-        """R-054: esconde as linhas que não passam nos filtros ativos; chip
-        mostra o que está vendo."""
+        """R-054 (+ OS F11.5 #31/#32/#40/#43): esconde as linhas que não
+        passam; o chip diz O QUE está vendo COM os contadores por critério; o
+        pulso resume as pendências mesmo sem filtro; nada passou → estado
+        vazio de filtro com a saída à vista."""
         if not hasattr(self, "chk_sem_foto"):
             return
+        cat = self.filtro_categoria.currentText()
         visiveis = servico.filtrar_itens(
             self._itens, sem_foto=self.chk_sem_foto.isChecked(),
             sem_preco=self.chk_sem_preco.isChecked(),
+            categoria=None if cat in ("", "Todas") else cat,
             busca=self.campo_busca.text())
         uids_ok = {it.uid for it in visiveis}
         for i in range(self.lista.count()):
             li = self.lista.item(i)
             li.setHidden(li.data(Qt.ItemDataRole.UserRole) not in uids_ok)
+        # #32: contadores por critério — o dono vê o TAMANHO de cada pendência
+        n_sem_foto = len(servico.filtrar_itens(self._itens, sem_foto=True))
+        n_sem_preco = len(servico.filtrar_itens(self._itens, sem_preco=True))
+        self.chk_sem_foto.setText(f"Sem foto ({n_sem_foto})")
+        self.chk_sem_preco.setText(f"Sem preço ({n_sem_preco})")
+        # #43: o pulso da estante (sempre que houver pendência)
+        pulso = []
+        if n_sem_foto:
+            pulso.append(f"{n_sem_foto} sem foto")
+        if n_sem_preco:
+            pulso.append(f"{n_sem_preco} sem preço")
+        self._pulso_filtro.setVisible(bool(pulso) and bool(self._itens))
+        self._pulso_filtro.setText(" · ".join(pulso))
         ativo = (self.chk_sem_foto.isChecked() or self.chk_sem_preco.isChecked()
+                 or cat not in ("", "Todas")
                  or bool(self.campo_busca.text().strip()))
         self._chip_filtro.setVisible(ativo)
         if ativo:
             self._chip_filtro.setText(
                 f"Filtro ativo — mostrando {len(visiveis)} de {len(self._itens)} "
-                "· clique num filtro para limpar")
+                "· “Limpar” zera tudo")
+        # #40: nada passou → estado vazio de filtro (a lista some)
+        nada = ativo and not visiveis and bool(self._itens)
+        self._vazio_filtro.setVisible(nada)
+        self.lista.setVisible(bool(self._itens) and not nada)
 
     def _estante_reordenada(self, *args) -> None:
         """R-055: ao soltar o arrasto, a nova ordem visual vira a ordem da
@@ -1486,7 +1578,13 @@ class MesaTela(QWidget):
                          "continua intacto")
         escolha = menu.exec(self.lista.mapToGlobal(pos))
         if escolha == a_dup and it is not None:
-            self.duplicar_item(it)
+            # OS F11.5 #44: com multi-seleção, duplica o BLOCO (por uid —
+            # o snapshot protege dos índices que mudam a cada inserção)
+            selecionados = [self._itens[ix.row()]
+                            for ix in self.lista.selectedIndexes()
+                            if 0 <= ix.row() < len(self._itens)]
+            for alvo in (selecionados or [it]):
+                self.duplicar_item(alvo)
         elif escolha == a_fotos:
             self._fotos_do_item(li)
         elif escolha == a_editar:

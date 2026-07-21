@@ -1091,18 +1091,28 @@ class CanvasView(QGraphicsView):
         return None
 
     def dragEnterEvent(self, ev) -> None:  # noqa: N802 (Qt)
-        if self._caminho_imagem_do_evento(ev) is not None:
+        if (ev.mimeData().hasFormat(self._MIME_TROCA)
+                or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
         else:
             super().dragEnterEvent(ev)
 
     def dragMoveEvent(self, ev) -> None:  # noqa: N802 (Qt)
-        if self._caminho_imagem_do_evento(ev) is not None:
+        if (ev.mimeData().hasFormat(self._MIME_TROCA)
+                or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
         else:
             super().dragMoveEvent(ev)
 
+    _MIME_TROCA = "application/x-autotabloide-trocar-slot"
+
     def dropEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        # OS F11.5 #36 (R-057): o drop do gesto Alt+arrastar → TROCA as células
+        if ev.mimeData().hasFormat(self._MIME_TROCA):
+            origem = bytes(ev.mimeData().data(self._MIME_TROCA)).decode()
+            self.soltar_troca(self.mapToScene(ev.position().toPoint()), origem)
+            ev.acceptProposedAction()
+            return
         cam = self._caminho_imagem_do_evento(ev)
         if cam is None:
             super().dropEvent(ev)
@@ -1110,6 +1120,45 @@ class CanvasView(QGraphicsView):
         ponto = self.mapToScene(ev.position().toPoint())
         self.soltar_imagem(ponto, cam)
         ev.acceptProposedAction()
+
+    def soltar_troca(self, ponto_cena, sid_origem: str) -> bool:
+        """OS F11.5 #36 (R-057): o fim do gesto "arrastar um item SOBRE o
+        outro" — resolve o slot alvo pelo ponto e TROCA os dois pelo mapa de
+        uid (I1; o undo unificado já vive em trocar_conteudo_slots)."""
+        alvo = self._slot_no_ponto(ponto_cena)
+        if alvo is None or alvo.id == sid_origem:
+            return False
+        if not self.mapa.get(alvo.id) or not self.mapa.get(sid_origem):
+            return False                        # troca é entre células OCUPADAS
+        if self.trocar_conteudo_slots(sid_origem, alvo.id):
+            self._avisar_info("Itens trocados de célula (Ctrl+Z desfaz).")
+            return True
+        return False
+
+    def iniciar_troca_por_arrasto(self, ponto_cena) -> bool:
+        """OS F11.5 #36: Alt+arrastar numa célula OCUPADA inicia o gesto de
+        troca (QDrag com o id do slot; o drop em outra célula ocupada troca)."""
+        from PySide6.QtCore import QMimeData
+        from PySide6.QtGui import QDrag
+        slot = self._slot_no_ponto(ponto_cena)
+        if slot is None or not self.mapa.get(slot.id):
+            return False
+        mime = QMimeData()
+        mime.setData(self._MIME_TROCA, slot.id.encode())
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.MoveAction)
+        return True
+
+    def mousePressEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        # OS F11.5 #36: Alt+arrastar numa célula OCUPADA inicia a TROCA
+        # (Alt não conflita: seleção/movimento seguem sem modificador)
+        if (ev.button() == Qt.MouseButton.LeftButton
+                and ev.modifiers() & Qt.KeyboardModifier.AltModifier
+                and self.iniciar_troca_por_arrasto(
+                    self.mapToScene(ev.position().toPoint()))):
+            return
+        super().mousePressEvent(ev)
 
     def _slot_no_ponto(self, ponto_cena):
         """O slot cuja região está no topo do z sob o ponto (mesmo picking da

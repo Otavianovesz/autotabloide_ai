@@ -286,3 +286,168 @@ def test_f5_60_distribuir_respeita_guias_e_grade():
     # sem grade/guia: o clássico intacto (retrocompatível)
     pos3 = distribuir_espacamento(rects, "h", 4.0)
     assert [round(p[0], 1) for p in pos3] == [0.0, 14.0, 28.0]
+
+
+# ============================================================================
+# §4 — FASE 6 (Mesa I)
+# ============================================================================
+
+def _mesa_viva(raiz_env, itens):
+    from PySide6.QtCore import Qt
+
+    from app.qt.telas.mesa import MesaTela
+    m = MesaTela()
+    m.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    m.show()
+    m._itens = itens
+    m._recarregar_lista()
+    return m
+
+
+def test_f6_36_trocar_por_gesto_de_arrasto(raiz_env):
+    """#36 (R-057): o DROP do gesto Alt+arrastar troca as duas células —
+    por uid no mapa (I1), com undo (o trocar registra histórico)."""
+    from PySide6.QtCore import QPointF
+
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.model import (
+        Ajuste, LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    _app()
+    a = ItemMesa("A", "1,00", "VERDE", "A")
+    b = ItemMesa("B", "2,00", "VERDE", "B")
+    m = _mesa_viva(raiz_env, [a, b])
+    lay = LayoutDef(200, 100, dpi=96, paginas=[Pagina([
+        Slot("c1", [Regiao(TipoRegiao.IMAGEM, Retangulo(5, 5, 80, 80),
+                           ajuste=Ajuste.PREENCHER)]),
+        Slot("c2", [Regiao(TipoRegiao.IMAGEM, Retangulo(110, 5, 80, 80),
+                           ajuste=Ajuste.PREENCHER)]),
+    ])])
+    canvas = m.area.canvas
+    from app.rendering.compositor import DadosProduto
+    canvas.carregar(lay, DadosProduto(""))
+    canvas.mapa.update({"c1": a.uid, "c2": b.uid})
+    # o drop no centro da célula c2, arrastando a c1 → TROCA por uid
+    from app.rendering.units import mm_para_px
+    esc = canvas._esc if hasattr(canvas, "_esc") else 1.0
+    px, py = mm_para_px(150, 96), mm_para_px(45, 96)
+    ok = canvas.soltar_troca(QPointF(px, py), "c1")
+    assert ok
+    assert canvas.mapa["c1"] == b.uid and canvas.mapa["c2"] == a.uid
+    # célula vazia NÃO troca (o gesto é entre ocupadas)
+    canvas.mapa.pop("c1")
+    assert not canvas.soltar_troca(QPointF(px, py), "c1")
+    m.close()
+
+
+def test_f6_68_planilha_grava_cadastro_por_produto_id(raiz_env):
+    """#68: editar Nome/Categoria na planilha PERSISTE no banco pelo
+    produto_id (I1) — relê o banco e confere; o preço da OFERTA continua do
+    projeto (o preco_atual do banco não é tocado pelo 'por')."""
+    from app.qt.telas import planilha as L
+    from app.qt.telas.servico import ItemMesa
+    pid = seeds.add_produto(raiz_env, "Arroz 5kg", "Camil", "24.90",
+                            categoria="Mercearia")
+    it = ItemMesa("ARROZ 5KG", "19,90", "VERDE", "Arroz 5kg", produto_id=pid)
+    ok, aviso = L.aplicar_edicao(it, "Nome", "Arroz Premium 5kg")
+    assert ok and aviso is None
+    ok, aviso = L.aplicar_edicao(it, "Categoria", "Grãos")
+    assert ok and aviso is None
+    d = seeds.produto_por_chave(raiz_env, "Arroz Premium 5kg", "Camil")
+    assert d is not None                          # o NOME persistiu no banco
+    assert d["preco"] == "24.90"                  # o "de" do acervo intacto
+    from app.core.database import Database
+    from app.core.models import Produto
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            p = s.get(Produto, pid)
+            assert p.categoria.nome == "Grãos"    # a categoria persistiu
+    finally:
+        db.engine.dispose()
+
+
+def test_f6_44_multiselecao_em_bloco(raiz_env):
+    """#44: a estante aceita seleção MÚLTIPLA e excluir opera no bloco —
+    por uid (os dois selecionados somem; o terceiro fica)."""
+    from PySide6.QtWidgets import QAbstractItemView
+
+    from app.qt.telas.servico import ItemMesa
+    itens = [ItemMesa(n, "1,00", "VERDE", n) for n in ("A", "B", "C")]
+    uid_c = itens[2].uid
+    m = _mesa_viva(raiz_env, list(itens))
+    assert (m.lista.selectionMode()
+            == QAbstractItemView.SelectionMode.ExtendedSelection)
+    m.lista.item(0).setSelected(True)
+    m.lista.item(1).setSelected(True)
+    m._excluir_item_selecionado()
+    assert [it.uid for it in m._itens] == [uid_c]
+    m.close()
+
+
+def test_f6_74_adversarial_planilha_edita_so_o_uid_certo(raiz_env):
+    """#74/#78 (I1): DOIS itens de MESMO nome na planilha — editar o preço da
+    linha 0 muda SÓ aquele uid; o gêmeo de posição seguinte fica intacto.
+    (Editar por posição trocaria os dois ou o errado.)"""
+    from app.qt.telas.planilha_dialog import DialogoPlanilha
+    from app.qt.telas import planilha as L
+    from app.qt.telas.servico import ItemMesa
+    g1 = ItemMesa("Arroz 5kg", "24,90", "VERDE", "Arroz 5kg")
+    g2 = ItemMesa("Arroz 5kg", "24,90", "VERDE", "Arroz 5kg")
+    m = _mesa_viva(raiz_env, [g1, g2])
+    dlg = DialogoPlanilha(m, m)
+    col = L.COLUNAS.index("Preço")
+    dlg.tab.item(0, col).setText("9,99")          # dispara _celula_mudou
+    assert g1.preco == "9,99"                     # só o uid da linha 0
+    assert g2.preco == "24,90"                    # o gêmeo intacto (I1)
+    dlg.close()
+    m.close()
+
+
+def test_f6_81_rascunho_com_caminhos_relativos(raiz_env, tmp_path):
+    """#81 (I3): o snapshot do rascunho automático não guarda caminho
+    absoluto de imagem da BIBLIOTECA (relativo à raiz); um caminho externo
+    avulso (fora da biblioteca) é o único absoluto tolerado."""
+    import json as _json
+
+    from app.core import rascunho
+    from app.qt.telas.servico import ItemMesa
+    it = ItemMesa("A", "1,00", "VERDE", "A")
+    it.imagem = str(raiz_env.biblioteca_imagens / "7" / "atual.png")
+    arq = rascunho.salvar_rascunho({"itens": [it.to_dict()],
+                                    "mapa": {}, "overrides": {}})
+    dados = _json.loads(Path(arq).read_text(encoding="utf-8"))
+    im = dados["itens"][0]["imagem"]
+    assert str(raiz_env.raiz) not in im            # nada da raiz absoluta
+    assert im.replace("\\", "/") == "7/atual.png"  # relativo à biblioteca
+    # e a volta ABSOLUTIZA (o app usa o caminho cheio)
+    de_volta = rascunho.carregar_rascunho()
+    assert de_volta["itens"][0]["imagem"] == it.imagem
+
+
+def test_f6_82_mestra_intacta_apos_reordenar_estante(raiz_env):
+    """#82 (I4): reordenar a ESTANTE não toca o vínculo mestra↔cópia
+    (ref_mestre por uid) — o layout fica byte-idêntico."""
+    import json as _json
+
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.grade import propagar_mestre
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    _app()
+    regs = [Regiao(TipoRegiao.NOME, Retangulo(2, 2, 30, 8), nome="Nome")]
+    for r in regs:
+        r.de_mestre = True
+    lay = LayoutDef(200, 100, paginas=[Pagina([
+        Slot("celula_0", regs, mestre=True, origem_mm=(0, 0)),
+        Slot("celula_1", origem_mm=(60, 0)),
+    ])])
+    propagar_mestre(lay.paginas[0])
+    antes = _json.dumps(lay.to_dict(), sort_keys=True)
+    itens = [ItemMesa(n, "1,00", "VERDE", n) for n in ("A", "B", "C")]
+    m = _mesa_viva(raiz_env, itens)
+    from app.rendering.compositor import DadosProduto
+    m.area.canvas.carregar(lay, DadosProduto(""))
+    m._itens.reverse()                     # "reordena a estante"
+    m._recarregar_lista()
+    assert _json.dumps(lay.to_dict(), sort_keys=True) == antes
+    m.close()

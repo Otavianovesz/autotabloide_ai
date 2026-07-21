@@ -46,10 +46,56 @@ def _lista() -> list[Path]:
     return sorted(_dir().glob("rascunho_*.json"))
 
 
+def _mapear_caminhos(estado: dict, fn) -> dict:
+    """Aplica ``fn`` a todo caminho de imagem do snapshot (itens, sabores e
+    overrides) — devolve uma CÓPIA (o estado vivo não muda)."""
+    d = json.loads(json.dumps(estado))            # cópia profunda simples
+    for it in d.get("itens", []):
+        if it.get("imagem"):
+            it["imagem"] = fn(it["imagem"])
+        it["imagens"] = [fn(c) for c in (it.get("imagens") or [])]
+        for org in (it.get("origem_composto") or []):
+            if org.get("imagem"):
+                org["imagem"] = fn(org["imagem"])
+            org["imagens"] = [fn(c) for c in (org.get("imagens") or [])]
+    for ov in (d.get("overrides") or {}).values():
+        if isinstance(ov, dict) and ov.get("imagem"):
+            ov["imagem"] = fn(ov["imagem"])
+    return d
+
+
+def _relativizar(caminho: str) -> str:
+    """OS F11.5 #81 (I3): imagem DENTRO da biblioteca vira caminho RELATIVO à
+    raiz gerenciada — o snapshot sobrevive a mover a pasta/trocar de máquina.
+    Arquivo externo avulso (fora da biblioteca) fica como está."""
+    try:
+        from app.core.paths import SystemRoot
+        raiz = SystemRoot().biblioteca_imagens
+        p = Path(caminho)
+        if p.is_absolute():
+            rel = p.relative_to(raiz)             # ValueError se for de fora
+            return rel.as_posix()
+    except Exception:
+        pass
+    return caminho
+
+
+def _absolutizar(caminho: str) -> str:
+    try:
+        from app.core.paths import SystemRoot
+        p = Path(caminho)
+        if not p.is_absolute():
+            return str(SystemRoot().biblioteca_imagens / p)
+    except Exception:
+        pass
+    return caminho
+
+
 def salvar_rascunho(estado: dict, *, ts: float | None = None,
                     max_manter: int | None = None) -> Path:
-    """Grava um snapshot (isolado). Devolve o arquivo. Rotaciona para N."""
-    d = dict(estado)
+    """Grava um snapshot (isolado). Devolve o arquivo. Rotaciona para N.
+    Caminhos da biblioteca vão RELATIVOS (I3 — OS F11.5 #81)."""
+    d = _mapear_caminhos(estado, _relativizar)
     d["_ts"] = float(ts if ts is not None else time.time())
     arq = _dir() / f"rascunho_{int(d['_ts'] * 1000)}.json"
     arq.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
@@ -60,12 +106,13 @@ def salvar_rascunho(estado: dict, *, ts: float | None = None,
 
 
 def carregar_rascunho() -> dict | None:
-    """O rascunho mais recente (ou None)."""
+    """O rascunho mais recente (ou None) — caminhos de volta a absolutos."""
     arqs = _lista()
     if not arqs:
         return None
     try:
-        return json.loads(arqs[-1].read_text(encoding="utf-8"))
+        bruto = json.loads(arqs[-1].read_text(encoding="utf-8"))
+        return _mapear_caminhos(bruto, _absolutizar)
     except Exception:
         return None
 
