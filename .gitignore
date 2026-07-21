@@ -98,3 +98,7 @@ AutoTabloide_System_Root/projetos/
 AutoTabloide_System_Root/logs/
 _lixo_claude/
 .audit_snapshot_*
+
+.reaudit_*
+_suite_f115.txt
+saida_os_f115/
