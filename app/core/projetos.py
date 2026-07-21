@@ -517,6 +517,10 @@ def duplicar_semana_passada(nome_evento: str) -> int | None:
             s.commit()
     finally:
         db.engine.dispose()
+    # GATE 2.5 (ordem F11.5): duplicar é um dos 4 caminhos de abertura — o
+    # clone novo É o projeto em que o dono vai trabalhar; "Continuar de onde
+    # parei" tem que apontar para ele (antes este caminho não registrava).
+    registrar_ultimo_aberto(novo)
     return novo
 
 

@@ -32,9 +32,17 @@ def _salvar(nome: str, evento: str | None = None) -> int:
 
 
 def test_ultimo_aberto_nos_4_caminhos(raiz_tmp):
-    """Passo 53: Mesa, Fábrica, dashboard (mesmo funil) e duplicar."""
+    """Passo 53 (reescrito no GATE 2.5 da ordem F11.5 — a versão antiga
+    cobria 2 caminhos e ENCENAVA os outros dois): os 4 fluxos REAIS —
+    Mesa, Fábrica, dashboard (pelo GESTO de retomar) e duplicar_semana_
+    passada (que antes NÃO registrava — prova de mutação: reverter o
+    registrar em projetos.py:520 faz o caminho 4 falhar)."""
     QApplication.instance() or QApplication([])
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QListWidgetItem
+
     from app.core import projetos
+    from app.qt.telas.dashboard import DashboardTela
     from app.qt.telas.fabrica import FabricaTela
     from app.qt.telas.mesa import MesaTela
 
@@ -51,12 +59,29 @@ def test_ultimo_aberto_nos_4_caminhos(raiz_tmp):
     fab.abrir_projeto_congelado(ab)
     assert projetos.ultimo_aberto()["id"] == p2
 
-    # caminho 3 (dashboard/duplo-clique) passa pelos MESMOS congelados —
-    # coberto acima; caminho 4: duplicar registra o novo
-    novo = projetos.duplicar_projeto(p1, "P1 (nova)")
-    projetos.registrar_ultimo_aberto(novo)
+    # caminho 3: o GESTO do dashboard (duplo-clique em "Retomar") dispara o
+    # funil real ao_abrir_projeto → Mesa
+    abertos: list[int] = []
+
+    def _funil(pid):
+        abertos.append(pid)
+        mesa.abrir_projeto_congelado(projetos.abrir_projeto(pid))
+
+    dash = DashboardTela(ao_abrir_projeto=_funil)
+    item = QListWidgetItem("P1")
+    item.setData(Qt.ItemDataRole.UserRole, p1)
+    dash._retomar_clicado(item)                      # o gesto real da lista
+    assert abertos == [p1]
+    assert projetos.ultimo_aberto()["id"] == p1
+
+    # caminho 4: duplicar_semana_passada registra o CLONE sozinho (sem
+    # encenação — a chamada manual de registrar era o mascaramento)
+    novo = projetos.duplicar_semana_passada("Quintou")
+    assert novo is not None
     assert projetos.ultimo_aberto()["id"] == novo
-    assert projetos.ultimo_aberto()["nome"] == "P1 (nova)"
+    dash.close()
+    mesa.close()
+    fab.close()
 
 
 def test_favorito_reordena_sem_tocar_mapa(raiz_tmp):

@@ -63,40 +63,53 @@ def test_barra_mesa_720p_essenciais_e_estouro(raiz_tmp):
     def _colapsados(m):
         return sum(1 for w, _r, _t in m._sacrificaveis if not w.isVisibleTo(m))
 
-    def _largura_conteudo(m):
-        """Soma REAL dos sizeHints da barra — imune ao vazamento global de
-        escala/fonte entre testes (a lição da F4)."""
-        from app.qt.design import tokens as t
-        total = 4 * t.ESP_3
+    def _ninguem_espremido(m):
+        """GATE 2.2 (ordem F11.5) — MEDIÇÃO INDEPENDENTE: a régua é a
+        GEOMETRIA que o Qt concedeu, não a soma de sizeHints que o próprio
+        `_reflow_barra` usa (a versão antiga era circular). Se o reflow
+        deixar botão demais na barra, o QHBoxLayout espreme alguém abaixo do
+        próprio sizeHint (texto cortado de verdade) — e isto falha."""
+        m._barra_mesa.layout().activate()
+        QApplication.processEvents()
         lay = m._barra_layout
         for i in range(lay.count()):
             w = lay.itemAt(i).widget()
-            if w is not None:
-                total += w.sizeHint().width() + t.ESP_2
-        return total
+            if w is None or not w.isVisibleTo(m):
+                continue
+            # largura fixada de propósito (setFixedWidth) é a PRÓPRIA meta —
+            # o hint do QSS pode ser maior e não é espremimento
+            alvo = min(w.sizeHint().width(), w.maximumWidth())
+            assert w.width() >= alvo - 2, (
+                type(w).__name__, w.width(), alvo)
 
     # a 1280: os essenciais ficam; o "···" recolhe o resto (nada corta).
     _reflow_em(m, 1280)
     assert all(w.isVisibleTo(m) for w in essenciais)   # essencial nunca no "···"
     assert m._mais_mesa.isVisibleTo(m)                  # há estouro a 720p
+    _ninguem_espremido(m)
     n1280 = _colapsados(m)
     assert n1280 > 0
 
-    # nas 4 larguras da pauta: essenciais SEMPRE visíveis, e mais espaço =
-    # MENOS colapsado (o "···" só recolhe o que de fato não cabe).
+    # nas 4 larguras da pauta: essenciais SEMPRE visíveis, ninguém espremido
+    # (régua independente), e mais espaço = MENOS colapsado.
     ultimos = n1280
     for W in (1366, 1600, 1920):
         _reflow_em(m, W)
         assert all(w.isVisibleTo(m) for w in essenciais)
+        _ninguem_espremido(m)
         nW = _colapsados(m)
         assert nW <= ultimos                           # monotônico: nunca corta mais
         ultimos = nW
 
-    # numa largura MAIOR que o conteúdo real (medido — imune ao vazamento de
-    # escala) tudo cabe → nada colapsado, o "···" some.
-    _reflow_em(m, _largura_conteudo(m) + 200)
+    # alargando em passos, existe uma largura em que TUDO cabe de verdade —
+    # 0 colapsados, "···" some e (régua independente) ninguém espremido.
+    W = 2000
+    while _colapsados(m) > 0 and W <= 4200:
+        _reflow_em(m, W)
+        W += 400
     assert _colapsados(m) == 0
     assert not m._mais_mesa.isVisibleTo(m)
+    _ninguem_espremido(m)
 
 
 def test_barra_mesa_sacrificaveis_nao_incluem_essenciais(raiz_tmp):

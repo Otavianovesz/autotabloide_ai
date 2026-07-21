@@ -347,6 +347,16 @@ def gerar_dica(nomes: list[str], limite_chars: int,
         dica = str(json.loads(resposta).get("dica") or "").strip()
         if not dica:
             return None
+        # GATE 2.1 (ordem F11.5): a memória anti-repetição é GUARDA DURA, não
+        # pedido educado no prompt — se o modelo devolver uma dica igual (ou
+        # contida numa) das recentes, ela é REJEITADA (None; o caller avisa).
+        # Assim "não repete" é comportamento provável por teste, não promessa.
+        def _norm(s: str) -> str:
+            return " ".join(s.lower().split())
+        if evitar and any(_norm(dica) == _norm(e) or _norm(dica) in _norm(e)
+                          or _norm(e) in _norm(dica)
+                          for e in evitar if e and e.strip()):
+            return None
         return dica[:limite_chars]        # o teto da região é lei
     except (IAIndisponivel, json.JSONDecodeError, TypeError, AttributeError):
         return None

@@ -309,7 +309,9 @@ class FabricaTela(QWidget):
             if w is None or w is self._mais_fabrica or id(w) in sacrificaveis:
                 continue
             base += w.sizeHint().width() + esp
-        resto = self._barra_fabrica.width() - 8 - base
+        # folga 24 (era 8) — mesmo conserto do GATE 2.2 da Mesa (a soma de
+        # sizeHints subestima as margens internas; ninguém encolhe)
+        resto = self._barra_fabrica.width() - 24 - base
         ficam: list[int] = []
         colapsados = []
         for w, rotulo, tipo in reversed(self._sacrificaveis):
@@ -334,6 +336,13 @@ class FabricaTela(QWidget):
                 acao = menu.addAction(w.icon(), rotulo, w.click)
                 acao.setEnabled(w.isEnabled())
         self._mais_fabrica.setVisible(bool(colapsados))
+        # RG-53 estágio 2 (GATE 2.2): fixos só-ícone quando nem assim cabe
+        from app.qt.design.componentes import modo_compacto_botoes
+        if not hasattr(self, "_botoes_compactos"):
+            self._botoes_compactos = {}
+        modo_compacto_botoes(
+            lay, self._mais_fabrica, sacrificaveis, self._botoes_compactos,
+            self._barra_fabrica.width() - 24 - 2 * t.ESP_3, esp)
 
     def _sincronizar_do_atelie(self) -> None:
         """RG-08: salvar o layout de cartaz no Ateliê reflete na Fábrica ao

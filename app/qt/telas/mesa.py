@@ -669,7 +669,10 @@ class MesaTela(QWidget):
             if w is None or w is self._mais_mesa or id(w) in sacrificaveis:
                 continue
             base += w.sizeHint().width() + esp
-        resto = self._barra_mesa.width() - 8 - base
+        # folga 24 (era 8): a régua independente do GATE 2.2 flagrou botão
+        # espremido 4px a 1280 — a soma de sizeHints subestima as margens
+        # internas do layout; a folga maior garante que ninguém encolhe.
+        resto = self._barra_mesa.width() - 24 - base
         ficam: list[int] = []
         colapsados = []
         # os MAIS importantes (fim da lista) entram primeiro
@@ -695,6 +698,14 @@ class MesaTela(QWidget):
                 acao = menu.addAction(w.icon(), rotulo, w.click)
                 acao.setEnabled(w.isEnabled())
         self._mais_mesa.setVisible(bool(colapsados))
+        # RG-53 estágio 2 (GATE 2.2): se nem assim coube, os botões fixos
+        # ficam SÓ-ÍCONE (texto → tooltip) até a largura voltar
+        from app.qt.design.componentes import modo_compacto_botoes
+        if not hasattr(self, "_botoes_compactos"):
+            self._botoes_compactos = {}
+        modo_compacto_botoes(
+            lay, self._mais_mesa, sacrificaveis, self._botoes_compactos,
+            self._barra_mesa.width() - 24 - 2 * t.ESP_3, esp)
 
     def _sincronizar_do_atelie(self) -> None:
         """RG-08: editar o layout no Ateliê reflete na Mesa ao trocar de tela.

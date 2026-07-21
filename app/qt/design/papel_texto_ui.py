@@ -57,6 +57,7 @@ _ROTULO_CURTO: dict[PapelTexto, str] = {
     PapelTexto.DICA: "Dica",
     PapelTexto.OBSERVACAO: "Observação",
     PapelTexto.LIVRE: "Livre",
+    PapelTexto.DESCONTO: "Desconto",    # F11: papel técnico do cartaz (−%)
 }
 
 # Ícone do badge, por papel (nomes de app.qt.design.icones).
@@ -66,20 +67,32 @@ _ICONE_PAPEL: dict[PapelTexto, str] = {
     PapelTexto.DICA: "lampada",
     PapelTexto.OBSERVACAO: "paragrafo",
     PapelTexto.LIVRE: "paragrafo",
+    PapelTexto.DESCONTO: "preco",
 }
 
 
 def badge_de_papel(papel: PapelTexto) -> tuple[str, str, str]:
     """(rótulo curto, cor, nome-do-ícone) do badge — cor lida do TEMA ATUAL
-    (âmbar=legal · azul=validade · violeta=dica · neutro=livre, passo 6)."""
+    (âmbar=legal · azul=validade · violeta=dica · neutro=livre, passo 6).
+
+    GATE 1 da ordem F11.5: o dict de cor só mapeava 4 papéis — escolher
+    "Observação do item" (que SEMPRE esteve no diálogo) estourava KeyError
+    NO PAINT e travava a repintura da cena; a região DESCONTO do cartaz
+    (F11) estouraria igual ao abrir o layout no Ateliê. Agora TODO papel do
+    enum tem cor, e um papel futuro cai num neutro são em vez de derrubar o
+    editor ("verde com crash não é verde")."""
     from app.qt.design import tokens as t
     cor = {
         PapelTexto.LEGAL: t.ACENTO,        # âmbar
         PapelTexto.VALIDADE: t.SELECAO,    # azul
         PapelTexto.DICA: t.GUIA_SNAP,      # violeta
+        PapelTexto.OBSERVACAO: t.INFO,     # azul-informativo (nota do item)
         PapelTexto.LIVRE: t.TEXTO_3,       # neutro
-    }[papel]
-    return _ROTULO_CURTO[papel], cor, _ICONE_PAPEL[papel]
+        PapelTexto.DESCONTO: t.PERIGO,     # o vermelho do −% (cartaz)
+    }.get(papel, t.TEXTO_3)
+    return (_ROTULO_CURTO.get(papel, str(papel.value).capitalize()),
+            cor,
+            _ICONE_PAPEL.get(papel, "paragrafo"))
 
 
 def texto_inicial_do_papel(papel: PapelTexto, *, preset_legal: str | None = None,

@@ -541,10 +541,11 @@ class PainelPropriedades(QWidget):
             self._trabalhos = GerenciadorTrabalhos()   # RG-05b cobre o shutdown
         self.btn_dica.setEnabled(False)
         self.btn_dica.setText(" Gerando…")
-        # R-083 (polimento): o estilo escolhido no combo muda o TOM da dica;
-        # o texto atual entra em `evitar` (memória — não repete a mesma dica)
+        # R-083 (GATE 2.1 da ordem F11.5): a MEMÓRIA de dica é o HISTÓRICO da
+        # sessão + o texto atual — cada dica gerada entra na lista e a próxima
+        # não pode repeti-la (a guarda dura vive em `gerar_dica`).
         estilo = self.estilo_dica.currentData()
-        evitar = [x for x in (self.texto_fixo.text().strip(),) if x]
+        evitar = self._dicas_a_evitar()
         trab = Trabalhador(lambda st: gerar_dica(nomes, limite, motor,
                                                  estilo=estilo, evitar=evitar))
 
@@ -552,9 +553,11 @@ class PainelPropriedades(QWidget):
             self.btn_dica.setEnabled(True)
             self.btn_dica.setText(" Gerar dica (IA)")
             if not dica:
-                mostrar_toast(self, "A IA não devolveu dica — tente de novo "
-                                    "ou escreva à mão.", tipo="erro")
+                mostrar_toast(self, "A IA não devolveu dica nova (ou repetiu "
+                                    "a anterior) — tente de novo ou escreva "
+                                    "à mão.", tipo="erro")
                 return
+            self._registrar_dica(dica)     # memória: a próxima evita esta
             if self.reg is reg:            # a seleção pode ter mudado no voo
                 self.texto_fixo.setText(dica)
             reg.texto_fixo = dica
@@ -565,6 +568,22 @@ class PainelPropriedades(QWidget):
         trab.ok.connect(_pronto)
         trab.erro.connect(lambda _m: (_pronto(None)))
         self._trabalhos.rodar(trab)
+
+    # --- memória de dica (R-083, GATE 2.1) -----------------------------------
+
+    def _dicas_a_evitar(self) -> list[str]:
+        """O texto atual + as últimas dicas geradas NESTA sessão (até 5) —
+        a lista que `gerar_dica` usa para não repetir."""
+        historico = list(getattr(self, "_dicas_geradas", []))[-5:]
+        atual = self.texto_fixo.text().strip()
+        return ([atual] if atual else []) + \
+            [d for d in historico if d != atual]
+
+    def _registrar_dica(self, dica: str) -> None:
+        if not hasattr(self, "_dicas_geradas"):
+            self._dicas_geradas: list[str] = []
+        if dica and dica not in self._dicas_geradas:
+            self._dicas_geradas.append(dica)
 
     def _atualizar_tamanho_efetivo(self) -> None:
         """RG-18: mostra o tamanho que o desenho USA quando o ajuste reduziu."""

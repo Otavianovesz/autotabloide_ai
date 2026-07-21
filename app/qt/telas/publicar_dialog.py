@@ -116,16 +116,39 @@ class PublicarDialog(QDialog):
                 return it
         return self.mesa._itens[0] if self.mesa._itens else None
 
+    def _avisos_pre_voo(self, modo: str, item) -> list[str]:
+        """GATE 3 da ordem F11.5 (I2): o social ganha o MESMO pré-voo do
+        export da Mesa — item sem foto ou sem preço entendido AVISA antes de
+        ir pro feed/Story (antes saía calado, a degradação silenciosa que o
+        projeto proíbe)."""
+        from app.qt.telas import servico
+        alvo = ([item] if modo in ("oferta", "story") and item is not None
+                else self.mesa._itens)
+        avisos: list[str] = []
+        for it in alvo:
+            nome = (it.nome or "?").strip() or "?"
+            if not (it.imagem or it.imagens):
+                avisos.append(f"“{nome}”: sem foto")
+            if servico.preco_decimal(it.preco) is None and not it.multi_preco:
+                avisos.append(f"“{nome}”: sem preço (ou preço não entendido)")
+        return avisos
+
     def _gerar(self):
         if not self.mesa._itens:
             mostrar_toast(self, "Não há itens na oferta.", tipo="erro")
             return
-        pasta = QFileDialog.getExistingDirectory(self, "Salvar a publicação em…")
-        if not pasta:
-            return
         modo = ("oferta" if self.rb_oferta.isChecked() else
                 "carrossel" if self.rb_carrossel.isChecked() else
                 "story" if self.rb_story.isChecked() else "video")
+        # GATE 3: pré-voo ANTES de qualquer exportação social (o dono decide)
+        from app.qt.telas.prevoo import confirmar_pre_voo
+        if not confirmar_pre_voo(
+                self, self._avisos_pre_voo(modo, self._item_escolhido()),
+                "Publicar"):
+            return
+        pasta = QFileDialog.getExistingDirectory(self, "Salvar a publicação em…")
+        if not pasta:
+            return
         marca = not self.mesa.esta_aprovado()
         item = self._item_escolhido()
         mesa = self.mesa

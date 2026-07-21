@@ -153,3 +153,19 @@ def duracao_video(caminho: str | Path) -> float | None:
         return float((r.stdout or "").strip())
     except Exception:
         return None
+
+
+def frame_do_video(mp4: str | Path, indice: int,
+                   destino: str | Path) -> Path | None:
+    """Extrai UM frame do MP4 como PNG (GATE 2.3 da ordem F11.5: a fidelidade
+    do vídeo é provada comparando o frame com a página de ORIGEM, por pixel).
+    Sem ffmpeg (ou frame inexistente) → None, nunca levanta."""
+    exe = ffmpeg_disponivel()
+    if exe is None:
+        return None
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    ok, _err = _rodar_ffmpeg(
+        ["-y", "-i", str(mp4), "-vf", f"select=eq(n\,{int(indice)})",
+         "-vframes", "1", str(destino)], exe)
+    return destino if ok and destino.exists() else None

@@ -219,9 +219,32 @@ def test_planilha_categoria_em_massa(raiz_env):
 
 # --- Consistência: tokens no lugar de cor fixa -------------------------------------
 
-def test_sem_perigo_suave_fantasma():
-    """O token PERIGO_SUAVE nunca existiu — o fallback caía SEMPRE no #FDE8E8
-    hardcoded (célula clara no tema escuro). Agora as telas usam PERIGO_FUNDO."""
+def test_sem_perigo_suave_fantasma(raiz_env):
+    """Reescrito no GATE 2.4 da ordem F11.5 (só checava ausência de string):
+    a célula-problema resolve POR CONTEÚDO para o PERIGO_FUNDO do TEMA — no
+    escuro, o vinho #331414 (não um rosa claro fixo). Prova de mutação:
+    hardcodear qualquer hex claro na célula faz o name() divergir e falhar."""
+    from PySide6.QtWidgets import QApplication
+
+    from app.qt.design import tokens as t
+    from app.qt.design.tema import aplicar_tema
+    from app.qt.telas.planilha_dialog import DialogoPlanilha
+    from app.qt.telas import planilha as L
+    from app.qt.telas.servico import ItemMesa
+    app = _app()
+    aplicar_tema(app, "escuro")
+    try:
+        assert t.PERIGO_FUNDO.upper() == "#331414"      # o token do escuro
+        m = _mesa_com_itens([ItemMesa("Sem preço", None, "VERDE", "Sem preço")])
+        dlg = DialogoPlanilha(m, m)
+        cel = dlg.tab.item(0, L.COLUNAS.index("Preço"))
+        cor = cel.background().color().name().upper()
+        assert cor == "#331414", cor                     # o PERIGO_FUNDO real
+        dlg.close()
+        m.close()
+    finally:
+        aplicar_tema(app, "claro")
+    # bônus: a string fantasma segue banida do código
     from pathlib import Path as _P
     telas = _P(__file__).resolve().parents[1] / "qt" / "telas"
     for nome in ("planilha_dialog.py", "colagem_dialog.py"):
