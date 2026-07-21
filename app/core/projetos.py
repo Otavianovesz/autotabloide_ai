@@ -574,8 +574,21 @@ def desaprovar(projeto_id: int) -> None:
     _set_aprovado(projeto_id, False)
 
 
+def _hash_estado_salvo(s, projeto_id: int) -> str | None:
+    """OS F11.5 #24: a impressão digital da VERSÃO salva (sha256 do estado
+    congelado) — a aprovação é desta versão, não do id para sempre."""
+    import hashlib
+    row = s.get(ProjetoSalvo, projeto_id)
+    if row is None:
+        return None
+    return hashlib.sha256((row.estado_slots or "").encode("utf-8")).hexdigest()
+
+
 def esta_aprovado(projeto_id: int | None) -> bool:
-    """R-068: projeto novo/não salvo NUNCA é aprovado (nasce rascunho)."""
+    """R-068: projeto novo/não salvo NUNCA é aprovado (nasce rascunho).
+    OS F11.5 #24: a aprovação vale para a VERSÃO aprovada — se o conteúdo
+    salvo mudou por QUALQUER porta (restaurar versão antiga, importar), o
+    hash não bate e a marca RASCUNHO volta sozinha."""
     if projeto_id is None:
         return False
     try:
@@ -584,9 +597,14 @@ def esta_aprovado(projeto_id: int | None) -> bool:
         try:
             with db.Session() as s:
                 mapa = ConfigRepositorio(s).get("projetos.aprovados") or {}
+                valor = mapa.get(str(projeto_id))
+                if not valor:
+                    return False
+                if valor is True:              # aprovação antiga (pré-#24)
+                    return True
+                return valor == _hash_estado_salvo(s, projeto_id)
         finally:
             db.engine.dispose()
-        return bool(mapa.get(str(projeto_id)))
     except Exception:
         return False
 
@@ -600,7 +618,9 @@ def _set_aprovado(projeto_id: int, valor: bool) -> None:
                 repo = ConfigRepositorio(s)
                 mapa = repo.get("projetos.aprovados") or {}
                 if valor:
-                    mapa[str(projeto_id)] = True
+                    # #24: guarda o hash da versão — não um "True" eterno
+                    mapa[str(projeto_id)] = (
+                        _hash_estado_salvo(s, projeto_id) or True)
                 else:
                     mapa.pop(str(projeto_id), None)
                 repo.set("projetos.aprovados", mapa)

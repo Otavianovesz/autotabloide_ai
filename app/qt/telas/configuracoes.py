@@ -290,6 +290,14 @@ class ConfiguracoesTela(QWidget):
         form_imagens.addRow("Pasta da biblioteca", caixa_bib)
         form_imagens.addRow(self.campo_cmyk)
         form_imagens.addRow("Perfil ICC de impressão", self.campo_icc)
+        # OS F11.5 #5 (R-065): os perfis de exportação ganham tela de edição
+        self.btn_perfis = QPushButton(" Perfis de exportação…")
+        self.btn_perfis.setIcon(icone("salvar", tamanho=14))
+        self.btn_perfis.setToolTip(
+            "Criar/editar os presets de exportação (WhatsApp, Impressão, "
+            "Stories…) — tamanho, formato e qualidade de cada um")
+        self.btn_perfis.clicked.connect(self._abrir_perfis)
+        form_imagens.addRow(self.btn_perfis)
         form_campanhas = QFormLayout()
         form_campanhas.setVerticalSpacing(t.ESP_2)
         # F8/A2: a ordem das seções do tabloide agrupado
@@ -958,6 +966,14 @@ class ConfiguracoesTela(QWidget):
                                 "padrão.")
 
     # --- FASE 3, Bloco F: abas Imagens / Atalhos / Sobre ------------------------
+
+    def _abrir_perfis(self) -> None:
+        """OS F11.5 #5: a tela de perfis de exportação (salva na Config)."""
+        from app.qt.telas.perfis_dialog import PerfisDialog
+        dlg = PerfisDialog(self)
+        if dlg.exec() == PerfisDialog.DialogCode.Accepted:
+            mostrar_toast(self, "Perfis de exportação salvos.",
+                          tipo="sucesso")
 
     def _abrir_pasta_biblioteca(self) -> None:
         """Passo 49: abre a pasta das fotos no Explorer."""

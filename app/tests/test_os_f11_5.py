@@ -836,3 +836,296 @@ def test_f6_82_mestra_intacta_apos_reordenar_estante(raiz_env):
     m._recarregar_lista()
     assert _json.dumps(lay.to_dict(), sort_keys=True) == antes
     m.close()
+
+
+# ============================================================================
+# §6 — FASE 8 (exportação e publicação)
+# ============================================================================
+
+def _png_solida(caminho, cor):
+    from PIL import Image
+    Image.new("RGB", (64, 64), cor).save(str(caminho))
+    return str(caminho)
+
+
+def test_f8_40_card_social_herda_a_arte(tmp_path):
+    """#40: com `fundo`, o card social sai com a ARTE do projeto — pixel do
+    canto vermelho; sem fundo, o padrão (não-vermelho). Vale para o card
+    único E para o carrossel (o fundo atravessa o compor_carrossel)."""
+    from app.rendering.compositor import DadosProduto
+    from app.rendering.social import compor_carrossel, compor_social
+    fundo = _png_solida(tmp_path / "arte.png", (255, 0, 0))
+    d = DadosProduto("Produto X")
+    com = compor_social("oferta_do_dia", d, fundo=fundo)
+    sem = compor_social("oferta_do_dia", d)
+    px_com = com.convert("RGB").getpixel((5, 5))
+    px_sem = sem.convert("RGB").getpixel((5, 5))
+    assert px_com[0] > 200 and px_com[1] < 60          # a arte chegou
+    assert px_com != px_sem                            # e não é o padrão
+    cards = compor_carrossel([d, d], fundo=fundo)
+    assert len(cards) == 2
+    for c in cards:
+        px = c.convert("RGB").getpixel((5, 5))
+        assert px[0] > 200 and px[1] < 60              # em TODOS os cards
+
+
+def test_f8_31_oferta_do_dia_reusa_o_modelo_vitrine(monkeypatch):
+    """#31 (R-044): o estilo da foto/nome do card Oferta do Dia vem DO modelo
+    vitrine — mudar a vitrine muda o card (prova de reuso; valores copiados
+    à mão não acompanhariam)."""
+    from app.rendering import social as S
+    from app.rendering.model import TipoRegiao
+    lay = S.layout_social("oferta_do_dia")
+    nome = next(r for r in lay.paginas[0].slots[0].regioes
+                if r.tipo == TipoRegiao.NOME)
+    assert nome.pill and nome.pill_cor == "#111111"    # o estilo da vitrine
+
+    def _vitrine_mudada():
+        from app.rendering.modelos import modelo_vitrine
+        m = modelo_vitrine()
+        for d in m.regioes:
+            if d["tipo"] == "NOME":
+                d["pill_cor"] = "#ABCDEF"
+        return m
+
+    monkeypatch.setattr(S, "modelo_vitrine", _vitrine_mudada)
+    lay2 = S.layout_social("oferta_do_dia")
+    nome2 = next(r for r in lay2.paginas[0].slots[0].regioes
+                 if r.tipo == TipoRegiao.NOME)
+    assert nome2.pill_cor == "#ABCDEF"                 # acompanhou o modelo
+
+
+def _mesa_social(itens):
+    """Duble da Mesa para o _compor_publicacao (sem widgets da Mesa real)."""
+    from decimal import Decimal
+
+    from PySide6.QtWidgets import QWidget
+
+    from app.qt.telas.servico import preco_decimal
+    from app.rendering.compositor import DadosProduto
+
+    class _M(QWidget):
+        _fundo = None
+
+        def __init__(self):
+            super().__init__()
+            self._itens = itens
+
+        @staticmethod
+        def esta_aprovado():
+            return False
+
+        @staticmethod
+        def _dados_de(it):
+            return DadosProduto(it.nome,
+                                preco_por=preco_decimal(it.preco)
+                                or Decimal("1.00"),
+                                imagem_path=it.imagem)
+
+        @staticmethod
+        def paginas_compostas():
+            from PIL import Image
+            return [Image.new("RGB", (200, 300), (250, 250, 250))]
+    return _M()
+
+
+def test_f8_35_selecao_e_ordem_do_carrossel(tmp_path):
+    """#35: desmarcar tira o produto e arrastar muda a ordem — a SAÍDA
+    reflete (nº de cards e a FOTO do 1º card, por pixel)."""
+    from PySide6.QtCore import Qt
+
+    from app.qt.telas.publicar_dialog import PublicarDialog, _compor_publicacao
+    from app.qt.telas.servico import ItemMesa
+    _app()
+    foto_a = _png_solida(tmp_path / "a.png", (0, 200, 0))     # A = verde
+    foto_c = _png_solida(tmp_path / "c.png", (200, 0, 0))     # C = vermelho
+    a = ItemMesa("A", "1,00", "VERDE", "A", imagem=foto_a)
+    b = ItemMesa("B", "2,00", "VERDE", "B")
+    c = ItemMesa("C", "3,00", "VERDE", "C", imagem=foto_c)
+    mesa = _mesa_social([a, b, c])
+    dlg = PublicarDialog(mesa)
+    dlg.lista_carrossel.item(1).setCheckState(Qt.CheckState.Unchecked)  # B sai
+    li = dlg.lista_carrossel.takeItem(2)               # C vai pro topo
+    dlg.lista_carrossel.insertItem(0, li)
+    sel = dlg._itens_do_carrossel()
+    assert [it.uid for it in sel] == [c.uid, a.uid]    # ordem + seleção por uid
+    saida = tmp_path / "saida"
+    saida.mkdir()
+    gerados, _aviso, _p = _compor_publicacao(
+        mesa, "carrossel", saida, False, None, sel, lambda _m: None)
+    assert len(gerados) == 2                           # B ficou fora
+    from PIL import Image
+    im1 = Image.open(gerados[0]).convert("RGB")
+    px = im1.getpixel((im1.width // 2, int(im1.height * 0.30)))
+    assert px[0] > 120 and px[0] > px[1] + 60          # o 1º card é o C (foto)
+    dlg.close()
+
+
+def test_f8_7_faixa_e_story_mp4_pelo_caminho_da_ui(tmp_path):
+    """#7/#37 (R-145/R-139): o modo "faixa" da UI gera o banner 1920×1080 e o
+    Story com MP4 ligado gera PNG + vídeo animado — pelo MESMO miolo que o
+    botão usa."""
+    from app.qt.telas.publicar_dialog import PublicarDialog, _compor_publicacao
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.video import ffmpeg_disponivel
+    _app()
+    it = ItemMesa("Herói", "9,99", "VERDE", "Herói")
+    mesa = _mesa_social([it])
+    dlg = PublicarDialog(mesa)
+    dlg.rb_faixa.setChecked(True)
+    assert dlg._modo() == "faixa"                      # o radio mapeia o modo
+    saida = tmp_path / "s1"
+    saida.mkdir()
+    gerados, _a, _p = _compor_publicacao(
+        mesa, "faixa", saida, True, it, [it], lambda _m: None)
+    from PIL import Image
+    banner = Image.open(gerados[0])
+    assert (banner.width, banner.height) == (1920, 1080)
+    # Story + MP4 (a ordem afirma o ffmpeg no ambiente)
+    assert ffmpeg_disponivel(), "a ordem afirma o ffmpeg no ambiente"
+    saida2 = tmp_path / "s2"
+    saida2.mkdir()
+    gerados2, aviso2, _p2 = _compor_publicacao(
+        mesa, "story", saida2, True, it, [it], lambda _m: None,
+        story_mp4=True)
+    assert aviso2 is None
+    assert [Path(g).name for g in gerados2] == ["story.png", "story.mp4"]
+    assert Path(gerados2[1]).stat().st_size > 1000
+    dlg.close()
+
+
+def test_f8_94_85_limitacao_visivel_e_abrir_com(tmp_path, monkeypatch):
+    """#94/#85: a LIMITAÇÃO honesta do SO aparece na UI (label + tooltip) e o
+    "Abrir com…" acorda após gerar, apontando para o arquivo gerado."""
+    from app.qt.telas import compartilhar
+    from app.qt.telas.publicar_dialog import PublicarDialog
+    from app.qt.telas.servico import ItemMesa
+    _app()
+    mesa = _mesa_social([ItemMesa("X", "1,00", "VERDE", "X")])
+    dlg = PublicarDialog(mesa)
+    assert dlg._lbl_limitacao.text() == compartilhar.LIMITACAO_SO
+    assert dlg.btn_abrir_com.toolTip() == compartilhar.LIMITACAO_SO
+    assert not dlg.btn_abrir_com.isEnabled()
+    monkeypatch.setattr(compartilhar, "copiar_imagem", lambda _c: True)
+    monkeypatch.setattr(compartilhar, "abrir_pasta", lambda _c: True)
+    arq = _png_solida(tmp_path / "peca.png", (0, 0, 255))
+    dlg._pronto(([arq], None, str(tmp_path)))
+    assert dlg.btn_abrir_com.isEnabled()
+    abertos: list[str] = []
+    monkeypatch.setattr(compartilhar, "abrir_com",
+                        lambda c: abertos.append(str(c)) or True)
+    dlg._abrir_com()
+    assert abertos == [arq]                            # abre O arquivo gerado
+    dlg.close()
+
+
+def test_f8_5_perfis_editaveis_persistem(raiz_env):
+    """#5 (R-065): editar um perfil na tela PERSISTE na Config (relido do
+    banco); duplicar cria a cópia; número inválido avisa e NÃO salva (I2)."""
+    from app.qt.telas.perfis_dialog import PerfisDialog
+    from app.rendering.perfis import perfis_configurados
+    _app()
+    dlg = PerfisDialog()
+    assert dlg.tab.rowCount() == 3                     # os padrões de fábrica
+    dlg.tab.item(0, 0).setText("Zap do mercado")
+    dlg.tab.item(0, 6).setText("70")
+    dlg._salvar()
+    lidos = perfis_configurados()
+    assert lidos[0].nome == "Zap do mercado"           # relido do banco
+    assert lidos[0].qualidade == 70
+    dlg2 = PerfisDialog()
+    assert dlg2.tab.rowCount() == 3
+    assert dlg2.tab.item(0, 0).text() == "Zap do mercado"
+    dlg2.tab.setCurrentCell(0, 0)
+    dlg2._duplicar()
+    assert dlg2.tab.rowCount() == 4
+    assert "cópia" in dlg2.tab.item(3, 0).text()
+    dlg2.tab.item(1, 5).setText("trezentos")           # DPI inválido
+    assert dlg2._coletar() is None                     # não salva torto
+    assert "não é um número" in dlg2._aviso.text()     # e avisa (I2)
+    dlg2.close()
+
+
+def test_f8_52_fade_e_duracao_por_pagina():
+    """#52: `frames_do_slideshow` honra a duração (N frames/página) e o fade
+    injeta frames de MISTURA entre páginas — por pixel."""
+    from PIL import Image
+
+    from app.rendering.video import frames_do_slideshow
+    r = Image.new("RGB", (32, 32), (255, 0, 0))
+    g = Image.new("RGB", (32, 32), (0, 255, 0))
+    secos = frames_do_slideshow([r, g], seg_por_pagina=2 / 24, fps=24,
+                                fade_s=0.0)
+    assert len(secos) == 4                             # 2 frames por página
+    com_fade = frames_do_slideshow([r, g], seg_por_pagina=2 / 24, fps=24,
+                                   fade_s=2 / 24)
+    assert len(com_fade) == 6                          # +2 frames de blend
+    px0 = com_fade[0].getpixel((16, 16))
+    meio = com_fade[2].getpixel((16, 16))              # 1º frame do fade
+    fim = com_fade[-1].getpixel((16, 16))
+    assert px0 == (255, 0, 0) and fim == (0, 255, 0)
+    assert 40 < meio[0] < 220 and 40 < meio[1] < 220   # mistura de verdade
+
+
+def test_f8_49_50_pulso_isolado_do_preco():
+    """#49/#50: com `pulso_rect`, SÓ o preço pulsa — no meio da animação o
+    vermelho vaza para fora do rect (zoom local), e um canto LONGE fica
+    intacto em todos os frames."""
+    from PIL import Image
+
+    from app.rendering.video import frames_do_story
+    img = Image.new("RGB", (200, 400), (255, 255, 255))
+    for x in range(50, 150):
+        for y in range(300, 350):
+            img.putpixel((x, y), (200, 0, 0))          # o "preço"
+    frames = frames_do_story(img, 8, pulso_rect=(50, 300, 100, 50))
+    assert len(frames) == 8
+    acima = (100, 299)                                 # 1 px acima do rect
+    assert frames[0].getpixel(acima)[0] > 240          # parado no frame 0
+    pico = frames[4].getpixel(acima)                   # z máximo (1.06) no meio
+    assert pico[0] > 150 and pico[1] < 100             # o preço CRESCEU
+    for fr in frames:
+        assert fr.getpixel((10, 10)) == (255, 255, 255)  # o resto imóvel
+
+
+def test_f8_32_preseleciona_o_item_da_mesa(raiz_env):
+    """#32: o item selecionado na ESTANTE da Mesa já vem escolhido no combo
+    do destaque (por uid)."""
+    from app.qt.telas.publicar_dialog import PublicarDialog
+    from app.qt.telas.servico import ItemMesa
+    itens = [ItemMesa(n, "1,00", "VERDE", n) for n in ("A", "B", "C")]
+    m = _mesa_viva(raiz_env, list(itens))
+    m.lista.setCurrentRow(1)
+    dlg = PublicarDialog(m)
+    assert dlg.combo_item.currentData() == itens[1].uid
+    dlg.close()
+    m.close()
+
+
+def test_f8_24_aprovacao_e_da_versao_nao_do_id(raiz_env):
+    """#24: a aprovação vale para a VERSÃO aprovada (hash do estado salvo) —
+    se o conteúdo salvo muda por qualquer porta (ex.: restaurar versão
+    antiga), a marca RASCUNHO volta sozinha, sem depender do fluxo de
+    salvar."""
+    from app.core import projetos
+    from app.core.database import Database
+    from app.core.models import ProjetoSalvo
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    lay = LayoutDef(100, 100, dpi=96, paginas=[Pagina([
+        Slot("s", [Regiao(TipoRegiao.NOME, Retangulo(5, 5, 40, 10))])])])
+    it = ItemMesa("X", "1,00", "VERDE", "X")
+    pid = projetos.salvar_projeto("Aprovado v1", None, "TABLOIDE", lay,
+                                  [it.to_dict()])
+    projetos.aprovar(pid)
+    assert projetos.esta_aprovado(pid)                 # a versão aprovada
+    db = Database().init()                             # muda o SALVO por fora
+    try:
+        with db.Session() as s:
+            row = s.get(ProjetoSalvo, pid)
+            row.estado_slots = row.estado_slots.replace("1,00", "9,99")
+            s.commit()
+    finally:
+        db.engine.dispose()
+    assert not projetos.esta_aprovado(pid)             # o hash não bate mais

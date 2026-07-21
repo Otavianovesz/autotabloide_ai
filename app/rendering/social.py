@@ -53,16 +53,23 @@ FORMATOS: dict[str, FormatoSocial] = {
 
 def _regioes_oferta(larg_mm: float, alt_mm: float) -> list[Regiao]:
     """Herói com de/por (R-141): foto grande, nome com pílula, "de" riscado e
-    "por" GIGANTE. Reusa os mesmos tijolos (Regiao/PapelPreco) do cartaz —
-    posições em fração da caixa, para servir a qualquer proporção social."""
+    "por" GIGANTE. Posições em fração da caixa, p/ qualquer proporção social.
+    OS F11.5 #31 (R-044): a foto e o nome REUSAM o estilo do modelo VITRINE
+    (ajuste, pílula, cores vêm DELE — mudar a vitrine muda o card junto); só
+    o preço é o par de/por próprio do herói social."""
+    vit = {d["tipo"]: d for d in modelo_vitrine().regioes}
+    foto_v, nome_v = vit["IMAGEM"], vit["NOME"]
+
     def rt(fx, fy, fw, fh):
         return Retangulo(fx * larg_mm, fy * alt_mm, fw * larg_mm, fh * alt_mm)
     return [
         Regiao(TipoRegiao.IMAGEM, rt(0.06, 0.05, 0.88, 0.52),
-               nome="Foto", ajuste=Ajuste.PREENCHER),
+               nome="Foto", ajuste=Ajuste[foto_v["ajuste"]]),
         Regiao(TipoRegiao.NOME, rt(0.05, 0.58, 0.90, 0.12), nome="Nome",
-               alinhamento=Alinhamento.CENTRO, tamanho_max_pt=34, cor="#ffffff",
-               pill=True, pill_cor="#111111", pill_opacidade=205),
+               alinhamento=Alinhamento.CENTRO, tamanho_max_pt=34,
+               cor=nome_v["cor"], pill=nome_v["pill"],
+               pill_cor=nome_v["pill_cor"],
+               pill_opacidade=nome_v["pill_opacidade"]),
         Regiao(TipoRegiao.PRECO, rt(0.30, 0.71, 0.40, 0.07), nome="Preço de",
                alinhamento=Alinhamento.CENTRO, tamanho_max_pt=22, cor="#5A6472",
                subtipo_preco=SubtipoPreco.COMPLETO, papel_preco=PapelPreco.DE,
@@ -97,7 +104,9 @@ def compor_social(formato: str, dados: DadosProduto,
 
 
 def compor_carrossel(dados_lista: list[DadosProduto],
-                     formato: str = "carrossel") -> list[Image.Image]:
+                     formato: str = "carrossel",
+                     fundo: str | None = None) -> list[Image.Image]:
     """R-140: N cards (1 por produto), NA ORDEM dada — cada card é uma página de
-    1 slot herói. Devolve a lista de Images (o chamador numera os arquivos)."""
-    return [compor_social(formato, d) for d in dados_lista]
+    1 slot herói. Devolve a lista de Images (o chamador numera os arquivos).
+    OS F11.5 #40: `fundo` (a arte do projeto) atravessa até cada card."""
+    return [compor_social(formato, d, fundo) for d in dados_lista]
