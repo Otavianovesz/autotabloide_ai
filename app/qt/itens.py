@@ -23,6 +23,33 @@ from app.qt.alinhamento import snap
 from app.qt.design import tokens as t
 from app.qt.design.icones import icone
 
+
+def cota_entre_rects(rect: tuple, outros: list[tuple]) -> float | None:
+    """OS F11.5 #77 (R-041): a menor distância em mm até a região VIZINHA
+    alinhada — gap horizontal quando há sobreposição vertical, gap vertical
+    quando há sobreposição horizontal; 0 quando sobrepostas; None sem
+    vizinha alinhada. Puro (testável por valor)."""
+    x, y, w, h = rect
+    melhor: float | None = None
+    for ox, oy, ow, oh in outros:
+        if oy < y + h and oy + oh > y:          # alinhadas na vertical
+            if ox >= x + w:
+                g = ox - (x + w)
+            elif ox + ow <= x:
+                g = x - (ox + ow)
+            else:
+                g = 0.0
+            melhor = g if melhor is None else min(melhor, g)
+        if ox < x + w and ox + ow > x:          # alinhadas na horizontal
+            if oy >= y + h:
+                g = oy - (y + h)
+            elif oy + oh <= y:
+                g = y - (oy + oh)
+            else:
+                g = 0.0
+            melhor = g if melhor is None else min(melhor, g)
+    return melhor
+
 LIMIAR_SNAP = 6.0  # px de cena
 
 # R-040: uma cor por PAPEL no modo raio-x (estrutura sem a arte)
@@ -149,6 +176,19 @@ class RegiaoItem(QGraphicsItem):
             base = lay.altura_mm - (y_mm + h_mm)
             cota = (f"  ·  ←{x_mm:.0f}  →{max(dir_, 0):.0f}  "
                     f"↑{y_mm:.0f}  ↓{max(base, 0):.0f} mm")
+        # OS F11.5 #77: a cota até a REGIÃO vizinha mais próxima (alinhada),
+        # ao vivo — além das 4 bordas da arte
+        outros = []
+        for it in self.canvas._itens:
+            if it is self:
+                continue
+            ro = it.rect_cena()
+            ox_mm, oy_mm = self.canvas.cena_para_mm(ro.x(), ro.y())
+            ow_mm, oh_mm = self.canvas.cena_para_mm(ro.width(), ro.height())
+            outros.append((ox_mm, oy_mm, ow_mm, oh_mm))
+        viz = cota_entre_rects((x_mm, y_mm, w_mm, h_mm), outros)
+        if viz is not None:
+            cota += f"  ·  ⇄ vizinha {viz:.0f} mm"
         self.canvas.medidas.emit(
             f"X {x_mm:.0f}  Y {y_mm:.0f}  ·  L {w_mm:.0f}  A {h_mm:.0f} mm{cota}")
 

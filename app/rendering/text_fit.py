@@ -96,16 +96,23 @@ def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
 
 
 def _truncar_com_reticencias(linhas, fonte, larg_px, alt_linha, alt_px):
-    """R-045 (reflow harmônico): mantém só as linhas que cabem na altura e
-    fecha a última com "…" (cortando p/ o "…" caber na largura). O nome CEDE;
-    nunca transborda p/ a região do preço."""
+    """R-045 (reflow harmônico — OS F11.5 #42): mantém só as linhas que cabem
+    na altura e fecha a última com "…". O recuo é CONTROLADO: primeiro por
+    PALAVRA inteira (nunca "Choco…" no meio do termo — o corte sai limpo,
+    como um diagramador faria); só uma palavra única grande demais cai no
+    corte por caractere. O nome CEDE; nunca transborda p/ a região do preço."""
     max_linhas = max(1, int(alt_px // max(1, alt_linha)))
     if len(linhas) <= max_linhas:
         return linhas
     mantidas = linhas[:max_linhas]
     ultima = mantidas[-1].rstrip()
+    palavras = ultima.split()
+    while len(palavras) > 1 and \
+            fonte.getlength(" ".join(palavras) + "…") > larg_px:
+        palavras.pop()                       # recua palavra a palavra
+    ultima = " ".join(palavras)
     while ultima and fonte.getlength(ultima + "…") > larg_px:
-        ultima = ultima[:-1].rstrip()
+        ultima = ultima[:-1].rstrip()        # última defesa: palavra gigante
     mantidas[-1] = (ultima + "…") if ultima else "…"
     return mantidas
 

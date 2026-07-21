@@ -43,6 +43,11 @@ class BarraEditor(QWidget):
     def __init__(self, editor, parent=None):
         super().__init__(parent)
         self.setObjectName("barraFerramentas")
+        # OS F11.5 #50 (RG-53/54): a barra PODE encolher abaixo do conteúdo —
+        # sem isto ela PINAVA a janela na largura do conteúdo (1665px a 125%)
+        # e o modo compacto do resizeEvent nunca chegava a disparar (a mesma
+        # lição da barra da Mesa).
+        self.setMinimumWidth(1)
         c = editor.canvas
         self._c = c
         lay = QHBoxLayout(self)

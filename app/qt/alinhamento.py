@@ -88,25 +88,40 @@ def distribuir(rects, eixo: str):
     return saida
 
 
-def distribuir_espacamento(rects, eixo: str, espaco: float):
-    """R-033: distribui com espaçamento FIXO (borda a borda) entre os itens,
-    na ordem do eixo, ancorado no primeiro (menor coord). ``espaco`` na mesma
-    unidade dos rects. Retorna lista de (nx, ny)."""
+def distribuir_espacamento(rects, eixo: str, espaco: float, *,
+                           grade_passo: float | None = None,
+                           guias: tuple = (), limiar: float = 2.0):
+    """R-033 (+ OS F11.5 #60): distribui com espaçamento FIXO (borda a borda)
+    entre os itens, na ordem do eixo, ancorado no primeiro (menor coord) —
+    agora RESPEITANDO guias e grade magnética: cada posição distribuída
+    snapa à guia do eixo a até ``limiar`` (a guia vence) e, sem guia por
+    perto, ao múltiplo da grade (quando ligada). Retorna lista de (nx, ny)."""
     if not rects:
         return []
 
     def coord(r):
         return r[0] if eixo == "h" else r[1]
 
+    def _snap(v: float) -> float:
+        for orient, g in guias:              # guia do MESMO eixo vence
+            if orient == ("x" if eixo == "h" else "y") and abs(v - g) <= limiar:
+                return g
+        if grade_passo and grade_passo > 0:
+            perto = round(v / grade_passo) * grade_passo
+            if abs(v - perto) <= limiar:
+                return perto
+        return v
+
     ordem = sorted(range(len(rects)), key=lambda i: coord(rects[i]))
     saida = [None] * len(rects)
     cursor = coord(rects[ordem[0]])           # âncora = o primeiro
     for i in ordem:
         x, y, w, h = rects[i]
+        pos = _snap(cursor)
         if eixo == "h":
-            saida[i] = (cursor, y)
-            cursor += w + espaco
+            saida[i] = (pos, y)
+            cursor = pos + w + espaco
         else:
-            saida[i] = (x, cursor)
-            cursor += h + espaco
+            saida[i] = (x, pos)
+            cursor = pos + h + espaco
     return saida

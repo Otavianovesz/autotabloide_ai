@@ -79,11 +79,25 @@ class Editor(QWidget):
             indice_lateral=1, minimo_lateral=LARGURA_LATERAL)
         corpo = self._corpo
 
+        # OS F11.5 #49: a faixa de páginas FIXA à esquerda (miniaturas vivas
+        # com debounce; arrastar reordena) — o diálogo antigo continua para
+        # quem prefere a janela com o histórico visual
+        from PySide6.QtWidgets import QHBoxLayout
+
+        from app.qt.design.faixa_paginas import FaixaPaginas
+        self.faixa_paginas = FaixaPaginas(self.area.canvas)
+        centro = QWidget()
+        hc = QHBoxLayout(centro)
+        hc.setContentsMargins(0, 0, 0, 0)
+        hc.setSpacing(0)
+        hc.addWidget(self.faixa_paginas)
+        hc.addWidget(corpo, 1)
+
         raiz = QVBoxLayout(self)
         raiz.setContentsMargins(0, 0, 0, 0)
         raiz.setSpacing(0)
         raiz.addWidget(self.barra)
-        raiz.addWidget(corpo, 1)
+        raiz.addWidget(centro, 1)
 
         # qualquer edição suja o documento (o shell mostra "não salvo")
         self.area.canvas.editou.connect(lambda _reg: self._marcar_sujo(True))

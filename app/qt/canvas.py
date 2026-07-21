@@ -1353,10 +1353,15 @@ class CanvasView(QGraphicsView):
             if travada and self._bg.isSelected():
                 self._bg.setSelected(False)
         if not travada:
+            # OS F11.5 #72 (opção b): a decisão travada é arte = FUNDO de
+            # página (nunca objeto móvel). O aviso agora diz o que o gesto
+            # FAZ — liberar a seleção para conferir/medir — sem prometer
+            # movimento que não existe.
             self._avisar_info(
-                "A arte de fundo é o encarte do Illustrator — ela ocupa a "
-                "página inteira e não se move; o cadeado evita você a "
-                "selecionar sem querer.")
+                "Arte destravada: agora dá para SELECIONÁ-LA (conferir e "
+                "medir). Ela continua fixa como fundo da página — "
+                "reposicionar a arte é trabalho do Illustrator (decisão do "
+                "projeto).")
 
     def arte_travada(self) -> bool:
         return bool(getattr(self, "_arte_travada", True))
@@ -1592,7 +1597,23 @@ class CanvasView(QGraphicsView):
         ex, ey = self.mm_para_cena(espaco_mm, espaco_mm)
         espaco = ex if eixo == "h" else ey
         rects = [(it.x(), it.y(), it._w, it._h) for it in itens]
-        self._aplicar_posicoes(itens, distribuir_espacamento(rects, eixo, espaco))
+        # OS F11.5 #60: a distribuição respeita as GUIAS e a GRADE magnética
+        # da página (em coords de cena), como o arrasto já respeita
+        pagina = self._pagina() if self._layout is not None else None
+        guias_cena: list[tuple] = []
+        grade_cena = None
+        if pagina is not None:
+            for orient, mm in (pagina.guias or []):
+                cx, cy = self.mm_para_cena(mm, mm)
+                guias_cena.append((orient, cx if orient == "x" else cy))
+            if pagina.grade_magnetica and pagina.grade_passo_mm:
+                gx, _gy = self.mm_para_cena(pagina.grade_passo_mm,
+                                            pagina.grade_passo_mm)
+                grade_cena = gx
+        lim, _ = self.mm_para_cena(2.0, 2.0)
+        self._aplicar_posicoes(itens, distribuir_espacamento(
+            rects, eixo, espaco, grade_passo=grade_cena,
+            guias=tuple(guias_cena), limiar=lim))
 
     # --- conversões cena<->mm --------------------------------------------------
 

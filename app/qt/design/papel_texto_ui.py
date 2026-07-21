@@ -95,6 +95,17 @@ def badge_de_papel(papel: PapelTexto) -> tuple[str, str, str]:
             _ICONE_PAPEL.get(papel, "paragrafo"))
 
 
+def pill_padrao_do_tema() -> tuple[str, int]:
+    """OS F11.5 #24: a SUGESTÃO inicial da pill segue o tema da UI — no claro
+    a faixa clássica escura (#000000/128); no escuro, o azul-carvão da casa
+    com um véu mais denso (combina com as artes que o dono edita no escuro).
+    Só o DEFAULT muda: quem já ajustou cor/opacidade nunca é tocado."""
+    from app.qt.design import tokens as t
+    if t.TEMA_ATUAL == "escuro":
+        return ("#16202E", 150)
+    return ("#000000", 128)
+
+
 def texto_inicial_do_papel(papel: PapelTexto, *, preset_legal: str | None = None,
                            texto_livre: str | None = None) -> str | None:
     """O ``texto_fixo`` que a região nasce guardando, por papel:
