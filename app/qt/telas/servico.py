@@ -1696,19 +1696,64 @@ def fundir_duplicatas(pares: list[tuple[int, int]],
     {"fundidos": n, "aliases": n}."""
     from app.core.database import Database
     from app.core.deduplicacao import fundir_no_banco
+    from app.core.paths import SystemRoot
     db = Database().init()
-    fundidos = aliases = 0
+    fundidos = aliases = fotos = 0
+    raiz_bib = SystemRoot().biblioteca_imagens
     try:
         with db.Session() as s:
             for i, (venc, perd) in enumerate(pares, 1):
                 status_cb(f"Fundindo par {i}/{len(pares)}…")
-                r = fundir_no_banco(s, venc, perd)
+                # OS F11.5 #33/#39: as fotos do perdedor viram versões
+                r = fundir_no_banco(s, venc, perd, biblioteca_raiz=raiz_bib)
                 fundidos += 1
                 aliases += len(r["aliases_migrados"])
+                fotos += len(r.get("fotos_migradas", []))
             s.commit()
     finally:
         db.engine.dispose()
-    return {"fundidos": fundidos, "aliases": aliases}
+    return {"fundidos": fundidos, "aliases": aliases, "fotos": fotos}
+
+
+def correcoes_aprendidas() -> list[dict]:
+    """OS F11.5 #43/#53/#91: as correções que o banco APRENDEU (aliases) —
+    cada uma diz "quando a tabela escrever X, é o produto Y". A lista real,
+    do banco (não uma imagem estática)."""
+    from sqlalchemy import select
+
+    from app.core.models import Produto, ProdutoAlias
+    saida: list[dict] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            rows = s.execute(
+                select(ProdutoAlias.id, ProdutoAlias.alias_raw,
+                       Produto.id, Produto.nome_sanitizado)
+                .join(Produto, Produto.id == ProdutoAlias.produto_id)
+                .order_by(Produto.nome_sanitizado)).all()
+            for aid, alias, pid, nome in rows:
+                saida.append({"id": aid, "alias": alias,
+                              "produto_id": pid, "produto": nome})
+    finally:
+        db.engine.dispose()
+    return saida
+
+
+def esquecer_correcao(alias_id: int) -> bool:
+    """#43/#53/#91: REVERTE uma correção aprendida (apaga o alias) — na
+    próxima importação aquele texto volta a ser conferido pelo humano."""
+    from app.core.models import ProdutoAlias
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            row = s.get(ProdutoAlias, alias_id)
+            if row is None:
+                return False
+            s.delete(row)
+            s.commit()
+            return True
+    finally:
+        db.engine.dispose()
 
 
 # --- aceitar 🟡 (aprende alias) -------------------------------------------------
@@ -1753,6 +1798,32 @@ class PropostaCriacao:
     componentes: list[str] = field(default_factory=list)
 
 
+def marcas_do_acervo() -> list[str]:
+    """OS F11.5 #49: as marcas CONFIRMADAS — as distintas do banco + as
+    marcas próprias da Config. Degrada para lista vazia (nunca inventa)."""
+    marcas: list[str] = []
+    try:
+        from sqlalchemy import select
+
+        from app.core.models import Produto
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                for (m,) in s.execute(select(Produto.marca).distinct()):
+                    if m and str(m).strip():
+                        marcas.append(str(m).strip())
+                proprias = ConfigRepositorio(s).get("marcas.proprias", []) or []
+        finally:
+            db.engine.dispose()
+        for m in proprias:
+            if m and str(m).strip() and str(m).strip() not in marcas:
+                marcas.append(str(m).strip())
+    except Exception:
+        pass
+    return marcas
+
+
 def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     """SÓ a metade do nome (sem busca de imagem) — a fila em lote usa isto.
 
@@ -1762,9 +1833,17 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     AttributeError em vez de degradar.
     """
     if motor is None:
+        from app.core.aprendizado import ordenar_tipo_marca
         from app.core.sanitize import sanitizar
         res = sanitizar(descricao)
-        return PropostaCriacao(nome=res.nome_sanitizado, mais18=False,
+        # OS F11.5 #49: a marca CONHECIDA vai para o lugar da casa
+        # (Tipo+Marca+…) mesmo sem IA — determinístico, nunca inventa
+        nome = res.nome_sanitizado
+        try:
+            nome = ordenar_tipo_marca(nome, marcas_do_acervo())
+        except Exception:
+            pass
+        return PropostaCriacao(nome=nome, mais18=False,
                                categoria=None)
     from app.ai.enriquecimento import enriquecer
     enr = enriquecer(descricao, motor)

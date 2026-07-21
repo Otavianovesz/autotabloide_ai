@@ -548,8 +548,19 @@ class PainelPropriedades(QWidget):
         # não pode repeti-la (a guarda dura vive em `gerar_dica`).
         estilo = self.estilo_dica.currentData()
         evitar = self._dicas_a_evitar()
-        trab = Trabalhador(lambda st: gerar_dica(nomes, limite, motor,
-                                                 estilo=estilo, evitar=evitar))
+
+        # OS F11.5 #12: as marcas conhecidas vão junto — dica que citar marca
+        # FORA da oferta (alucinação) é rejeitada pela guarda dura
+        def _tarefa(st):
+            from app.qt.telas import servico as _srv
+            try:
+                marcas = _srv.marcas_do_acervo()
+            except Exception:
+                marcas = []
+            return gerar_dica(nomes, limite, motor, estilo=estilo,
+                              evitar=evitar, marcas_conhecidas=marcas)
+
+        trab = Trabalhador(_tarefa)
 
         def _pronto(dica):
             self.btn_dica.setEnabled(True)

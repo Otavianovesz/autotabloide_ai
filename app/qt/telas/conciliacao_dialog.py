@@ -30,7 +30,12 @@ from app.qt.design.carregando import OverlayOcupado
 from app.qt.design.toast import mostrar_toast
 from app.qt.telas import servico
 from app.qt.telas.curadoria_dialog import CuradoriaDialog
-from app.qt.workers import GerenciadorTrabalhos, Trabalhador, TrabalhadorFila
+from app.qt.workers import (
+    FilaIA,
+    GerenciadorTrabalhos,
+    Trabalhador,
+    TrabalhadorFila,
+)
 
 _COR = {"VERDE": t.SUCESSO, "AMARELO": t.ALERTA, "VERMELHO": t.PERIGO}
 _ROTULO = {"VERDE": "No banco", "AMARELO": "Conferir", "VERMELHO": "Novo"}
@@ -126,7 +131,19 @@ class ConciliacaoDialog(QDialog):
         self.concluir = QPushButton("Concluir")
         self.concluir.setProperty("tipo", "primario")
         self.concluir.clicked.connect(self.accept)
+        # OS F11.5 #61/#63/#64: o painel discreto da fila de IA — "o que a IA
+        # faz agora" + parar num clique (visível só com a fila viva)
+        self._fila_status = QLabel("")
+        self._fila_status.setProperty("papel", "legenda")
+        self.btn_parar_ia = QPushButton("Parar IA")
+        self.btn_parar_ia.setToolTip(
+            "Cancela a fila de enriquecimento — os nomes ficam como vieram "
+            "(dá para enriquecer um a um no Criar)")
+        self.btn_parar_ia.setVisible(False)
+        self.btn_parar_ia.clicked.connect(self._parar_fila_ia)
         rodape.addWidget(self._validade_lbl, 1)
+        rodape.addWidget(self._fila_status)
+        rodape.addWidget(self.btn_parar_ia)
         rodape.addWidget(self.chk_fotos)
         rodape.addWidget(self.btn_verdes)
         rodape.addWidget(self.btn_desfazer_verdes)
@@ -181,9 +198,46 @@ class ConciliacaoDialog(QDialog):
                     estado["motor"] = servico._motor_se_disponivel()
                 return servico.enriquecer_descricao(descricao, estado["motor"])
 
-            self._fila_enriquecer = TrabalhadorFila(vermelhos, _enriquecer_um)
+            # OS F11.5 #61/#63/#64 (R-089/R-090): a fila de IA com prioridade
+            # VIVA — a linha que o dono seleciona é enriquecida primeiro; o
+            # painel discreto diz o que a IA faz agora, com "Parar" a um clique
+            rotulos = {uid: f"enriquecendo “{desc[:38]}”"
+                       for uid, desc in vermelhos}
+            self._fila_enriquecer = FilaIA(vermelhos, _enriquecer_um, rotulos)
             self._fila_enriquecer.item_pronto.connect(self._proposta_pronta)
+            self._fila_enriquecer.comecou_item.connect(self._fila_mudou)
+            self._fila_enriquecer.fila_terminou.connect(
+                lambda: self._fila_mudou("", ""))
+            self.tabela.currentCellChanged.connect(self._focar_fila)
             self._trabalhos.rodar(self._fila_enriquecer)
+
+    # --- painel da fila de IA (#61/#63/#64) ---------------------------------------
+
+    def _focar_fila(self, linha: int, _c: int, _lv: int, _lc: int) -> None:
+        """R-090: o item que o dono olha vai para a FRENTE da fila."""
+        if self._fila_enriquecer is None:
+            return
+        if 0 <= linha < len(self.itens):
+            self._fila_enriquecer.focar(self.itens[linha].uid)
+
+    def _fila_mudou(self, _chave: str, rotulo: str) -> None:
+        if not hasattr(self, "_fila_status"):
+            return
+        if not rotulo:
+            self._fila_status.setText("")
+            self.btn_parar_ia.setVisible(False)
+            return
+        n = len(self._fila_enriquecer.pendentes()) \
+            if self._fila_enriquecer is not None else 0
+        extra = f" · {n} na fila" if n else ""
+        self._fila_status.setText(f"IA: {rotulo}{extra}")
+        self.btn_parar_ia.setVisible(True)
+
+    def _parar_fila_ia(self) -> None:
+        if self._fila_enriquecer is not None:
+            self._fila_enriquecer.cancelar()
+        self._fila_status.setText("IA parada — os nomes saem sem enriquecer.")
+        self.btn_parar_ia.setVisible(False)
 
     # --- foto original ao lado (R-052) ------------------------------------------
 

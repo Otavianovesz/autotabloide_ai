@@ -1102,6 +1102,384 @@ def test_f8_32_preseleciona_o_item_da_mesa(raiz_env):
     m.close()
 
 
+# ============================================================================
+# §7 — FASE 9 (conteúdo & IA II)
+# ============================================================================
+
+def test_f9_27_28_avaliador_de_foto(tmp_path):
+    """#27/#28 (R-085): a nota sai do CONTEÚDO — xadrez grande e nítido é
+    "boa"; minúscula é "ruim" com o motivo e a sugestão de upscale; lisa
+    (variância zero) acusa borrada; alfa marca packshot."""
+    from PIL import Image
+
+    from app.images.avaliador import avaliar_foto, variancia_laplaciano
+    xadrez = Image.new("L", (800, 800))
+    for x in range(800):
+        for y in range(0, 800, 8):
+            if (x // 8) % 2 == (y // 8) % 2:
+                for k in range(8):
+                    xadrez.putpixel((x, min(y + k, 799)), 255)
+    p_boa = tmp_path / "boa.png"
+    xadrez.convert("RGB").save(p_boa)
+    av = avaliar_foto(p_boa)
+    assert av.nota == "boa" and av.nitidez > 25
+
+    p_mini = tmp_path / "mini.png"
+    xadrez.resize((100, 100)).convert("RGB").save(p_mini)
+    av2 = avaliar_foto(p_mini)
+    assert av2.nota == "ruim"
+    assert any("pequena" in m for m in av2.motivos)
+    assert av2.sugere_upscale                      # o motivo liga o upscale
+
+    p_lisa = tmp_path / "lisa.png"
+    Image.new("RGB", (800, 800), (200, 200, 200)).save(p_lisa)
+    av3 = avaliar_foto(p_lisa)
+    assert any("borrada" in m for m in av3.motivos)
+    assert variancia_laplaciano(Image.open(p_lisa)) < 8
+
+    p_alfa = tmp_path / "alfa.png"
+    Image.new("RGBA", (800, 800), (0, 0, 0, 0)).paste(  # noqa — só o modo
+        xadrez.convert("RGBA"))
+    xadrez.convert("RGBA").save(p_alfa)
+    assert avaliar_foto(p_alfa).tem_alfa
+
+
+def test_f9_50_51_variacoes_por_marca_e_tipo():
+    """#50/#51 (R-082): dois sabores da MESMA marca conhecida viram sugestão;
+    outra marca fica fora; sem marca conhecida NUNCA há sugestão (não
+    inventa)."""
+    from app.core.aprendizado import sugerir_variacoes
+    from app.qt.telas.servico import ItemMesa
+    dan_a = ItemMesa("x", "1,00", "VERDE", "Iogurte Danone Morango 170g")
+    dan_b = ItemMesa("x", "1,00", "VERDE", "Iogurte Danone Coco 170g")
+    vig = ItemMesa("x", "1,00", "VERDE", "Iogurte Vigor Morango 170g")
+    arroz = ItemMesa("x", "1,00", "VERDE", "Arroz Danone 5kg")  # tipo difere
+    grupos = sugerir_variacoes([dan_a, vig, dan_b, arroz],
+                               ["Danone", "Vigor"])
+    assert len(grupos) == 1
+    assert {it.uid for it in grupos[0]} == {dan_a.uid, dan_b.uid}
+    assert sugerir_variacoes([dan_a, dan_b], []) == []   # sem marca → nada
+
+
+def test_f9_51_agrupar_variacoes_vira_multi(raiz_env, tmp_path):
+    """#51: agrupar funde no PRIMEIRO (por uid): as fotos viram a lista multi
+    (F7.1) e os demais saem da estante e do mapa."""
+    from app.qt.telas.servico import ItemMesa
+    fa = _png_solida(tmp_path / "a.png", (255, 0, 0))
+    fb = _png_solida(tmp_path / "b.png", (0, 255, 0))
+    a = ItemMesa("x", "1,00", "VERDE", "Iogurte Danone Morango", imagem=fa)
+    b = ItemMesa("x", "1,00", "VERDE", "Iogurte Danone Coco", imagem=fb)
+    c = ItemMesa("x", "1,00", "VERDE", "Arroz 5kg")
+    m = _mesa_viva(raiz_env, [a, b, c])
+    m.area.canvas.mapa["c9"] = b.uid
+    m._agrupar_variacoes([a, b])
+    assert a.imagens == [fa, fb]                   # o leque multi, na ordem
+    assert [it.uid for it in m._itens] == [a.uid, c.uid]
+    assert "c9" not in m._mapa                     # o mapa não aponta p/ fantasma
+    m.close()
+
+
+def test_f9_47_81_sinonimo_do_dono_persiste_e_aplica(raiz_env):
+    """#47/#81 (R-086): o grupo que o dono acrescenta (Config) entra na
+    conciliação — "Sacole" casa o produto "Geladinho" do banco (canonizado
+    no fuzzy). Reverter a ligação no Conciliador quebra este teste."""
+    from app.core.aprendizado import grupos_com_extras
+    from app.core.database import Database
+    from app.core.repositories import ConfigRepositorio
+    from app.qt.telas import servico
+    seeds.add_produto(raiz_env, "Geladinho de Coco", None, "2.50")
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            ConfigRepositorio(s).set("sinonimos.regionais",
+                                     [["geladinho", "sacole"]])
+            s.commit()
+    finally:
+        db.engine.dispose()
+    assert ["geladinho", "sacole"] in grupos_com_extras(
+        [["geladinho", "sacole"]])
+    res = servico.conciliar_linhas([("Sacole de Coco", "2,00", None)],
+                                   lambda _m: None)
+    it = res.itens[0]
+    assert it.semaforo in ("VERDE", "AMARELO")     # deixou de ser "novo"
+    assert "Geladinho" in (it.nome if it.produto_id
+                           else it.candidato_nome)
+
+
+def test_f9_43_correcoes_aprendidas_le_e_reverte_o_banco(raiz_env):
+    """#43/#53/#91: a lista vem do BANCO (alias→produto) e o Reverter apaga
+    de verdade — na releitura não está mais lá."""
+    from app.core.database import Database
+    from app.core.repositories import ProdutoRepositorio
+    from app.qt.telas import servico
+    from app.qt.telas.correcoes_dialog import CorrecoesDialog
+    _app()
+    pid = seeds.add_produto(raiz_env, "Arroz 5kg", "Camil", "24.90")
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            ProdutoRepositorio(s)._garantir_alias(pid, "ARROZ TP1 CAMIL 5KG")
+            s.commit()
+    finally:
+        db.engine.dispose()
+    lidas = servico.correcoes_aprendidas()
+    assert len(lidas) == 1
+    assert lidas[0]["alias"] == "ARROZ TP1 CAMIL 5KG"
+    assert lidas[0]["produto"] == "Arroz 5kg"
+    dlg = CorrecoesDialog()
+    assert dlg.tab.rowCount() == 1
+    assert dlg.tab.item(0, 0).text() == "ARROZ TP1 CAMIL 5KG"
+    dlg._reverter(lidas[0]["id"])
+    assert servico.correcoes_aprendidas() == []    # apagou no banco
+    assert dlg.tab.rowCount() == 0
+    dlg.close()
+
+
+def test_f9_25_26_sentinela_calibrada_pelo_historico(raiz_env):
+    """#25/#26 (R-078): com UM item só em tela (amostra insuficiente), o
+    HISTÓRICO das edições salvas calibra a faixa — o preço absurdo dispara o
+    aviso. Reverter a calibração (só projeto) deixa a faixa vazia e o teste
+    falha."""
+    from decimal import Decimal
+
+    from app.ai.revisora import _heuristicas
+    from app.core import projetos
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.compositor import DadosProduto
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    lay = LayoutDef(100, 100, dpi=96, paginas=[Pagina([
+        Slot("s", [Regiao(TipoRegiao.NOME, Retangulo(5, 5, 40, 10))])])])
+    historico = [ItemMesa(f"B{i}", f"{5 + i},00", "VERDE", f"Bebida {i}",
+                          categoria="Bebidas") for i in range(5)]
+    projetos.salvar_projeto("Edição antiga", None, "TABLOIDE", lay,
+                            [it.to_dict() for it in historico])
+    dados = {"s": DadosProduto("Refri 2L", preco_por=Decimal("500.00"),
+                               categoria="Bebidas")}
+    avisos = _heuristicas(None, dados, None)
+    assert any("parece alto" in a and "Bebidas" in a for a in avisos)
+
+
+def test_f9_33_39_fusao_reconcilia_fotos(raiz_env):
+    """#33/#39: as fotos do PERDEDOR migram na fusão — vencedor sem foto
+    herda a atual como OFICIAL (mesmos bytes); vencedor com foto ganha a do
+    perdedor como VERSÃO (conferido por conteúdo)."""
+    import hashlib
+
+    from app.core.database import Database
+    from app.core.deduplicacao import fundir_no_banco
+    from app.core.models import Produto
+    bib = raiz_env.biblioteca_imagens
+    p1 = seeds.add_produto(raiz_env, "Café 500g", "Pilão", "18.90")
+    p2 = seeds.add_produto(raiz_env, "Cafe Torrado 500g", "Pilão", "18.90")
+    foto_perd = bib / str(p2) / "atual.png"
+    foto_perd.parent.mkdir(parents=True, exist_ok=True)
+    foto_perd.write_bytes(seeds.png("#AA0000"))
+    h_perd = hashlib.sha256(foto_perd.read_bytes()).hexdigest()
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            r = fundir_no_banco(s, p1, p2, biblioteca_raiz=bib)
+            s.commit()
+            venc = s.get(Produto, p1)
+            assert venc.caminho_imagem == f"{p1}/atual.png"
+    finally:
+        db.engine.dispose()
+    assert len(r["fotos_migradas"]) == 1
+    atual_venc = bib / str(p1) / "atual.png"
+    assert hashlib.sha256(
+        atual_venc.read_bytes()).hexdigest() == h_perd   # MESMOS bytes
+    # 2ª fusão: o vencedor JÁ tem foto → a do novo perdedor vira VERSÃO
+    p3 = seeds.add_produto(raiz_env, "Café Extra 500g", "Pilão", "19.90")
+    foto3 = bib / str(p3) / "atual.png"
+    foto3.parent.mkdir(parents=True, exist_ok=True)
+    foto3.write_bytes(seeds.png("#00AA00"))
+    h3 = hashlib.sha256(foto3.read_bytes()).hexdigest()
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            r2 = fundir_no_banco(s, p1, p3, biblioteca_raiz=bib)
+            s.commit()
+    finally:
+        db.engine.dispose()
+    versoes = list((bib / str(p1) / "versoes").glob("*.png"))
+    assert any(hashlib.sha256(v.read_bytes()).hexdigest() == h3
+               for v in versoes)                    # preservada por conteúdo
+
+
+def test_f9_61_63_64_fila_ia_prioriza_e_cancela(raiz_env):
+    """#61/#63/#64 (R-089/R-090): focar põe o item na frente (o em curso
+    termina) e cancelar para a fila entre itens — ordem conferida por
+    conteúdo."""
+    import threading
+
+    from PySide6.QtCore import Qt as _Qt
+
+    from app.qt.workers import FilaIA
+    _app()
+    direto = _Qt.ConnectionType.DirectConnection   # sem loop de eventos
+    comecou_a = threading.Event()
+    solta = threading.Event()
+    ordem: list[str] = []
+
+    def _fn(valor):
+        if valor == "va":
+            comecou_a.set()
+            solta.wait(5)
+        return valor
+
+    fila = FilaIA([("a", "va"), ("b", "vb"), ("c", "vc"), ("d", "vd")], _fn)
+    fila.item_pronto.connect(lambda ch, _r: ordem.append(ch), direto)
+    fila.start()
+    assert comecou_a.wait(5)
+    fila.focar("d")                    # o dono olhou o item d
+    solta.set()
+    assert fila.wait(5000)
+    assert ordem == ["a", "d", "b", "c"]           # d furou a fila
+
+    comecou_a.clear()
+    solta.clear()
+    executados: list[str] = []
+    fila2 = FilaIA([("a", "va"), ("b", "vb")],
+                   lambda v: (comecou_a.set(), solta.wait(5), v)[-1])
+    fila2.item_pronto.connect(lambda ch, _r: executados.append(ch), direto)
+    fila2.start()
+    assert comecou_a.wait(5)
+    fila2.cancelar()                   # entre itens: o 'b' nunca roda
+    solta.set()
+    assert fila2.wait(5000)
+    assert executados == ["a"]
+    assert fila2.pendentes() == ["b"]              # ficou na fila, visível
+
+
+def test_f9_61_painel_da_fila_na_conciliacao(raiz_env):
+    """#63: o painel diz O QUE a IA faz agora e o Parar cancela — por
+    conteúdo do rótulo."""
+    from app.qt.telas.servico import ItemMesa
+    dlg = _conciliacao([ItemMesa("X", "1,00", "VERDE", "X")])
+    dlg._fila_enriquecer = None        # sem fila viva: só o painel
+    dlg._fila_mudou("u1", "enriquecendo “ARROZ TP1”")
+    assert "IA: enriquecendo “ARROZ TP1”" in dlg._fila_status.text()
+    assert dlg.btn_parar_ia.isVisibleTo(dlg)
+    dlg._parar_fila_ia()
+    assert "parada" in dlg._fila_status.text()
+    assert not dlg.btn_parar_ia.isVisibleTo(dlg)
+    dlg.done(0)
+
+
+def test_f9_49_marca_extraida_alimenta_a_ordem(raiz_env):
+    """#49 (R-087): a marca CONHECIDA vai para a 2ª posição (Tipo+Marca+…)
+    — e o caminho degradado do enriquecer usa isso com as marcas do banco."""
+    from app.core.aprendizado import ordenar_tipo_marca
+    from app.qt.telas import servico
+    assert ordenar_tipo_marca("Camil Arroz Tipo 1 5kg", ["Camil"]) \
+        == "Arroz Camil Tipo 1 5kg"
+    assert ordenar_tipo_marca("Arroz Camil 5kg", ["Camil"]) \
+        == "Arroz Camil 5kg"                       # já no lugar: intacto
+    assert ordenar_tipo_marca("Arroz Zumba 5kg", ["Camil"]) \
+        == "Arroz Zumba 5kg"                       # marca desconhecida: nada
+    seeds.add_produto(raiz_env, "Feijão 1kg", "Camil", "7.99")
+    prop = servico.enriquecer_descricao("CAMIL ARROZ TIPO 1 5KG", None)
+    assert prop.nome.split()[0].lower() != "camil"  # a marca saiu da frente
+    assert "Camil" in prop.nome
+
+
+def test_f9_78_95_ia_nao_inventa_sigla_nem_protocolo():
+    """#78/#95 (negativos): sigla/protocolo/marca que a IA ACRESCENTAR sem
+    existir no bruto é REMOVIDA pela guarda dura; a expansão do glossário do
+    dono (confirmada) sobrevive."""
+    import json as _json
+
+    from app.ai.enriquecimento import (
+        enriquecer, remover_inventados, tokens_inventados)
+    from app.ai.fake import MotorIAFake
+    from app.core.sanitize import REGRAS_PADRAO
+    assert tokens_inventados("Arroz 5kg", "Arroz Premium INMETRO 5kg") \
+        == ["Premium", "INMETRO"]
+    assert remover_inventados("Arroz NBR-14725 5kg", "Arroz 5kg") \
+        == "Arroz 5kg"
+    assert remover_inventados("Molho Vidro 500g", "Molho VD 500g",
+                              permitidos=["Vidro"]) == "Molho Vidro 500g"
+    fake = MotorIAFake(respostas_chat={"ARROZ BRANCO": _json.dumps({
+        "nome_sanitizado": "Arroz Branco SS INMETRO 5kg",
+        "tipo": "Arroz", "mais18": False})})
+    enr = enriquecer("ARROZ BRANCO 5KG", fake, regras=REGRAS_PADRAO)
+    assert "INMETRO" not in enr.nome_sanitizado    # protocolo nunca nasce
+    assert "SS" not in enr.nome_sanitizado.split()  # sigla idem
+    assert "Arroz Branco" in enr.nome_sanitizado
+
+
+def test_f9_12_dica_nao_alucina():
+    """#12: dica com preço/% inventado ou marca conhecida FORA da oferta é
+    rejeitada (None); a dica legítima passa."""
+    import json as _json
+
+    from app.ai.enriquecimento import dica_alucinada, gerar_dica
+    from app.ai.fake import MotorIAFake
+    assert dica_alucinada("Leve 2 com 50% off", ["Arroz 5kg"])
+    assert dica_alucinada("Só R$ 9,99 hoje", ["Arroz 5kg"])
+    assert dica_alucinada("Vai bem com Nescau", ["Arroz Camil 5kg"],
+                          ["Nescau", "Camil"])
+    assert not dica_alucinada("O arroz Camil rende mais soltinho",
+                              ["Arroz Camil 5kg"], ["Nescau", "Camil"])
+    fake = MotorIAFake(respostas_chat={"Itens da oferta": _json.dumps(
+        {"dica": "Aproveite 50% de desconto no arroz"})})
+    assert gerar_dica(["Arroz 5kg"], 120, fake) is None
+    fake2 = MotorIAFake(respostas_chat={"Itens da oferta": _json.dumps(
+        {"dica": "Arroz solto: refogue o alho antes da água"})})
+    assert gerar_dica(["Arroz 5kg"], 120, fake2) \
+        == "Arroz solto: refogue o alho antes da água"
+
+
+def test_f9_8_manchetes_respeitam_o_teto(raiz_env):
+    """#8: o teto de caracteres vale na FUNÇÃO e na CHAMADA da UI (o contexto
+    aperta o limite e a sugestão nunca estoura)."""
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    import app.ai.enriquecimento as E
+    from app.ai.enriquecimento import sugerir_manchetes
+    from app.qt.design.papel_texto_ui import _dialogo_cls
+    app = _app()
+    assert all(len(m) <= 12
+               for m in sugerir_manchetes("Quintou", None, limite_chars=12))
+    capturado: dict = {}
+
+    def _fake(evento, motor, *, limite_chars=None):
+        capturado["limite"] = limite_chars
+        return ["Manchete curta"]
+
+    original = E.sugerir_manchetes
+    E.sugerir_manchetes = _fake
+    try:
+        dlg = _dialogo_cls()(None, contexto={"evento": "Quintou",
+                                             "limite_manchete": 12})
+        dlg._sugerir_manchetes()
+        fim = time.time() + 3
+        while "limite" not in capturado and time.time() < fim:
+            app.processEvents()
+            time.sleep(0.01)
+        assert capturado.get("limite") == 12       # o teto atravessou a UI
+        dlg.done(0)
+    finally:
+        E.sugerir_manchetes = original
+
+
+def test_f9_23_laudo_leva_ao_item(raiz_env):
+    """#23: clicar no aviso seleciona o item citado na estante (por uid) —
+    o laudo deixa de ser um QMessageBox morto."""
+    from app.qt.telas.servico import ItemMesa
+    a = ItemMesa("x", "1,00", "VERDE", "Arroz 5kg")
+    b = ItemMesa("x", None, "VERDE", "Feijão 1kg")
+    m = _mesa_viva(raiz_env, [a, b])
+    uid = m._ir_para_aviso("“Feijão 1kg”: sem preço (ou preço não entendido)")
+    assert uid == b.uid
+    assert m.lista.currentRow() == 1               # a estante foi ao item
+    assert m._ir_para_aviso("aviso sem nome citado") is None
+    m.close()
+
+
 def test_f8_24_aprovacao_e_da_versao_nao_do_id(raiz_env):
     """#24: a aprovação vale para a VERSÃO aprovada (hash do estado salvo) —
     se o conteúdo salvo muda por qualquer porta (ex.: restaurar versão

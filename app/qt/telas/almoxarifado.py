@@ -352,6 +352,12 @@ class AlmoxarifadoTela(QWidget):
         self.foto = QLabel("—")
         self.foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.foto.setFixedHeight(170)
+        # OS F11.5 #27/#28 (R-085): a NOTA da foto (boa/atenção/ruim) com os
+        # motivos no tooltip — pequena demais liga o aviso do upscale
+        self.nota_foto = QLabel("")
+        self.nota_foto.setProperty("papel", "legenda")
+        self.nota_foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.nota_foto.setWordWrap(True)
         self.nome = QLineEdit()
         self.marca = QLineEdit()
         self.sabor = QLineEdit()
@@ -430,6 +436,7 @@ class AlmoxarifadoTela(QWidget):
         vp.setContentsMargins(0, 0, 0, 0)
         vp.setSpacing(t.ESP_2)
         vp.addWidget(self.foto)
+        vp.addWidget(self.nota_foto)
         vp.addLayout(linha_img)
         vp.addLayout(form)
         vp.addStretch(1)
@@ -555,10 +562,31 @@ class AlmoxarifadoTela(QWidget):
                 220, 164, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             self.foto.setPixmap(pm)
+            self._mostrar_nota_foto(d["imagem"])
         else:
             self.foto.setPixmap(QPixmap())
             self.foto.setText("sem imagem")
+            self.nota_foto.setText("")
+            self.nota_foto.setToolTip("")
         self._carregando = False
+
+    def _mostrar_nota_foto(self, caminho: str) -> None:
+        """OS F11.5 #27/#28 (R-085): a nota da foto, com cor por faixa e os
+        motivos no tooltip; motivo de TAMANHO cita o upscale (F10)."""
+        try:
+            from app.images.avaliador import ROTULO_NOTA, avaliar_foto
+            av = avaliar_foto(caminho)
+        except Exception:
+            self.nota_foto.setText("")
+            return
+        cor = {"boa": t.SUCESSO, "atencao": t.ALERTA,
+               "ruim": t.PERIGO}[av.nota]
+        texto = f"● {ROTULO_NOTA[av.nota]}"
+        if av.sugere_upscale:
+            texto += " · o upscale do export resolve"
+        self.nota_foto.setText(texto)
+        self.nota_foto.setStyleSheet(f"color: {cor};")
+        self.nota_foto.setToolTip("\n".join(av.motivos) or "Sem ressalvas.")
 
     # --- edição ------------------------------------------------------------------------
 

@@ -236,12 +236,16 @@ def _dialogo_cls():
             from app.qt.telas import servico
             from app.qt.workers import GerenciadorTrabalhos, Trabalhador
             evento = (self._contexto or {}).get("evento")
+            # OS F11.5 #8: o TETO da manchete vai junto — a sugestão nunca
+            # estoura o espaço (padrão 60; o contexto pode apertar)
+            teto = int((self._contexto or {}).get("limite_manchete") or 60)
             motor = servico._motor_se_disponivel()
             if not hasattr(self, "_trabalhos"):
                 self._trabalhos = GerenciadorTrabalhos()
             self.btn_manchetes.setEnabled(False)
             self.btn_manchetes.setText("Sugerindo…")
-            trab = Trabalhador(lambda st: sugerir_manchetes(evento, motor))
+            trab = Trabalhador(lambda st: sugerir_manchetes(
+                evento, motor, limite_chars=teto))
 
             def _ok(lista):
                 self.btn_manchetes.setEnabled(True)

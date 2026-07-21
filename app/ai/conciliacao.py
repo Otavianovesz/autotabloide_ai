@@ -154,6 +154,22 @@ class Conciliador:
         self.limiares = limiares or limiares_de_config(session)
         self.regras = regras
         self._emb_corpus: list[tuple[str, int, list[float]]] | None = None
+        # OS F11.5 #47/#81 (R-086): os sinônimos regionais (padrão + os do
+        # dono na Config) entram na chave de comparação — "macaxeira" casa
+        # "mandioca" no fuzzy. Falha de leitura degrada para o padrão (I2).
+        try:
+            from app.core.aprendizado import grupos_com_extras
+            from app.core.repositories import ConfigRepositorio
+            extras = ConfigRepositorio(session).get("sinonimos.regionais", [])
+            self._sinonimos = grupos_com_extras(extras)
+        except Exception:
+            from app.core.aprendizado import SINONIMOS_REGIONAIS_PADRAO
+            self._sinonimos = SINONIMOS_REGIONAIS_PADRAO
+
+    def _chave(self, texto: str) -> str:
+        """A chave de comparação já CANONIZADA pelos sinônimos regionais."""
+        from app.core.aprendizado import canonizar_sinonimos
+        return _chave_comparacao(canonizar_sinonimos(texto, self._sinonimos))
 
     # --- corpus para o fuzzy (nomes sanitizados + aliases sanitizados) ---------
 
@@ -163,11 +179,11 @@ class Conciliador:
         for pid, nome in self.session.execute(
             select(Produto.id, Produto.nome_sanitizado)
         ).all():
-            corpus.setdefault(_chave_comparacao(nome), pid)
+            corpus.setdefault(self._chave(nome), pid)
         for pid, alias in self.session.execute(
             select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
         ).all():
-            chave = _chave_comparacao(sanitizar(alias, self.regras).nome_sanitizado)
+            chave = self._chave(sanitizar(alias, self.regras).nome_sanitizado)
             corpus.setdefault(chave, pid)
         return corpus
 
@@ -189,7 +205,7 @@ class Conciliador:
         return self._emb_corpus
 
     def _candidatos(self, nome_bruto: str) -> list[Candidato]:
-        q = _chave_comparacao(sanitizar(nome_bruto, self.regras).nome_sanitizado)
+        q = self._chave(sanitizar(nome_bruto, self.regras).nome_sanitizado)
         corpus = self._corpus()
         if not corpus:
             return []
@@ -277,7 +293,7 @@ class Conciliador:
             return Veredito(nome_bruto, Semaforo.VERMELHO, None, [], 0.0,
                             "sem candidatos no banco", "novo")
 
-        q_chave = _chave_comparacao(sanitizar(nome_bruto, self.regras).nome_sanitizado)
+        q_chave = self._chave(sanitizar(nome_bruto, self.regras).nome_sanitizado)
 
         def _rebaixar_se_divergente(veredito: Veredito) -> Veredito:
             """S1: verde não-exato com termos do cadastro ausentes da oferta
@@ -285,7 +301,7 @@ class Conciliador:
             if veredito.semaforo != Semaforo.VERDE or veredito.produto is None:
                 return veredito
             div = _divergencia(
-                q_chave, _chave_comparacao(veredito.produto.nome_sanitizado))
+                q_chave, self._chave(veredito.produto.nome_sanitizado))
             if div:
                 veredito.semaforo = Semaforo.AMARELO
                 veredito.motivo = ("cadastro tem termos ausentes na oferta "

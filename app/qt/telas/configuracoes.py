@@ -243,6 +243,32 @@ class ConfiguracoesTela(QWidget):
         form_ia_extra.addRow("Semáforo — limiar do verde", self.campo_verde)
         form_ia_extra.addRow("Semáforo — limiar do amarelo",
                              self.campo_amarelo)
+        # OS F11.5 #47/#81 (R-086): o dicionário regional EDITÁVEL — cada
+        # linha é um grupo de sinônimos; a conciliação passa a casá-los
+        from PySide6.QtWidgets import QPlainTextEdit as _QPTE
+        self.campo_sinonimos = _QPTE()
+        self.campo_sinonimos.setPlaceholderText(
+            "um grupo por linha, termos separados por vírgula\n"
+            "ex.: mandioca, macaxeira, aipim")
+        self.campo_sinonimos.setMinimumHeight(56)
+        self.campo_sinonimos.setToolTip(
+            "Sinônimos da SUA região — a conciliação trata como o mesmo "
+            "produto (ex.: a tabela diz “jerimum” e o cadastro diz "
+            "“abóbora”). Os grupos padrão do app continuam valendo.")
+        self.campo_sinonimos.textChanged.connect(
+            lambda: self._salvar_debounce.start()
+            if hasattr(self, "_salvar_debounce") else None)
+        form_ia_extra.addRow("Sinônimos regionais", self.campo_sinonimos)
+        # OS F11.5 #43/#53/#91: as correções APRENDIDAS (aliases) — ver e
+        # reverter, direto do banco
+        self.btn_correcoes = QPushButton(" Correções aprendidas…")
+        self.btn_correcoes.setIcon(icone("texto", tamanho=14))
+        self.btn_correcoes.setToolTip(
+            "Tudo o que o banco aprendeu dos seus “Aceitar” — cada linha "
+            "diz “quando a tabela escrever X, é o produto Y”. Dá para "
+            "reverter qualquer uma.")
+        self.btn_correcoes.clicked.connect(self._abrir_correcoes)
+        form_ia_extra.addRow(self.btn_correcoes)
         form_backups = QFormLayout()
         form_backups.setVerticalSpacing(t.ESP_2)
         form_backups.addRow("Backups automáticos guardados",
@@ -966,6 +992,11 @@ class ConfiguracoesTela(QWidget):
                                 "padrão.")
 
     # --- FASE 3, Bloco F: abas Imagens / Atalhos / Sobre ------------------------
+
+    def _abrir_correcoes(self) -> None:
+        """OS F11.5 #43/#53/#91: ver/reverter os aliases aprendidos."""
+        from app.qt.telas.correcoes_dialog import CorrecoesDialog
+        CorrecoesDialog(self).exec()
 
     def _abrir_perfis(self) -> None:
         """OS F11.5 #5: a tela de perfis de exportação (salva na Config)."""
@@ -1734,6 +1765,20 @@ class ConfiguracoesTela(QWidget):
                 self.campo_prompt_dica.setPlainText(
                     str(cfg.get("ia.prompt_dica") or ""))
                 self.campo_prompt_dica.blockSignals(False)
+                # OS F11.5: refletir as frases prontas salvas (bug latente —
+                # sem o load, QUALQUER salvamento da tela zerava a lista, já
+                # que o save grava tudo) e os sinônimos do dono (#47/#81)
+                if hasattr(self, "campo_frases"):
+                    self.campo_frases.blockSignals(True)
+                    self.campo_frases.setPlainText("\n".join(
+                        cfg.get("frases.validade", []) or []))
+                    self.campo_frases.blockSignals(False)
+                if hasattr(self, "campo_sinonimos"):
+                    self.campo_sinonimos.blockSignals(True)
+                    self.campo_sinonimos.setPlainText("\n".join(
+                        ", ".join(g) for g in
+                        (cfg.get("sinonimos.regionais", []) or [])))
+                    self.campo_sinonimos.blockSignals(False)
         finally:
             db.engine.dispose()
         self._recarregar_selos()   # RG-33 (conexão própria, fora do with)
@@ -2027,6 +2072,16 @@ class ConfiguracoesTela(QWidget):
                             [ln.strip() for ln in
                              self.campo_frases.toPlainText().splitlines()
                              if ln.strip()])
+                # OS F11.5 #47/#81: os grupos de sinônimos do dono (R-086)
+                if hasattr(self, "campo_sinonimos"):
+                    grupos = []
+                    for ln in (self.campo_sinonimos.toPlainText()
+                               .splitlines()):
+                        termos = [t.strip() for t in ln.split(",")
+                                  if t.strip()]
+                        if len(termos) >= 2:
+                            grupos.append(termos)
+                    cfg.set("sinonimos.regionais", grupos)
                 cfg.set("secoes.cor", self.campo_secao_cor.text().strip())
                 cfg.set("secoes.espessura_mm", self.campo_secao_esp.value())
                 cfg.set("secoes.estilo",

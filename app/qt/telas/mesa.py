@@ -1376,6 +1376,9 @@ class MesaTela(QWidget):
              self._mostrar_diff_edicao),
             ("salvar", "Exportar o checklist em PDF…", "",
              self._exportar_checklist_pdf),
+            # OS F11.5 #50/#51 (R-082): variações do mesmo produto
+            ("lampada", "Sugerir variações para agrupar (sabores)…", "",
+             self._sugerir_variacoes),
         ]
         # OS F11.5 #57: navegar por página e abrir Configurações pela paleta
         canvas = self.area.canvas
@@ -1396,6 +1399,67 @@ class MesaTela(QWidget):
     def _abrir_paleta(self) -> None:
         from app.qt.design.paleta_comandos import PaletaComandos
         PaletaComandos(self.window(), self._acoes_da_mesa()).abrir()
+
+    # --- OS F11.5 #50/#51 (R-082): variações do mesmo produto -----------------
+
+    def _sugerir_variacoes(self) -> None:
+        """Detecta prováveis variações (sabores/tamanhos da MESMA marca
+        conhecida) e pergunta, grupo a grupo, se agrupa num slot só (o modo
+        multi da F7.1). Nunca inventa: sem marca confirmada, sem sugestão."""
+        from app.core.aprendizado import sugerir_variacoes
+        grupos = sugerir_variacoes(self._itens, servico.marcas_do_acervo())
+        if not grupos:
+            mostrar_toast(self, "Não achei variações da mesma marca para "
+                                "agrupar.")
+            return
+        from PySide6.QtWidgets import QMessageBox
+        agrupados = 0
+        for grupo in grupos:
+            nomes = " · ".join((it.nome or "?") for it in grupo[:4])
+            r = QMessageBox.question(
+                self, "Variações do mesmo produto?",
+                f"Estes parecem sabores/tamanhos do mesmo produto:\n\n"
+                f"{nomes}\n\nAgrupar num slot só (as fotos viram o leque "
+                "multi)?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No)
+            if r == QMessageBox.StandardButton.Yes:
+                self._agrupar_variacoes(grupo)
+                agrupados += 1
+        if agrupados:
+            mostrar_toast(self, f"{agrupados} grupo(s) agrupado(s) — desfazer "
+                                "pelo toast se se arrepender.")
+
+    def _agrupar_variacoes(self, grupo) -> None:
+        """#51: funde o grupo no PRIMEIRO item (por uid, I1): as fotos de
+        todos viram a lista multi (F7.1) e os demais saem da estante — com
+        a cópia p/ desfazer (nunca some calado)."""
+        if len(grupo) < 2:
+            return
+        copia_itens = list(self._itens)
+        copia_mapa = dict(self._mapa)
+        base = grupo[0]
+        imagens_antes = list(base.imagens)     # o desfazer devolve o multi
+        fotos = []
+        for it in grupo:
+            fotos.extend(it.imagens or ([it.imagem] if it.imagem else []))
+        base.imagens = [f for f in fotos if f]
+        uids_fora = {it.uid for it in grupo[1:]}
+        self._itens = [it for it in self._itens if it.uid not in uids_fora]
+        self._mapa = {sid: u for sid, u in self._mapa.items()
+                      if u not in uids_fora}
+        self._recarregar_lista()
+        self._marcar_salvo(False)
+        from app.qt.design.toast import mostrar_toast_desfazer
+
+        def _desfazer(b=base, antes=imagens_antes,
+                      itens=copia_itens, mapa=copia_mapa):
+            b.imagens = list(antes)
+            self._restaurar_estante_toda(itens, mapa)
+
+        mostrar_toast_desfazer(
+            self, f"“{base.nome}” virou multi com {len(base.imagens)} foto(s).",
+            _desfazer)
 
     def _publicar(self) -> None:
         """R-139/140/141/142: hub dos formatos sociais + vídeo (reusa o
@@ -1453,22 +1517,71 @@ class MesaTela(QWidget):
         self._trabalhos.rodar(trab)
 
     def _mostrar_laudo(self, resultado) -> None:
-        """O laudo da revisora — avisos (o dono decide). NUNCA veta o export."""
+        """O laudo da revisora — avisos (o dono decide). NUNCA veta o export.
+        OS F11.5 #23: cada aviso é CLICÁVEL e leva ao item citado (seleciona
+        na estante e navega até a página do slot dele)."""
         self._overlay.esconder()
         avisos, deg = resultado
         if not avisos and not deg:
             mostrar_toast(self, "A revisora não achou problemas. 👍",
                           tipo="sucesso")
             return
-        from PySide6.QtWidgets import QMessageBox
-        linhas = list(avisos) + ([deg] if deg else [])
-        cx = QMessageBox(self)
-        cx.setWindowTitle("Laudo da revisora — avisos (você decide)")
-        cx.setIcon(QMessageBox.Icon.Information)
-        cx.setText(f"A IA leu a peça e anotou {len(avisos)} ponto(s). "
-                   "São avisos — o export não fica travado.")
-        cx.setInformativeText("\n".join(f"• {a}" for a in linhas[:15]))
-        cx.exec()
+        from PySide6.QtWidgets import (
+            QDialog, QDialogButtonBox, QLabel, QListWidget, QVBoxLayout)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Laudo da revisora — avisos (você decide)")
+        dlg.resize(560, 420)
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(t.ESP_4, t.ESP_4, t.ESP_4, t.ESP_4)
+        v.setSpacing(t.ESP_2)
+        cab = QLabel(f"A IA leu a peça e anotou {len(avisos)} ponto(s). "
+                     "São avisos — o export não fica travado. Clique num "
+                     "aviso para ir ao item.")
+        cab.setProperty("papel", "legenda")
+        cab.setWordWrap(True)
+        v.addWidget(cab)
+        lista = QListWidget()
+        for a in avisos:
+            lista.addItem(f"• {a}")
+        if deg:
+            lista.addItem(f"ℹ {deg}")
+        lista.itemClicked.connect(
+            lambda li: self._ir_para_aviso(li.text()))
+        v.addWidget(lista, 1)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        botoes.button(QDialogButtonBox.StandardButton.Close).setText("Fechar")
+        botoes.rejected.connect(dlg.reject)
+        botoes.accepted.connect(dlg.accept)
+        v.addWidget(botoes)
+        dlg.setModal(False)          # o dono clica e VÊ a Mesa reagir atrás
+        dlg.show()
+        self._laudo_dlg = dlg        # referência viva (e testável)
+
+    def _ir_para_aviso(self, aviso: str) -> str | None:
+        """#23: acha o item citado no aviso ('“Nome”: …'), seleciona a linha
+        dele na estante e navega até a página do slot. Devolve o uid (teste)."""
+        import re
+        m = re.search(r"[“\"](.+?)[”\"]", aviso or "")
+        if not m:
+            return None
+        nome = m.group(1).strip().lower()
+        alvo = next((it for it in self._itens
+                     if (it.nome or "").strip().lower() == nome), None)
+        if alvo is None:
+            return None
+        linha = next((i for i, it in enumerate(self._itens)
+                      if it.uid == alvo.uid), -1)
+        if linha >= 0:
+            self.lista.setCurrentRow(linha)
+            self.lista.scrollToItem(self.lista.item(linha))
+        sid = next((s for s, u in self._mapa.items() if u == alvo.uid), None)
+        if sid is not None and self._layout is not None:
+            for i, pag in enumerate(self._layout.paginas):
+                if any(s.id == sid for s in pag.slots):
+                    if i != self.area.canvas.pagina_atual:
+                        self._ir_pagina(i)
+                    break
+        return alvo.uid
 
     def _chat_oferta(self) -> None:
         """R-073: o dono cola/descreve as ofertas e a IA monta um RASCUNHO,

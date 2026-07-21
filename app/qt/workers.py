@@ -94,6 +94,52 @@ class TrabalhadorFila(QThread):
         self.fila_terminou.emit()
 
 
+class FilaIA(TrabalhadorFila):
+    """OS F11.5 #61/#63/#64 (R-089/R-090): a fila de IA com PRIORIDADE VIVA —
+    `focar(chave)` põe na frente o item que o dono está olhando (vale a partir
+    do PRÓXIMO item; o em curso termina), `comecou_item` diz o que roda agora
+    (o painel mostra), `pendentes()` lista o que falta, `cancelar()` para
+    entre itens. A identidade segue sendo a chave/uid (I1)."""
+
+    comecou_item = Signal(str, str)     # (chave, rótulo humano)
+
+    def __init__(self, pares, fn, rotulos: dict | None = None, parent=None):
+        super().__init__(pares, fn, parent)
+        import threading
+        self._lock = threading.Lock()
+        self._foco: str | None = None
+        self._rotulos = dict(rotulos or {})
+        self.atual: str | None = None
+
+    def focar(self, chave: str | None) -> None:
+        with self._lock:
+            self._foco = chave
+
+    def pendentes(self) -> list[str]:
+        with self._lock:
+            return [c for c, _v in self._pares]
+
+    def run(self) -> None:  # noqa: D102 (QThread)
+        from app.qt.telas.servico import ordenar_por_prioridade
+        while True:
+            with self._lock:
+                if self._cancelado or not self._pares:
+                    break
+                self._pares = ordenar_por_prioridade(self._pares, self._foco)
+                chave, valor = self._pares.pop(0)
+                self.atual = chave
+            self.comecou_item.emit(chave, self._rotulos.get(chave, ""))
+            try:
+                resultado = self._fn(valor)
+            except Exception as exc:
+                traceback.print_exc()
+                self.item_falhou.emit(chave, f"{type(exc).__name__}: {exc}")
+            else:
+                self.item_pronto.emit(chave, resultado)
+        self.atual = None
+        self.fila_terminou.emit()
+
+
 class GerenciadorTrabalhos:
     """Segura referências dos trabalhadores vivos (evita GC no meio do voo).
 

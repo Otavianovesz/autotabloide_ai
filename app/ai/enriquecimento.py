@@ -122,6 +122,58 @@ def tokens_perdidos(bruto: str, sanitizado: str) -> list[str]:
     return perdidos
 
 
+def tokens_inventados(bruto: str, sanitizado: str,
+                      permitidos=()) -> list[str]:
+    """OS F11.5 #78/#95 — o INVERSO do RG-20: tokens significativos que a IA
+    ACRESCENTOU sem existirem no original. Sigla, protocolo e marca nunca
+    nascem do nada (decisão travada da F9) — só sobrevive o que veio do bruto
+    ou do glossário CONFIRMADO pelo dono (`permitidos`)."""
+    base = [_normalizar_token(t) for t in bruto.split()]
+    liberados = {_normalizar_token(t)
+                 for p in permitidos if p for t in str(p).split()}
+    inventados = []
+    for original in sanitizado.split():
+        tok = _normalizar_token(original)
+        if len(tok) < 3 or tok in _STOPWORDS or tok in liberados:
+            continue
+        if not any(tok in cand or cand in tok for cand in base if cand):
+            inventados.append(original)
+    return inventados
+
+
+def remover_inventados(nome: str, bruto: str, permitidos=()) -> str:
+    """#78/#95: tira do nome os tokens inventados (a guarda DURA, não pedido
+    no prompt). Se sobrar nada, devolve o nome como veio (nunca apaga tudo)."""
+    inv = set(tokens_inventados(bruto, nome, permitidos))
+    if not inv:
+        return nome
+    sobrou = " ".join(t for t in nome.split() if t not in inv)
+    return sobrou or nome
+
+
+def dica_alucinada(dica: str, nomes: list[str],
+                   marcas_conhecidas=()) -> bool:
+    """OS F11.5 #12: checagem anti-alucinação do TEXTO da dica — a dica não
+    pode afirmar número de dinheiro/desconto (preço é papel do encarte, nunca
+    da dica) nem citar uma MARCA conhecida que não está nos itens da oferta."""
+    import re as _re
+    d = (dica or "").lower()
+    if _re.search(r"(r\$\s?\d|\d+\s?%)", d):
+        return True
+    toks_dica = {_normalizar_token(t) for t in (dica or "").split()}
+    toks_itens = {_normalizar_token(t)
+                  for nome in nomes for t in str(nome).split()}
+    for marca in marcas_conhecidas or ():
+        m_toks = [_normalizar_token(t) for t in str(marca).split()]
+        if not m_toks or any(len(t) < 3 for t in m_toks):
+            continue
+        na_dica = all(t in toks_dica for t in m_toks)
+        nos_itens = all(t in toks_itens for t in m_toks)
+        if na_dica and not nos_itens:
+            return True
+    return False
+
+
 # FASE 3 (passo 51): a ordem do nome é editável na aba Sanitização
 ORDEM_NOME_PADRAO = ("Tipo", "Marca", "Sabor/Variante", "Peso")
 
@@ -326,7 +378,8 @@ ESTILOS_DICA: dict[str, str] = {
 
 def gerar_dica(nomes: list[str], limite_chars: int,
                motor: MotorIA | None, *, estilo: str | None = None,
-               evitar: list[str] | None = None) -> str | None:
+               evitar: list[str] | None = None,
+               marcas_conhecidas: list[str] | None = None) -> str | None:
     """Gera a dica/receita/curiosidade a partir dos itens da oferta.
 
     `estilo` (R-083: receita·economia·curiosidade) muda o tom; `evitar` (R-083
@@ -356,6 +409,10 @@ def gerar_dica(nomes: list[str], limite_chars: int,
         if evitar and any(_norm(dica) == _norm(e) or _norm(dica) in _norm(e)
                           or _norm(e) in _norm(dica)
                           for e in evitar if e and e.strip()):
+            return None
+        # OS F11.5 #12: anti-alucinação — dica com preço/% inventado ou
+        # marca conhecida que NÃO está na oferta é rejeitada (guarda dura)
+        if dica_alucinada(dica, nomes, marcas_conhecidas or ()):
             return None
         return dica[:limite_chars]        # o teto da região é lei
     except (IAIndisponivel, json.JSONDecodeError, TypeError, AttributeError):
@@ -426,6 +483,12 @@ def enriquecer(
     if not dados:
         return _degradado(nome_bruto, base)
     enr = _montar(nome_bruto, dados, base, regras)
+    # OS F11.5 #78/#95: sigla/protocolo/marca INVENTADA pela IA cai aqui —
+    # só sobrevive o que veio do bruto ou do glossário do dono (expansões
+    # confirmadas). Guarda dura, roda SEMPRE sobre o nome final.
+    permitidos = [exp for _sig, exp in (regras.glossario_siglas or ())]
+    enr.nome_sanitizado = remover_inventados(enr.nome_sanitizado, nome_bruto,
+                                             permitidos)
     # RG-20: a regra dura roda SEMPRE, sobre o resultado final da IA.
     # Multi-produto (componentes) reparte o nome de propósito — a regra
     # compara contra o conjunto completo (nome + componentes + variantes).

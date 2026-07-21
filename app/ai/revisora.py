@@ -51,14 +51,31 @@ def _regiao_nome(slot):
     return next((r for r in slot.regioes if r.tipo == TipoRegiao.NOME), None)
 
 
+def _pares_de_calibracao(dados_por_slot):
+    """OS F11.5 #25/#26 (R-078): os pares (categoria, preço) do projeto EM
+    TELA + o HISTÓRICO das edições salvas (o acervo F11) — com poucos itens
+    no projeto, o histórico calibra as faixas e a sentinela passa a disparar.
+    Falha de leitura degrada para só-o-projeto (I2, nunca levanta)."""
+    pares = [(d.categoria, d.preco_por) for d in dados_por_slot.values()]
+    try:
+        from app.core.projetos import itens_das_edicoes_recentes
+        from app.qt.telas.servico import preco_decimal
+        for edicao in itens_das_edicoes_recentes(8):
+            for it in edicao:
+                pares.append((it.get("categoria"),
+                              preco_decimal(it.get("preco"))))
+    except Exception:
+        pass
+    return pares
+
+
 def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
     """As checagens que rodam SEM visão (o piso, decisão travada): nome que não
     cabe na medida da região, preço de ≤ por (PROCON), preço fora da faixa da
     categoria. Baratas, determinísticas, nunca levantam."""
     avisos: list[str] = []
-    # faixa de preço aprendida do PRÓPRIO projeto (R-078)
-    faixas = faixas_por_categoria(
-        (d.categoria, d.preco_por) for d in dados_por_slot.values())
+    # faixa de preço aprendida do projeto + do HISTÓRICO (R-078 calibrada)
+    faixas = faixas_por_categoria(_pares_de_calibracao(dados_por_slot))
     slots = {s.id: s for p in getattr(layout, "paginas", []) for s in p.slots} \
         if layout is not None else {}
     for sid, d in dados_por_slot.items():
