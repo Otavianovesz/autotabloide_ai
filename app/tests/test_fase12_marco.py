@@ -428,3 +428,189 @@ def test_c_modo_pai_lembrado_por_perfil(raiz_env):
     assert saiu == [True]
     assert modo_pai_lembrado() is False          # sair é consciente e desliga
     tela.deleteLater()
+
+
+# ============================================================================
+# Bloco D — o MARCO refeito (RG-48/RG-58)
+# ============================================================================
+
+ARTE_QUINTOU = Path("arte/quintou")
+
+
+def _fontes_reais(root):
+    import shutil
+    reais = Path("AutoTabloide_System_Root/fontes")
+    if reais.exists():
+        for f in reais.glob("*.ttf"):
+            shutil.copy(f, root.fontes / f.name)
+
+
+def test_d_campanhas_descobertas_e_faltantes_nomeadas(tmp_path):
+    """Passo 50: o padrão-ouro descobre as campanhas REAIS por pasta; as que
+    faltam são NOMEADAS (nunca um skip mudo, I2) — e uma campanha nova é
+    absorvida SOZINHA quando a arte cair na pasta."""
+    from app.core.marco import campanhas_do_marco, itens_reais_da_campanha
+    disp, falt = campanhas_do_marco()
+    nomes = [c["nome"] for c in disp]
+    assert "quintou" in nomes                    # a campanha real do repo
+    q = next(c for c in disp if c["nome"] == "quintou")
+    assert q["verso"] is not None                # frente E verso reais
+    assert q["validade"] == "ATÉ 26/05"          # RG-58: o "até" transcrito
+    itens = itens_reais_da_campanha(q)
+    assert len(itens) >= 30                      # as ofertas do dono
+    assert ("Cerveja Itaipava 269ML", "1,98") in itens
+    assert set(falt) == {"sexta_verde", "fim_de_semana"}   # nomeadas
+    # a mecânica: uma campanha NOVA entra sozinha pela pasta
+    nova = tmp_path / "arte2" / "sexta_verde"
+    nova.mkdir(parents=True)
+    (nova / "frente_template.png").write_bytes(seeds.png("#00AA00"))
+    disp2, falt2 = campanhas_do_marco(tmp_path / "arte2")
+    assert [c["nome"] for c in disp2] == ["sexta_verde"]
+    assert "sexta_verde" not in falt2
+
+
+@pytest.mark.skipif(not (ARTE_QUINTOU / "frente_template.png").exists(),
+                    reason="arte real do Quintou não está no repositório")
+def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
+        tmp_path, monkeypatch):
+    """RG-48 + RG-58 (passos 47-49, 53-54, 61): o marco com os DADOS REAIS
+    transcritos da peça (30 ofertas do Quintou) sobre o layout REAL detectado
+    da arte (frente+verso); a VALIDADE da peça é DESENHADA (por pixel, nunca
+    vazia); o PDF sai medido em mm; e o adversarial ATIVO troca 2 uids e
+    prova que os pixels trocam exatamente."""
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from app.core.marco import campanhas_do_marco, itens_reais_da_campanha
+    from app.core.paths import SystemRoot
+    from app.qt.telas import servico
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.export import exportar_pdf_multipagina
+    from app.rendering.grade import (
+        adicionar_pagina_de_arte, layout_grade_de_arte, ocupaveis,
+        ordenar_slots_visualmente)
+    from app.rendering.model import (
+        PapelTexto, Regiao, Retangulo, Slot, TipoRegiao)
+    from app.rendering.units import mm_para_px
+    monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
+    _app()
+    root = SystemRoot(tmp_path / "raiz").criar_estrutura()
+    _fontes_reais(root)
+
+    q = next(c for c in campanhas_do_marco()[0] if c["nome"] == "quintou")
+    reais = itens_reais_da_campanha(q)
+    assert q["validade"]                         # RG-58 no dado: nunca None
+
+    layout, _ = layout_grade_de_arte(str(q["frente"]))
+    adicionar_pagina_de_arte(layout, str(q["verso"]))
+    # RG-58 na PEÇA: a validade vira um TEXTO_LEGAL papel VALIDADE na frente
+    reg_val = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(4, 2, 90, 6),
+                     nome="Validade")
+    reg_val.papel_texto = PapelTexto.VALIDADE
+    reg_val.texto_fixo = "OFERTA VÁLIDA " + q["validade"]
+    layout.paginas[0].slots.append(Slot("validade_marco", [reg_val]))
+
+    itens = []
+    for i, (nome, preco) in enumerate(reais):
+        foto = tmp_path / ("r%d.png" % i)
+        Image.new("RGB", (160, 160),
+                  ((i * 53) % 256, (i * 97) % 256, (i * 31) % 256)).save(foto)
+        itens.append(ItemMesa(nome.upper(), preco, "VERDE", nome,
+                              imagem=str(foto)))
+    slots = []
+    for pag in layout.paginas:
+        slots.extend(ocupaveis(ordenar_slots_visualmente(pag.slots)))
+    mapa = {s.id: it.uid for s, it in zip(slots, itens)}
+    assert len(mapa) >= 28                       # os ~30 reais couberam
+    por_uid = {it.uid: it for it in itens}
+    dados = {sid: DadosProduto(por_uid[u].nome,
+                               preco_por=servico.preco_decimal(
+                                   por_uid[u].preco),
+                               imagem_path=por_uid[u].imagem)
+             for sid, u in mapa.items()}
+    avisos = servico.validar_composicao(layout, dados)
+    assert avisos == []                          # pré-voo LIMPO (passo 59)
+
+    imgs = [compor_pagina(layout, pag, dados) for pag in layout.paginas]
+    # a VALIDADE desenhada: com vs sem texto → pixels diferem NA região
+    reg_val.texto_fixo = ""
+    sem_val = compor_pagina(layout, layout.paginas[0], dados)
+    reg_val.texto_fixo = "OFERTA VÁLIDA " + q["validade"]
+    x0 = round(mm_para_px(reg_val.rect.x_mm, layout.dpi))
+    y0 = round(mm_para_px(reg_val.rect.y_mm, layout.dpi))
+    x1 = round(mm_para_px(reg_val.rect.x_mm + reg_val.rect.larg_mm,
+                          layout.dpi))
+    y1 = round(mm_para_px(reg_val.rect.y_mm + reg_val.rect.alt_mm,
+                          layout.dpi))
+    faixa_com = imgs[0].crop((x0, y0, x1, y1))
+    faixa_sem = sem_val.crop((x0, y0, x1, y1))
+    assert faixa_com.tobytes() != faixa_sem.tobytes()   # há TINTA de validade
+
+    pdf = exportar_pdf_multipagina(imgs, tmp_path / "marco_f12.pdf",
+                                   layout.dpi)
+    leitor = PdfReader(str(pdf))
+    assert len(leitor.pages) == 2                # frente + verso reais
+    w_mm = float(leitor.pages[0].mediabox.width) * 25.4 / 72
+    h_mm = float(leitor.pages[0].mediabox.height) * 25.4 / 72
+    assert w_mm == pytest.approx(layout.largura_mm, abs=0.5)   # medido em mm
+    assert h_mm == pytest.approx(layout.altura_mm, abs=0.5)
+    assert Path(pdf).stat().st_size > 50_000     # peça real, não vazia
+
+    # ADVERSARIAL ATIVO (passos 56/63): trocar 2 uids TROCA os 2 pixels
+    sids = [s.id for s in ocupaveis(
+        ordenar_slots_visualmente(layout.paginas[0].slots))][:2]
+    antes = {}
+    for sid in sids:
+        slot = next(s for s in layout.paginas[0].slots if s.id == sid)
+        reg = next(r for r in slot.regioes if r.tipo == TipoRegiao.IMAGEM)
+        cx = round(mm_para_px(reg.rect.x_mm + reg.rect.larg_mm / 2,
+                              layout.dpi))
+        cy = round(mm_para_px(reg.rect.y_mm + reg.rect.alt_mm / 2,
+                              layout.dpi))
+        antes[sid] = (cx, cy, imgs[0].getpixel((cx, cy))[:3])
+    dados[sids[0]], dados[sids[1]] = dados[sids[1]], dados[sids[0]]
+    trocada = compor_pagina(layout, layout.paginas[0], dados)
+    a, b = antes[sids[0]], antes[sids[1]]
+    assert trocada.getpixel((a[0], a[1]))[:3] == b[2]   # trocou exatamente
+    assert trocada.getpixel((b[0], b[1]))[:3] == a[2]
+
+
+def test_d_performance_5k_medida(tmp_path, monkeypatch):
+    """Passos 52/62: 5.000 produtos no acervo — abrir o catálogo e conciliar
+    DENTRO dos tetos, MEDIDO com relógio (não estimado)."""
+    import time
+
+    from app.core.database import Database
+    from app.core.models import Produto
+    from app.core.paths import SystemRoot
+    from app.qt.telas import servico
+    monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
+    SystemRoot(tmp_path / "raiz").criar_estrutura()
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            s.add_all([Produto(
+                nome_bruto="PRODUTO PERF %d" % i,
+                nome_sanitizado="Produto Perf %d" % i,
+                marca="Marca%d" % (i % 40)) for i in range(5000)])
+            s.commit()
+    finally:
+        db.engine.dispose()
+
+    t0 = time.monotonic()
+    pagina = servico.listar_catalogo(offset=0, limite=50)
+    t_abrir = time.monotonic() - t0
+    assert len(pagina) == 50
+    assert t_abrir < 2.0, "abrir catálogo levou %.2fs (teto 2s)" % t_abrir
+
+    t0 = time.monotonic()
+    res = servico.conciliar_linhas(
+        [("PRODUTO PERF 4999", "1,00", None),
+         ("Produto Perf 123", "2,00", None),
+         ("COISA QUE NAO EXISTE 999", "3,00", None)], lambda _m: None)
+    t_conc = time.monotonic() - t0
+    assert res.itens[0].semaforo == "VERDE"      # exato no acervo de 5k
+    assert t_conc < 45.0, "conciliar 3 em 5k levou %.1fs (teto 45s)" % t_conc
+    print("\n[MEDIDO] abrir=%.3fs - conciliar 3 itens contra 5k=%.1fs"
+          % (t_abrir, t_conc))

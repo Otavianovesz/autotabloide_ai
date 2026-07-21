@@ -153,7 +153,7 @@ class Conciliador:
         # C1 do Bloco D); sem chaves na Config, o padrão 88/62 de sempre
         self.limiares = limiares or limiares_de_config(session)
         self.regras = regras
-        self._emb_corpus: list[tuple[str, int, list[float]]] | None = None
+        self._corpus_cache: dict[str, int] | None = None   # 1× por lote (F12)
         # OS F11.5 #47/#81 (R-086): os sinônimos regionais (padrão + os do
         # dono na Config) entram na chave de comparação — "macaxeira" casa
         # "mandioca" no fuzzy. Falha de leitura degrada para o padrão (I2).
@@ -174,18 +174,25 @@ class Conciliador:
     # --- corpus para o fuzzy (nomes sanitizados + aliases sanitizados) ---------
 
     def _corpus(self) -> dict[str, int]:
-        """chave de comparação -> produto_id (nomes sanitizados + aliases)."""
-        corpus: dict[str, int] = {}
-        for pid, nome in self.session.execute(
-            select(Produto.id, Produto.nome_sanitizado)
-        ).all():
-            corpus.setdefault(self._chave(nome), pid)
-        for pid, alias in self.session.execute(
-            select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
-        ).all():
-            chave = self._chave(sanitizar(alias, self.regras).nome_sanitizado)
-            corpus.setdefault(chave, pid)
-        return corpus
+        """chave de comparação -> produto_id (nomes sanitizados + aliases).
+
+        CACHEADO por instância (FASE 12, achado do marco 5k): o Conciliador
+        vive por LOTE e só LÊ o acervo — reconstruir o corpus a cada item
+        custava ~0,3 s × N itens no acervo grande."""
+        if self._corpus_cache is None:
+            corpus: dict[str, int] = {}
+            for pid, nome in self.session.execute(
+                select(Produto.id, Produto.nome_sanitizado)
+            ).all():
+                corpus.setdefault(self._chave(nome), pid)
+            for pid, alias in self.session.execute(
+                select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
+            ).all():
+                chave = self._chave(
+                    sanitizar(alias, self.regras).nome_sanitizado)
+                corpus.setdefault(chave, pid)
+            self._corpus_cache = corpus
+        return self._corpus_cache
 
     @staticmethod
     def _pontuar(q: str, chave: str) -> float:
@@ -194,15 +201,10 @@ class Conciliador:
         'certo'). A média dá um spread útil sem os falsos positivos do WRatio."""
         return 0.5 * fuzz.token_set_ratio(q, chave) + 0.5 * fuzz.token_sort_ratio(q, chave)
 
-    def _embeddings_corpus(self, corpus: dict[str, int]) -> list[tuple[str, int, list[float]]] | None:
-        """Vetores do corpus (calculados uma vez e cacheados na instância)."""
-        if self.embedder is None:
-            return None
-        if self._emb_corpus is None:
-            chaves = list(corpus.keys())
-            vetores = self.embedder.embeddings(chaves)
-            self._emb_corpus = list(zip(chaves, (corpus[c] for c in chaves), vetores))
-        return self._emb_corpus
+    # quantos candidatos do fuzzy sobem à camada de SIGNIFICADO — nunca o
+    # banco inteiro (a decisão travada; achado do marco 5k: gerar embeddings
+    # do acervo todo custava ~73 s POR LOTE no LM local)
+    TOP_EMBEDDINGS = 40
 
     def _candidatos(self, nome_bruto: str) -> list[Candidato]:
         q = self._chave(sanitizar(nome_bruto, self.regras).nome_sanitizado)
@@ -210,28 +212,39 @@ class Conciliador:
         if not corpus:
             return []
 
-        # Camada FUZZY (sempre real): melhor score por produto.
+        # Camada FUZZY (sempre real, local): melhor score e melhor CHAVE por
+        # produto — a chave vai à camada de significado dos top-K.
         fuzzy_pid: dict[int, float] = {}
+        chave_pid: dict[int, str] = {}
         for chave, pid in corpus.items():
             s = self._pontuar(q, chave)
             if s > fuzzy_pid.get(pid, -1.0):
                 fuzzy_pid[pid] = s
+                chave_pid[pid] = chave
 
-        # Camada de SIGNIFICADO (embeddings, quando ligada): cosseno * 100.
+        # Camada de SIGNIFICADO (embeddings, quando ligada) SÓ nos TOP-K do
+        # fuzzy (FASE 12): o fuzzy pré-seleciona local e barato; o vetor
+        # refina o desempate — um POST pequeno, nunca o acervo inteiro.
         sem_pid: dict[int, float] = {}
-        emb = self._embeddings_corpus(corpus)
-        if emb is not None:
-            qv = self.embedder.embeddings([q])[0]
-            for _chave, pid, vec in emb:
-                c = _cosseno(qv, vec) * 100.0
-                if c > sem_pid.get(pid, -1.0):
-                    sem_pid[pid] = c
+        if self.embedder is not None:
+            top = sorted(fuzzy_pid.items(),
+                         key=lambda kv: -kv[1])[: self.TOP_EMBEDDINGS]
+            try:
+                textos = [q] + [chave_pid[pid] for pid, _s in top]
+                vetores = self.embedder.embeddings(textos)
+                qv = vetores[0]
+                for (pid, _s), vec in zip(top, vetores[1:]):
+                    sem_pid[pid] = _cosseno(qv, vec) * 100.0
+            except Exception:
+                sem_pid = {}             # sem significado: o fuzzy segura
 
-        # Combina: sem embeddings, só fuzzy; com embeddings, média ponderada.
+        # Combina: quem subiu à camada de significado leva a média ponderada;
+        # o resto fica com o fuzzy puro (o top-5 final sai dos top-K mesmo).
         final: dict[int, float] = {}
         for pid, fz in fuzzy_pid.items():
-            if sem_pid:
-                final[pid] = (1 - self.peso_sem) * fz + self.peso_sem * sem_pid.get(pid, 0.0)
+            if pid in sem_pid:
+                final[pid] = (1 - self.peso_sem) * fz \
+                    + self.peso_sem * sem_pid[pid]
             else:
                 final[pid] = fz
 
