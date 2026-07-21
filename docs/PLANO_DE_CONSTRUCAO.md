@@ -372,3 +372,51 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   skips, exit-0 limpo** (714 → 801). Resposta completa item-a-item no fim de
   `docs/ORDEM_SERVICO_F11_5.md`. 5 itens [MÁQUINA DO DONO] prontos-para-validar
   listados lá (entram no roteiro do Marco/F12). **A Fase 12 NÃO foi aberta.**
+- **FASE 12 — o MARCO FINAL (versão 1.0)**: ▶ **EXECUTADA (2026-07-21) até o passo 95;
+  PARADA no passo 100 — a sessão de aceitação (96–98) é do Otaviano.** Blocos A–E
+  inline; subagentes SÓ na revisão adversarial final (autorização do arquiteto).
+  **Bloco A (robustez):** recuperação de projeto corrompido (diagnóstico PT-BR,
+  snapshots de versão/rascunho com prévia, .bak reversível + log), rascunho do
+  projeto CERTO por id, `.atproj` (levar/trazer com uuid novo, byte a byte),
+  modo somente-leitura (R-131), verificação de atualização que nunca levanta,
+  validação de integridade na abertura (R-138). **Bloco B (sonhos):** etiquetas em
+  lote impostas em A4 com marcas só na área usada (R-144), template `.attpl` sem
+  dado do dono (prova por AUSÊNCIA), calendário do varejo (Páscoa por Gauss, BF,
+  domingos; vira Evento num clique), gerador de fundo por IA condicionado à GPU.
+  **Bloco C:** Modo Pai (R-150) — lista/prévia/aprovar/imprimir/enviar, nada
+  destrutivo, lembrado por perfil. **Bloco D (MARCO):** `selfcheck_marco_f12.py`
+  executável — 5k no acervo, ofertas REAIS do Quintou (30 itens, validade ATÉ
+  26/05 por pixel, RG-58), PDF em mm por pypdf, adversarial ativo (trocar uids
+  troca pixels), campanhas faltantes NOMEADAS (sexta_verde, fim_de_semana);
+  **achado próprio de perf: a camada de embeddings lia o acervo INTEIRO por lote
+  (73 s)** → virou o **ÍNDICE DE SIGNIFICADO persistido** (`produto_embeddings`:
+  embeda 1× por produto, invalida por chave ao renomear, acervo inteiro numa
+  escala só; recorrente 75 s → ~2 s). **Bloco E (instalador):** PyInstaller onedir
+  MEDIDO (build final 460 s; pasta 2,74 GB, zip portátil 1,58 GB, exe 102,5 MB —
+  1,6 GB enxugados excluindo caronas da bancada; fumaça VERDE em raiz zerada), launcher portátil (raiz IRMÃ da
+  pasta; desinstalar preserva o acervo; fallback Program Files), semente de
+  fontes VERSIONADA (Quicksand OFL + Roboto Apache), migração do banco do
+  protótipo por chave natural (prévia→confirma, dedup também intra-lote),
+  `GUIA_RAPIDO.md` + LM Studio 1.0 honestos (o 1º recorte baixa o modelo),
+  fumaça do instalador VERDE (abre, raiz irmã com fontes, idempotente).
+  **Revisão adversarial final: Workflow com 66 agentes (6 lentes × céticos), 30
+  achados brutos → 25 confirmados → TODOS corrigidos + 10 testes novos por
+  conteúdo.** Os 3 críticos: a 4ª PORTA de exportação (etiquetas em lote sem
+  RASCUNHO), o Modo Pai compondo DIFERENTE do export oficial (agora Mesa/export/
+  Modo Pai usam UMA montagem, `servico.dados_para_desenho`), o exe meio-morto em
+  Windows limpo (fallback fora do try + erro invisível). E ainda: path traversal
+  do `.atproj` por raiz-sem-drive (contenção canônica), 8 portais somente-leitura
+  desguarnecidos (Excel, Estúdio no funil do DISCO, excluir/renomear/duplicar
+  projeto, IA em lote, trazer .atproj, calendário), recuperação que não repunha
+  os ARQUIVOS da versão (foto posicional trocada em silêncio, I5), rascunho
+  restaurado com caminhos absolutos (I3 — agora passa pelo salvar oficial),
+  `.attpl` que refazia o vínculo mestre POR POSIÇÃO (I4 — uids agora viajam).
+  Segfault intermitente do teardown Qt CAÇADO: entregar `DeferredDelete` pendente
+  de alvo morto ERA o crash — o conftest agora os descarta. **Suíte: 849 verdes
+  ×2, ZERO skips, exit-0 limpo** (junit como placar). Galeria `saida_fase12/`
+  claro/escuro (recuperação, .atproj, backups, calendário, Modo Pai, etiquetas,
+  instalador rodando) + GIF 15,0 s "do zero ao tabloide" com a arte REAL.
+  Medições arquivadas em `saida_marco/medicoes.json` + `DOSSIE_MARCO.md`.
+  **[MÁQUINA DO DONO] para a sessão de aceitação:** instalador num Windows LIMPO,
+  migração com o banco antigo REAL, SDXL degrau 2 (se houver GPU), test-drive +
+  ressalvas + **o SELO HUMANO (passos 96–98)**.

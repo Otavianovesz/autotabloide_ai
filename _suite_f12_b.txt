@@ -1,0 +1,160 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 25%]
+........................................................................ [ 33%]
+........................................................................ [ 42%]
+........................................................................ [ 50%]
+........................................................................ [ 59%]
+........................................................................ [ 67%]
+........................................................................ [ 76%]
+........................................................................ [ 84%]
+........................................................................ [ 93%]
+.........................................................                [100%]
+============================== warnings summary ===============================
+..\..\..\AppData\Local\Programs\Python\Python312\Lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32
+  C:\Users\otavi\AppData\Local\Programs\Python\Python312\Lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32: CryptographyDeprecationWarning: ARC4 has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.ARC4 and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
+
+app/tests/test_adversarial_vinculo.py::test_adversarial_multi_imagem_por_conteudo
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_adversarial_vinculo.py:661: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    vistos = {p[:3] for p in img3.crop((x0, y0, x1, y1)).getdata()}
+
+app/tests/test_adversarial_vinculo.py::test_adversarial_secoes_nao_cobrem_conteudo
+app/tests/test_adversarial_vinculo.py::test_adversarial_secoes_nao_cobrem_conteudo
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_adversarial_vinculo.py:848: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(ligada.getdata()) != list(desligada.getdata())  # seções existem
+
+app/tests/test_adversarial_vinculo.py::test_adversarial_secoes_nao_cobrem_conteudo
+app/tests/test_adversarial_vinculo.py::test_adversarial_secoes_nao_cobrem_conteudo
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_adversarial_vinculo.py:860: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(ligada2.getdata()) == list(ligada.getdata())
+
+app/tests/test_adversarial_vinculo.py::test_adversarial_f7_multi_preco_e_observacao_por_uid
+app/tests/test_adversarial_vinculo.py::test_adversarial_f7_multi_preco_e_observacao_por_uid
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_adversarial_vinculo.py:1380: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com.getdata()) != list(vazio.getdata())   # o texto apareceu
+
+app/tests/test_adversarial_vinculo.py::test_adversarial_f9_revisora_nao_altera_a_peca
+app/tests/test_adversarial_vinculo.py::test_adversarial_f9_revisora_nao_altera_a_peca
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_adversarial_vinculo.py:1439: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(antes.getdata()) == list(depois.getdata())   # peça intacta
+
+app/tests/test_etapa_a.py::test_a1_texto_fixo_desenha_em_slot_sem_produto
+app/tests/test_etapa_a.py::test_a1_texto_fixo_desenha_em_slot_sem_produto
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_etapa_a.py:30: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(vazio.getdata()) != list(branco.getdata())  # o texto apareceu
+
+app/tests/test_etapa_a.py::test_a1_texto_fixo_tem_precedencia_sobre_validade
+app/tests/test_etapa_a.py::test_a1_texto_fixo_tem_precedencia_sobre_validade
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_etapa_a.py:40: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com_fixo.getdata()) != list(sem_fixo.getdata())
+
+app/tests/test_fabrica.py::test_riscado_muda_a_composicao
+app/tests/test_fabrica.py::test_riscado_muda_a_composicao
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fabrica.py:40: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com.getdata()) != list(sem.getdata())   # o traço apareceu
+
+app/tests/test_fabrica.py::test_validade_do_item_entra_no_cartaz
+app/tests/test_fabrica.py::test_validade_do_item_entra_no_cartaz
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fabrica.py:47: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com.getdata()) != list(sem.getdata())
+
+app/tests/test_fase10_imagens.py::test_degrau2_anti_alucinacao_rejeita_mudanca_demais
+app/tests/test_fase10_imagens.py::test_degrau2_com_motor_preserva_o_produto
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\images\estudio.py:107: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    da = list(a.getdata())
+
+app/tests/test_fase10_imagens.py::test_degrau2_anti_alucinacao_rejeita_mudanca_demais
+app/tests/test_fase10_imagens.py::test_degrau2_com_motor_preserva_o_produto
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\images\estudio.py:108: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    db = list(b.getdata())
+
+app/tests/test_fase5_editor.py::test_enquadrar_zoom_muda_o_recorte
+app/tests/test_fase5_editor.py::test_enquadrar_zoom_muda_o_recorte
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase5_editor.py:310: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(z1.getdata()) != list(z2.getdata())      # o enquadramento mudou
+
+app/tests/test_fase5_editor.py::test_pill_desenha_atras_do_texto
+app/tests/test_fase5_editor.py::test_pill_desenha_atras_do_texto
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase5_editor.py:322: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(_compor(True).getdata()) != list(_compor(False).getdata())
+
+app/tests/test_fase5_editor.py::test_sombra_e_contorno_mudam_pixels
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase5_editor.py:333: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    base = list(_compor().getdata())
+
+app/tests/test_fase5_editor.py::test_sombra_e_contorno_mudam_pixels
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase5_editor.py:334: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(_compor(sombra=True).getdata()) != base
+
+app/tests/test_fase5_editor.py::test_sombra_e_contorno_mudam_pixels
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase5_editor.py:335: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(_compor(contorno=True).getdata()) != base
+
+app/tests/test_fase5_editor.py::test_contraste_avisa_branco_sobre_claro
+app/tests/test_fase5_editor.py::test_contraste_avisa_branco_sobre_claro
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\rendering\contraste.py:45: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    px = list(recorte.getdata())
+
+app/tests/test_fase7_massa.py::test_multi_preco_desenha_na_pagina_por_pixel
+app/tests/test_fase7_massa.py::test_multi_preco_desenha_na_pagina_por_pixel
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase7_massa.py:127: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com.getdata()) != list(vazio.getdata())    # o texto apareceu
+
+app/tests/test_fase8_export.py::test_marca_dagua_muda_a_peca_sem_tocar_o_original
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:123: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    antes = list(original.getdata())
+
+app/tests/test_fase8_export.py::test_marca_dagua_muda_a_peca_sem_tocar_o_original
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:125: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(com.getdata()) != antes             # a marca apareceu
+
+app/tests/test_fase8_export.py::test_marca_dagua_muda_a_peca_sem_tocar_o_original
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:126: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(original.getdata()) == antes        # o original intacto
+
+app/tests/test_fase8_export.py::test_social_desenha_conteudo_nao_fica_branco
+app/tests/test_fase8_export.py::test_social_desenha_conteudo_nao_fica_branco
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:211: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(img.getdata()) != list(branco.getdata())
+
+app/tests/test_fase8_export.py::test_tabloide_marca_dagua_liga_desliga_com_aprovacao
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:355: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    r = list(Image.open(rascunho).convert("RGB").getdata())
+
+app/tests/test_fase8_export.py::test_tabloide_marca_dagua_liga_desliga_com_aprovacao
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_fase8_export.py:356: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    c = list(Image.open(limpo).convert("RGB").getdata())
+
+app/tests/test_isolamento.py::test_duplo_clique_fora_troca_ou_sai_pelo_view
+app/tests/test_isolamento.py::test_duplo_clique_fora_troca_ou_sai_pelo_view
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_isolamento.py:270: DeprecationWarning: Function: 'QMouseEvent.QMouseEvent(QEvent.Type type, const QPointF &localPos, Qt.MouseButton button, QFlags<Qt.MouseButton> buttons, QFlags<Qt.KeyboardModifier> modifiers, const QPointingDevice *device)' is marked as deprecated, please check the documentation for more information.
+    ev = QMouseEvent(QMouseEvent.Type.MouseButtonDblClick, local,
+
+app/tests/test_isolamento.py::test_alt_troca_suspensa_em_isolamento
+app/tests/test_isolamento.py::test_alt_troca_suspensa_em_isolamento
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_isolamento.py:483: DeprecationWarning: Function: 'QMouseEvent.QMouseEvent(QEvent.Type type, const QPointF &localPos, Qt.MouseButton button, QFlags<Qt.MouseButton> buttons, QFlags<Qt.KeyboardModifier> modifiers, const QPointingDevice *device)' is marked as deprecated, please check the documentation for more information.
+    ev = QMouseEvent(QMouseEvent.Type.MouseButtonPress, _P(50, 50),
+
+app/tests/test_marco_f8.py::test_marco_40_itens_categorizado_ponta_a_ponta
+app/tests/test_marco_f8.py::test_marco_40_itens_categorizado_ponta_a_ponta
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_marco_f8.py:128: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(imgs[0].getdata()) != list(sem_secoes.getdata())
+
+app/tests/test_secoes.py::test_secoes_desenham_so_quando_ligadas
+app/tests/test_secoes.py::test_secoes_desenham_so_quando_ligadas
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_secoes.py:111: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(desligada.getdata()) != list(ligada.getdata())   # o contorno existe
+
+app/tests/test_secoes.py::test_secoes_desenham_so_quando_ligadas
+app/tests/test_secoes.py::test_secoes_desenham_so_quando_ligadas
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_secoes.py:115: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(de_novo.getdata()) == list(desligada.getdata())
+
+app/tests/test_selos.py::test_compositor_desenha_selo_quando_mais18
+app/tests/test_selos.py::test_compositor_desenha_selo_quando_mais18
+  C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\tests\test_selos.py:47: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    assert list(sem.getdata()) != list(com.getdata())  # o selo mudou a composição
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+EXIT=0

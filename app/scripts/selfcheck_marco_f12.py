@@ -93,18 +93,24 @@ def main() -> int:
         m["itens_reais"] = len(reais_itens)
         m["validade"] = camp["validade"]
 
-        # conciliar as ofertas REAIS contra o acervo de 5k (medido)
+        # conciliar as ofertas REAIS contra o acervo de 5k — DOIS números
+        # (frota F12): a 1ª vez paga a construção ÚNICA do índice de
+        # significado; o recorrente é o custo de toda quinta-feira
+        linhas = [(n, p, None) for n, p in reais_itens]
         t0 = time.monotonic()
-        res = servico.conciliar_linhas(
-            [(n, p, None) for n, p in reais_itens], lambda _msg: None)
+        res = servico.conciliar_linhas(linhas, lambda _msg: None)
+        m["conciliar_1a_vez_s"] = round(time.monotonic() - t0, 1)
+        t0 = time.monotonic()
+        res = servico.conciliar_linhas(linhas, lambda _msg: None)
         m["conciliar_s"] = round(time.monotonic() - t0, 1)
         m["semaforo"] = {
             "verdes": sum(1 for i in res.itens if i.semaforo == "VERDE"),
             "amarelos": sum(1 for i in res.itens if i.semaforo == "AMARELO"),
             "vermelhos": sum(1 for i in res.itens
                              if i.semaforo == "VERMELHO")}
-        print(f"  conciliar {len(reais_itens)} em 5k: {m['conciliar_s']}s "
-              f"→ {m['semaforo']}")
+        print(f"  conciliar {len(reais_itens)} em 5k: 1ª vez (constrói o "
+              f"índice) {m['conciliar_1a_vez_s']}s · recorrente "
+              f"{m['conciliar_s']}s → {m['semaforo']}")
 
         # o layout REAL da arte (frente+verso) — RG-48
         t0 = time.monotonic()
@@ -178,7 +184,9 @@ def main() -> int:
             f"\n## Campanha {nome}",
             f"- {m['itens_reais']} ofertas REAIS transcritas da peça; "
             f"validade **{m['validade']}** (RG-58: nunca vazia)",
-            f"- Conciliar contra 5k: **{m['conciliar_s']}s** → "
+            f"- Conciliar contra 5k: **{m['conciliar_s']}s** (a 1ª vez, "
+            f"que constrói o índice de significado, levou "
+            f"{m.get('conciliar_1a_vez_s', '?')}s — custo de uma vez só) → "
             f"{m['semaforo']}",
             f"- Layout REAL detectado da arte em {m['detectar_s']}s; "
             f"{m['celulas_ocupadas']} células ocupadas",
