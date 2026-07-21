@@ -143,9 +143,11 @@ class PainelPropriedades(QWidget):
 
         # R-035 (pill) + R-034 (sombra/contorno): legibilidade do texto na foto
         self.pill = QCheckBox("Pílula atrás do texto")
+        # OS F11.5 #24: ao LIGAR a pill numa região de fábrica, o padrão vem
+        # do TEMA atual (não mais preto/128 fixos) — ver pill_padrao_do_tema
+        self.pill.toggled.connect(self._pill_ligada)
         self.pill.setToolTip("Faixa semitransparente atrás do texto, para ler "
                              "sobre a foto")
-        self.pill.toggled.connect(lambda v: self._set("pill", v))
         self.pill_opac = QDoubleSpinBox()
         self.pill_opac.setRange(0, 255)
         self.pill_opac.setDecimals(0)
@@ -541,30 +543,86 @@ class PainelPropriedades(QWidget):
             self._trabalhos = GerenciadorTrabalhos()   # RG-05b cobre o shutdown
         self.btn_dica.setEnabled(False)
         self.btn_dica.setText(" Gerando…")
-        # R-083 (polimento): o estilo escolhido no combo muda o TOM da dica;
-        # o texto atual entra em `evitar` (memória — não repete a mesma dica)
+        # R-083 (GATE 2.1 da ordem F11.5): a MEMÓRIA de dica é o HISTÓRICO da
+        # sessão + o texto atual — cada dica gerada entra na lista e a próxima
+        # não pode repeti-la (a guarda dura vive em `gerar_dica`).
         estilo = self.estilo_dica.currentData()
-        evitar = [x for x in (self.texto_fixo.text().strip(),) if x]
-        trab = Trabalhador(lambda st: gerar_dica(nomes, limite, motor,
-                                                 estilo=estilo, evitar=evitar))
+        evitar = self._dicas_a_evitar()
+
+        # OS F11.5 #12: as marcas conhecidas vão junto — dica que citar marca
+        # FORA da oferta (alucinação) é rejeitada pela guarda dura
+        def _tarefa(st):
+            from app.qt.telas import servico as _srv
+            try:
+                marcas = _srv.marcas_do_acervo()
+            except Exception:
+                marcas = []
+            return gerar_dica(nomes, limite, motor, estilo=estilo,
+                              evitar=evitar, marcas_conhecidas=marcas)
+
+        trab = Trabalhador(_tarefa)
 
         def _pronto(dica):
             self.btn_dica.setEnabled(True)
             self.btn_dica.setText(" Gerar dica (IA)")
             if not dica:
-                mostrar_toast(self, "A IA não devolveu dica — tente de novo "
-                                    "ou escreva à mão.", tipo="erro")
+                mostrar_toast(self, "A IA não devolveu dica nova (ou repetiu "
+                                    "a anterior) — tente de novo ou escreva "
+                                    "à mão.", tipo="erro")
                 return
+            self._registrar_dica(dica)     # memória: a próxima evita esta
+            self.aplicar_dica_gerada(reg, dica)
             if self.reg is reg:            # a seleção pode ter mudado no voo
                 self.texto_fixo.setText(dica)
-            reg.texto_fixo = dica
-            self.canvas.notificar_edicao(reg, "texto_fixo")
             mostrar_toast(self, f"Dica gerada ({len(dica)} caracteres — "
                                 "cabe na região). Edite à vontade.")
 
         trab.ok.connect(_pronto)
         trab.erro.connect(lambda _m: (_pronto(None)))
         self._trabalhos.rodar(trab)
+
+    def _pill_ligada(self, ligada: bool) -> None:
+        """OS F11.5 #24: liga a pill; se a região está nos defaults de
+        fábrica, aplica o padrão do TEMA (a peça segue igual — isto muda só a
+        SUGESTÃO inicial; quem já ajustou cor/opacidade não é tocado)."""
+        if ligada and self.reg is not None:
+            from app.qt.design.papel_texto_ui import pill_padrao_do_tema
+            if (self.reg.pill_cor == "#000000"
+                    and int(self.reg.pill_opacidade) == 128):
+                cor, opac = pill_padrao_do_tema()
+                self.reg.pill_cor = cor
+                self.reg.pill_opacidade = opac
+                if hasattr(self, "pill_opac"):
+                    self.pill_opac.setValue(opac)
+        self._set("pill", ligada)
+
+    def aplicar_dica_gerada(self, reg, dica: str) -> None:
+        """OS F11.5 #8 (R-088): a dica gerada pela IA DECLARA o papel — a
+        região vira DICA (badge violeta) na hora, não fica um texto mudo em
+        papel LIVRE. O teto de caracteres já veio garantido de `gerar_dica`
+        (o limite da região é lei lá dentro)."""
+        from app.rendering.model import PapelTexto
+        reg.texto_fixo = dica
+        if getattr(reg, "papel_texto", None) != PapelTexto.DICA:
+            self.canvas.definir_papel_texto(reg, PapelTexto.DICA)
+        else:
+            self.canvas.notificar_edicao(reg, "texto_fixo")
+
+    # --- memória de dica (R-083, GATE 2.1) -----------------------------------
+
+    def _dicas_a_evitar(self) -> list[str]:
+        """O texto atual + as últimas dicas geradas NESTA sessão (até 5) —
+        a lista que `gerar_dica` usa para não repetir."""
+        historico = list(getattr(self, "_dicas_geradas", []))[-5:]
+        atual = self.texto_fixo.text().strip()
+        return ([atual] if atual else []) + \
+            [d for d in historico if d != atual]
+
+    def _registrar_dica(self, dica: str) -> None:
+        if not hasattr(self, "_dicas_geradas"):
+            self._dicas_geradas: list[str] = []
+        if dica and dica not in self._dicas_geradas:
+            self._dicas_geradas.append(dica)
 
     def _atualizar_tamanho_efetivo(self) -> None:
         """RG-18: mostra o tamanho que o desenho USA quando o ajuste reduziu."""

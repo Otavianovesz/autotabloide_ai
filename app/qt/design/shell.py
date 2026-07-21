@@ -188,6 +188,13 @@ class Shell(QMainWindow):
         for c, b in self._botoes.items():
             b.setChecked(c == chave)
         self._tela_ativa = chave
+        # R-150 (frota F12): no Modo Pai a top-bar SOME — a promessa
+        # "nenhuma ação destrutiva alcançável" valia só dentro da tela,
+        # mas a navegação inteira (Mesa, Cofre, excluir projeto…) seguia
+        # a 1 clique. A única saída é o botão "Sair do modo simples".
+        topo = self.findChild(QWidget, "topBar")
+        if topo is not None:
+            topo.setVisible(chave != "modo_pai")
         self._refletir_zoom()
         self._refletir_salvo()
         # RG-17: microtutorial na PRIMEIRA visita de cada tela (Config lembra)

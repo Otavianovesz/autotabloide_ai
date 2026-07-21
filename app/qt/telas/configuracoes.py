@@ -243,10 +243,56 @@ class ConfiguracoesTela(QWidget):
         form_ia_extra.addRow("Semáforo — limiar do verde", self.campo_verde)
         form_ia_extra.addRow("Semáforo — limiar do amarelo",
                              self.campo_amarelo)
+        # OS F11.5 #47/#81 (R-086): o dicionário regional EDITÁVEL — cada
+        # linha é um grupo de sinônimos; a conciliação passa a casá-los
+        from PySide6.QtWidgets import QPlainTextEdit as _QPTE
+        self.campo_sinonimos = _QPTE()
+        self.campo_sinonimos.setPlaceholderText(
+            "um grupo por linha, termos separados por vírgula\n"
+            "ex.: mandioca, macaxeira, aipim")
+        self.campo_sinonimos.setMinimumHeight(56)
+        self.campo_sinonimos.setToolTip(
+            "Sinônimos da SUA região — a conciliação trata como o mesmo "
+            "produto (ex.: a tabela diz “jerimum” e o cadastro diz "
+            "“abóbora”). Os grupos padrão do app continuam valendo.")
+        self.campo_sinonimos.textChanged.connect(
+            lambda: self._salvar_debounce.start()
+            if hasattr(self, "_salvar_debounce") else None)
+        form_ia_extra.addRow("Sinônimos regionais", self.campo_sinonimos)
+        # OS F11.5 #43/#53/#91: as correções APRENDIDAS (aliases) — ver e
+        # reverter, direto do banco
+        self.btn_correcoes = QPushButton(" Correções aprendidas…")
+        self.btn_correcoes.setIcon(icone("texto", tamanho=14))
+        self.btn_correcoes.setToolTip(
+            "Tudo o que o banco aprendeu dos seus “Aceitar” — cada linha "
+            "diz “quando a tabela escrever X, é o produto Y”. Dá para "
+            "reverter qualquer uma.")
+        self.btn_correcoes.clicked.connect(self._abrir_correcoes)
+        form_ia_extra.addRow(self.btn_correcoes)
         form_backups = QFormLayout()
         form_backups.setVerticalSpacing(t.ESP_2)
         form_backups.addRow("Backups automáticos guardados",
                             self.campo_rotacao)
+        # R-131 (FASE 12): o PC da loja aprova e imprime — não edita à toa
+        self.chk_somente_leitura = QCheckBox(
+            "Modo somente-leitura (o PC da loja: aprova e imprime, "
+            "não edita)")
+        self.chk_somente_leitura.setToolTip(
+            "Com esta chave, editar produto, criar, fundir e salvar projeto "
+            "ficam bloqueados (à prova de dedo) — aprovar, exportar e "
+            "imprimir seguem livres. Desligar pede confirmação.")
+        self.chk_somente_leitura.toggled.connect(self._somente_leitura_mudou)
+        form_backups.addRow(self.chk_somente_leitura)
+        # FASE 12 (passos 70-71): trazer o acervo do AutoTabloide ANTIGO
+        self.btn_migrar_antigo = QPushButton(
+            " Migrar do AutoTabloide antigo…")
+        self.btn_migrar_antigo.setIcon(icone("abrir", tamanho=14))
+        self.btn_migrar_antigo.setToolTip(
+            "Lê o banco do programa antigo (só leitura) e traz os produtos "
+            "que você ainda não tem — com prévia antes; nada duplica, nada "
+            "sobrescreve o seu acervo.")
+        self.btn_migrar_antigo.clicked.connect(self._migrar_antigo)
+        form_backups.addRow(self.btn_migrar_antigo)
         form_imagens = QFormLayout()
         form_imagens.setVerticalSpacing(t.ESP_2)
         # FASE 3 (passos 49-50): upscale desligável, pasta da biblioteca
@@ -270,6 +316,14 @@ class ConfiguracoesTela(QWidget):
         self.chk_fundo_branco.setToolTip(
             "R-095: quando a foto já tem fundo branco uniforme, o app não roda o "
             "recorte (economiza tempo e não estraga foto boa).")
+        # OS F11.5 #20 (F10): o degrau 2 do Estúdio é OPÇÃO, nunca requisito
+        self.chk_estudio_gerador = QCheckBox(
+            "Estúdio IA (gerador) — refinar o packshot com img2img local")
+        self.chk_estudio_gerador.setToolTip(
+            "Liga o DEGRAU 2 do Estúdio (SDXL local): o packshot passa por um "
+            "refino de imagem. Precisa de GPU — sem ela, o app avisa e "
+            "entrega o degrau 1 (que já resolve). A guarda anti-alucinação "
+            "rejeita refino que mude demais o produto.")
         self.rot_pasta_bib = QLineEdit()
         self.rot_pasta_bib.setReadOnly(True)
         self.rot_pasta_bib.setToolTip(
@@ -284,12 +338,31 @@ class ConfiguracoesTela(QWidget):
         linha_bib.addWidget(btn_abrir_bib)
         form_imagens.addRow(self.chk_upscale)
         form_imagens.addRow(self.chk_webp)
+        # OS F11.5 #51/#52: a migração do acervo é SOB DEMANDA (prévia →
+        # confirma) e reversível — nada convertido em silêncio
+        self.btn_migrar_webp = QPushButton(" Migrar o acervo (prévia)…")
+        self.btn_migrar_webp.setIcon(icone("imagem", tamanho=14))
+        self.btn_migrar_webp.setToolTip(
+            "Converte as fotos do acervo para WebP (metade do disco, alfa "
+            "preservado) — mostra a PRÉVIA do ganho e só converte se você "
+            "confirmar. Reversível: com a chave desligada, volta a PNG.")
+        self.btn_migrar_webp.clicked.connect(self._migrar_webp)
+        form_imagens.addRow(self.btn_migrar_webp)
         form_imagens.addRow(self.chk_fundo_branco)
+        form_imagens.addRow(self.chk_estudio_gerador)
         caixa_bib = QWidget()
         caixa_bib.setLayout(linha_bib)
         form_imagens.addRow("Pasta da biblioteca", caixa_bib)
         form_imagens.addRow(self.campo_cmyk)
         form_imagens.addRow("Perfil ICC de impressão", self.campo_icc)
+        # OS F11.5 #5 (R-065): os perfis de exportação ganham tela de edição
+        self.btn_perfis = QPushButton(" Perfis de exportação…")
+        self.btn_perfis.setIcon(icone("salvar", tamanho=14))
+        self.btn_perfis.setToolTip(
+            "Criar/editar os presets de exportação (WhatsApp, Impressão, "
+            "Stories…) — tamanho, formato e qualidade de cada um")
+        self.btn_perfis.clicked.connect(self._abrir_perfis)
+        form_imagens.addRow(self.btn_perfis)
         form_campanhas = QFormLayout()
         form_campanhas.setVerticalSpacing(t.ESP_2)
         # F8/A2: a ordem das seções do tabloide agrupado
@@ -959,6 +1032,143 @@ class ConfiguracoesTela(QWidget):
 
     # --- FASE 3, Bloco F: abas Imagens / Atalhos / Sobre ------------------------
 
+    def _migrar_webp(self) -> None:
+        """OS F11.5 #51/#52: prévia do ganho → confirma → migra em worker.
+        O SENTIDO segue a chave WebP: ligada converte p/ WebP; desligada,
+        de volta p/ PNG (reversível)."""
+        from app.qt.telas import servico
+        from app.qt.workers import Trabalhador
+        para_webp = self.chk_webp.isChecked()
+        rotulo = "WebP" if para_webp else "PNG"
+
+        def _previa(st):
+            return servico.migrar_acervo_webp(para_webp, st, previa=True)
+
+        trab = Trabalhador(_previa)
+        trab.status.connect(self._overlay.mostrar
+                            if hasattr(self, "_overlay") else (lambda _m: None))
+
+        def _mostrar(r):
+            if hasattr(self, "_overlay"):
+                self._overlay.esconder()
+            if not r["fotos"]:
+                mostrar_toast(self, f"Nada a converter — o acervo já está "
+                                    f"em {rotulo}.")
+                return
+            mb_a = r["bytes_antes"] / 1_048_576
+            mb_d = r["bytes_depois"] / 1_048_576
+            from PySide6.QtWidgets import QMessageBox
+            resp = QMessageBox.question(
+                self, f"Migrar o acervo para {rotulo}?",
+                f"{r['fotos']} foto(s): {mb_a:.1f} MB → {mb_d:.1f} MB "
+                f"({mb_d - mb_a:+.1f} MB). Converter agora? (Reversível — "
+                "rode de novo com a chave no outro estado para voltar.)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if resp != QMessageBox.StandardButton.Yes:
+                return
+            trab2 = Trabalhador(lambda st: servico.migrar_acervo_webp(
+                para_webp, st, previa=False))
+            trab2.ok.connect(lambda r2: mostrar_toast(
+                self, f"{r2['fotos']} foto(s) convertidas para {rotulo}."
+                + (f" {len(r2['puladas'])} pulada(s) — ilegíveis."
+                   if r2["puladas"] else ""), tipo="sucesso"))
+            trab2.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+            self._trabalhos.rodar(trab2)
+
+        trab.ok.connect(_mostrar)
+        trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+        self._trabalhos.rodar(trab)
+
+    def _somente_leitura_mudou(self, ligado: bool) -> None:
+        """R-131: LIGAR é direto (proteger é seguro); DESLIGAR é gesto
+        consciente — pede confirmação (passo 5)."""
+        if getattr(self, "_refletindo_somente_leitura", False):
+            return
+        from app.core import modo
+        if not ligado and modo.somente_leitura():
+            from PySide6.QtWidgets import QMessageBox
+            resp = QMessageBox.question(
+                self, "Sair do somente-leitura?",
+                "Este PC volta a poder EDITAR o acervo e os projetos. "
+                "Continuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if resp != QMessageBox.StandardButton.Yes:
+                self._refletindo_somente_leitura = True
+                self.chk_somente_leitura.setChecked(True)
+                self._refletindo_somente_leitura = False
+                return
+        modo.definir_somente_leitura(ligado)
+        mostrar_toast(self, "Modo somente-leitura LIGADO — este PC só "
+                            "aprova e imprime." if ligado
+                      else "Modo somente-leitura desligado — edição "
+                           "liberada.")
+
+    def _migrar_antigo(self) -> None:
+        """FASE 12: prévia → confirmação → migra em worker (chave natural)."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from app.core.migracao_antiga import (
+            analisar_banco_antigo, migrar_banco_antigo)
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "O banco do AutoTabloide antigo", "",
+            "Banco SQLite (*.db *.sqlite *.sqlite3);;Todos (*.*)")
+        if not arquivo:
+            return
+        try:
+            previa = analisar_banco_antigo(arquivo)
+        except ValueError as exc:
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        resp = QMessageBox.question(
+            self, "Trazer o acervo antigo?",
+            f"O banco antigo tem {previa['total_antigo']} produto(s): "
+            f"{previa['novos']} novo(s) para trazer e "
+            f"{previa['existentes']} que você JÁ tem (serão pulados — "
+            "nada duplica nem sobrescreve)."
+            + (f" O banco antigo repete {r} entre si (entra 1 de cada)."
+               if (r := previa.get('repetidos_no_lote', 0)) else "")
+            + " Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        from app.qt.workers import Trabalhador
+        trab = Trabalhador(lambda st: migrar_banco_antigo(arquivo, st))
+        trab.ok.connect(lambda r: mostrar_toast(
+            self, f"Migração pronta: {r['importados']} trazidos, "
+                  f"{r['pulados']} pulados (já existiam), "
+                  f"{r['aliases']} apelidos aprendidos.", tipo="sucesso"))
+        trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+        self._trabalhos.rodar(trab)
+
+    def _verificar_atualizacao(self) -> None:
+        """R-127 (FASE 12): checa em worker (a UI não congela); o resultado
+        é sempre uma mensagem honesta — nunca obriga, nunca mente."""
+        from app.core.atualizacao import verificar_atualizacao
+        from app.qt.workers import Trabalhador
+        trab = Trabalhador(lambda _st: verificar_atualizacao())
+
+        def _pronto(r):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Verificar atualização",
+                                    r["mensagem"])
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+        self._trabalhos.rodar(trab)
+
+    def _abrir_correcoes(self) -> None:
+        """OS F11.5 #43/#53/#91: ver/reverter os aliases aprendidos."""
+        from app.qt.telas.correcoes_dialog import CorrecoesDialog
+        CorrecoesDialog(self).exec()
+
+    def _abrir_perfis(self) -> None:
+        """OS F11.5 #5: a tela de perfis de exportação (salva na Config)."""
+        from app.qt.telas.perfis_dialog import PerfisDialog
+        dlg = PerfisDialog(self)
+        if dlg.exec() == PerfisDialog.DialogCode.Accepted:
+            mostrar_toast(self, "Perfis de exportação salvos.",
+                          tipo="sucesso")
+
     def _abrir_pasta_biblioteca(self) -> None:
         """Passo 49: abre a pasta das fotos no Explorer."""
         import os
@@ -1129,8 +1339,16 @@ class ConfiguracoesTela(QWidget):
             "Um .zip pequeno com versões, contagens e o log de travamentos "
             "— SEM fotos, sem banco, sem seus textos (R-128).")
         btn_diag.clicked.connect(self._gerar_diagnostico)
+        # R-127 (FASE 12): verificar atualização — honesto e nunca intrusivo
+        btn_atualizar = QPushButton(" Verificar atualização")
+        btn_atualizar.setIcon(icone("restaurar", tamanho=14))
+        btn_atualizar.setToolTip(
+            "Confere se há versão nova (precisa de internet). O app é "
+            "offline — sem rede, nada muda e nada trava.")
+        btn_atualizar.clicked.connect(self._verificar_atualizacao)
         linha_d = QHBoxLayout()
         linha_d.addWidget(btn_diag)
+        linha_d.addWidget(btn_atualizar)
         linha_d.addStretch(1)
         vl = QVBoxLayout()
         vl.setSpacing(t.ESP_2)
@@ -1498,7 +1716,8 @@ class ConfiguracoesTela(QWidget):
             lambda _t: self._salvar_debounce.start())
         self.lista_ordem_nome.model().rowsMoved.connect(
             lambda *_a: self._salvar_debounce.start())
-        for chk in (self.chk_upscale, self.chk_webp, self.chk_fundo_branco):
+        for chk in (self.chk_upscale, self.chk_webp, self.chk_fundo_branco,
+                    self.chk_estudio_gerador):
             chk.toggled.connect(lambda _v: self._salvar_debounce.start())
         for campo in (self.campo_verde, self.campo_amarelo,
                       self.campo_rotacao, self.campo_secao_esp):
@@ -1630,6 +1849,8 @@ class ConfiguracoesTela(QWidget):
                     bool(cfg.get("imagem.webp", False)))
                 self.chk_fundo_branco.setChecked(
                     bool(cfg.get("imagem.detector_fundo_branco", False)))
+                self.chk_estudio_gerador.setChecked(
+                    bool(cfg.get("estudio.gerador", False)))
                 from app.core.paths import SystemRoot
                 self.rot_pasta_bib.setText(
                     str(SystemRoot().biblioteca_imagens))
@@ -1718,6 +1939,26 @@ class ConfiguracoesTela(QWidget):
                 self.campo_prompt_dica.setPlainText(
                     str(cfg.get("ia.prompt_dica") or ""))
                 self.campo_prompt_dica.blockSignals(False)
+                # OS F11.5: refletir as frases prontas salvas (bug latente —
+                # sem o load, QUALQUER salvamento da tela zerava a lista, já
+                # que o save grava tudo) e os sinônimos do dono (#47/#81)
+                if hasattr(self, "campo_frases"):
+                    self.campo_frases.blockSignals(True)
+                    self.campo_frases.setPlainText("\n".join(
+                        cfg.get("frases.validade", []) or []))
+                    self.campo_frases.blockSignals(False)
+                if hasattr(self, "campo_sinonimos"):
+                    self.campo_sinonimos.blockSignals(True)
+                    self.campo_sinonimos.setPlainText("\n".join(
+                        ", ".join(g) for g in
+                        (cfg.get("sinonimos.regionais", []) or [])))
+                    self.campo_sinonimos.blockSignals(False)
+                # R-131 (FASE 12): refletir a chave sem disparar o handler
+                if hasattr(self, "chk_somente_leitura"):
+                    self._refletindo_somente_leitura = True
+                    self.chk_somente_leitura.setChecked(
+                        bool(cfg.get("app.somente_leitura", False)))
+                    self._refletindo_somente_leitura = False
         finally:
             db.engine.dispose()
         self._recarregar_selos()   # RG-33 (conexão própria, fora do with)
@@ -2011,6 +2252,16 @@ class ConfiguracoesTela(QWidget):
                             [ln.strip() for ln in
                              self.campo_frases.toPlainText().splitlines()
                              if ln.strip()])
+                # OS F11.5 #47/#81: os grupos de sinônimos do dono (R-086)
+                if hasattr(self, "campo_sinonimos"):
+                    grupos = []
+                    for ln in (self.campo_sinonimos.toPlainText()
+                               .splitlines()):
+                        termos = [t.strip() for t in ln.split(",")
+                                  if t.strip()]
+                        if len(termos) >= 2:
+                            grupos.append(termos)
+                    cfg.set("sinonimos.regionais", grupos)
                 cfg.set("secoes.cor", self.campo_secao_cor.text().strip())
                 cfg.set("secoes.espessura_mm", self.campo_secao_esp.value())
                 cfg.set("secoes.estilo",
@@ -2031,6 +2282,8 @@ class ConfiguracoesTela(QWidget):
                 cfg.set("imagem.webp", self.chk_webp.isChecked())
                 cfg.set("imagem.detector_fundo_branco",
                         self.chk_fundo_branco.isChecked())
+                cfg.set("estudio.gerador",
+                        self.chk_estudio_gerador.isChecked())
                 s.commit()
         finally:
             db.engine.dispose()

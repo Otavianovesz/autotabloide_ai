@@ -109,6 +109,8 @@ _CLARO = {
     "ALCA_BORDA": PRIMARIA_600,
     "SUCESSO_FUNDO": "#EAF7EF", "ALERTA_FUNDO": "#FDF3E3",
     "PERIGO_FUNDO": "#FCEDED", "INFO_FUNDO": PRIMARIA_50,
+    # OS F11.5 #6: o status "publicado" tematizado (era hex solto no dashboard)
+    "PUBLICADO": "#7C3AED",
 }
 
 _ESCURO = {
@@ -131,9 +133,12 @@ _ESCURO = {
     "ALCA_BORDA": "#5B8DEF",
     "SUCESSO_FUNDO": "#13291D", "ALERTA_FUNDO": "#33260F",
     "PERIGO_FUNDO": "#331414", "INFO_FUNDO": "#14213A",
+    "PUBLICADO": "#A78BFA",              # violeta CLAREIA no escuro (#6)
 }
 
 TEMAS = {"claro": _CLARO, "escuro": _ESCURO}
+PUBLICADO = "#7C3AED"            # status "publicado" (violeta, #6)
+
 TEMA_ATUAL = "claro"
 
 # aliases que derivam de tokens tematizados (recalculados na troca)

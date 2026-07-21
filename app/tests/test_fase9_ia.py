@@ -236,14 +236,56 @@ def test_manchetes_degrada_sem_ia_e_respeita_limite():
 
 
 def test_dica_estilo_respeita_teto_e_nao_repete():
-    """R-083/passo 11+12: a dica respeita o teto de caracteres da região e o
-    estilo escolhido; sem IA devolve None (degrada, I2)."""
+    """R-083/passo 11+12 (reescrito no GATE 2.1 da ordem F11.5 — o corpo
+    antigo só checava o teto e o nome MASCARAVA a não-repetição):
+
+    1. o teto de caracteres da região é lei;
+    2. sem IA devolve None (degrada, I2);
+    3. **NÃO REPETE, por conteúdo**: com `evitar=[dica_anterior]`, um modelo
+       que insiste na MESMA dica é BARRADO pela guarda dura (None — nunca a
+       repetida); e um modelo que devolve outra dica passa, com a nova ≠
+       anterior. Prova de mutação: remover a guarda de `gerar_dica` faz o
+       caso do modelo-teimoso devolver a dica repetida e o teste falhar."""
     from app.ai.enriquecimento import gerar_dica
     fake = MotorIAFake(respostas_chat={
         "Fica a Dica": json.dumps({"dica": "Arroz soltinho: refogue o alho antes."})})
-    d = gerar_dica(["Arroz Tio João"], 30, fake, estilo="receita")
-    assert d is not None and len(d) <= 30            # teto é lei
+    d1 = gerar_dica(["Arroz Tio João"], 30, fake, estilo="receita")
+    assert d1 is not None and len(d1) <= 30          # teto é lei
     assert gerar_dica(["Arroz"], 30, None) is None    # sem IA → None (degrada)
+
+    # 3a) modelo TEIMOSO (sempre a mesma resposta): com evitar=[d1], a guarda
+    # barra — o resultado NUNCA é a dica repetida
+    d2 = gerar_dica(["Arroz Tio João"], 30, fake, estilo="receita",
+                    evitar=["Arroz soltinho: refogue o alho antes."])
+    assert d2 is None                                 # barrada, não repetida
+
+    # 3b) modelo que respeita o evitar (o prompt ganha "NÃO repita"): a
+    # resposta nova é DIFERENTE da anterior, por conteúdo
+    fake2 = MotorIAFake(respostas_chat={
+        "NÃO repita": json.dumps({"dica": "Capriche no feijão novo."}),
+        "Fica a Dica": json.dumps({"dica": "Arroz soltinho sempre."}),
+    })
+    d3 = gerar_dica(["Arroz"], 40, fake2)
+    d4 = gerar_dica(["Arroz"], 40, fake2, evitar=[d3])
+    assert d3 and d4 and d4 != d3
+
+
+def test_painel_memoria_de_dica_acumula():
+    """GATE 2.1 (caller): cada dica gerada entra no histórico do painel e a
+    lista `evitar` da PRÓXIMA geração a contém — a memória existe de fato,
+    não só o texto atual."""
+    from PySide6.QtWidgets import QApplication
+
+    from app.qt.canvas import CanvasView
+    from app.qt.painel_propriedades import PainelPropriedades
+    QApplication.instance() or QApplication([])
+    p = PainelPropriedades(CanvasView())
+    p._registrar_dica("Dica um")
+    p._registrar_dica("Dica dois")
+    p.texto_fixo.setText("Texto atual")
+    evitar = p._dicas_a_evitar()
+    assert evitar[0] == "Texto atual"                # o atual vem primeiro
+    assert "Dica um" in evitar and "Dica dois" in evitar
 
 
 # ===========================================================================

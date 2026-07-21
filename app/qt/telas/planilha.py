@@ -31,10 +31,33 @@ def valor_da_coluna(item, coluna: str) -> str:
     return ""
 
 
+def _persistir_cadastro(item, **campos) -> str | None:
+    """OS F11.5 #68: a edição na planilha também grava no CADASTRO, por
+    produto_id (I1) — Nome e Categoria são dados do ACERVO, não só da oferta.
+    (O preço digitado é o "por" da OFERTA e segue no projeto — o `preco_atual`
+    do banco é o "de", decisão da F6.) Falha vira AVISO (I2), nunca silêncio."""
+    if not getattr(item, "produto_id", None):
+        return None
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ProdutoRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                ProdutoRepositorio(s).editar(item.produto_id, **campos)
+                s.commit()
+        finally:
+            db.engine.dispose()
+        return None
+    except Exception as e:
+        return f"editado na oferta, mas não gravei no cadastro ({e})"
+
+
 def aplicar_edicao(item, coluna: str, texto: str) -> tuple[bool, str | None]:
-    """Aplica a edição de UMA célula ao ItemMesa (em memória). Devolve
-    (gravou, aviso|None). Preço não entendido NÃO grava (I2): devolve o aviso
-    e mantém o valor anterior — nunca salva preço errado em silêncio."""
+    """Aplica a edição de UMA célula ao ItemMesa (em memória) e, quando o
+    campo é de CADASTRO (Nome/Categoria) e o item tem produto_id, grava
+    também no banco (#68). Devolve (gravou, aviso|None). Preço não entendido
+    NÃO grava (I2): devolve o aviso e mantém o valor anterior."""
     texto = (texto or "").strip()
     if coluna == "Nome":
         if texto:
@@ -42,7 +65,7 @@ def aplicar_edicao(item, coluna: str, texto: str) -> tuple[bool, str | None]:
             item.nome = sanitizar(texto).nome_sanitizado or texto
         else:
             item.nome = texto
-        return True, None
+        return True, _persistir_cadastro(item, nome_sanitizado=item.nome)
     if coluna == "Preço":
         # R-070: "3 por R$10" / "leve 3 pague 2" é multi-preço (FORMATO), não
         # preço inválido — grava em multi_preco e desenha esse texto.
@@ -65,7 +88,7 @@ def aplicar_edicao(item, coluna: str, texto: str) -> tuple[bool, str | None]:
         return True, None
     if coluna == "Categoria":
         item.categoria = texto or None
-        return True, None
+        return True, _persistir_cadastro(item, categoria=texto or None)
     if coluna == "Observação":
         # R-071: observação por item ("limite 2 por cliente") — texto livre,
         # opcional; alimenta a região de papel OBSERVACAO (condicional).

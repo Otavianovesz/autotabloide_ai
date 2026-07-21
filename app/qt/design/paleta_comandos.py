@@ -158,6 +158,13 @@ def acoes_do_editor(editor) -> list[Acao]:
         ("grade", "Guia Z de leitura (liga/desliga)", "", c.alternar_guia_z),
         ("salvar", "Salvar layout no banco", "Ctrl+S", editor.salvar),
         ("abrir", "Abrir layout do banco", "Ctrl+O", editor.carregar_do_banco),
+        # FASE 12 (R-149/R-147): o presente p/ outro mercado + o fundo por IA
+        ("cofre", "Exportar layout como template (.attpl) — sem dados…", "",
+         editor.exportar_template),
+        ("abrir", "Trazer um template (.attpl)…", "",
+         editor.importar_template),
+        ("lampada", "Fundo por IA (experimental — precisa de GPU)…", "",
+         editor.gerar_fundo_ia),
         ("duplicar", "Duplicar região selecionada", "Ctrl+D", editor._duplicar_selecao),
         ("lixeira", "Excluir região selecionada", "Del", editor._excluir_selecao),
     ]

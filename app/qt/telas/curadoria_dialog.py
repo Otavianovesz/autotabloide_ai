@@ -144,6 +144,20 @@ class CuradoriaDialog(QDialog):
         sem = QPushButton("Sem imagem")
         sem.setToolTip("Seguir sem foto (dá para trocar depois)")
         sem.clicked.connect(self._sem_imagem)
+        # OS F11.5 #46: girar/cortar e o pincel de refino TAMBÉM aqui — o
+        # candidato escolhido pode ser arrumado ANTES de virar a oficial
+        self.btn_ajustar = QPushButton(" Ajustar…")
+        self.btn_ajustar.setIcon(icone("ajustar", tamanho=16))
+        self.btn_ajustar.setToolTip("Girar/espelhar/cortar o candidato "
+                                    "selecionado antes de usar")
+        self.btn_ajustar.setEnabled(False)
+        self.btn_ajustar.clicked.connect(self._ajustar_candidato)
+        self.btn_refinar = QPushButton(" Refinar…")
+        self.btn_refinar.setIcon(icone("ajustar", tamanho=16))
+        self.btn_refinar.setToolTip("Pincel no recorte do candidato "
+                                    "(restaurar/apagar)")
+        self.btn_refinar.setEnabled(False)
+        self.btn_refinar.clicked.connect(self._refinar_candidato)
         self.usar = QPushButton(" Usar esta")
         self.usar.setIcon(icone("check_circulo", cor=t.ACENTO_TEXTO, tamanho=16))
         self.usar.setProperty("tipo", "primario")
@@ -152,7 +166,8 @@ class CuradoriaDialog(QDialog):
 
         botoes = QHBoxLayout()
         botoes.setSpacing(t.ESP_2)
-        for b in (arquivo, colar, url, acervo):
+        for b in (arquivo, colar, url, acervo, self.btn_ajustar,
+                  self.btn_refinar):
             botoes.addWidget(b)
         botoes.addStretch(1)
         botoes.addWidget(sem)
@@ -244,7 +259,46 @@ class CuradoriaDialog(QDialog):
     # --- escolhas ---------------------------------------------------------------
 
     def _habilitar(self) -> None:
-        self.usar.setEnabled(bool(self.lista.selectedItems()))
+        tem = bool(self.lista.selectedItems())
+        self.usar.setEnabled(tem)
+        self.btn_ajustar.setEnabled(tem)
+        self.btn_refinar.setEnabled(tem)
+
+    def _trocar_candidato(self, novo_caminho: str) -> None:
+        """#46: o candidato selecionado passa a apontar para a versão
+        arrumada (miniatura e UserRole atualizados juntos — I1)."""
+        sel = self.lista.selectedItems()
+        if not sel or not novo_caminho:
+            return
+        item = sel[0]
+        pm = QPixmap(novo_caminho)
+        if pm.isNull():
+            return
+        item.setData(Qt.ItemDataRole.UserRole, novo_caminho)
+        item.setIcon(pm.scaled(_MINIATURA, _MINIATURA,
+                               Qt.AspectRatioMode.KeepAspectRatio,
+                               Qt.TransformationMode.SmoothTransformation))
+        item.setToolTip(f"{pm.width()}×{pm.height()} (arrumada)")
+
+    def _ajustar_candidato(self) -> None:
+        """#46: girar/espelhar/cortar o candidato antes de usar."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.telas.ajuste_imagem_dialog import AjusteImagemDialog
+        dlg = AjusteImagemDialog(sel[0].data(Qt.ItemDataRole.UserRole), self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._trocar_candidato(dlg.caminho_final())
+
+    def _refinar_candidato(self) -> None:
+        """#46: o pincel de refino no candidato antes de usar."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.telas.refino_dialog import RefinoDialog
+        dlg = RefinoDialog(sel[0].data(Qt.ItemDataRole.UserRole), self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.caminho_final:
+            self._trocar_candidato(dlg.caminho_final)
 
     def _usar(self) -> None:
         sel = self.lista.selectedItems()

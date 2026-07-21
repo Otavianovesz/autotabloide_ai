@@ -204,6 +204,16 @@ class MesaTela(QWidget):
         self._estatistica_lbl = QLabel("")
         self._estatistica_lbl.setProperty("papel", "legenda")
         hb.addWidget(self._estatistica_lbl)
+        # OS F11.5 #42/43 (RG-42): o medidor de densidade fica SEMPRE visível
+        # na barra (não só o toast de >90%) — verde com respiro, âmbar cheia,
+        # vermelho espremida; a página atual é a medida.
+        self._densidade_lbl = QLabel("")
+        self._densidade_lbl.setProperty("papel", "legenda")
+        self._densidade_lbl.setToolTip(
+            "Quanto da página está ocupado por produto (pesquisa 60-30-10: "
+            "respiro valoriza as ofertas). Verde ≤70% · âmbar ≤90% · "
+            "vermelho >90%")
+        hb.addWidget(self._densidade_lbl)
         hb.addWidget(self._validade_lbl)
         self._barra_mesa = barra
         self._barra_layout = hb
@@ -260,17 +270,41 @@ class MesaTela(QWidget):
         self.chk_sem_preco = QCheckBox("Sem preço")
         self.chk_sem_foto.toggled.connect(self._aplicar_filtro)
         self.chk_sem_preco.toggled.connect(self._aplicar_filtro)
+        # OS F11.5 #31: filtro por CATEGORIA na barra (o motor sempre aceitou)
+        from PySide6.QtWidgets import QComboBox as _QCB
+        self.filtro_categoria = _QCB()
+        self.filtro_categoria.addItem("Todas")
+        self.filtro_categoria.setToolTip("Mostrar só uma categoria")
+        self.filtro_categoria.currentTextChanged.connect(
+            lambda _t: self._aplicar_filtro())
         self.campo_busca = QLineEdit()
         self.campo_busca.setPlaceholderText("Buscar por nome…")
         self.campo_busca.setClearButtonEnabled(True)
         self.campo_busca.textChanged.connect(self._aplicar_filtro)
+        # OS F11.5 #33: limpar TODOS os filtros num clique
+        self.btn_limpar_filtros = QPushButton("Limpar")
+        self.btn_limpar_filtros.setToolTip("Limpa todos os filtros (1 clique)")
+        self.btn_limpar_filtros.clicked.connect(self._limpar_filtros)
         fbl.addWidget(self.chk_sem_foto)
         fbl.addWidget(self.chk_sem_preco)
+        fbl.addWidget(self.filtro_categoria)
         fbl.addWidget(self.campo_busca, 1)
+        fbl.addWidget(self.btn_limpar_filtros)
         self._chip_filtro = QLabel("")
         self._chip_filtro.setProperty("papel", "legenda")
+        # OS F11.5 #43: o PULSO da estante ("· 12 sem foto · 3 sem preço")
+        self._pulso_filtro = QLabel("")
+        self._pulso_filtro.setProperty("papel", "legenda")
         vi.addWidget(self._filtro_barra)
+        vi.addWidget(self._pulso_filtro)
         vi.addWidget(self._chip_filtro)
+        # OS F11.5 #40: estado vazio DE FILTRO (nada passou — limpar)
+        from app.qt.design.componentes import EstadoVazio as _EV
+        self._vazio_filtro = _EV(
+            "busca", "Nada passa nesse filtro",
+            "Ajuste os filtros ou limpe-os para ver a estante inteira.")
+        self._vazio_filtro.hide()
+        vi.addWidget(self._vazio_filtro)
         self._filtro_barra.hide()
         vi.addWidget(self._vazio)
         vi.addWidget(self.lista)
@@ -279,6 +313,11 @@ class MesaTela(QWidget):
         # o mapa slot→uid segue a nova ordem por uid (I1)
         self.lista.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.lista.model().rowsMoved.connect(self._estante_reordenada)
+        # OS F11.5 #44: MULTI-seleção na estante — excluir/duplicar operam
+        # no BLOCO selecionado (por uid, nunca por posição)
+        from PySide6.QtWidgets import QAbstractItemView
+        self.lista.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # RG-07: gestão da estante — limpar tudo (cabeçalho) + contagem viva
         btn_limpar = QPushButton()
@@ -377,9 +416,17 @@ class MesaTela(QWidget):
     # --- gestão da estante (RG-07) --------------------------------------------------
 
     def _excluir_item_selecionado(self) -> None:
-        linha = self.lista.currentRow()
-        if 0 <= linha < len(self._itens):
-            self._excluir_item(linha)
+        # OS F11.5 #44: com MULTI-seleção, exclui o bloco inteiro (de trás
+        # para frente, para os índices não escorregarem; cada exclusão segue
+        # tendo o "Desfazer" do toast por uid)
+        linhas = sorted({ix.row() for ix in self.lista.selectedIndexes()},
+                        reverse=True)
+        if not linhas:
+            linha = self.lista.currentRow()
+            linhas = [linha] if 0 <= linha < len(self._itens) else []
+        for linha in linhas:
+            if 0 <= linha < len(self._itens):
+                self._excluir_item(linha)
 
     def _excluir_item(self, linha: int) -> None:
         """Tira o item da estante; a célula dele (se houver) esvazia à vista.
@@ -543,6 +590,28 @@ class MesaTela(QWidget):
             self.chk_secoes_pag.blockSignals(True)
             self.chk_secoes_pag.setChecked(pag.secoes_ligadas)
             self.chk_secoes_pag.blockSignals(False)
+        self._atualizar_densidade()
+
+    def _atualizar_densidade(self) -> None:
+        """OS F11.5 #42/43: o número da densidade da página ATUAL, colorido por
+        faixa. Some quando não há montagem (sem mapa) — sem mostrar 0% inútil."""
+        pag = self._pagina_atual()
+        if pag is None or not self._mapa:
+            self._densidade_lbl.setText("")
+            return
+        try:
+            d = servico.densidade_da_pagina(pag, self._dados_por_slot())
+        except Exception:
+            self._densidade_lbl.setText("")
+            return
+        if d > 0.9:
+            cor, rotulo = t.PERIGO, "espremida"
+        elif d > 0.7:
+            cor, rotulo = t.ALERTA, "cheia"
+        else:
+            cor, rotulo = t.SUCESSO, "com respiro"
+        self._densidade_lbl.setText(f"● {round(d * 100)}% {rotulo}")
+        self._densidade_lbl.setStyleSheet(f"color: {cor};")
 
     # --- seções por página (F8.2/B3) ------------------------------------------------
 
@@ -669,7 +738,10 @@ class MesaTela(QWidget):
             if w is None or w is self._mais_mesa or id(w) in sacrificaveis:
                 continue
             base += w.sizeHint().width() + esp
-        resto = self._barra_mesa.width() - 8 - base
+        # folga 24 (era 8): a régua independente do GATE 2.2 flagrou botão
+        # espremido 4px a 1280 — a soma de sizeHints subestima as margens
+        # internas do layout; a folga maior garante que ninguém encolhe.
+        resto = self._barra_mesa.width() - 24 - base
         ficam: list[int] = []
         colapsados = []
         # os MAIS importantes (fim da lista) entram primeiro
@@ -695,6 +767,14 @@ class MesaTela(QWidget):
                 acao = menu.addAction(w.icon(), rotulo, w.click)
                 acao.setEnabled(w.isEnabled())
         self._mais_mesa.setVisible(bool(colapsados))
+        # RG-53 estágio 2 (GATE 2.2): se nem assim coube, os botões fixos
+        # ficam SÓ-ÍCONE (texto → tooltip) até a largura voltar
+        from app.qt.design.componentes import modo_compacto_botoes
+        if not hasattr(self, "_botoes_compactos"):
+            self._botoes_compactos = {}
+        modo_compacto_botoes(
+            lay, self._mais_mesa, sacrificaveis, self._botoes_compactos,
+            self._barra_mesa.width() - 24 - 2 * t.ESP_3, esp)
 
     def _sincronizar_do_atelie(self) -> None:
         """RG-08: editar o layout no Ateliê reflete na Mesa ao trocar de tela.
@@ -791,10 +871,42 @@ class MesaTela(QWidget):
         if dlg.exec() != AbrirProjetoDialog.DialogCode.Accepted or dlg.projeto_id is None:
             return
         from app.qt.design.carregando import cursor_espera
-        with cursor_espera():            # FASE 1 (passo 75)
+        try:
+            with cursor_espera():        # FASE 1 (passo 75)
+                p = projetos.abrir_projeto(dlg.projeto_id)
+        except Exception:
+            p = None                     # corrompido: a recuperação assume
+        if p is not None:
+            self.abrir_projeto_congelado(p)
+            return
+        # R-137 (FASE 12): o projeto não abriu — diagnóstico honesto em
+        # PT-BR + os snapshots BONS com prévia; o dono escolhe (I2)
+        from app.core import recuperacao
+        problemas = recuperacao.diagnosticar_projeto(dlg.projeto_id)
+        snapshots = recuperacao.snapshots_de_recuperacao(dlg.projeto_id)
+        from app.qt.telas.recuperacao_dialog import RecuperacaoDialog
+        rec = RecuperacaoDialog(problemas or ["O projeto não conseguiu "
+                                              "abrir."], snapshots, self)
+        if rec.exec() != RecuperacaoDialog.DialogCode.Accepted \
+                or rec.snapshot_escolhido is None:
+            return
+        if not recuperacao.restaurar_de_snapshot(dlg.projeto_id,
+                                                 rec.snapshot_escolhido):
+            mostrar_toast(self, "A restauração falhou — tente outro "
+                                "snapshot ou um backup do Cofre.",
+                          tipo="erro")
+            return
+        try:
             p = projetos.abrir_projeto(dlg.projeto_id)
-            if p is not None:
-                self.abrir_projeto_congelado(p)
+        except Exception:
+            p = None
+        if p is not None:
+            self.abrir_projeto_congelado(p)
+            mostrar_toast(self, "Projeto recuperado — o estado danificado "
+                                "ficou guardado num .bak.", tipo="sucesso")
+        else:
+            mostrar_toast(self, "Ainda não abriu — tente outro snapshot.",
+                          tipo="erro")
 
     def abrir_projeto_congelado(self, p) -> None:
         """Reabre um ProjetoAberto idêntico (diálogo e Dashboard).
@@ -841,9 +953,24 @@ class MesaTela(QWidget):
                 lambda st, c=caminhos[0]: servico.importar_ofertas(c, st))
             trab.ok.connect(self._conciliar)
         else:
+            # OS F11.5 #2: a janelinha da fila mostra CADA arquivo mudando de
+            # estado (na fila → lendo → pronto/erro); a ponte leva o progresso
+            # da thread do worker para a UI por sinal Qt (thread-safe).
+            from pathlib import Path as _P
+
+            from app.qt.telas.fila_importacao import (
+                FilaImportacaoDialog, PonteFila)
+            fila_dlg = FilaImportacaoDialog(
+                [_P(c).name for c in caminhos], self)
+            ponte = PonteFila(fila_dlg)
+            ponte.mudou.connect(fila_dlg.atualizar)
+            fila_dlg.show()
             trab = Trabalhador(
-                lambda st, cs=caminhos: servico.importar_varios(cs, st))
-            trab.ok.connect(self._conciliar_varios)
+                lambda st, cs=caminhos, p=ponte:
+                servico.importar_varios(cs, st, progresso_cb=p.mudou.emit))
+            trab.ok.connect(lambda res, d=fila_dlg: (
+                d.accept() if d.tudo_pronto() else None,
+                self._conciliar_varios(res)))
         trab.status.connect(self._overlay.mostrar)
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
@@ -969,19 +1096,25 @@ class MesaTela(QWidget):
         self._avisar_divergencia()        # R-123: mesmo item, preços diferentes
 
     def _avisar_repeticao(self) -> None:
-        """R-059: depois de importar, avisa (sem bloquear, I2) os itens que estão
-        no encarte há várias edições seguidas — o dono decide manter ou variar.
-        Falha de leitura do histórico não atrapalha o fluxo (aviso é opcional)."""
-        try:
-            repetidos = servico.alertas_de_repeticao(self._itens)
-        except Exception:
-            return
-        if not repetidos:
-            return
-        nomes = ", ".join(it.nome for it, _ in repetidos[:3])
-        extra = "…" if len(repetidos) > 3 else ""
-        mostrar_toast(self, f"{len(repetidos)} item(ns) repetem há várias "
-                            f"edições ({nomes}{extra}) — que tal variar?")
+        """R-059 (+ OS F11.5 #53): o alerta lê o HISTÓRICO em WORKER — a leitura
+        das edições salvas (disco) não segura o thread da UI logo após um
+        import grande. Avisa sem bloquear (I2); falha de leitura só silencia o
+        aviso opcional."""
+        itens = list(self._itens)
+        trab = Trabalhador(
+            lambda st, alvo=itens: servico.alertas_de_repeticao(alvo))
+
+        def _pronto(repetidos):
+            if not repetidos:
+                return
+            nomes = ", ".join(it.nome for it, _ in repetidos[:3])
+            extra = "…" if len(repetidos) > 3 else ""
+            mostrar_toast(self, f"{len(repetidos)} item(ns) repetem há várias "
+                                f"edições ({nomes}{extra}) — que tal variar?")
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda _m: None)     # aviso é opcional
+        self._trabalhos.rodar(trab)
 
     def _avisar_foto_repetida(self) -> None:
         """R-104: a MESMA foto em 2+ itens da edição (por hash de CONTEÚDO) —
@@ -996,6 +1129,81 @@ class MesaTela(QWidget):
         nomes = ", ".join(it.nome for it in grupos[0][1][:3])
         mostrar_toast(self, f"A mesma foto aparece em {len(grupos[0][1])} itens "
                             f"({nomes}) — confira se não trocou.")
+
+    def _perguntar_destino_resto(self, n: int) -> str:
+        """#23: a pergunta — devolve 'pagina' | 'fila' | 'fora'."""
+        from PySide6.QtWidgets import QMessageBox
+        caixa = QMessageBox(self)
+        caixa.setWindowTitle("Sobraram itens")
+        caixa.setText(f"{n} item(ns) não couberam nesta página. "
+                      "O que faço com eles?")
+        b_pag = caixa.addButton("Criar página nova e encher",
+                                QMessageBox.ButtonRole.AcceptRole)
+        b_fila = caixa.addButton("Deixar na estante (fila)",
+                                 QMessageBox.ButtonRole.ActionRole)
+        b_fora = caixa.addButton("Tirar da oferta",
+                                 QMessageBox.ButtonRole.DestructiveRole)
+        caixa.setDefaultButton(b_fila)
+        caixa.exec()
+        clicado = caixa.clickedButton()
+        if clicado is b_pag:
+            return "pagina"
+        if clicado is b_fora:
+            return "fora"
+        return "fila"
+
+    def _aplicar_destino_resto(self, escolha: str, resto) -> None:
+        """#25: executa a escolha. 'fila' = o comportamento clássico (ficam
+        na estante, visíveis); 'pagina' duplica a página e enche de novo;
+        'fora' tira da estante COM desfazer (nunca some calado)."""
+        if escolha == "pagina":
+            antes = self.area.canvas.total_paginas()
+            self.area.canvas.duplicar_pagina_atual()
+            if self.area.canvas.total_paginas() > antes:
+                self.encher_pagina()
+            return
+        if escolha == "fora":
+            copia_itens = list(self._itens)
+            copia_mapa = dict(self._mapa)
+            uids_fora = {it.uid for it in resto}
+            self._itens = [it for it in self._itens
+                           if it.uid not in uids_fora]
+            self._recarregar_lista()
+            self._marcar_salvo(False)
+            from app.qt.design.toast import mostrar_toast_desfazer
+            mostrar_toast_desfazer(
+                self, f"{len(uids_fora)} item(ns) fora da oferta.",
+                lambda: self._restaurar_estante_toda(copia_itens, copia_mapa))
+            return
+        mostrar_toast(self, f"{len(resto)} item(ns) seguem na estante "
+                            "(fila) — “fora da grade”.")
+
+    def _mostrar_diff_edicao(self) -> None:
+        """OS F11.5 #44 (R-062): a comparação com a última edição salva."""
+        if not self._itens:
+            mostrar_toast(self, "Importe a oferta antes de comparar.")
+            return
+        diff = servico.diff_contra_ultima_edicao(self._itens)
+        if diff is None:
+            mostrar_toast(self, "Ainda não há edição salva para comparar.",
+                          tipo="info")
+            return
+        from app.qt.telas.diff_dialog import DiffEdicaoDialog
+        DiffEdicaoDialog(diff, self).exec()
+
+    def _exportar_checklist_pdf(self) -> None:
+        """OS F11.5 #48 (R-063): o checklist em PDF (conferência no papel)."""
+        from PySide6.QtWidgets import QFileDialog
+        if not self._itens:
+            mostrar_toast(self, "Monte a oferta antes do checklist.")
+            return
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Exportar checklist", "checklist.pdf", "PDF (*.pdf)")
+        if not destino:
+            return
+        saida = servico.exportar_checklist_pdf(
+            self._itens, self._validade, destino)
+        mostrar_toast(self, f"Checklist exportado: {Path(saida).name}")
 
     def _avisar_divergencia(self) -> None:
         """R-123: o MESMO item (por uid, I1) aparecendo com preços diferentes em
@@ -1083,11 +1291,12 @@ class MesaTela(QWidget):
         self.area.canvas.reatribuir_mapa(combinado)
         self._recarregar_lista()
         self._marcar_salvo(False)
+        # OS F11.5 #23/#25 (R-056): o RESTO tem destino PERGUNTADO — nova
+        # página (e enche de novo), fila (a estante, como sempre) ou fora
+        # (sai da estante, com desfazer). Nunca um toast mudo.
         if resto:
-            n = len(resto)
-            mostrar_toast(self, f"{n} item(ns) não couberam — estão na estante "
-                          "marcados “fora da grade”. Crie uma página nova para "
-                          "eles em Páginas.", tipo="info")
+            self._aplicar_destino_resto(self._perguntar_destino_resto(
+                len(resto)), resto)
 
     def refletir_planilha(self) -> None:
         """R-051 (passo 27): planilha e canvas são a MESMA fonte de verdade —
@@ -1194,7 +1403,26 @@ class MesaTela(QWidget):
              self._publicar),
             ("cofre", "Salvar projeto", "", self._salvar_projeto),
             ("abrir", "Abrir projeto", "", self._abrir_projeto),
+            # OS F11.5 #44/#48: o diff e o checklist agora têm porta de UI
+            ("restaurar", "O que mudou desde a última edição…", "",
+             self._mostrar_diff_edicao),
+            ("salvar", "Exportar o checklist em PDF…", "",
+             self._exportar_checklist_pdf),
+            # OS F11.5 #50/#51 (R-082): variações do mesmo produto
+            ("lampada", "Sugerir variações para agrupar (sabores)…", "",
+             self._sugerir_variacoes),
         ]
+        # OS F11.5 #57: navegar por página e abrir Configurações pela paleta
+        canvas = self.area.canvas
+        for n in range(canvas.total_paginas()):
+            acoes.append(("grade", f"Ir para a página {n + 1}", "",
+                          lambda p=n: canvas.ir_para_pagina(p)))
+        def _abrir_config():
+            shell = self.window()
+            if hasattr(shell, "ir_para"):
+                shell.ir_para("configuracoes")
+        acoes.append(("propriedades", "Abrir Configurações", "",
+                      _abrir_config))
         for i, it in enumerate(self._itens):
             acoes.append(("caixa", f"Item: {it.nome}", "",
                           lambda idx=i: self.lista.setCurrentRow(idx)))
@@ -1203,6 +1431,67 @@ class MesaTela(QWidget):
     def _abrir_paleta(self) -> None:
         from app.qt.design.paleta_comandos import PaletaComandos
         PaletaComandos(self.window(), self._acoes_da_mesa()).abrir()
+
+    # --- OS F11.5 #50/#51 (R-082): variações do mesmo produto -----------------
+
+    def _sugerir_variacoes(self) -> None:
+        """Detecta prováveis variações (sabores/tamanhos da MESMA marca
+        conhecida) e pergunta, grupo a grupo, se agrupa num slot só (o modo
+        multi da F7.1). Nunca inventa: sem marca confirmada, sem sugestão."""
+        from app.core.aprendizado import sugerir_variacoes
+        grupos = sugerir_variacoes(self._itens, servico.marcas_do_acervo())
+        if not grupos:
+            mostrar_toast(self, "Não achei variações da mesma marca para "
+                                "agrupar.")
+            return
+        from PySide6.QtWidgets import QMessageBox
+        agrupados = 0
+        for grupo in grupos:
+            nomes = " · ".join((it.nome or "?") for it in grupo[:4])
+            r = QMessageBox.question(
+                self, "Variações do mesmo produto?",
+                f"Estes parecem sabores/tamanhos do mesmo produto:\n\n"
+                f"{nomes}\n\nAgrupar num slot só (as fotos viram o leque "
+                "multi)?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No)
+            if r == QMessageBox.StandardButton.Yes:
+                self._agrupar_variacoes(grupo)
+                agrupados += 1
+        if agrupados:
+            mostrar_toast(self, f"{agrupados} grupo(s) agrupado(s) — desfazer "
+                                "pelo toast se se arrepender.")
+
+    def _agrupar_variacoes(self, grupo) -> None:
+        """#51: funde o grupo no PRIMEIRO item (por uid, I1): as fotos de
+        todos viram a lista multi (F7.1) e os demais saem da estante — com
+        a cópia p/ desfazer (nunca some calado)."""
+        if len(grupo) < 2:
+            return
+        copia_itens = list(self._itens)
+        copia_mapa = dict(self._mapa)
+        base = grupo[0]
+        imagens_antes = list(base.imagens)     # o desfazer devolve o multi
+        fotos = []
+        for it in grupo:
+            fotos.extend(it.imagens or ([it.imagem] if it.imagem else []))
+        base.imagens = [f for f in fotos if f]
+        uids_fora = {it.uid for it in grupo[1:]}
+        self._itens = [it for it in self._itens if it.uid not in uids_fora]
+        self._mapa = {sid: u for sid, u in self._mapa.items()
+                      if u not in uids_fora}
+        self._recarregar_lista()
+        self._marcar_salvo(False)
+        from app.qt.design.toast import mostrar_toast_desfazer
+
+        def _desfazer(b=base, antes=imagens_antes,
+                      itens=copia_itens, mapa=copia_mapa):
+            b.imagens = list(antes)
+            self._restaurar_estante_toda(itens, mapa)
+
+        mostrar_toast_desfazer(
+            self, f"“{base.nome}” virou multi com {len(base.imagens)} foto(s).",
+            _desfazer)
 
     def _publicar(self) -> None:
         """R-139/140/141/142: hub dos formatos sociais + vídeo (reusa o
@@ -1260,22 +1549,71 @@ class MesaTela(QWidget):
         self._trabalhos.rodar(trab)
 
     def _mostrar_laudo(self, resultado) -> None:
-        """O laudo da revisora — avisos (o dono decide). NUNCA veta o export."""
+        """O laudo da revisora — avisos (o dono decide). NUNCA veta o export.
+        OS F11.5 #23: cada aviso é CLICÁVEL e leva ao item citado (seleciona
+        na estante e navega até a página do slot dele)."""
         self._overlay.esconder()
         avisos, deg = resultado
         if not avisos and not deg:
             mostrar_toast(self, "A revisora não achou problemas. 👍",
                           tipo="sucesso")
             return
-        from PySide6.QtWidgets import QMessageBox
-        linhas = list(avisos) + ([deg] if deg else [])
-        cx = QMessageBox(self)
-        cx.setWindowTitle("Laudo da revisora — avisos (você decide)")
-        cx.setIcon(QMessageBox.Icon.Information)
-        cx.setText(f"A IA leu a peça e anotou {len(avisos)} ponto(s). "
-                   "São avisos — o export não fica travado.")
-        cx.setInformativeText("\n".join(f"• {a}" for a in linhas[:15]))
-        cx.exec()
+        from PySide6.QtWidgets import (
+            QDialog, QDialogButtonBox, QLabel, QListWidget, QVBoxLayout)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Laudo da revisora — avisos (você decide)")
+        dlg.resize(560, 420)
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(t.ESP_4, t.ESP_4, t.ESP_4, t.ESP_4)
+        v.setSpacing(t.ESP_2)
+        cab = QLabel(f"A IA leu a peça e anotou {len(avisos)} ponto(s). "
+                     "São avisos — o export não fica travado. Clique num "
+                     "aviso para ir ao item.")
+        cab.setProperty("papel", "legenda")
+        cab.setWordWrap(True)
+        v.addWidget(cab)
+        lista = QListWidget()
+        for a in avisos:
+            lista.addItem(f"• {a}")
+        if deg:
+            lista.addItem(f"ℹ {deg}")
+        lista.itemClicked.connect(
+            lambda li: self._ir_para_aviso(li.text()))
+        v.addWidget(lista, 1)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        botoes.button(QDialogButtonBox.StandardButton.Close).setText("Fechar")
+        botoes.rejected.connect(dlg.reject)
+        botoes.accepted.connect(dlg.accept)
+        v.addWidget(botoes)
+        dlg.setModal(False)          # o dono clica e VÊ a Mesa reagir atrás
+        dlg.show()
+        self._laudo_dlg = dlg        # referência viva (e testável)
+
+    def _ir_para_aviso(self, aviso: str) -> str | None:
+        """#23: acha o item citado no aviso ('“Nome”: …'), seleciona a linha
+        dele na estante e navega até a página do slot. Devolve o uid (teste)."""
+        import re
+        m = re.search(r"[“\"](.+?)[”\"]", aviso or "")
+        if not m:
+            return None
+        nome = m.group(1).strip().lower()
+        alvo = next((it for it in self._itens
+                     if (it.nome or "").strip().lower() == nome), None)
+        if alvo is None:
+            return None
+        linha = next((i for i, it in enumerate(self._itens)
+                      if it.uid == alvo.uid), -1)
+        if linha >= 0:
+            self.lista.setCurrentRow(linha)
+            self.lista.scrollToItem(self.lista.item(linha))
+        sid = next((s for s, u in self._mapa.items() if u == alvo.uid), None)
+        if sid is not None and self._layout is not None:
+            for i, pag in enumerate(self._layout.paginas):
+                if any(s.id == sid for s in pag.slots):
+                    if i != self.area.canvas.pagina_atual:
+                        self._ir_pagina(i)
+                    break
+        return alvo.uid
 
     def _chat_oferta(self) -> None:
         """R-073: o dono cola/descreve as ofertas e a IA monta um RASCUNHO,
@@ -1329,7 +1667,36 @@ class MesaTela(QWidget):
         self._estatistica_lbl.setText(texto)
         self._estatistica_lbl.setToolTip(
             f"Montagem desta oferta: {r['resumo']} — cálculo local, "
-            "nada sai do seu computador." + dica_meta)
+            "nada sai do seu computador." + dica_meta
+            + "\nClique para definir a META de itens do evento (R-122).")
+        # OS F11.5 #47 (R-122): clicar na estatística DEFINE a meta
+        self._estatistica_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._estatistica_lbl.mousePressEvent = \
+            lambda _ev: self._definir_meta_evento()
+
+    def _definir_meta_evento(self) -> None:
+        """#47: o dono define a meta de itens do evento (persistida por
+        evento; o pulso '32/40' da barra passa a refletir na hora)."""
+        evento = (getattr(self, "_evento", None) or "").strip()
+        if not evento:
+            mostrar_toast(self, "Dê um nome/evento à oferta primeiro — a "
+                                "meta é POR evento (ex.: “Quintou”).")
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        from app.qt.telas import inteligencia
+        atual = inteligencia.meta_evento(evento) or 0
+        meta, ok = QInputDialog.getInt(
+            self, "Meta do evento",
+            f"Quantos itens o encarte de “{evento}” costuma ter?\n"
+            "(0 tira a meta — o pulso volta a ser só a contagem)",
+            atual, 0, 999)
+        if not ok:
+            return
+        inteligencia.definir_meta_evento(evento, int(meta))
+        self._atualizar_estatistica()
+        mostrar_toast(self, f"Meta de “{evento}”: "
+                            + (f"{meta} itens." if meta else "removida."))
 
     def contexto_frases(self) -> dict:
         """R-058: contexto VIVO para resolver {data}/{evento} nas frases prontas
@@ -1349,6 +1716,7 @@ class MesaTela(QWidget):
         self._vazio.setVisible(not self._itens)
         self.lista.setVisible(bool(self._itens))
         self._filtro_barra.setVisible(bool(self._itens))
+        self._atualizar_categorias_filtro()      # OS #31: combo vivo
         self.btn_fotos_lote.setEnabled(bool(self._sem_foto()))   # RG-03
         self.btn_planilha.setEnabled(bool(self._itens))          # R-051
         # RG-07: contagem viva no título do painel
@@ -1387,26 +1755,69 @@ class MesaTela(QWidget):
         self._reconstruindo = False
         self._aplicar_filtro()
 
+    def _limpar_filtros(self) -> None:
+        """OS F11.5 #33: zera TODOS os filtros num clique."""
+        self.chk_sem_foto.setChecked(False)
+        self.chk_sem_preco.setChecked(False)
+        self.filtro_categoria.setCurrentIndex(0)
+        self.campo_busca.clear()
+
+    def _atualizar_categorias_filtro(self) -> None:
+        """#31: as categorias PRESENTES na estante povoam o combo (mantém a
+        escolha atual quando possível)."""
+        atual = self.filtro_categoria.currentText()
+        cats = sorted({(it.categoria or servico.OUTROS)
+                       for it in self._itens})
+        self.filtro_categoria.blockSignals(True)
+        self.filtro_categoria.clear()
+        self.filtro_categoria.addItem("Todas")
+        self.filtro_categoria.addItems(cats)
+        i = self.filtro_categoria.findText(atual)
+        self.filtro_categoria.setCurrentIndex(i if i >= 0 else 0)
+        self.filtro_categoria.blockSignals(False)
+
     def _aplicar_filtro(self) -> None:
-        """R-054: esconde as linhas que não passam nos filtros ativos; chip
-        mostra o que está vendo."""
+        """R-054 (+ OS F11.5 #31/#32/#40/#43): esconde as linhas que não
+        passam; o chip diz O QUE está vendo COM os contadores por critério; o
+        pulso resume as pendências mesmo sem filtro; nada passou → estado
+        vazio de filtro com a saída à vista."""
         if not hasattr(self, "chk_sem_foto"):
             return
+        cat = self.filtro_categoria.currentText()
         visiveis = servico.filtrar_itens(
             self._itens, sem_foto=self.chk_sem_foto.isChecked(),
             sem_preco=self.chk_sem_preco.isChecked(),
+            categoria=None if cat in ("", "Todas") else cat,
             busca=self.campo_busca.text())
         uids_ok = {it.uid for it in visiveis}
         for i in range(self.lista.count()):
             li = self.lista.item(i)
             li.setHidden(li.data(Qt.ItemDataRole.UserRole) not in uids_ok)
+        # #32: contadores por critério — o dono vê o TAMANHO de cada pendência
+        n_sem_foto = len(servico.filtrar_itens(self._itens, sem_foto=True))
+        n_sem_preco = len(servico.filtrar_itens(self._itens, sem_preco=True))
+        self.chk_sem_foto.setText(f"Sem foto ({n_sem_foto})")
+        self.chk_sem_preco.setText(f"Sem preço ({n_sem_preco})")
+        # #43: o pulso da estante (sempre que houver pendência)
+        pulso = []
+        if n_sem_foto:
+            pulso.append(f"{n_sem_foto} sem foto")
+        if n_sem_preco:
+            pulso.append(f"{n_sem_preco} sem preço")
+        self._pulso_filtro.setVisible(bool(pulso) and bool(self._itens))
+        self._pulso_filtro.setText(" · ".join(pulso))
         ativo = (self.chk_sem_foto.isChecked() or self.chk_sem_preco.isChecked()
+                 or cat not in ("", "Todas")
                  or bool(self.campo_busca.text().strip()))
         self._chip_filtro.setVisible(ativo)
         if ativo:
             self._chip_filtro.setText(
                 f"Filtro ativo — mostrando {len(visiveis)} de {len(self._itens)} "
-                "· clique num filtro para limpar")
+                "· “Limpar” zera tudo")
+        # #40: nada passou → estado vazio de filtro (a lista some)
+        nada = ativo and not visiveis and bool(self._itens)
+        self._vazio_filtro.setVisible(nada)
+        self.lista.setVisible(bool(self._itens) and not nada)
 
     def _estante_reordenada(self, *args) -> None:
         """R-055: ao soltar o arrasto, a nova ordem visual vira a ordem da
@@ -1475,7 +1886,13 @@ class MesaTela(QWidget):
                          "continua intacto")
         escolha = menu.exec(self.lista.mapToGlobal(pos))
         if escolha == a_dup and it is not None:
-            self.duplicar_item(it)
+            # OS F11.5 #44: com multi-seleção, duplica o BLOCO (por uid —
+            # o snapshot protege dos índices que mudam a cada inserção)
+            selecionados = [self._itens[ix.row()]
+                            for ix in self.lista.selectedIndexes()
+                            if 0 <= ix.row() < len(self._itens)]
+            for alvo in (selecionados or [it]):
+                self.duplicar_item(alvo)
         elif escolha == a_fotos:
             self._fotos_do_item(li)
         elif escolha == a_editar:
@@ -1837,44 +2254,11 @@ class MesaTela(QWidget):
 
     def _dados_de(self, it: servico.ItemMesa,
                   abreviacoes: dict | None = None) -> DadosProduto:
-        # F7.1: `imagens` não-vazia = a lista completa que o slot desenha (F4.5)
-        from app.rendering.arranjo import ModoArranjo
-        from app.rendering.compositor import ImagemSlot
-        try:
-            arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
-        except ValueError:
-            arranjo = ModoArranjo.LEQUE       # valor estranho: leque padrão
-        # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
-        nome = (servico.abreviar_para_tabloide(it.nome, abreviacoes)
-                if abreviacoes else it.nome)
-        # RG-33: os selos escolhidos do item viram selos_extra do passe final
-        extras = (servico.selos_do_item(it.selos, self._registro_selos)
-                  if it.selos else [])
-        # RG-34: item com validade cadastrada ganha "De olho na validade"
-        # AUTOMÁTICO (decisão travada do padrão +18: automático é automático)
-        if it.validade:
-            from app.rendering.selos import Canto, Selo
-            extras = extras + [Selo("VALIDADE",
-                                    Canto.INFERIOR_ESQUERDO)]
-        return DadosProduto(
-            nome,
-            selos_extra=extras,
-            preco_por=servico.preco_decimal(it.preco),
-            multi_preco=it.multi_preco,          # R-070: "3 por R$10"
-            observacao=it.observacao,            # R-071: "limite 2 por cliente"
-            imagem_path=it.imagem,
-            imagens=[ImagemSlot(c) for c in (it.imagens or [])],
-            modo_arranjo=arranjo,
-            mais18=it.mais18,
-            unidade=it.unidade,
-            categoria=it.categoria,          # F8.2: as seções derivam daqui
-            # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE
-            # …"); o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
-            texto_legal=(self._validade
-                         if (self._validade or "").upper().startswith("OFERTA")
-                         else f"Ofertas válidas {self._validade}"
-                         if self._validade else None),
-        )
+        # F12 (frota): a montagem virou a OFICIAL do serviço — Mesa, export
+        # e Modo Pai compõem pela MESMA função (antes o Modo Pai divergia)
+        return servico.dados_para_desenho(it, abreviacoes,
+                                          self._registro_selos,
+                                          self._validade)
 
     def _dados_por_slot(self) -> dict[str, DadosProduto]:
         """Resolve o mapa slot→uid em slot→DadosProduto (o contrato do compositor).

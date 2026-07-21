@@ -219,6 +219,8 @@ def editar_produto(produto_id: int, **campos) -> dict:
     F8.1: categoria editada AQUI é gesto de HUMANO — fica marcada e nenhum
     passe de IA a sobrescreve depois.
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.repositories import ProdutoRepositorio
 
     if "categoria" in campos:
@@ -237,6 +239,8 @@ def editar_produto(produto_id: int, **campos) -> dict:
 def excluir_produtos(ids: list[int]) -> None:
     """FASE 2 (passo 82): excluir da UI é SOFT — lixeira de 30 dias no
     Cofre (as fotos da biblioteca ficam no lugar até a purga)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.lixeira import excluir_suave
     for pid in ids:
         excluir_suave("produto", pid)
@@ -359,6 +363,17 @@ def _upscaler_real(modelo_path: str):
     """O Real-ESRGAN carrega UMA vez por sessão (o .pth pesa ~64 MB)."""
     from app.images.upscale import UpscalerRealESRGAN
     return UpscalerRealESRGAN(modelo_path)
+
+
+def aquecer_upscaler() -> bool:
+    """OS F11.5 #80: pré-aquece o Real-ESRGAN pós-boot (como o rembg, RG-02) —
+    o 1º cartaz da sessão não paga a carga do .pth. Sem o modelo no disco,
+    não faz nada (False)."""
+    modelo = SystemRoot().modelos / "RealESRGAN_x4plus.pth"
+    if not modelo.exists():
+        return False
+    _upscaler_real(str(modelo))
+    return True
 
 
 def upscale_para_cartaz(caminho: str, lado_alvo_px: int,
@@ -488,13 +503,94 @@ def preparar_extra(produto_id: int | None, fonte: str,
     return tratada
 
 
+def webp_ligado() -> bool:
+    """OS F11.5 #51/#52: a chave `imagem.webp` da Config — foto NOVA sai em
+    WebP lossless (alfa preservado). Falha de leitura = PNG de sempre."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                return bool(ConfigRepositorio(s).get("imagem.webp", False))
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return False
+
+
+def biblioteca_da_config():
+    """A BibliotecaImagens com o formato da Config (#51/#52) — o ponto único
+    dos fluxos de ingestão."""
+    from app.images.biblioteca import BibliotecaImagens
+    return BibliotecaImagens(SystemRoot().biblioteca_imagens,
+                             webp=webp_ligado())
+
+
+def migrar_acervo_webp(para_webp: bool, status_cb: StatusCb = lambda _m: None,
+                       *, previa: bool = False) -> dict:
+    """OS F11.5 #51/#52: converte as fotos 'atual' do acervo PNG↔WebP
+    (LOSSLESS — o alfa do packshot é sagrado), atualizando o caminho no
+    banco. `previa=True` só MEDE o ganho, byte a byte, sem tocar em nada.
+    REVERSÍVEL: rodar com `para_webp=False` volta tudo a PNG. Foto ilegível
+    é pulada e RELATADA (I2). Devolve {"fotos", "bytes_antes",
+    "bytes_depois", "puladas"}."""
+    import io
+
+    from PIL import Image as _Img
+
+    from sqlalchemy import select
+
+    from app.core.models import Produto
+    raiz = SystemRoot().biblioteca_imagens
+    alvo_ext = ".webp" if para_webp else ".png"
+    fotos = antes = depois = 0
+    puladas: list[str] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            rows = s.execute(select(Produto).where(
+                Produto.caminho_imagem.is_not(None))).scalars().all()
+            total = len(rows)
+            for i, p in enumerate(rows, 1):
+                rel = (p.caminho_imagem or "").replace("\\", "/")
+                origem = raiz / rel
+                if not origem.is_file() or origem.suffix.lower() == alvo_ext:
+                    continue
+                status_cb(f"{'Medindo' if previa else 'Convertendo'} "
+                          f"{i}/{total}…")
+                try:
+                    img = _Img.open(origem).convert("RGBA")
+                    buf = io.BytesIO()
+                    if para_webp:
+                        img.save(buf, "WEBP", lossless=True)
+                    else:
+                        img.save(buf, "PNG")
+                except Exception:
+                    puladas.append(rel)
+                    continue
+                fotos += 1
+                antes += origem.stat().st_size
+                depois += buf.tell()
+                if previa:
+                    continue
+                destino = origem.with_suffix(alvo_ext)
+                destino.write_bytes(buf.getvalue())
+                origem.unlink()
+                p.caminho_imagem = str(
+                    Path(rel).with_suffix(alvo_ext).as_posix())
+            if not previa:
+                s.commit()
+    finally:
+        db.engine.dispose()
+    return {"fotos": fotos, "bytes_antes": antes, "bytes_depois": depois,
+            "puladas": puladas}
+
+
 def definir_imagem(produto_id: int, imagem_tratada: str,
                    status_cb: StatusCb) -> dict:
     """Nova imagem do produto via biblioteca (a anterior vira versão)."""
-    from app.images.biblioteca import BibliotecaImagens
-
     status_cb("Guardando na biblioteca…")
-    bib = BibliotecaImagens(SystemRoot().biblioteca_imagens)
+    bib = biblioteca_da_config()
     bib.ingerir(produto_id, imagem_tratada)
     return editar_produto(produto_id,
                           caminho_imagem=bib.caminho_relativo(produto_id))
@@ -555,6 +651,88 @@ def aplicar_override(dados, ov: dict):
             novo = replace(novo, imagens=[
                 replace(im, zoom=z, foco_x=fx, foco_y=fy) for im in base_imgs])
     return novo
+
+
+def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
+                       registro_selos: list | None = None,
+                       validade: str | None = None):
+    """A montagem OFICIAL item→DadosProduto — a MESMA para Mesa, export e
+    Modo Pai (frota F12: o Modo Pai montava a peça 'à mão' e imprimia
+    DIFERENTE do export — sem multi-preço, sem selo +18, sem validade)."""
+    from app.rendering.arranjo import ModoArranjo
+    from app.rendering.compositor import DadosProduto, ImagemSlot
+    try:
+        arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
+    except ValueError:
+        arranjo = ModoArranjo.LEQUE           # valor estranho: leque padrão
+    # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
+    nome = (abreviar_para_tabloide(it.nome, abreviacoes)
+            if abreviacoes else it.nome)
+    # RG-33: os selos escolhidos do item viram selos_extra do passe final
+    extras = selos_do_item(it.selos, registro_selos) if it.selos else []
+    # RG-34: item com validade cadastrada ganha "De olho na validade"
+    # AUTOMÁTICO (decisão travada do padrão +18: automático é automático)
+    if it.validade:
+        from app.rendering.selos import Canto, Selo
+        extras = extras + [Selo("VALIDADE", Canto.INFERIOR_ESQUERDO)]
+    return DadosProduto(
+        nome,
+        selos_extra=extras,
+        preco_por=preco_decimal(it.preco),
+        multi_preco=it.multi_preco,          # R-070: "3 por R$10"
+        observacao=it.observacao,            # R-071: "limite 2 por cliente"
+        imagem_path=it.imagem,
+        imagens=[ImagemSlot(c) for c in (it.imagens or [])],
+        modo_arranjo=arranjo,
+        mais18=it.mais18,
+        unidade=it.unidade,
+        categoria=it.categoria,          # F8.2: as seções derivam daqui
+        # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
+        # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
+        texto_legal=(validade
+                     if (validade or "").upper().startswith("OFERTA")
+                     else f"Ofertas válidas {validade}"
+                     if validade else None),
+    )
+
+
+def dados_de_projeto_aberto(aberto):
+    """slot→DadosProduto de um ``ProjetoAberto``, com a precedência oficial
+    (override > item > banco) e as FALTAS visíveis (I2 — foto sumida nunca
+    é pulada em silêncio). Devolve ``(dados, faltas)``. Projeto CARTAZ usa
+    a montagem do cartaz (de/por + %-calculado)."""
+    itens = [ItemMesa.from_dict(d) for d in aberto.itens]
+    por_uid = {it.uid: it for it in itens}
+    faltas: list[str] = []
+    dados: dict = {}
+    if (aberto.tipo or "").upper() == "CARTAZ":
+        for sid, uid in (aberto.mapa or {}).items():
+            it = por_uid.get(uid)
+            if it is None:
+                faltas.append(f"célula {sid}: o item do projeto sumiu")
+                continue
+            dados[sid] = dados_cartaz_de_produto(
+                {"nome": it.nome, "preco": it.preco,
+                 "preco_de": it.preco_de, "imagem": it.imagem,
+                 "validade": it.validade},
+                validade_texto=aberto.validade_oferta)
+    else:
+        abrev = abreviacoes_tabloide()
+        registro = selos_disponiveis()
+        for sid, uid in (aberto.mapa or {}).items():
+            it = por_uid.get(uid)
+            if it is None:
+                faltas.append(f"célula {sid}: o item do projeto sumiu")
+                continue
+            d = dados_para_desenho(it, abrev or None, registro,
+                                   aberto.validade_oferta)
+            ov = (aberto.overrides or {}).get(sid)
+            dados[sid] = aplicar_override(d, ov) if ov else d
+    for sid, d in dados.items():
+        cam = getattr(d, "imagem_path", None)
+        if cam and not Path(cam).exists():
+            faltas.append(f"a foto de “{d.nome}” sumiu do disco")
+    return dados, faltas
 
 
 # --- agrupar por categoria (F8.2/A2): ordenação prévia, nunca vínculo ------------
@@ -641,6 +819,58 @@ BANCO_FRASES: list[str] = [
 ]
 
 
+def frases_do_combo() -> list[str]:
+    """OS F11.5 #39: as frases do combo = padrão (BANCO_FRASES) + as que o
+    DONO adicionou (config `frases.validade`), sem repetir. Falha de leitura
+    do banco degrada para o padrão (I2: o combo nunca fica vazio)."""
+    proprias: list[str] = []
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                proprias = list(ConfigRepositorio(s).get(
+                    "frases.validade", []) or [])
+        finally:
+            db.engine.dispose()
+    except Exception:
+        proprias = []
+    vistas = set()
+    saida: list[str] = []
+    for f in list(BANCO_FRASES) + proprias:
+        f = (f or "").strip()
+        if f and f not in vistas:
+            vistas.add(f)
+            saida.append(f)
+    return saida
+
+
+def adicionar_frase_do_combo(frase: str) -> bool:
+    """OS F11.5 #39: grava uma frase nova do dono na config `frases.validade`
+    (a mesma lista que a tela de Configurações edita). Devolve False se a
+    frase é vazia/repetida ou o banco falhou — a UI avisa (I2)."""
+    frase = (frase or "").strip()
+    if not frase or frase in frases_do_combo():
+        return False
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                rep = ConfigRepositorio(s)
+                atuais = list(rep.get("frases.validade", []) or [])
+                atuais.append(frase)
+                rep.set("frases.validade", atuais)
+                s.commit()
+        finally:
+            db.engine.dispose()
+        return True
+    except Exception:
+        return False
+
+
 def resolver_frase(template: str, contexto: dict) -> tuple[str, list[str]]:
     """R-058: resolve {data}, {evento} e qualquer {chave} do contexto numa frase
     pronta. Devolve (texto, faltantes): a variável SEM valor fica VISÍVEL como
@@ -711,6 +941,55 @@ def alertas_de_repeticao(itens: list[ItemMesa], historico=None, *,
         if aviso:
             fora.append((it, aviso))
     return fora
+
+
+def html_do_checklist(itens: list[ItemMesa], validade: str | None,
+                      *, titulo: str = "Checklist da edição",
+                      extras: list[str] | None = None) -> str:
+    """OS F11.5 #48/#50: o HTML EXATO que vira o PDF do checklist — função
+    pura separada para o conteúdo ser conferível (o Qt offscreen imprime o
+    texto como curvas; o conteúdo se prova aqui, a tinta se prova no PDF)."""
+    linhas = ["<h2>%s</h2>" % titulo]
+    for pergunta, ok, detalhe in checklist_final(itens, validade):
+        marca = "✔" if ok else "✘"
+        linhas.append(f"<p>{marca} <b>{pergunta}</b><br>&nbsp;&nbsp;"
+                      f"{detalhe}</p>")
+    for extra in (extras or []):
+        linhas.append(f"<p>{extra}</p>")
+    return "".join(linhas)
+
+
+def exportar_checklist_pdf(itens: list[ItemMesa], validade: str | None,
+                           destino, *, titulo: str = "Checklist da edição",
+                           extras: list[str] | None = None):
+    """OS F11.5 #48/#50 (R-063) e #39-F11 (R-117): o checklist/relatório vira
+    um PDF imprimível — a conferência a quatro olhos em papel. QTextDocument →
+    QPrinter PdfFormat (o molde da folha de cola da F3)."""
+    from PySide6.QtGui import QTextDocument
+    from PySide6.QtPrintSupport import QPrinter
+
+    doc = QTextDocument()
+    doc.setHtml(html_do_checklist(itens, validade, titulo=titulo,
+                                  extras=extras))
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    from pathlib import Path as _P
+    destino = _P(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    printer.setOutputFileName(str(destino))
+    doc.print_(printer)
+    return destino
+
+
+def diff_contra_ultima_edicao(itens: list[ItemMesa]):
+    """OS F11.5 #44 (R-062): o diff da oferta ATUAL contra a ÚLTIMA edição
+    salva (por chave natural, I1) — None quando não há edição anterior."""
+    from app.core import projetos
+    anteriores = projetos.itens_das_edicoes_recentes(1)
+    if not anteriores:
+        return None
+    anterior = [ItemMesa.from_dict(d) for d in anteriores[-1]]
+    return diff_edicoes(itens, anterior)
 
 
 # --- R-072: estatística da montagem (local, offline — sem telemetria) -------
@@ -1116,6 +1395,8 @@ def criar_como_composto(item: ItemMesa, nomes_componentes: list[str],
     A foto da curadoria vai ao PRIMEIRO componente (o segundo fica para a
     curadoria contínua do Almoxarifado — avisado no pré-voo como sempre).
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     subs: list[ItemMesa] = []
     for i, nome in enumerate(nomes_componentes[:2]):
         sub = ItemMesa(descricao=nome, preco=item.preco,
@@ -1303,7 +1584,8 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
     itens: list[ItemMesa] = []
     try:
         with db.Session() as session:
-            conc = Conciliador(session, motor=motor, embedder=motor)
+            conc = Conciliador(session, motor=motor, embedder=motor,
+                               status_cb=status_cb)
             for i, (desc, preco, ean) in enumerate(linhas, 1):
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
                 v = conc.conciliar(desc)
@@ -1332,16 +1614,24 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                                if p and p.categoria else None),   # F8
                     imagens=imagens_do_produto(p) if p else [],   # RG-28
                 ))
+        # I2 (frota F12): a degradação do conciliador (embeddings mortos)
+        # sobe até a tela — antes ficava engolida e o dono acreditava que
+        # a camada de significado tinha trabalhado
+        for a in conc.avisos:
+            aviso = f"{aviso} · {a}" if aviso else a
     finally:
         db.engine.dispose()
     return ResultadoMesa(itens=itens, validade_oferta=validade, aviso=aviso,
                          caminho_fonte=caminho_fonte)
 
 
-def importar_varios(caminhos, status_cb: StatusCb):
+def importar_varios(caminhos, status_cb: StatusCb, progresso_cb=None):
     """R-049 (Fase 7): enfileira vários arquivos e processa em SÉRIE. Um
     arquivo com erro NÃO derruba a fila (I2): fica marcado e o resto segue.
-    Devolve (ResultadoMesa combinado, [(arquivo, erro)])."""
+    Devolve (ResultadoMesa combinado, [(arquivo, erro)]).
+    `progresso_cb(nome, estado)` (OS F11.5 #2) narra o estado POR ARQUIVO —
+    "lendo" → "pronto"/"erro" — para o widget da fila na Mesa."""
+    prog = progresso_cb or (lambda _n, _e: None)
     itens: list[ItemMesa] = []
     validade = None
     erros: list[tuple[str, str]] = []
@@ -1349,12 +1639,15 @@ def importar_varios(caminhos, status_cb: StatusCb):
     for i, cam in enumerate(caminhos, 1):
         nome = Path(cam).name
         status_cb(f"Arquivo {i}/{total}: {nome}…")
+        prog(nome, "lendo")
         try:
             res = importar_ofertas(cam, status_cb)
             itens.extend(res.itens)
             validade = validade or res.validade_oferta
+            prog(nome, "pronto")
         except Exception as e:               # I2: o erro fica visível, a fila segue
             erros.append((nome, str(e)))
+            prog(nome, "erro")
     aviso = (None if not erros else
              f"{len(erros)} de {total} arquivo(s) com erro — o resto foi lido "
              f"({total - len(erros)} ok).")
@@ -1516,6 +1809,49 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
     return caminho, avisos
 
 
+def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
+                         status_cb: StatusCb = lambda _m: None,
+                         *, dpi_folha: int | None = None,
+                         rascunho: bool = True):
+    """R-144 (FASE 12): dezenas de etiquetas por FOLHA — uma etiqueta por
+    item selecionado (a mesma fonte de verdade do cartaz), impostas em A4
+    com marcas de corte (imposição CONTROLADA, só no fluxo do cartaz).
+    Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
+    etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio).
+
+    ``rascunho=True`` é o PADRÃO (frota F12: esta era a 4ª PORTA esquecida
+    — relâmpago foi a 3ª, a Fábrica a 2ª): etiqueta com preço só sai LIMPA
+    quando o chamador prova aprovação (`not pode_exportar_limpo` → True)."""
+    from app.rendering.cartaz import layout_etiqueta
+    from app.rendering.compositor import compor_pagina
+    from app.rendering.export import exportar_pdf_multipagina
+    from app.rendering.imposicao import impor_etiquetas
+    from app.rendering.marca_dagua import carimbar_rascunho
+    if not itens:
+        raise ValueError("nenhum item selecionado para as etiquetas")
+    lay = layout_etiqueta()
+    sid = lay.paginas[0].slots[0].id
+    avisos: list[str] = []
+    etiquetas = []
+    for i, it in enumerate(itens, 1):
+        status_cb(f"Etiqueta {i}/{len(itens)}…")
+        d = dados_cartaz_de_produto({
+            "nome": it.nome, "preco": it.preco,
+            "preco_de": it.preco_de, "imagem": it.imagem,
+            "validade": it.validade})
+        avisos.extend(f"“{it.nome}”: {a}"
+                      for a in validar_composicao(lay, {sid: d}, cartaz=True))
+        img = compor_pagina(lay, lay.paginas[0], {sid: d})
+        if rascunho:
+            img = carimbar_rascunho(img)
+        etiquetas.append(img)
+    status_cb("Impondo as etiquetas na folha…")
+    folhas = impor_etiquetas(etiquetas, lay.dpi)
+    caminho = exportar_pdf_multipagina(folhas, destino,
+                                       dpi_folha or lay.dpi)
+    return caminho, avisos
+
+
 def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
                       layout_etiqueta_fn=None, n_etiquetas: int = 1,
                       validade_texto: str | None = None, qr_texto=None,
@@ -1587,21 +1923,68 @@ def fundir_duplicatas(pares: list[tuple[int, int]],
     """R-075: funde os pares escolhidos (vencedor_id, perdedor_id) — o repetido
     vai para a LIXEIRA (soft-delete, reversível) e os aliases migram. Devolve
     {"fundidos": n, "aliases": n}."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.database import Database
     from app.core.deduplicacao import fundir_no_banco
+    from app.core.paths import SystemRoot
     db = Database().init()
-    fundidos = aliases = 0
+    fundidos = aliases = fotos = 0
+    raiz_bib = SystemRoot().biblioteca_imagens
     try:
         with db.Session() as s:
             for i, (venc, perd) in enumerate(pares, 1):
                 status_cb(f"Fundindo par {i}/{len(pares)}…")
-                r = fundir_no_banco(s, venc, perd)
+                # OS F11.5 #33/#39: as fotos do perdedor viram versões
+                r = fundir_no_banco(s, venc, perd, biblioteca_raiz=raiz_bib)
                 fundidos += 1
                 aliases += len(r["aliases_migrados"])
+                fotos += len(r.get("fotos_migradas", []))
             s.commit()
     finally:
         db.engine.dispose()
-    return {"fundidos": fundidos, "aliases": aliases}
+    return {"fundidos": fundidos, "aliases": aliases, "fotos": fotos}
+
+
+def correcoes_aprendidas() -> list[dict]:
+    """OS F11.5 #43/#53/#91: as correções que o banco APRENDEU (aliases) —
+    cada uma diz "quando a tabela escrever X, é o produto Y". A lista real,
+    do banco (não uma imagem estática)."""
+    from sqlalchemy import select
+
+    from app.core.models import Produto, ProdutoAlias
+    saida: list[dict] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            rows = s.execute(
+                select(ProdutoAlias.id, ProdutoAlias.alias_raw,
+                       Produto.id, Produto.nome_sanitizado)
+                .join(Produto, Produto.id == ProdutoAlias.produto_id)
+                .order_by(Produto.nome_sanitizado)).all()
+            for aid, alias, pid, nome in rows:
+                saida.append({"id": aid, "alias": alias,
+                              "produto_id": pid, "produto": nome})
+    finally:
+        db.engine.dispose()
+    return saida
+
+
+def esquecer_correcao(alias_id: int) -> bool:
+    """#43/#53/#91: REVERTE uma correção aprendida (apaga o alias) — na
+    próxima importação aquele texto volta a ser conferido pelo humano."""
+    from app.core.models import ProdutoAlias
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            row = s.get(ProdutoAlias, alias_id)
+            if row is None:
+                return False
+            s.delete(row)
+            s.commit()
+            return True
+    finally:
+        db.engine.dispose()
 
 
 # --- aceitar 🟡 (aprende alias) -------------------------------------------------
@@ -1646,6 +2029,32 @@ class PropostaCriacao:
     componentes: list[str] = field(default_factory=list)
 
 
+def marcas_do_acervo() -> list[str]:
+    """OS F11.5 #49: as marcas CONFIRMADAS — as distintas do banco + as
+    marcas próprias da Config. Degrada para lista vazia (nunca inventa)."""
+    marcas: list[str] = []
+    try:
+        from sqlalchemy import select
+
+        from app.core.models import Produto
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                for (m,) in s.execute(select(Produto.marca).distinct()):
+                    if m and str(m).strip():
+                        marcas.append(str(m).strip())
+                proprias = ConfigRepositorio(s).get("marcas.proprias", []) or []
+        finally:
+            db.engine.dispose()
+        for m in proprias:
+            if m and str(m).strip() and str(m).strip() not in marcas:
+                marcas.append(str(m).strip())
+    except Exception:
+        pass
+    return marcas
+
+
 def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     """SÓ a metade do nome (sem busca de imagem) — a fila em lote usa isto.
 
@@ -1655,9 +2064,17 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     AttributeError em vez de degradar.
     """
     if motor is None:
+        from app.core.aprendizado import ordenar_tipo_marca
         from app.core.sanitize import sanitizar
         res = sanitizar(descricao)
-        return PropostaCriacao(nome=res.nome_sanitizado, mais18=False,
+        # OS F11.5 #49: a marca CONHECIDA vai para o lugar da casa
+        # (Tipo+Marca+…) mesmo sem IA — determinístico, nunca inventa
+        nome = res.nome_sanitizado
+        try:
+            nome = ordenar_tipo_marca(nome, marcas_do_acervo())
+        except Exception:
+            pass
+        return PropostaCriacao(nome=nome, mais18=False,
                                categoria=None)
     from app.ai.enriquecimento import enriquecer
     enr = enriquecer(descricao, motor)
@@ -1668,13 +2085,46 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
                                         for c in enr.componentes])
 
 
+def candidatos_do_acervo(nome: str, limite: int = 2) -> list[str]:
+    """OS F11.5 #49: fotos JÁ TRATADAS do acervo cujo produto casa o nome
+    (fuzzy ≥ 82) — aparecem ANTES da web na curadoria: packshot pronto ganha
+    de download cru. Degrada para lista vazia."""
+    saida: list[tuple[float, str]] = []
+    try:
+        from rapidfuzz import fuzz
+        from sqlalchemy import select
+
+        from app.core.models import Produto
+        raiz = SystemRoot().biblioteca_imagens
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                rows = s.execute(select(
+                    Produto.nome_sanitizado, Produto.caminho_imagem).where(
+                    Produto.caminho_imagem.is_not(None))).all()
+        finally:
+            db.engine.dispose()
+        for nome_p, rel in rows:
+            score = fuzz.token_set_ratio((nome or "").lower(),
+                                         (nome_p or "").lower())
+            if score >= 82:
+                cam = raiz / str(rel).replace("\\", "/")
+                if cam.is_file():
+                    saida.append((score, str(cam)))
+    except Exception:
+        return []
+    saida.sort(key=lambda p: -p[0])
+    return [c for _s, c in saida[:limite]]
+
+
 def buscar_candidatos_para(nome: str, status_cb: StatusCb,
                            n_candidatos: int = 6,
                            ean: str | None = None) -> list[str]:
     """Candidatos de imagem para um nome JÁ enriquecido (degrada p/ vazio).
 
     RG-41 (a cascata da pesquisa): com EAN, o packshot do Open Food Facts
-    vem PRIMEIRO (foto oficial pelo código de barras); o ddgs completa. OFF
+    vem PRIMEIRO (foto oficial pelo código de barras); o ACERVO vem antes da
+    web (#49 — foto tratada da casa ganha de download); o ddgs completa. OFF
     sem resultado/sem rede AVISA e segue — nunca cala a busca (I2).
     """
     termo = remover_marcas_do_termo(nome)   # RG-30: a sigla não vai à busca
@@ -1689,6 +2139,11 @@ def buscar_candidatos_para(nome: str, status_cb: StatusCb,
         else:
             status_cb("Código não achado no Open Food Facts — "
                       "buscando na web…")
+    # #49: o ACERVO vem antes da web (depois da foto oficial do EAN)
+    do_acervo = candidatos_do_acervo(nome)
+    if do_acervo:
+        status_cb(f"{len(do_acervo)} foto(s) parecidas no seu acervo…")
+        encontrados.extend(do_acervo)
     status_cb(f"Buscando imagem de “{termo[:40]}”…")
     from app.images.busca import BaixadorWeb, buscar_imagens
     try:
@@ -1738,6 +2193,22 @@ def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
     return str(destino)
 
 
+def estudio_gerador_ligado() -> bool:
+    """OS F11.5 #20: a flag "Estúdio IA (gerador)" da Config — liga o degrau 2
+    (img2img local). Padrão DESLIGADO (o degrau 2 é opção condicionada à GPU,
+    nunca requisito). Falha de leitura = desligado."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                return bool(ConfigRepositorio(s).get("estudio.gerador", False))
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return False
+
+
 def tratar_estudio(fonte: str, status_cb: StatusCb, *,
                    com_gerador: bool = False) -> str:
     """R-091 (Estúdio degrau 1): foto crua → PACKSHOT (fundo limpo + luz + sombra
@@ -1759,7 +2230,10 @@ def tratar_estudio(fonte: str, status_cb: StatusCb, *,
         caminho = Path(tempfile.mkdtemp(prefix="atb_url_")) / "baixada"
         caminho.write_bytes(resp.content)
     status_cb("Estúdio: removendo o fundo e montando o packshot…")
-    pack = packshot_degrau1(Image.open(caminho))
+    # OS F11.5 #57 (R-102): a sombra acompanha o TEMA da arte em uso
+    from app.qt.design import tokens as _t
+    pack = packshot_degrau1(Image.open(caminho),
+                            tema=getattr(_t, "TEMA_ATUAL", "claro"))
     if com_gerador:
         status_cb("Estúdio gerador (degrau 2)…")
         melhor, aviso = refinar_com_gerador(pack)
@@ -1780,6 +2254,8 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
     RG-23: a categoria da IA (mesmo prompt do enriquecer) entra JÁ na
     criação — acabou o acervo "tudo Outros" por lote nunca rodado.
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.repositories import ProdutoRepositorio
     from app.images.biblioteca import BibliotecaImagens
 
@@ -1796,7 +2272,7 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
             if eh_marca_propria(nome) or eh_marca_propria(item.descricao):
                 repo.editar(produto.id, marca_propria=True)   # RG-30
             if imagem_tratada:
-                bib = BibliotecaImagens(SystemRoot().biblioteca_imagens)
+                bib = biblioteca_da_config()          # #51/#52: WebP opcional
                 bib.ingerir(produto.id, imagem_tratada)
                 repo.editar(produto.id,
                             caminho_imagem=bib.caminho_relativo(produto.id))

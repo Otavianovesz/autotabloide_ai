@@ -176,8 +176,15 @@ class HistoricoImagensDialog(QDialog):
             foto = QLabel("—")
             foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
             foto.setMinimumSize(180, 150)
+            # OS F11.5 #41: resolução + peso por versão (compara qualidade,
+            # não só a miniatura)
+            info = QLabel("")
+            info.setProperty("papel", "legenda")
+            info.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.addWidget(r)
             v.addWidget(foto, 1)
+            v.addWidget(info)
+            foto._info = info               # o rótulo viaja com a foto
             return w, foto
 
         caixa_atual, self._foto_atual = _painel_foto("ATUAL (fica se cancelar)")
@@ -223,6 +230,14 @@ class HistoricoImagensDialog(QDialog):
             rotulo.setPixmap(pm.scaled(
                 240, 200, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation))
+            # #41: a régua da versão — resolução e peso reais do arquivo
+            info = getattr(rotulo, "_info", None)
+            if info is not None:
+                try:
+                    kb = max(1, Path(caminho).stat().st_size // 1024)
+                    info.setText(f"{pm.width()}×{pm.height()} px · {kb} KB")
+                except OSError:
+                    info.setText("")
 
     def _espelhar_selecao(self) -> None:
         sel = self.lista.selectedItems()
@@ -276,6 +291,14 @@ class AlmoxarifadoTela(QWidget):
             "corrigiu à mão nunca é sobrescrita. Sem palpite fica vazio "
             "(agrupa em “Outros” na Mesa).")
         categorizar.clicked.connect(self._categorizar)
+        # OS F11.5 #11 (F10): o Estúdio em LOTE — packshot em todas as fotos
+        # do filtro atual, em fila (um erro não derruba os demais, I2)
+        btn_estudio_lote = QPushButton(" Estúdio em lote")
+        btn_estudio_lote.setIcon(icone("imagem", tamanho=16))
+        btn_estudio_lote.setToolTip(
+            "Passa o Estúdio (packshot degrau 1) em TODAS as fotos da lista "
+            "atual — cada original vira versão (nada se perde)")
+        btn_estudio_lote.clicked.connect(self._estudio_lote)
         # R-075 (polimento): a UI do caça-duplicatas que a F9 deixou pronta
         btn_dupl = QPushButton(" Duplicatas")
         btn_dupl.setIcon(icone("duplicar", tamanho=16))
@@ -302,6 +325,7 @@ class AlmoxarifadoTela(QWidget):
         hb.addWidget(self.filtro)
         hb.addWidget(corrigir)
         hb.addWidget(categorizar)
+        hb.addWidget(btn_estudio_lote)
         hb.addWidget(btn_dupl)
         hb.addWidget(btn_exp_xls)
         hb.addWidget(btn_imp_xls)
@@ -352,6 +376,12 @@ class AlmoxarifadoTela(QWidget):
         self.foto = QLabel("—")
         self.foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.foto.setFixedHeight(170)
+        # OS F11.5 #27/#28 (R-085): a NOTA da foto (boa/atenção/ruim) com os
+        # motivos no tooltip — pequena demais liga o aviso do upscale
+        self.nota_foto = QLabel("")
+        self.nota_foto.setProperty("papel", "legenda")
+        self.nota_foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.nota_foto.setWordWrap(True)
         self.nome = QLineEdit()
         self.marca = QLineEdit()
         self.sabor = QLineEdit()
@@ -405,9 +435,16 @@ class AlmoxarifadoTela(QWidget):
         estudio.setToolTip("Foto de celular → packshot: remove o fundo, "
                            "normaliza a luz e põe sombra — roda no seu PC")
         estudio.clicked.connect(self._estudio)
+        # OS F11.5 #31/#32: o pincel de refino do recorte vira gesto
+        refinar = QPushButton(" Refinar…")
+        refinar.setIcon(icone("ajustar", tamanho=15))
+        refinar.setToolTip("Pincel no recorte: restaurar pedaço que o rembg "
+                           "comeu ou apagar sobra de fundo — não-destrutivo")
+        refinar.clicked.connect(self._refinar_recorte)
         linha_img = QHBoxLayout()
         linha_img.addWidget(trocar)
         linha_img.addWidget(ajustar)
+        linha_img.addWidget(refinar)
         linha_img.addWidget(estudio)
         linha_img.addWidget(historico)
 
@@ -430,6 +467,7 @@ class AlmoxarifadoTela(QWidget):
         vp.setContentsMargins(0, 0, 0, 0)
         vp.setSpacing(t.ESP_2)
         vp.addWidget(self.foto)
+        vp.addWidget(self.nota_foto)
         vp.addLayout(linha_img)
         vp.addLayout(form)
         vp.addStretch(1)
@@ -555,10 +593,31 @@ class AlmoxarifadoTela(QWidget):
                 220, 164, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             self.foto.setPixmap(pm)
+            self._mostrar_nota_foto(d["imagem"])
         else:
             self.foto.setPixmap(QPixmap())
             self.foto.setText("sem imagem")
+            self.nota_foto.setText("")
+            self.nota_foto.setToolTip("")
         self._carregando = False
+
+    def _mostrar_nota_foto(self, caminho: str) -> None:
+        """OS F11.5 #27/#28 (R-085): a nota da foto, com cor por faixa e os
+        motivos no tooltip; motivo de TAMANHO cita o upscale (F10)."""
+        try:
+            from app.images.avaliador import ROTULO_NOTA, avaliar_foto
+            av = avaliar_foto(caminho)
+        except Exception:
+            self.nota_foto.setText("")
+            return
+        cor = {"boa": t.SUCESSO, "atencao": t.ALERTA,
+               "ruim": t.PERIGO}[av.nota]
+        texto = f"● {ROTULO_NOTA[av.nota]}"
+        if av.sugere_upscale:
+            texto += " · o upscale do export resolve"
+        self.nota_foto.setText(texto)
+        self.nota_foto.setStyleSheet(f"color: {cor};")
+        self.nota_foto.setToolTip("\n".join(av.motivos) or "Sem ressalvas.")
 
     # --- edição ------------------------------------------------------------------------
 
@@ -691,15 +750,105 @@ class AlmoxarifadoTela(QWidget):
                                 "“Trocar imagem…” primeiro.", tipo="info")
             return
 
-        def _fluxo(st, fonte=d["imagem"], pid=d["id"]):
-            tratada = servico.tratar_estudio(fonte, st)
-            return servico.definir_imagem(pid, tratada, st)
+        # OS F11.5 #20: a flag da Config liga o degrau 2 (sem GPU degrada com
+        # aviso); #8: o packshot passa por PRÉVIA antes/depois — só aplica se
+        # o dono aprovar (nada muda sozinho)
+        com_gerador = servico.estudio_gerador_ligado()
+
+        def _fluxo(st, fonte=d["imagem"]):
+            return servico.tratar_estudio(fonte, st, com_gerador=com_gerador)
 
         trab = Trabalhador(_fluxo)
+        trab.status.connect(self._overlay.mostrar)
+        trab.ok.connect(lambda tratada, antes=d["imagem"], pid=d["id"]:
+                        self._previa_estudio(antes, tratada, pid))
+        trab.erro.connect(self._falhou)
+        self._trabalhos.rodar(trab)
+
+    def _previa_estudio(self, antes: str, depois: str, pid: int) -> None:
+        """OS F11.5 #8: antes/depois lado a lado — Aplicar grava a versão
+        nova; Cancelar descarta (a original nunca muda sem aprovação)."""
+        self._overlay.esconder()
+        from app.qt.telas.previa_estudio_dialog import PreviaEstudioDialog
+        dlg = PreviaEstudioDialog(antes, depois, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            mostrar_toast(self, "Packshot descartado — a foto ficou como "
+                                "estava.")
+            return
+
+        def _aplicar(st, caminho=depois, produto_id=pid):
+            return servico.definir_imagem(produto_id, caminho, st)
+
+        trab = Trabalhador(_aplicar)
         trab.status.connect(self._overlay.mostrar)
         trab.ok.connect(self._imagem_trocada)
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
+
+    def _refinar_recorte(self) -> None:
+        """OS F11.5 #31/#32: pincel de restaurar/apagar o alfa — o resultado
+        vira nova versão pela biblioteca (a anterior fica no histórico)."""
+        d = self._dado_atual()
+        if d is None:
+            return
+        if not (d.get("imagem") and Path(d["imagem"]).exists()):
+            mostrar_toast(self, "Este produto ainda não tem foto — use "
+                                "“Trocar imagem…” primeiro.", tipo="info")
+            return
+        from app.qt.telas.refino_dialog import RefinoDialog
+        dlg = RefinoDialog(d["imagem"], self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.caminho_final:
+            return
+
+        def _aplicar(st, caminho=dlg.caminho_final, pid=d["id"]):
+            return servico.definir_imagem(pid, caminho, st)
+
+        trab = Trabalhador(_aplicar)
+        trab.status.connect(self._overlay.mostrar)
+        trab.ok.connect(self._imagem_trocada)
+        trab.erro.connect(self._falhou)
+        self._trabalhos.rodar(trab)
+
+    def _estudio_lote(self) -> None:
+        """OS F11.5 #11: o Estúdio (degrau 1) em fila sobre TODAS as fotos da
+        lista atual — por produto_id (I1); um erro marca e segue (I2)."""
+        from app.qt.workers import TrabalhadorFila
+        alvos = [(str(d["id"]), (d["id"], d["imagem"]))
+                 for d in self.modelo._linhas
+                 if d.get("imagem") and Path(d["imagem"]).exists()]
+        if not alvos:
+            mostrar_toast(self, "Nenhuma foto na lista atual para tratar.")
+            return
+        from PySide6.QtWidgets import QMessageBox
+        r = QMessageBox.question(
+            self, "Estúdio em lote",
+            f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
+            "vira uma versão (dá para restaurar no Histórico).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        com_gerador = servico.estudio_gerador_ligado()
+
+        def _um(par):
+            pid, fonte = par
+            tratada = servico.tratar_estudio(fonte, lambda _m: None,
+                                             com_gerador=com_gerador)
+            servico.definir_imagem(pid, tratada, lambda _m: None)
+            return pid
+
+        fila = TrabalhadorFila(alvos, _um)
+        erros: list[str] = []
+        fila.item_falhou.connect(lambda ch, _m: erros.append(ch))
+        fila.fila_terminou.connect(lambda: (
+            self._overlay.esconder(),
+            self._rebuscar(),
+            mostrar_toast(self, f"Estúdio em lote: {len(alvos) - len(erros)} "
+                                f"foto(s) tratadas"
+                                + (f" · {len(erros)} com erro" if erros
+                                   else "") + ".",
+                          tipo="sucesso" if not erros else "erro")))
+        self._overlay.mostrar(f"Estúdio em lote ({len(alvos)} fotos)…")
+        self._trabalhos.rodar(fila)
 
     # --- lote / menu -------------------------------------------------------------------
 

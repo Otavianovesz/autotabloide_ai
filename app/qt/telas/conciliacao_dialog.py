@@ -30,7 +30,12 @@ from app.qt.design.carregando import OverlayOcupado
 from app.qt.design.toast import mostrar_toast
 from app.qt.telas import servico
 from app.qt.telas.curadoria_dialog import CuradoriaDialog
-from app.qt.workers import GerenciadorTrabalhos, Trabalhador, TrabalhadorFila
+from app.qt.workers import (
+    FilaIA,
+    GerenciadorTrabalhos,
+    Trabalhador,
+    TrabalhadorFila,
+)
 
 _COR = {"VERDE": t.SUCESSO, "AMARELO": t.ALERTA, "VERMELHO": t.PERIGO}
 _ROTULO = {"VERDE": "No banco", "AMARELO": "Conferir", "VERMELHO": "Novo"}
@@ -61,8 +66,26 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setHorizontalHeaderLabels(
             ["Situação", "Importado", "Preço", "No banco", "Ação"])
         self.tabela.verticalHeader().setVisible(False)
-        self.tabela.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.tabela.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        # OS F11.5 #13: nome e preço IMPORTADOS editáveis inline (duplo clique
+        # ou F2) — o dono corrige o erro do OCR na hora, com a foto ao lado.
+        # As demais colunas seguem travadas (flag por célula no _recarregar).
+        self.tabela.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed)
+        self._recarregando = False
+        self.tabela.itemChanged.connect(self._celula_editada)
+        # OS F11.5 #15: seleção de LINHA ligada — os atalhos de teclado
+        # (N = próximo amarelo · A = aceitar · R = rejeitar) agem no focado
+        self.tabela.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.tabela.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        from PySide6.QtGui import QKeySequence, QShortcut
+        for tecla, fn in (("N", self._ir_proximo_amarelo),
+                          ("A", self._aceitar_focado),
+                          ("R", self._rejeitar_focado)):
+            QShortcut(QKeySequence(tecla), self, fn)
+        self.tabela.setToolTip("Atalhos: N = próximo amarelo · A = aceitar · "
+                               "R = rejeitar/ignorar")
         self.tabela.horizontalHeader().setStretchLastSection(False)
         # FASE 1 (passo 55): nenhuma coluna vira um fiapo; as colunas de
         # NOME dividem o espaço (elipse à direita é o padrão da view)
@@ -91,13 +114,39 @@ class ConciliacaoDialog(QDialog):
                                   "sem foto (fila em segundo plano)")
         self.btn_todos.setVisible(False)
         self.btn_todos.clicked.connect(self._criar_todos_sem_foto)
+        # OS F11.5 #19 (R-053): seguir SÓ com os verdes num clique — os
+        # pendentes ficam FORA (visível no aviso), com desfazer a um clique
+        self.btn_verdes = QPushButton("Aceitar todos os verdes")
+        self.btn_verdes.setToolTip(
+            "Conclui com os itens que casaram com confiança; amarelos e "
+            "vermelhos ficam FORA desta oferta (dá para desfazer)")
+        self.btn_verdes.clicked.connect(self._aceitar_verdes)
+        self.btn_desfazer_verdes = QPushButton("Desfazer")
+        self.btn_desfazer_verdes.setToolTip(
+            "Volta os itens deixados de fora pelo “Aceitar todos os verdes”")
+        self.btn_desfazer_verdes.setVisible(False)
+        self.btn_desfazer_verdes.clicked.connect(self._desfazer_verdes)
         cancelar = QPushButton("Cancelar")
         cancelar.clicked.connect(self.reject)
         self.concluir = QPushButton("Concluir")
         self.concluir.setProperty("tipo", "primario")
         self.concluir.clicked.connect(self.accept)
+        # OS F11.5 #61/#63/#64: o painel discreto da fila de IA — "o que a IA
+        # faz agora" + parar num clique (visível só com a fila viva)
+        self._fila_status = QLabel("")
+        self._fila_status.setProperty("papel", "legenda")
+        self.btn_parar_ia = QPushButton("Parar IA")
+        self.btn_parar_ia.setToolTip(
+            "Cancela a fila de enriquecimento — os nomes ficam como vieram "
+            "(dá para enriquecer um a um no Criar)")
+        self.btn_parar_ia.setVisible(False)
+        self.btn_parar_ia.clicked.connect(self._parar_fila_ia)
         rodape.addWidget(self._validade_lbl, 1)
+        rodape.addWidget(self._fila_status)
+        rodape.addWidget(self.btn_parar_ia)
         rodape.addWidget(self.chk_fotos)
+        rodape.addWidget(self.btn_verdes)
+        rodape.addWidget(self.btn_desfazer_verdes)
         rodape.addWidget(self.btn_todos)
         rodape.addWidget(cancelar)
         rodape.addWidget(self.concluir)
@@ -149,9 +198,46 @@ class ConciliacaoDialog(QDialog):
                     estado["motor"] = servico._motor_se_disponivel()
                 return servico.enriquecer_descricao(descricao, estado["motor"])
 
-            self._fila_enriquecer = TrabalhadorFila(vermelhos, _enriquecer_um)
+            # OS F11.5 #61/#63/#64 (R-089/R-090): a fila de IA com prioridade
+            # VIVA — a linha que o dono seleciona é enriquecida primeiro; o
+            # painel discreto diz o que a IA faz agora, com "Parar" a um clique
+            rotulos = {uid: f"enriquecendo “{desc[:38]}”"
+                       for uid, desc in vermelhos}
+            self._fila_enriquecer = FilaIA(vermelhos, _enriquecer_um, rotulos)
             self._fila_enriquecer.item_pronto.connect(self._proposta_pronta)
+            self._fila_enriquecer.comecou_item.connect(self._fila_mudou)
+            self._fila_enriquecer.fila_terminou.connect(
+                lambda: self._fila_mudou("", ""))
+            self.tabela.currentCellChanged.connect(self._focar_fila)
             self._trabalhos.rodar(self._fila_enriquecer)
+
+    # --- painel da fila de IA (#61/#63/#64) ---------------------------------------
+
+    def _focar_fila(self, linha: int, _c: int, _lv: int, _lc: int) -> None:
+        """R-090: o item que o dono olha vai para a FRENTE da fila."""
+        if self._fila_enriquecer is None:
+            return
+        if 0 <= linha < len(self.itens):
+            self._fila_enriquecer.focar(self.itens[linha].uid)
+
+    def _fila_mudou(self, _chave: str, rotulo: str) -> None:
+        if not hasattr(self, "_fila_status"):
+            return
+        if not rotulo:
+            self._fila_status.setText("")
+            self.btn_parar_ia.setVisible(False)
+            return
+        n = len(self._fila_enriquecer.pendentes()) \
+            if self._fila_enriquecer is not None else 0
+        extra = f" · {n} na fila" if n else ""
+        self._fila_status.setText(f"IA: {rotulo}{extra}")
+        self.btn_parar_ia.setVisible(True)
+
+    def _parar_fila_ia(self) -> None:
+        if self._fila_enriquecer is not None:
+            self._fila_enriquecer.cancelar()
+        self._fila_status.setText("IA parada — os nomes saem sem enriquecer.")
+        self.btn_parar_ia.setVisible(False)
 
     # --- foto original ao lado (R-052) ------------------------------------------
 
@@ -210,21 +296,44 @@ class ConciliacaoDialog(QDialog):
         return chip
 
     def _recarregar(self) -> None:
-        self.tabela.setRowCount(len(self.itens))
-        for i, item in enumerate(self.itens):
-            self.tabela.setCellWidget(i, 0, self._chip(item.semaforo))
-            # passo 55: nome longo elide na célula, mas o tooltip tem TUDO
-            cel_imp = QTableWidgetItem(item.descricao)
-            cel_imp.setToolTip(item.descricao)
-            self.tabela.setItem(i, 1, cel_imp)
-            self.tabela.setItem(i, 2, QTableWidgetItem(item.preco or "—"))
-            banco = item.nome if item.produto_id else (item.candidato_nome or "—")
-            cel_banco = QTableWidgetItem(banco)
-            cel_banco.setToolTip(banco)
-            self.tabela.setItem(i, 3, cel_banco)
-            self.tabela.setCellWidget(i, 4, self._acoes(i, item))
-        self.tabela.resizeColumnsToContents()
+        self._recarregando = True
+        try:
+            self.tabela.setRowCount(len(self.itens))
+            for i, item in enumerate(self.itens):
+                self.tabela.setCellWidget(i, 0, self._chip(item.semaforo))
+                # passo 55: nome longo elide na célula, mas o tooltip tem TUDO
+                cel_imp = QTableWidgetItem(item.descricao)
+                cel_imp.setToolTip(item.descricao + "\n(duplo clique edita)")
+                self.tabela.setItem(i, 1, cel_imp)
+                self.tabela.setItem(i, 2, QTableWidgetItem(item.preco or "—"))
+                banco = (item.nome if item.produto_id
+                         else (item.candidato_nome or "—"))
+                cel_banco = QTableWidgetItem(banco)
+                cel_banco.setToolTip(banco)
+                # #13: só Importado e Preço editam; "No banco" é do banco
+                cel_banco.setFlags(cel_banco.flags()
+                                   & ~Qt.ItemFlag.ItemIsEditable)
+                self.tabela.setItem(i, 3, cel_banco)
+                self.tabela.setCellWidget(i, 4, self._acoes(i, item))
+            self.tabela.resizeColumnsToContents()
+        finally:
+            self._recarregando = False
         self._atualizar_resumo()
+
+    def _celula_editada(self, cel: QTableWidgetItem) -> None:
+        """#13: a edição inline reflete no ItemMesa (por LINHA da view atual —
+        a lista self.itens é a mesma que a tabela exibe)."""
+        if self._recarregando:
+            return
+        linha, col = cel.row(), cel.column()
+        if not (0 <= linha < len(self.itens)):
+            return
+        item = self.itens[linha]
+        texto = cel.text().strip()
+        if col == 1 and texto:
+            item.descricao = texto
+        elif col == 2:
+            item.preco = "" if texto in ("", "—") else texto
 
     def _acoes(self, linha: int, item: servico.ItemMesa) -> QWidget:
         caixa = QWidget()
@@ -266,14 +375,73 @@ class ConciliacaoDialog(QDialog):
         n = {"VERDE": 0, "AMARELO": 0, "VERMELHO": 0}
         for it in self.itens:
             n[it.semaforo] += 1
+        # OS F11.5 #21 (R-053): o texto EXIGIDO pelo passo — verdes aceitos,
+        # amarelos para revisar, vermelhos novos
         self._resumo.setText(
-            f'<span style="color:{t.SUCESSO}">●</span> {n["VERDE"]} no banco   '
-            f'<span style="color:{t.ALERTA}">●</span> {n["AMARELO"]} conferir   '
+            f'<span style="color:{t.SUCESSO}">●</span> {n["VERDE"]} verdes '
+            'aceitos   '
+            f'<span style="color:{t.ALERTA}">●</span> {n["AMARELO"]} para '
+            'revisar   '
             f'<span style="color:{t.PERIGO}">●</span> {n["VERMELHO"]} novos')
-        self.concluir.setEnabled(n["AMARELO"] + n["VERMELHO"] == 0)
+        pendentes = n["AMARELO"] + n["VERMELHO"]
+        self.concluir.setEnabled(pendentes == 0)
         self.concluir.setToolTip(
             "" if self.concluir.isEnabled()
             else "Resolva (ou ignore) os itens amarelos e vermelhos")
+        if hasattr(self, "btn_verdes"):
+            self.btn_verdes.setVisible(n["VERDE"] > 0 and pendentes > 0)
+
+    # --- R-053: aceitar todos os verdes (OS F11.5 #19/#22) -----------------------
+
+    def _aceitar_verdes(self) -> None:
+        """Segue SÓ com os verdes; os pendentes ficam FORA (visível — nunca em
+        silêncio) e o Desfazer os traz de volta num clique."""
+        verdes, amarelos, vermelhos = servico.separar_por_semaforo(self.itens)
+        fora = len(amarelos) + len(vermelhos)
+        if not verdes or not fora:
+            return
+        self._backup_verdes = list(self.itens)
+        self.itens = verdes
+        self._recarregar()
+        self.btn_desfazer_verdes.setVisible(True)
+        mostrar_toast(self, f"{len(verdes)} verdes aceitos — {fora} item(ns) "
+                            "ficaram FORA desta oferta (Desfazer traz de volta).")
+
+    def _desfazer_verdes(self) -> None:
+        """#22: o inverso a um clique — a lista volta inteira."""
+        backup = getattr(self, "_backup_verdes", None)
+        if backup:
+            self.itens = list(backup)
+            self._backup_verdes = None
+            self._recarregar()
+        self.btn_desfazer_verdes.setVisible(False)
+
+    # --- OS F11.5 #15: navegação por teclado ------------------------------------
+
+    def _linha_amarela_seguinte(self, a_partir: int | None = None) -> int:
+        inicio = (a_partir if a_partir is not None
+                  else self.tabela.currentRow() + 1)
+        for i in list(range(inicio, len(self.itens))) + \
+                list(range(0, inicio)):
+            if self.itens[i].semaforo == "AMARELO":
+                return i
+        return -1
+
+    def _ir_proximo_amarelo(self) -> None:
+        i = self._linha_amarela_seguinte()
+        if i >= 0:
+            self.tabela.setCurrentCell(i, 0)
+            self.tabela.scrollToItem(self.tabela.item(i, 0))
+
+    def _aceitar_focado(self) -> None:
+        i = self.tabela.currentRow()
+        if 0 <= i < len(self.itens) and self.itens[i].semaforo == "AMARELO":
+            self._aceitar(i)
+
+    def _rejeitar_focado(self) -> None:
+        i = self.tabela.currentRow()
+        if 0 <= i < len(self.itens) and self.itens[i].semaforo != "VERDE":
+            self._ignorar(i)
 
     # --- ações ------------------------------------------------------------------
 

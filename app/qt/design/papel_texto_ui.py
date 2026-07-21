@@ -57,6 +57,7 @@ _ROTULO_CURTO: dict[PapelTexto, str] = {
     PapelTexto.DICA: "Dica",
     PapelTexto.OBSERVACAO: "Observação",
     PapelTexto.LIVRE: "Livre",
+    PapelTexto.DESCONTO: "Desconto",    # F11: papel técnico do cartaz (−%)
 }
 
 # Ícone do badge, por papel (nomes de app.qt.design.icones).
@@ -66,20 +67,43 @@ _ICONE_PAPEL: dict[PapelTexto, str] = {
     PapelTexto.DICA: "lampada",
     PapelTexto.OBSERVACAO: "paragrafo",
     PapelTexto.LIVRE: "paragrafo",
+    PapelTexto.DESCONTO: "preco",
 }
 
 
 def badge_de_papel(papel: PapelTexto) -> tuple[str, str, str]:
     """(rótulo curto, cor, nome-do-ícone) do badge — cor lida do TEMA ATUAL
-    (âmbar=legal · azul=validade · violeta=dica · neutro=livre, passo 6)."""
+    (âmbar=legal · azul=validade · violeta=dica · neutro=livre, passo 6).
+
+    GATE 1 da ordem F11.5: o dict de cor só mapeava 4 papéis — escolher
+    "Observação do item" (que SEMPRE esteve no diálogo) estourava KeyError
+    NO PAINT e travava a repintura da cena; a região DESCONTO do cartaz
+    (F11) estouraria igual ao abrir o layout no Ateliê. Agora TODO papel do
+    enum tem cor, e um papel futuro cai num neutro são em vez de derrubar o
+    editor ("verde com crash não é verde")."""
     from app.qt.design import tokens as t
     cor = {
         PapelTexto.LEGAL: t.ACENTO,        # âmbar
         PapelTexto.VALIDADE: t.SELECAO,    # azul
         PapelTexto.DICA: t.GUIA_SNAP,      # violeta
+        PapelTexto.OBSERVACAO: t.INFO,     # azul-informativo (nota do item)
         PapelTexto.LIVRE: t.TEXTO_3,       # neutro
-    }[papel]
-    return _ROTULO_CURTO[papel], cor, _ICONE_PAPEL[papel]
+        PapelTexto.DESCONTO: t.PERIGO,     # o vermelho do −% (cartaz)
+    }.get(papel, t.TEXTO_3)
+    return (_ROTULO_CURTO.get(papel, str(papel.value).capitalize()),
+            cor,
+            _ICONE_PAPEL.get(papel, "paragrafo"))
+
+
+def pill_padrao_do_tema() -> tuple[str, int]:
+    """OS F11.5 #24: a SUGESTÃO inicial da pill segue o tema da UI — no claro
+    a faixa clássica escura (#000000/128); no escuro, o azul-carvão da casa
+    com um véu mais denso (combina com as artes que o dono edita no escuro).
+    Só o DEFAULT muda: quem já ajustou cor/opacidade nunca é tocado."""
+    from app.qt.design import tokens as t
+    if t.TEMA_ATUAL == "escuro":
+        return ("#16202E", 150)
+    return ("#000000", 128)
 
 
 def texto_inicial_do_papel(papel: PapelTexto, *, preset_legal: str | None = None,
@@ -139,13 +163,18 @@ def _dialogo_cls():
 
             # R-058: frases prontas com {data}/{evento} — escolher e inserir,
             # já resolvidas pelo contexto (o que não tiver valor fica visível).
-            from app.qt.telas.servico import BANCO_FRASES
+            # OS F11.5 #39: o combo soma as frases do DONO (config) às padrão,
+            # e o último item ("Nova frase…") adiciona e PERSISTE uma nova.
+            from app.qt.telas.servico import frases_do_combo
             self.combo_frases = QComboBox()
             self.combo_frases.addItem("Frases prontas…")
-            for f in BANCO_FRASES:
+            for f in frases_do_combo():
                 self.combo_frases.addItem(f)
+            self.combo_frases.addItem("＋ Nova frase…")
             self.combo_frases.setToolTip(
-                "Insere uma frase pronta; {data}/{evento} se resolvem sozinhos.")
+                "Insere uma frase pronta; {data}/{evento} se resolvem "
+                "sozinhos. A última opção adiciona uma frase SUA (fica salva "
+                "para as próximas vezes; edite tudo em Configurações).")
             self.combo_frases.activated.connect(self._inserir_frase)
             raiz.addWidget(self.combo_frases)
 
@@ -207,12 +236,16 @@ def _dialogo_cls():
             from app.qt.telas import servico
             from app.qt.workers import GerenciadorTrabalhos, Trabalhador
             evento = (self._contexto or {}).get("evento")
+            # OS F11.5 #8: o TETO da manchete vai junto — a sugestão nunca
+            # estoura o espaço (padrão 60; o contexto pode apertar)
+            teto = int((self._contexto or {}).get("limite_manchete") or 60)
             motor = servico._motor_se_disponivel()
             if not hasattr(self, "_trabalhos"):
                 self._trabalhos = GerenciadorTrabalhos()
             self.btn_manchetes.setEnabled(False)
             self.btn_manchetes.setText("Sugerindo…")
-            trab = Trabalhador(lambda st: sugerir_manchetes(evento, motor))
+            trab = Trabalhador(lambda st: sugerir_manchetes(
+                evento, motor, limite_chars=teto))
 
             def _ok(lista):
                 self.btn_manchetes.setEnabled(True)
@@ -248,11 +281,37 @@ def _dialogo_cls():
             variável sem valor fica VISÍVEL (I2), o dono completa."""
             if idx <= 0:
                 return
+            # OS F11.5 #39: o último item cria uma frase NOVA e a persiste
+            if idx == self.combo_frases.count() - 1:
+                self._nova_frase()
+                return
             from app.qt.telas.servico import resolver_frase
             texto, _faltantes = resolver_frase(
                 self.combo_frases.itemText(idx), self._contexto)
             self.edit_livre.setText(texto)
             self.combo_frases.setCurrentIndex(0)
+
+        def _nova_frase(self) -> None:
+            """OS F11.5 #39: pergunta a frase, salva na config (a mesma lista
+            de Configurações) e já a deixa escolhida no combo."""
+            from PySide6.QtWidgets import QInputDialog, QMessageBox
+            self.combo_frases.setCurrentIndex(0)
+            frase, ok = QInputDialog.getText(
+                self, "Nova frase pronta",
+                "A frase (pode usar {data} e {evento}):")
+            frase = (frase or "").strip()
+            if not ok or not frase:
+                return
+            from app.qt.telas import servico
+            if not servico.adicionar_frase_do_combo(frase):
+                QMessageBox.information(
+                    self, "Nova frase",
+                    "Essa frase já existe (ou não deu para salvar agora) — "
+                    "nada foi duplicado.")
+                return
+            pos = self.combo_frases.count() - 1     # antes do "＋ Nova frase…"
+            self.combo_frases.insertItem(pos, frase)
+            self._inserir_frase(pos)                # já aplica no texto livre
 
         def resultado(self) -> tuple[PapelTexto, str | None]:
             p = self.papel_escolhido()

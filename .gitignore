@@ -96,3 +96,17 @@ AutoTabloide_System_Root/backups/
 AutoTabloide_System_Root/biblioteca_imagens/
 AutoTabloide_System_Root/projetos/
 AutoTabloide_System_Root/logs/
+_lixo_claude/
+.audit_snapshot_*
+
+.reaudit_*
+_suite_f115.txt
+_build_f12.txt
+_gal12*.txt
+_j12.xml
+saida_os_f115/
+saida_marco/
+_suite_f115.xml
+_marco_f12.txt
+_suite_f12_*
+_pr_body.md

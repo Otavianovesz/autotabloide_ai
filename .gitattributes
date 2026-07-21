@@ -1,0 +1,14 @@
+﻿* text=auto
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.pdf binary
+*.tgz binary
+*.mp4 binary
+*.db binary
+*.pth binary
+*.xlsx binary
+*.otf binary

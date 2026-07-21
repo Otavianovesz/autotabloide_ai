@@ -79,11 +79,25 @@ class Editor(QWidget):
             indice_lateral=1, minimo_lateral=LARGURA_LATERAL)
         corpo = self._corpo
 
+        # OS F11.5 #49: a faixa de páginas FIXA à esquerda (miniaturas vivas
+        # com debounce; arrastar reordena) — o diálogo antigo continua para
+        # quem prefere a janela com o histórico visual
+        from PySide6.QtWidgets import QHBoxLayout
+
+        from app.qt.design.faixa_paginas import FaixaPaginas
+        self.faixa_paginas = FaixaPaginas(self.area.canvas)
+        centro = QWidget()
+        hc = QHBoxLayout(centro)
+        hc.setContentsMargins(0, 0, 0, 0)
+        hc.setSpacing(0)
+        hc.addWidget(self.faixa_paginas)
+        hc.addWidget(corpo, 1)
+
         raiz = QVBoxLayout(self)
         raiz.setContentsMargins(0, 0, 0, 0)
         raiz.setSpacing(0)
         raiz.addWidget(self.barra)
-        raiz.addWidget(corpo, 1)
+        raiz.addWidget(centro, 1)
 
         # qualquer edição suja o documento (o shell mostra "não salvo")
         self.area.canvas.editou.connect(lambda _reg: self._marcar_sujo(True))
@@ -201,6 +215,82 @@ class Editor(QWidget):
         if self._db is None:
             self._db = Database().init()
         return self._db
+
+    def exportar_template(self) -> None:
+        """R-149 (FASE 12): a ESTRUTURA do layout vira um .attpl — presente
+        para outro mercado; nenhum dado do dono viaja (testado por
+        ausência)."""
+        layout = self.canvas._layout
+        if layout is None:
+            self._avisar("Abra um layout antes de exportar.", tipo="info")
+            return
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.core.template_compartilhavel import exportar_template
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Exportar template (sem dados)", "layout.attpl",
+            "Template AutoTabloide (*.attpl)")
+        if not destino:
+            return
+        saida = exportar_template(layout, destino)
+        self._avisar(f"Template salvo em {saida.name} — leva a ESTRUTURA, "
+                     "nunca seus produtos/preços/fotos.", tipo="sucesso")
+
+    def importar_template(self) -> None:
+        """R-149: traz um .attpl e o abre no editor (uids próprios, I1)."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.core.template_compartilhavel import importar_template
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "Trazer um template", "",
+            "Template AutoTabloide (*.attpl)")
+        if not arquivo:
+            return
+        try:
+            lay = importar_template(arquivo)
+        except Exception:
+            self._avisar("Este arquivo não é um template .attpl válido.",
+                         tipo="erro")
+            return
+        from app.rendering.compositor import DadosProduto
+        self.area.carregar(lay, self._dados or DadosProduto(""))
+        self._avisar("Template aberto — ponha a SUA arte de fundo e salve "
+                     "como layout seu.", tipo="sucesso")
+
+    def gerar_fundo_ia(self) -> None:
+        """R-147 (FASE 12): fundo por IA — EXPERIMENTAL, condicionado à GPU
+        (a régua do Estúdio degrau 2); sem GPU degrada com o aviso honesto."""
+        from app.images.fundo_ia import AVISO_SEM_GPU, gerador_fundo_disponivel
+        if not gerador_fundo_disponivel():
+            self._avisar(AVISO_SEM_GPU, tipo="info")
+            return
+        from PySide6.QtWidgets import QInputDialog as _QID
+        tema, ok = _QID.getText(
+            self, "Fundo por IA (experimental)",
+            "Tema do fundo (ex.: “São João, bandeirinhas, festivo”):")
+        if not ok or not tema.strip():
+            return
+        layout = self.canvas._layout
+        from app.images.fundo_ia import gerar_fundo
+        from app.rendering.units import mm_para_px
+        larg = round(mm_para_px(layout.largura_mm, layout.dpi)) \
+            if layout else 1080
+        alt = round(mm_para_px(layout.altura_mm, layout.dpi)) \
+            if layout else 1350
+        img, aviso = gerar_fundo(tema.strip(), larg, alt)
+        if img is None:
+            self._avisar(aviso or "O gerador não devolveu imagem.",
+                         tipo="erro")
+            return
+        import tempfile
+        from pathlib import Path as _P
+        destino = _P(tempfile.mkdtemp(prefix="atb_fundo_")) / "fundo.png"
+        img.save(destino)
+        if layout is not None:
+            layout.arquivo_fundo = str(destino)
+            self.canvas._compor_fundo()
+        self._avisar("Fundo gerado — é um PONTO DE PARTIDA: ajuste ou "
+                     "troque pela sua arte quando quiser.", tipo="sucesso")
 
     def salvar(self) -> None:
         layout = self.canvas._layout

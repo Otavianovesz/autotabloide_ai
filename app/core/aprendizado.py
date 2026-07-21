@@ -76,3 +76,77 @@ def mesmo_produto_regional(a: str, b: str, grupos=None) -> bool:
     (canonizados batem). Usado pela conciliação para não criar duplicata regional."""
     return _norm(canonizar_sinonimos(a, grupos)) == \
         _norm(canonizar_sinonimos(b, grupos))
+
+
+def grupos_com_extras(extras=None) -> list[list[str]]:
+    """OS F11.5 #47/#81 (R-086): os grupos padrão + os que o DONO acrescentou
+    (a Config `sinonimos.regionais`, que viaja com o banco — portátil, I3).
+    Grupo inválido/vazio é ignorado sem drama."""
+    saida = [list(g) for g in SINONIMOS_REGIONAIS_PADRAO]
+    for g in (extras or []):
+        termos = [str(t).strip() for t in (g or []) if str(t).strip()]
+        if len(termos) >= 2:
+            saida.append(termos)
+    return saida
+
+
+def ordenar_tipo_marca(nome: str, marcas_conhecidas) -> str:
+    """OS F11.5 #49 (R-087): aplica a ORDEM da casa (Tipo+Marca+resto) quando
+    uma marca CONHECIDA aparece fora do lugar — "Camil Arroz 5kg" vira
+    "Arroz Camil 5kg". Determinístico e conservador: sem marca conhecida no
+    nome, devolve como veio (nunca inventa nem descarta token)."""
+    marca = extrair_marca(nome, marcas_conhecidas)
+    if not marca:
+        return nome
+    toks = nome.split()
+    alvo = [_norm(t) for t in marca.split()]
+    n = len(alvo)
+    pos = next((i for i in range(len(toks) - n + 1)
+                if [_norm(t) for t in toks[i:i + n]] == alvo), None)
+    if pos is None or pos == 1:
+        return nome                       # não achei, ou já está após o tipo
+    marca_toks = toks[pos:pos + n]
+    resto = toks[:pos] + toks[pos + n:]
+    if not resto:
+        return nome                       # o nome é SÓ a marca — nada a ordenar
+    return " ".join([resto[0]] + marca_toks + resto[1:])
+
+
+_RE_PESO_VARIACAO = None
+
+
+def _sem_peso(nome: str) -> str:
+    import re
+    global _RE_PESO_VARIACAO
+    if _RE_PESO_VARIACAO is None:
+        _RE_PESO_VARIACAO = re.compile(
+            r"\b\d+[.,]?\d*\s?(kg|g|l|ml|un)\b", re.IGNORECASE)
+    return _RE_PESO_VARIACAO.sub(" ", nome)
+
+
+def sugerir_variacoes(itens, marcas_conhecidas) -> list[list]:
+    """OS F11.5 #50/#51 (R-082): agrupa prováveis VARIAÇÕES do mesmo produto
+    (sabores/tamanhos): mesma marca CONHECIDA + mesmo tipo (1º token útil) e
+    nomes diferentes entre si. Nunca inventa: item sem marca confirmada não
+    entra em sugestão nenhuma. Devolve grupos de 2+ itens."""
+    grupos: dict[tuple, list] = {}
+    for it in itens:
+        nome = (getattr(it, "nome", None) or str(it) or "").strip()
+        if not nome:
+            continue
+        marca = extrair_marca(nome, marcas_conhecidas)
+        if not marca:
+            continue
+        alvo = {_norm(t) for t in marca.split()}
+        toks = [t for t in _sem_peso(nome).split() if _norm(t) not in alvo]
+        if not toks:
+            continue
+        chave = (_norm(marca), _norm(toks[0]))
+        grupos.setdefault(chave, []).append(it)
+    saida = []
+    for membros in grupos.values():
+        nomes = {(getattr(it, "nome", None) or str(it)).strip().lower()
+                 for it in membros}
+        if len(membros) >= 2 and len(nomes) >= 2:
+            saida.append(membros)
+    return saida

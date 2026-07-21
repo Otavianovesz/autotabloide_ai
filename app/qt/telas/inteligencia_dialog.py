@@ -139,6 +139,8 @@ class InteligenciaDialog(QDialog):
         abas.addTab(self._aba_saude(), "Saúde do acervo")
         abas.addTab(self._aba_ranking(), "Mais ofertados")
         abas.addTab(self._aba_historico(), "Histórico de preço")
+        # OS F11.5 #45 (R-121): a memória sazonal ganha a aba dela
+        abas.addTab(self._aba_sazonal(), "Ano passado")
         abas.addTab(self._aba_relatorio(), "Relatório da edição")
         abas.setToolTip("Tudo aqui é SÓ LEITURA — nada muda o acervo, "
                         "nada sai do seu computador")
@@ -154,7 +156,8 @@ class InteligenciaDialog(QDialog):
         w = QWidget()
         v = _caixa(w)
         try:
-            s = I.saude_acervo()
+            # OS F11.5 #51/#52: a saúde com METAS + integridade + nota de foto
+            s = I.saude_com_metas()
         except Exception:
             s = {"total": 0}
         if not s.get("total"):
@@ -163,18 +166,64 @@ class InteligenciaDialog(QDialog):
                 "A saúde aparece quando os primeiros produtos entrarem."), 1)
             return w
         v.addWidget(QLabel(f"<b>{s['total']}</b> produtos no acervo"))
-        for rot, pct, n in (
-            ("Com foto", s["pct_foto"], s["com_foto"]),
-            ("Com código de barras (EAN)", s["pct_ean"], s["com_ean"]),
-            ("Com preço", s["pct_preco"], s["com_preco"]),
-            ("Com categoria", s["pct_categoria"], s["com_categoria"]),
+        metas = s.get("metas", {})
+        for rot, chave, n in (
+            ("Com foto", "pct_foto", s["com_foto"]),
+            ("Com código de barras (EAN)", "pct_ean", s["com_ean"]),
+            ("Com preço", "pct_preco", s["com_preco"]),
+            ("Com categoria", "pct_categoria", s["com_categoria"]),
         ):
-            v.addWidget(QLabel(f"{rot} — {n}/{s['total']}"))
+            pct = s[chave]
+            m = metas.get(chave, {})
+            extra = ""
+            if m:
+                extra = ("  ·  meta ✓" if m.get("ok")
+                         else f"  ·  abaixo da meta ({m.get('alvo')}%)")
+            v.addWidget(QLabel(f"{rot} — {n}/{s['total']}{extra}"))
             barra = QProgressBar()
             barra.setValue(int(pct))
             barra.setFormat(f"{pct}%")
             v.addWidget(barra)
+        # R-129 + avaliador F9 numa visão só (#52)
+        pes = []
+        if "orfas" in s:
+            pes.append(f"{s['orfas']} foto(s) órfã(s)")
+        if "sem_arquivo" in s:
+            pes.append(f"{s['sem_arquivo']} cadastro(s) apontando p/ foto "
+                       "que sumiu")
+        if "fotos_avaliadas" in s:
+            pes.append(f"{s['fotos_ruins']} foto(s) ruins de "
+                       f"{s['fotos_avaliadas']} avaliadas")
+        if pes:
+            rodape = QLabel("Integridade: " + " · ".join(pes))
+            rodape.setProperty("papel", "legenda")
+            rodape.setWordWrap(True)
+            v.addWidget(rodape)
         v.addStretch(1)
+        return w
+
+    # --- memória sazonal (R-121, OS F11.5 #45) -----------------------------------
+
+    def _aba_sazonal(self) -> QWidget:
+        w = QWidget()
+        v = _caixa(w)
+        try:
+            sugestoes = I.memoria_sazonal(self._edicoes)
+        except Exception:
+            sugestoes = []
+        if not sugestoes:
+            v.addWidget(EstadoVazio(
+                "calendario", "Nada nesta época do ano passado",
+                "Quando houver edições salvas de ~1 ano atrás (±10 dias), "
+                "os produtos delas aparecem aqui como lembrete."), 1)
+            return w
+        v.addWidget(QLabel("Ano passado, nesta época, você ofertou:"))
+        self.lista_sazonal = QListWidget()
+        for s in sugestoes:
+            self.lista_sazonal.addItem(s["nome"])
+        self.lista_sazonal.setToolTip("Sugestão, não imposição — lembrete "
+                                      "por data + chave natural (I1)")
+        v.addWidget(self.lista_sazonal, 1)
         return w
 
     # --- ranking (R-120) ---------------------------------------------------------
@@ -260,4 +309,45 @@ class InteligenciaDialog(QDialog):
         for cat, n in rel["por_categoria"].items():
             lista.addItem(f"{cat}: {n}")
         v.addWidget(lista, 1)
+        # OS F11.5 #39 (R-117): o relatório sai em PDF (reusa o molde do
+        # checklist F7 — checklist + os números da edição num papel só)
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
+        btn_pdf = QPushButton("Exportar em PDF…")
+        btn_pdf.setToolTip("O relatório + o checklist da edição num PDF "
+                           "imprimível (conferência a quatro olhos)")
+        btn_pdf.clicked.connect(self._exportar_relatorio_pdf)
+        linha = QHBoxLayout()
+        linha.addStretch(1)
+        linha.addWidget(btn_pdf)
+        v.addLayout(linha)
         return w
+
+    def linhas_relatorio(self) -> list[str]:
+        """#39: as linhas do relatório (as MESMAS da tela) — o miolo do PDF,
+        testável por conteúdo."""
+        rel = I.relatorio_edicao(self._itens)
+        linhas = [f"{rel['total']} itens na edição · "
+                  f"{rel['sem_foto']} sem foto"]
+        if rel["preco_min"] is not None:
+            linhas.append(
+                f"Faixa de preços: R$ {rel['preco_min']:.2f} a "
+                f"R$ {rel['preco_max']:.2f} (média R$ {rel['preco_medio']:.2f})"
+                .replace(".", ","))
+        for cat, n in rel["por_categoria"].items():
+            linhas.append(f"{cat}: {n}")
+        return linhas
+
+    def _exportar_relatorio_pdf(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.qt.telas import servico
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Salvar o relatório", "relatorio_edicao.pdf",
+            "PDF (*.pdf)")
+        if not destino:
+            return
+        servico.exportar_checklist_pdf(
+            self._itens, None, destino, titulo="Relatório da edição",
+            extras=self.linhas_relatorio())
+        from app.qt.design.toast import mostrar_toast
+        mostrar_toast(self, "Relatório salvo em PDF.", tipo="sucesso")

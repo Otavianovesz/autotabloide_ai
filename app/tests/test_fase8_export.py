@@ -226,8 +226,11 @@ def test_video_degrada_sem_ffmpeg(monkeypatch, tmp_path):
 @pytest.mark.skipif(video.ffmpeg_disponivel() is None,
                     reason="ffmpeg não instalado neste ambiente")
 def test_video_slideshow_frames_e_duracao_exatos(tmp_path):
-    """R-142/passo 56+60: o MP4 tem a contagem EXATA de frames/duração (reusa as
-    Images das páginas, não recompõe). 3 páginas × 1s × 24fps = 72 frames, 3.0s."""
+    """R-142/passo 56+60 (reescrito no GATE 2.3 da ordem F11.5 — só contava
+    frames): além da contagem EXATA, a FIDELIDADE por pixel — o frame do
+    vídeo tem a COR da página de origem (página 1 vermelha no frame 0;
+    página 2 verde no frame do meio). Prova de mutação: embaralhar a ordem
+    das páginas (ou recompor com outro conteúdo) muda a cor e falha."""
     pgs = [_peca(400, 600, c) for c in ("red", "green", "blue")]
     mp4, aviso = video.gerar_video_paginas(pgs, tmp_path / "t.mp4",
                                            seg_por_pagina=1.0, fps=24)
@@ -235,6 +238,20 @@ def test_video_slideshow_frames_e_duracao_exatos(tmp_path):
     if video.ffprobe_disponivel():
         assert video.contar_frames(mp4) == 72
         assert abs(video.duracao_video(mp4) - 3.0) < 0.15
+
+    def _cor_central(png):
+        img = Image.open(png).convert("RGB")
+        return img.getpixel((img.width // 2, img.height // 2))
+
+    # frame 0 = página 1 (vermelha); frame 36 (meio) = página 2 (verde) —
+    # tolerância p/ compressão do H.264
+    f0 = video.frame_do_video(mp4, 0, tmp_path / "f0.png")
+    f36 = video.frame_do_video(mp4, 36, tmp_path / "f36.png")
+    assert f0 is not None and f36 is not None
+    r, g, b = _cor_central(f0)
+    assert r > 180 and g < 80 and b < 80, (r, g, b)      # vermelho de verdade
+    r, g, b = _cor_central(f36)
+    assert g > 100 and r < 80 and b < 80, (r, g, b)      # verde de verdade
 
 
 @pytest.mark.skipif(video.ffmpeg_disponivel() is None,

@@ -24,6 +24,8 @@ from app.core.repositories import ProdutoRepositorio
 
 def enriquecer_banco(motor=None, *, log=print) -> dict:
     """Enriquece e persiste os nomes de todos os produtos. Devolve um resumo."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: reescreve o acervo inteiro
     motor = motor or ClienteOpenAICompat()
     if not motor.disponivel():
         log("LM Studio não acessível — nada a fazer (os nomes ficam como estão).")
@@ -79,6 +81,8 @@ def categorizar_acervo(motor=None, *, log=print) -> dict:
     Item que a IA não souber fica SEM categoria — na Mesa ele agrupa em
     "Outros" (nunca some, I2).
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: escreve categoria em lote
     motor = motor or ClienteOpenAICompat()
     if not motor.disponivel():
         log("LM Studio não acessível — nada a fazer (categorias como estão).")

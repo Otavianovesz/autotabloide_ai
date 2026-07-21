@@ -299,11 +299,20 @@ class DashboardTela(QWidget):
         novo_lay.setIcon(icone("camadas", tamanho=16))
         novo_lay.clicked.connect(lambda: self._novo("atelie"))
         # ("Novo evento" mudou para a aba Eventos — onde as campanhas moram)
+        # R-150 (FASE 12): a porta CLARA do Modo Pai — grande, nomeada,
+        # lembrada por perfil (sai-se por dentro dele, também claro)
+        self.btn_modo_pai = QPushButton(" Modo simples")
+        self.btn_modo_pai.setIcon(icone("check_circulo", tamanho=16))
+        self.btn_modo_pai.setToolTip(
+            "A visão à prova de erro: só ver o que está pronto, aprovar, "
+            "imprimir e enviar — ideal para o PC da loja")
+        self.btn_modo_pai.clicked.connect(self._entrar_modo_pai)
         self._resumo = QLabel("")
         self._resumo.setProperty("papel", "legenda")
         linha2.addWidget(novo_tab)
         linha2.addWidget(novo_cart)
         linha2.addWidget(novo_lay)
+        linha2.addWidget(self.btn_modo_pai)
         linha2.addStretch(1)
         linha2.addWidget(self._resumo)
         vt.addLayout(linha1)
@@ -1139,9 +1148,11 @@ class DashboardTela(QWidget):
         self.recarregar()
 
     def _cor_status(self, status: str) -> str:
+        # OS F11.5 #6: "publicado" vem do TOKEN tematizado (era hex solto —
+        # bypass do design system; no escuro o violeta clareia junto)
         return {"rascunho": t.TEXTO_3, "pronto": t.PRIMARIA,
                 "exportado": t.SUCESSO,
-                "publicado": "#7C3AED"}.get(status, t.TEXTO_3)
+                "publicado": t.PUBLICADO}.get(status, t.TEXTO_3)
 
     def _capa_pixmap(self, ev: dict, itens: list[dict]) -> QPixmap:
         """Capa definida > miniatura do projeto mais recente (passo 8)."""
@@ -1310,6 +1321,14 @@ class DashboardTela(QWidget):
     def _novo(self, destino: str) -> None:
         if callable(self.ao_novo):
             self.ao_novo(destino)
+
+    def _entrar_modo_pai(self) -> None:
+        """R-150: entra no Modo Pai e LEMBRA a escolha (o próximo boot já
+        abre nele — o PC da loja nasce simples)."""
+        from app.qt.telas.modo_pai import lembrar_modo_pai
+        lembrar_modo_pai(True)
+        if callable(self.ao_novo):
+            self.ao_novo("modo_pai")
 
     def _abrir(self, item: QListWidgetItem) -> None:
         p = item.data(Qt.ItemDataRole.UserRole)
@@ -1513,6 +1532,16 @@ class EventosTela(QWidget):
         hb.setSpacing(t.ESP_2)
         titulo = QLabel("Ofertas por evento")
         titulo.setProperty("papel", "titulo")
+        # R-148 (FASE 12): o lembrete LOCAL das datas comemorativas — some
+        # com a chave `calendario.lembretes` desligada (nunca intrusivo)
+        self.lembrete_datas = QLabel("")
+        self.lembrete_datas.setProperty("papel", "legenda")
+        btn_calendario = QPushButton(" Calendário do ano…")
+        btn_calendario.setIcon(icone("calendario", tamanho=16))
+        btn_calendario.setToolTip(
+            "As datas que movem o varejo (Páscoa, Dia das Mães, Black "
+            "Friday…) — cada uma vira um evento com um clique")
+        btn_calendario.clicked.connect(self._abrir_calendario)
         novo_evt = QPushButton(" Novo evento")
         novo_evt.setIcon(icone("calendario", cor=t.ACENTO_TEXTO, tamanho=16))
         novo_evt.setProperty("tipo", "primario")
@@ -1520,7 +1549,9 @@ class EventosTela(QWidget):
                             "com cor, dia da semana e capa")
         novo_evt.clicked.connect(dash._novo_evento)
         hb.addWidget(titulo)
+        hb.addWidget(self.lembrete_datas)
         hb.addStretch(1)
+        hb.addWidget(btn_calendario)
         hb.addWidget(novo_evt)
 
         raiz = QVBoxLayout(self)
@@ -1534,4 +1565,34 @@ class EventosTela(QWidget):
         # o dashboard está oculto quando esta aba abre → recarrega direto
         # (o guard de skeleton dele já resolve isso sozinho)
         self._dash.recarregar()
+        self._atualizar_lembrete_datas()
         super().showEvent(event)
+
+    def _atualizar_lembrete_datas(self) -> None:
+        """R-148: “Vem aí: Dia dos Pais (10/08, faltam 20 dias)” — local e
+        desligável; falha de leitura só silencia o lembrete."""
+        try:
+            from app.core import calendario
+            if not calendario.lembretes_ligados():
+                self.lembrete_datas.setText("")
+                return
+            proximas = calendario.proximas_datas(dias=30)
+            if not proximas:
+                self.lembrete_datas.setText("")
+                return
+            d = proximas[0]
+            quando = d["data"].strftime("%d/%m")
+            falta = ("é HOJE" if d["faltam"] == 0
+                     else f"faltam {d['faltam']} dia(s)")
+            self.lembrete_datas.setText(
+                f"  ·  Vem aí: {d['nome']} ({quando}, {falta})")
+        except Exception:
+            self.lembrete_datas.setText("")
+
+    def _abrir_calendario(self) -> None:
+        """R-148: o calendário promocional do ano — criar o evento é 1 clique."""
+        from app.qt.telas.calendario_dialog import CalendarioDialog
+        dlg = CalendarioDialog(self)
+        dlg.exec()
+        self._dash.recarregar()            # o evento novo aparece na hora
+        self._atualizar_lembrete_datas()

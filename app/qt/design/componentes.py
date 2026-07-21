@@ -358,3 +358,52 @@ class Wordmark(QWidget):
         p.end()
         pm.setDevicePixelRatio(2)
         return pm
+
+
+def modo_compacto_botoes(lay, botao_mais, ids_sacrificaveis: set,
+                         registro: dict, largura_util: int, esp: int) -> bool:
+    """RG-53 — ESTÁGIO 2 (GATE 2.2 da ordem F11.5): quando nem colapsando os
+    sacrificáveis no "···" a barra cabe, os botões FIXOS com ícone perdem o
+    TEXTO (só ícone; o texto vira tooltip) — e voltam sozinhos quando o
+    espaço sobra. Sem isto, o QHBoxLayout espremia os essenciais abaixo do
+    próprio sizeHint (botão sem espaço pro texto — a reclamação do dono).
+
+    ``registro`` (dict por tela) guarda {id(botao): (texto, delta_px,
+    tooltip_original)} enquanto compacto. Devolve True se compactou agora.
+    """
+    from PySide6.QtWidgets import QPushButton
+
+    soma = 0
+    fixos: list[QPushButton] = []
+    for i in range(lay.count()):
+        w = lay.itemAt(i).widget()
+        if w is None or w.isHidden():
+            continue
+        soma += w.sizeHint().width() + esp
+        if (isinstance(w, QPushButton) and id(w) not in ids_sacrificaveis
+                and not w.icon().isNull()
+                and (w.text().strip() or id(w) in registro)):
+            fixos.append(w)
+    if soma > largura_util:
+        compactou = False
+        for w in fixos:
+            if id(w) in registro:
+                continue
+            texto = w.text()
+            antes = w.sizeHint().width()
+            w.setText("")
+            registro[id(w)] = (texto, antes - w.sizeHint().width(),
+                               w.toolTip())
+            if not w.toolTip():
+                w.setToolTip(texto.strip())
+            compactou = True
+        return compactou
+    # espaço de volta: restaura os textos quando eles CABEM de novo
+    delta_total = sum(d for (_t, d, _tt) in registro.values())
+    if registro and soma + delta_total <= largura_util:
+        for w in fixos:
+            if id(w) in registro:
+                texto, _d, tooltip = registro.pop(id(w))
+                w.setText(texto)
+                w.setToolTip(tooltip)
+    return False

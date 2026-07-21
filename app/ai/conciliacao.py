@@ -143,6 +143,7 @@ class Conciliador:
         peso_semantico: float = 0.5,
         limiares: LimiaresConciliacao | None = None,
         regras: RegrasSanitizacao = REGRAS_PADRAO,
+        status_cb=None,
     ):
         self.session = session
         self.repo = ProdutoRepositorio(session)
@@ -153,23 +154,52 @@ class Conciliador:
         # C1 do Bloco D); sem chaves na Config, o padrão 88/62 de sempre
         self.limiares = limiares or limiares_de_config(session)
         self.regras = regras
-        self._emb_corpus: list[tuple[str, int, list[float]]] | None = None
+        self._corpus_cache: dict[str, int] | None = None   # 1× por lote (F12)
+        self._status = status_cb or (lambda _m: None)
+        # o índice em memória: (ids, matriz numpy L2-normalizada) ou None
+        self._indice_cache: tuple[list[int], object] | None = None
+        self._indice_pronto = False
+        self.avisos: list[str] = []   # I2: degradação NUNCA é muda
+        self._embedder_morto = False  # 1ª falha desliga o lote inteiro
+        # OS F11.5 #47/#81 (R-086): os sinônimos regionais (padrão + os do
+        # dono na Config) entram na chave de comparação — "macaxeira" casa
+        # "mandioca" no fuzzy. Falha de leitura degrada para o padrão (I2).
+        try:
+            from app.core.aprendizado import grupos_com_extras
+            from app.core.repositories import ConfigRepositorio
+            extras = ConfigRepositorio(session).get("sinonimos.regionais", [])
+            self._sinonimos = grupos_com_extras(extras)
+        except Exception:
+            from app.core.aprendizado import SINONIMOS_REGIONAIS_PADRAO
+            self._sinonimos = SINONIMOS_REGIONAIS_PADRAO
+
+    def _chave(self, texto: str) -> str:
+        """A chave de comparação já CANONIZADA pelos sinônimos regionais."""
+        from app.core.aprendizado import canonizar_sinonimos
+        return _chave_comparacao(canonizar_sinonimos(texto, self._sinonimos))
 
     # --- corpus para o fuzzy (nomes sanitizados + aliases sanitizados) ---------
 
     def _corpus(self) -> dict[str, int]:
-        """chave de comparação -> produto_id (nomes sanitizados + aliases)."""
-        corpus: dict[str, int] = {}
-        for pid, nome in self.session.execute(
-            select(Produto.id, Produto.nome_sanitizado)
-        ).all():
-            corpus.setdefault(_chave_comparacao(nome), pid)
-        for pid, alias in self.session.execute(
-            select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
-        ).all():
-            chave = _chave_comparacao(sanitizar(alias, self.regras).nome_sanitizado)
-            corpus.setdefault(chave, pid)
-        return corpus
+        """chave de comparação -> produto_id (nomes sanitizados + aliases).
+
+        CACHEADO por instância (FASE 12, achado do marco 5k): o Conciliador
+        vive por LOTE e só LÊ o acervo — reconstruir o corpus a cada item
+        custava ~0,3 s × N itens no acervo grande."""
+        if self._corpus_cache is None:
+            corpus: dict[str, int] = {}
+            for pid, nome in self.session.execute(
+                select(Produto.id, Produto.nome_sanitizado)
+            ).all():
+                corpus.setdefault(self._chave(nome), pid)
+            for pid, alias in self.session.execute(
+                select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
+            ).all():
+                chave = self._chave(
+                    sanitizar(alias, self.regras).nome_sanitizado)
+                corpus.setdefault(chave, pid)
+            self._corpus_cache = corpus
+        return self._corpus_cache
 
     @staticmethod
     def _pontuar(q: str, chave: str) -> float:
@@ -178,44 +208,138 @@ class Conciliador:
         'certo'). A média dá um spread útil sem os falsos positivos do WRatio."""
         return 0.5 * fuzz.token_set_ratio(q, chave) + 0.5 * fuzz.token_sort_ratio(q, chave)
 
-    def _embeddings_corpus(self, corpus: dict[str, int]) -> list[tuple[str, int, list[float]]] | None:
-        """Vetores do corpus (calculados uma vez e cacheados na instância)."""
-        if self.embedder is None:
+    # tamanho do lote de textos por POST ao construir o índice (1ª vez ou
+    # produtos novos/renomeados) — nunca o acervo inteiro num request só
+    LOTE_EMBED = 128
+
+    def _modelo_embed(self) -> str:
+        cfg = getattr(self.embedder, "config", None)
+        return getattr(cfg, "modelo_embeddings", "") or type(
+            self.embedder).__name__
+
+    def _embedder_falhou(self, exc: Exception) -> None:
+        """1ª falha DESLIGA a camada pro lote inteiro (nada de re-tentar o
+        POST condenado a cada item) e AVISA (I2) — antes, o except engolia
+        e o dono acreditava que o significado estava trabalhando."""
+        self._embedder_morto = True
+        aviso = ("A camada de significado ficou DESLIGADA neste lote "
+                 "(o modelo de embeddings não respondeu: "
+                 f"{type(exc).__name__}). A conferência seguiu por "
+                 "semelhança de texto — confira os amarelos com atenção.")
+        if aviso not in self.avisos:
+            self.avisos.append(aviso)
+
+    def _indice(self) -> tuple[list[int], object] | None:
+        """O índice de significado do acervo: (ids, matriz numpy float32
+        L2-normalizada, uma linha por produto), vindo da tabela
+        ``produto_embeddings``. Embeda SÓ o que falta/mudou (por CHAVE), em
+        lotes, UMA vez — depois é leitura + matemática local. Falha do
+        embedder → None + aviso (I2), e o fuzzy segura o lote sozinho."""
+        if self._indice_pronto:
+            return self._indice_cache
+        self._indice_pronto = True
+        self._indice_cache = None
+        if self.embedder is None or self._embedder_morto:
             return None
-        if self._emb_corpus is None:
-            chaves = list(corpus.keys())
-            vetores = self.embedder.embeddings(chaves)
-            self._emb_corpus = list(zip(chaves, (corpus[c] for c in chaves), vetores))
-        return self._emb_corpus
+        import struct
+
+        from app.core.models import EmbeddingProduto
+        modelo = self._modelo_embed()
+        chaves: dict[int, str] = {}
+        for pid, nome in self.session.execute(
+                select(Produto.id, Produto.nome_sanitizado)).all():
+            chaves[pid] = self._chave(nome or "")
+        if not chaves:
+            return None
+        prontos: dict[int, list[float]] = {}
+        for row in self.session.execute(select(EmbeddingProduto)).scalars():
+            if (row.modelo == modelo and chaves.get(row.produto_id)
+                    == row.chave and row.dim):
+                prontos[row.produto_id] = list(struct.unpack(
+                    f"<{row.dim}f", row.vetor))
+        faltam = [pid for pid in chaves if pid not in prontos]
+        try:
+            for i in range(0, len(faltam), self.LOTE_EMBED):
+                lote = faltam[i:i + self.LOTE_EMBED]
+                if len(faltam) > self.LOTE_EMBED:    # a 1ª vez tem VOZ
+                    self._status(
+                        "Preparando o índice de significado (uma vez só): "
+                        f"{i + len(lote)}/{len(faltam)} produtos…")
+                vecs = self.embedder.embeddings([chaves[p] for p in lote])
+                for pid, vec in zip(lote, vecs):
+                    prontos[pid] = vec
+                    row = self.session.get(EmbeddingProduto, pid)
+                    if row is None:
+                        row = EmbeddingProduto(produto_id=pid, vetor=b"")
+                        self.session.add(row)
+                    row.modelo = modelo
+                    row.chave = chaves[pid]
+                    row.dim = len(vec)
+                    row.vetor = struct.pack(f"<{len(vec)}f", *vec)
+            if faltam:
+                self.session.commit()
+        except Exception as exc:
+            self._embedder_falhou(exc)
+            return None
+        try:
+            import numpy as np
+            ids = list(prontos)
+            m = np.asarray([prontos[p] for p in ids], dtype=np.float32)
+            normas = np.linalg.norm(m, axis=1, keepdims=True)
+            normas[normas == 0] = 1.0
+            self._indice_cache = (ids, m / normas)
+        except ImportError:
+            self._indice_cache = (list(prontos), prontos)  # fallback puro
+        return self._indice_cache
 
     def _candidatos(self, nome_bruto: str) -> list[Candidato]:
-        q = _chave_comparacao(sanitizar(nome_bruto, self.regras).nome_sanitizado)
+        q = self._chave(sanitizar(nome_bruto, self.regras).nome_sanitizado)
         corpus = self._corpus()
         if not corpus:
             return []
 
-        # Camada FUZZY (sempre real): melhor score por produto.
+        # Camada FUZZY (sempre real, local): melhor score por produto
+        # (nomes E aliases entram no corpus).
         fuzzy_pid: dict[int, float] = {}
         for chave, pid in corpus.items():
             s = self._pontuar(q, chave)
             if s > fuzzy_pid.get(pid, -1.0):
                 fuzzy_pid[pid] = s
 
-        # Camada de SIGNIFICADO (embeddings, quando ligada): cosseno * 100.
+        # Camada de SIGNIFICADO sobre o ACERVO INTEIRO, via índice
+        # persistido (frota F12): cosseno local contra os vetores prontos —
+        # 1 POST pequeno por item (só a consulta), nunca o corpus de novo.
+        # O corte top-K anterior deixava o par certo de fora ("mamão
+        # papaya"×"papaia formosa") e misturava DUAS escalas no ranking.
         sem_pid: dict[int, float] = {}
-        emb = self._embeddings_corpus(corpus)
-        if emb is not None:
-            qv = self.embedder.embeddings([q])[0]
-            for _chave, pid, vec in emb:
-                c = _cosseno(qv, vec) * 100.0
-                if c > sem_pid.get(pid, -1.0):
-                    sem_pid[pid] = c
+        indice = self._indice()
+        if indice is not None and not self._embedder_morto:
+            try:
+                qv = self.embedder.embeddings([q])[0]
+                ids, matriz = indice
+                if isinstance(matriz, dict):        # fallback sem numpy
+                    for pid in ids:
+                        sem_pid[pid] = _cosseno(qv, matriz[pid]) * 100.0
+                else:
+                    import numpy as np
+                    v = np.asarray(qv, dtype=np.float32)
+                    n = float(np.linalg.norm(v)) or 1.0
+                    cos = matriz @ (v / n)
+                    for pid, c in zip(ids, cos):
+                        sem_pid[pid] = float(c) * 100.0
+            except Exception as exc:
+                self._embedder_falhou(exc)
+                sem_pid = {}
 
-        # Combina: sem embeddings, só fuzzy; com embeddings, média ponderada.
+        # Combina numa escala SÓ: com significado ligado, TODO produto leva
+        # a média ponderada (produto sem vetor conta sem=0 — se quase nada
+        # tem vetor, o índice inteiro é descartado com aviso lá em cima);
+        # sem significado, fuzzy puro para todos.
         final: dict[int, float] = {}
         for pid, fz in fuzzy_pid.items():
             if sem_pid:
-                final[pid] = (1 - self.peso_sem) * fz + self.peso_sem * sem_pid.get(pid, 0.0)
+                final[pid] = (1 - self.peso_sem) * fz \
+                    + self.peso_sem * sem_pid.get(pid, 0.0)
             else:
                 final[pid] = fz
 
@@ -277,7 +401,7 @@ class Conciliador:
             return Veredito(nome_bruto, Semaforo.VERMELHO, None, [], 0.0,
                             "sem candidatos no banco", "novo")
 
-        q_chave = _chave_comparacao(sanitizar(nome_bruto, self.regras).nome_sanitizado)
+        q_chave = self._chave(sanitizar(nome_bruto, self.regras).nome_sanitizado)
 
         def _rebaixar_se_divergente(veredito: Veredito) -> Veredito:
             """S1: verde não-exato com termos do cadastro ausentes da oferta
@@ -285,7 +409,7 @@ class Conciliador:
             if veredito.semaforo != Semaforo.VERDE or veredito.produto is None:
                 return veredito
             div = _divergencia(
-                q_chave, _chave_comparacao(veredito.produto.nome_sanitizado))
+                q_chave, self._chave(veredito.produto.nome_sanitizado))
             if div:
                 veredito.semaforo = Semaforo.AMARELO
                 veredito.motivo = ("cadastro tem termos ausentes na oferta "

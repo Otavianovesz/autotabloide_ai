@@ -143,3 +143,128 @@ varredura do radar e o selo do Otaviano sobre o marco.
 98. **O SELO HUMANO do Otaviano sobre o marco da Fase 12** — é o fim da construção do AutoTabloide AI.
 99. Pós-selo: só manutenção e os sonhos que o dono marcar dos que ficaram no radar (nada novo sem a palavra dele).
 100. **PARAR** — o programa está no PC do mercado. As quintas-feiras de manhã em que o tabloide é um clique começam aqui.
+
+
+---
+
+# Resposta do builder (21/07/2026) — FASE 12 executada até o passo 95
+
+**Suíte: 849 verdes ×2, ZERO skips, exit-0 limpo nas duas passadas**
+(placar por junit — a lei da bancada). Baseline de entrada: 821.
+**PARADO no passo 100**: os passos 96–98 (test-drive, ressalvas e o SELO
+HUMANO) são do Otaviano; o 99–100 nascem deles.
+
+## O que foi construído (Blocos A–E, resumo)
+
+- **A (robustez)**: recuperação de projeto corrompido — diagnóstico em
+  PT-BR, snapshots (versões F2 + rascunho DO projeto certo por id) com
+  prévia, restauração reversível (.bak + os arquivos de agora guardados) e
+  logada; `.atproj` (levar/trazer, uuid novo, estado byte a byte); modo
+  somente-leitura R-131 (o mapa das portas vive no docstring de
+  `app/core/modo.py`); verificação de atualização que NUNCA levanta;
+  validação de integridade na abertura (R-138, worker + toast discreto).
+- **B (sonhos)**: etiquetas em lote impostas em A4 (grade do tamanho REAL,
+  marcas de corte SÓ na área usada); template `.attpl` limpo por AUSÊNCIA
+  (nome/preço/arte/texto do dono NÃO viajam; uid/ref_mestre viajam — I4);
+  calendário do varejo (Páscoa por Gauss, BF, domingos; datas viram Evento
+  num clique, lembrete na aba Eventos); gerador de fundo por IA condicionado
+  à GPU (sem GPU degrada COM aviso).
+- **C (Modo Pai, R-150)**: lista com miniatura, prévia grande, situação em
+  linguagem simples, aprovar (reusa o checklist F8), imprimir (mm +
+  orientação da F11), enviar (copiar imagem); nenhuma ação destrutiva;
+  lembrado por perfil; a top-bar do Shell SOME dentro dele.
+- **D (o MARCO)**: `app/scripts/selfcheck_marco_f12.py` — acervo de 5k,
+  as 30 ofertas REAIS do Quintou transcritas da peça, validade **ATÉ
+  26/05** desenhada e provada por PIXEL (RG-58), layout detectado da arte
+  real, PDF medido em mm por pypdf, adversarial ATIVO (trocar 2 uids troca
+  os pixels), campanhas faltantes **NOMEADAS** (`sexta_verde`,
+  `fim_de_semana` — o marco as absorve sozinho quando as artes chegarem).
+- **E (instalador)**: PyInstaller onedir MEDIDO por `empacotar.py`;
+  launcher portátil (raiz de dados IRMÃ da pasta do app — desinstalar
+  preserva o acervo; fallback honesto para Program Files); semente de
+  fontes VERSIONADA no repo (Quicksand OFL + Roboto Apache); migração do
+  banco do protótipo por chave natural (prévia→confirma, dedup contra o
+  acervo E dentro do lote); `GUIA_RAPIDO.md` + `INSTALAR_LM_STUDIO.md` 1.0;
+  fumaça do instalador VERDE (abre e vive, raiz irmã com fontes semeadas,
+  idempotente).
+
+## Achado próprio de arquitetura (o marco pagou a auditoria)
+
+Medindo o conciliar em 5k, a camada de embeddings lia o acervo INTEIRO por
+lote (~73 s). O primeiro conserto (top-40 do fuzzy) foi DERRUBADO pela
+frota — invertia a ordem travada das 3 camadas e misturava duas escalas no
+ranking. O conserto definitivo é o **ÍNDICE DE SIGNIFICADO persistido**
+(tabela `produto_embeddings`): cada produto é embedado UMA vez na vida,
+invalidação por CHAVE (renomear refaz sozinho), a conciliação compara o
+acervo INTEIRO numa escala só por matemática local; 1 falha do embedder
+DESLIGA a camada pro lote COM aviso na tela (I2). A 1ª vez constrói o
+índice com voz no status; o recorrente caiu de ~75 s para ~2 s.
+
+## A frota adversarial final (a única autorização de subagentes)
+
+Workflow com **66 agentes**: 6 lentes (invariantes, somente-leitura,
+atproj/migração, conciliação, Modo Pai/UI, empacotamento), cada achado
+atacado por 2 céticos independentes lendo o disco real. **30 achados
+brutos → 25 confirmados → TODOS corrigidos**, cada um com teste por
+conteúdo (10 testes novos `test_f_*`). Os 5 refutados caíram porque os
+céticos encontraram os consertos que fiz DURANTE o voo da frota.
+
+Os 3 CRÍTICOS, na íntegra:
+1. **A 4ª porta de exportação**: etiquetas em lote saíam SEM a marca
+   RASCUNHO (a mesma família do CRÍTICO da F8). Agora `rascunho=True` é o
+   PADRÃO e a Fábrica só limpa com `pode_exportar_limpo` — prova por bytes.
+2. **O Modo Pai compunha peça DIFERENTE do export oficial** (sem
+   multi-preço, sem +18, sem override, sem validade — preço errado ao
+   balcão por uma porta sancionada). A montagem virou UMA função oficial
+   (`servico.dados_para_desenho` + `dados_de_projeto_aberto`) usada por
+   Mesa, export e Modo Pai; faltas (foto sumida) aparecem e pedem
+   confirmação (I2). De quebra: aprovar invalida o cache (o recém-aprovado
+   não imprime mais com a marca velha) e o boot respeita o modo lembrado.
+3. **O exe nascia meio-morto em Windows limpo**: a arte de bancada não é
+   empacotada e o fallback explodia FORA do try, com o erro INVISÍVEL
+   (console=False) — Mesa/Fábrica/… nunca montavam. Agora: grade sintética
+   em código + o erro na cara do dono (o app segue vivo com o que montou).
+
+E ainda: path traversal do `.atproj` por caminho raiz-sem-drive (contenção
+canônica por `resolve()`); 8 portais de escrita desguarnecidos no
+somente-leitura (Excel em massa, o Estúdio trocando a foto NO DISCO antes
+da guarda — agora o guard mora no funil `BibliotecaImagens.ingerir` —,
+excluir/renomear/duplicar projeto, IA em lote, trazer .atproj,
+calendário); a recuperação por versão não repunha os ARQUIVOS (foto
+posicional trocada em silêncio — I5); o rascunho restaurado persistia
+caminhos ABSOLUTOS (I3 — agora passa pelo salvar oficial); o `.attpl`
+refazia o vínculo mestre POR POSIÇÃO (I4); consoles pretos do
+Ghostscript/ffmpeg no exe windowed; o guia prometia "sem internet" sem
+citar o download único do modelo de recorte.
+
+## Honestidade de bancada (bugs meus, achados pelos meus artefatos)
+
+- A galeria pegou um **KeyError de ícone** no diálogo de recuperação (ele
+  nunca era construído em teste — agora é, nos dois caminhos) e **marcas de
+  corte no vazio** da folha parcial de etiquetas (agora só na área usada).
+- O segfault intermitente do teardown (EXIT=139, 2 ocorrências) foi CAÇADO
+  até a causa: entregar `DeferredDelete` pendente de alvo já destruído É o
+  crash — o conftest agora os DESCARTA (`removePostedEvents`), nunca
+  entrega. Depois disso: 849 ×2 sem crash.
+- O 1º build media 4,4 GB: o PyInstaller arrastava caronas da bancada
+  (xformers/jax/paddle/cupy…) por imports opcionais — excluídos com
+  cuidado (rembg precisa de cv2/scipy/numba; torch exige sympy).
+
+## O que ficou de fora (e por quê)
+
+- **Passos 96–100**: são a sessão de aceitação — do Otaviano, por
+  definição da própria ordem.
+- **[MÁQUINA DO DONO]**: instalador num Windows LIMPO (a fumaça local está
+  verde; a prova de dependência-zero só vale em máquina virgem); migração
+  com o banco REAL do protótipo (não existe neste disco — o teste cobre o
+  esquema real sinteticamente); SDXL degrau 2 (sem GPU aqui — degrada com
+  aviso, que é o estado honesto); campanhas `sexta_verde`/`fim_de_semana`
+  (as artes não estão em `arte/` — nomeadas no dossiê, absorvidas sozinho
+  quando chegarem). O modelo de visão real (F9) FOI exercitado aqui — o LM
+  Studio esteve ligado na bancada (conciliar real no marco: 30 itens).
+- **test_instalador na suíte**: virou `app/scripts/fumaca_instalador.py`
+  (fora da suíte DE PROPÓSITO — dentro dela viraria skip sem o dist/, e
+  skip silencioso não é verde).
+- O peso do instalador (~2,7 GB pasta / ~1,6 GB zip) é o custo de
+  torch+Qt+onnx offline; enxugável pós-1.0 se o dono aceitar upscale sob
+  demanda (decisão dele, não minha).

@@ -1,144 +1,86 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""
-AutoTabloide AI - PyInstaller Spec
-====================================
-Configuração para build de executável.
-Passos 80-82 do Checklist 100.
+"""Spec do PyInstaller — AutoTabloide AI 1.0 (FASE 12, Bloco G, passos 67-68).
 
-Uso:
-    pyinstaller autotabloide.spec
-
-Assets incluídos:
-- Fontes em assets/fonts/
-- Templates em library/svg_source/
-- Modelos em bin/models/
-- Ícone da aplicação
+REESCRITO na F12: o spec antigo era do protótipo (Flet/cairosvg/llama_cpp —
+tudo descartado). O app real é PySide6 + Pillow + rembg/onnxruntime +
+torch(CPU)/spandrel. ONEDIR de propósito (onefile com Qt+onnx+torch daria
+um boot de minutos). O pesado, às claras:
+- rembg/onnxruntime: recorte de fundo (o modelo .onnx baixa no 1º uso);
+- torch CPU + spandrel: o Real-ESRGAN (o .pth mora na pasta do usuário);
+- PySide6: a interface.
+Tamanho e tempo do build são MEDIDOS por `app/scripts/empacotar.py`
+(passo 80). Uso: pyinstaller autotabloide.spec
 """
 
 import os
-import sys
-from pathlib import Path
 
-# Diretório raiz
-ROOT_DIR = Path(SPECPATH)
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
-# Nome do executável
-APP_NAME = "AutoTabloide_AI"
-ICON_PATH = ROOT_DIR / "assets" / "icon.ico"
-
-# Imports ocultos necessários
-hidden_imports = [
-    # Flet e dependências
-    'flet',
-    'flet_core',
-    'flet_runtime',
-    
-    # SQLAlchemy
-    'sqlalchemy',
-    'aiosqlite',
-    'sqlalchemy.ext.asyncio',
-    
-    # AI
-    'llama_cpp',
-    
-    # Imagem
-    'PIL',
-    'PIL.Image',
-    'PIL.ImageFont',
-    'cairosvg',
-    'lxml',
-    'lxml.etree',
-    
-    # Opcional
-    'rembg',
-    'cv2',
-    'pyphen',
-    'rapidfuzz',
-    'pydantic',
-]
-
-# Dados a incluir
 datas = [
-    # Fontes
-    (str(ROOT_DIR / 'AutoTabloide_System_Root' / 'assets' / 'fonts'), 'assets/fonts'),
-    
-    # Templates SVG
-    (str(ROOT_DIR / 'AutoTabloide_System_Root' / 'library' / 'svg_source'), 'library/svg_source'),
-    
-    # Thumbnails
-    (str(ROOT_DIR / 'AutoTabloide_System_Root' / 'library' / 'thumbnails'), 'library/thumbnails'),
-    
-    # Sons
-    (str(ROOT_DIR / 'AutoTabloide_System_Root' / 'assets' / 'sounds'), 'assets/sounds'),
+    # SEMENTES da raiz de dados (o launcher as copia no 1º boot): as fontes
+    # do compositor (Quicksand OFL + Roboto Apache — sem elas, acento vira
+    # caixa) + os logos. VERSIONADAS no repo (frota F12: apontar para a
+    # raiz de runtime do dev quebrava o build em clone limpo E empacotava
+    # lixo de cache da máquina do dono para todos os clientes).
+    ("app/assets/semente/fontes", "semente/fontes"),
+    ("app/assets/semente/assets", "semente/assets"),
 ]
-
-# Binários extras
 binaries = []
+hiddenimports = []
 
-# Se o modelo LLM existir, incluir
-model_path = ROOT_DIR / 'AutoTabloide_System_Root' / 'bin' / 'models'
-if model_path.exists():
-    for gguf_file in model_path.glob('*.gguf'):
-        # Nota: modelos GGUF são grandes, considere distribuir separadamente
+for pacote in ("rembg", "onnxruntime", "spandrel"):
+    try:
+        d, b, h = collect_all(pacote)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
         pass
+hiddenimports += collect_submodules("PIL")
+hiddenimports += ["sqlalchemy.dialects.sqlite", "pypdf", "openpyxl",
+                  "httpx", "rapidfuzz", "pyphen"]
 
-# Ghostscript bundled (se existir)
-gs_path = ROOT_DIR / 'AutoTabloide_System_Root' / 'bin' / 'gs'
-if gs_path.exists():
-    binaries.append((str(gs_path), 'bin/gs'))
-
-# Análise do código
 a = Analysis(
-    ['main.py'],
-    pathex=[str(ROOT_DIR)],
+    ["lancar_autotabloide.py"],
+    pathex=[],
     binaries=binaries,
     datas=datas,
-    hiddenimports=hidden_imports,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'tkinter',
-        'matplotlib',
-        'notebook',
-        'pytest',
-    ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=None,
+    excludes=["tkinter", "matplotlib", "IPython", "jupyter", "notebook",
+              "pytest", "PyQt5", "PyQt6",
+              # caronas da bancada que o app NÃO usa (o 1º build media
+              # 4,4 GB; o PyInstaller os seguia por imports opcionais).
+              # NÃO excluir: cv2/scipy/pymatting/numba/llvmlite (o rembg
+              # precisa) nem sympy (o torch exige).
+              "xformers", "jax", "jaxlib", "bitsandbytes", "paddle",
+              "paddleocr", "cupy", "googleapiclient", "pyarrow", "av",
+              "pandas", "tensorboard"],
     noarchive=False,
 )
-
-# Filtrar binários desnecessários
-a.binaries = [b for b in a.binaries if not b[0].startswith('api-ms-')]
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name=APP_NAME,
+    name="AutoTabloide",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    console=False,  # GUI sem console
-    disable_windowed_traceback=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=str(ICON_PATH) if ICON_PATH.exists() else None,
+    upx=False,
+    console=False,
+    icon="app/assets/semente/assets/logo.ico"
+    if os.path.exists("app/assets/semente/assets/logo.ico") else None,
 )
-
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    name=APP_NAME,
+    upx=False,
+    name="AutoTabloide",
 )

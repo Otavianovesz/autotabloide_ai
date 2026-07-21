@@ -384,6 +384,9 @@ def aplicar_importacao_planilha(analise: AnalisePlanilha,
 
     Produto novo nasce por chave natural; conflito com USAR_PACOTE atualiza os
     campos da planilha; MANTER_LOCAL não toca; MANTER_AMBOS cria variante."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: mil produtos pela planilha
+    #                                      é tão escrita quanto editar um
     from app.core.database import Database
     from app.core.models import Categoria, Produto
 
