@@ -1730,6 +1730,7 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
     Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
     etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio)."""
     from app.rendering.cartaz import layout_etiqueta
+    from app.rendering.compositor import compor_pagina
     from app.rendering.export import exportar_pdf_multipagina
     from app.rendering.imposicao import impor_etiquetas
     if not itens:

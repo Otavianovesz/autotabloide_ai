@@ -90,6 +90,14 @@ class FabricaTela(QWidget):
         self.chk_2em1 = QCheckBox("Dois por folha")
         self.chk_2em1.setToolTip(
             "2-em-1: dois cartazes A5 numa folha A4 (economiza papel)")
+        # R-144 (FASE 12): etiquetas de prateleira em LOTE — dezenas por folha
+        self.btn_etiquetas = QPushButton(" Etiquetas em lote")
+        self.btn_etiquetas.setIcon(icone("impressora", tamanho=16))
+        self.btn_etiquetas.setToolTip(
+            "Uma etiqueta (100×70 mm) por item do lote atual, várias por "
+            "folha A4 com marcas de corte — para a prateleira inteira")
+        self.btn_etiquetas.setEnabled(False)
+        self.btn_etiquetas.clicked.connect(self._etiquetas_lote)
         # R-108 (Fase 11): lote por categoria (reusa o filtro da estante)
         self.combo_categoria = QComboBox()
         self.combo_categoria.setToolTip("Imprimir/exportar só uma categoria")
@@ -128,7 +136,7 @@ class FabricaTela(QWidget):
             [importar],
             [lbl_modelo, self.combo_layout],
             [lbl_lote, self.combo_categoria, self.chk_2em1],
-            [self.btn_exportar, self.btn_imprimir],
+            [self.btn_exportar, self.btn_imprimir, self.btn_etiquetas],
             [self.btn_salvar_proj, btn_abrir_proj],
         ):
             if hb.count() > 0:
@@ -154,6 +162,7 @@ class FabricaTela(QWidget):
         self._sacrificaveis = [
             (btn_abrir_proj, "Abrir projeto", "botao"),
             (self.chk_2em1, "Dois por folha", "check"),
+            (self.btn_etiquetas, "Etiquetas em lote", "botao"),
             (self.btn_salvar_proj, "Salvar projeto", "botao"),
             (self.btn_imprimir, "Imprimir", "botao"),
         ]
@@ -507,6 +516,7 @@ class FabricaTela(QWidget):
             f"{prontos} de {len(self._itens)} cartazes prontos" if self._itens else "")
         self.btn_exportar.setEnabled(prontos > 0)
         self.btn_imprimir.setEnabled(prontos > 0)
+        self.btn_etiquetas.setEnabled(prontos > 0)   # R-144 acompanha o lote
         self._atualizar_categorias()
 
     def _atualizar_categorias(self) -> None:
@@ -658,6 +668,41 @@ class FabricaTela(QWidget):
             from app.rendering.imposicao import impor_2em1
             paginas = impor_2em1(paginas, layout.dpi, marcas_corte=True)
         return paginas
+
+    def _etiquetas_lote(self) -> None:
+        """R-144 (FASE 12): as etiquetas do LOTE atual (respeita o filtro de
+        categoria) impostas em folhas A4 — pré-voo antes, worker durante."""
+        from app.qt.telas.prevoo import confirmar_pre_voo
+        if not confirmar_pre_voo(self, self._avisos_pre_voo(),
+                                 "Etiquetas em lote"):
+            return
+        caminho, _ = QFileDialog.getSaveFileName(
+            self, "Etiquetas em lote", "etiquetas.pdf", "PDF (*.pdf)")
+        if not caminho:
+            return
+        prontos = self._prontos_para_saida()
+        if not prontos:
+            mostrar_toast(self, "Nenhum item pronto neste lote.", tipo="info")
+            return
+
+        def _trabalho(st, itens=list(prontos), destino=caminho):
+            return servico.gerar_etiquetas_lote(itens, destino, st)
+
+        trab = Trabalhador(_trabalho)
+        trab.status.connect(self._overlay.mostrar)
+
+        def _pronto(resultado):
+            self._overlay.esconder()
+            saida, avisos = resultado
+            extra = (f" · {len(avisos)} aviso(s) no pré-voo" if avisos else "")
+            mostrar_toast(self, f"Etiquetas salvas em "
+                                f"{Path(saida).name}{extra}.", tipo="sucesso")
+            from app.qt.telas import compartilhar
+            compartilhar.abrir_pasta(saida)
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(self._falhou)
+        self._trabalhos.rodar(trab)
 
     def _exportar(self) -> None:
         from app.qt.telas.prevoo import confirmar_pre_voo

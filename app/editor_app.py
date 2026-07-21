@@ -165,7 +165,13 @@ def _montar_shell(holder: dict):
     # "Eventos" (entre Início e Ateliê) — o Início ficou só o dashboard
     from app.qt.telas.dashboard import EventosTela
     shell.adicionar_tela("eventos", EventosTela(inicio))
-    shell.ir_para("inicio")
+    # R-150 (FASE 12): o MODO PAI — a visão à prova de erro; lembrado por
+    # perfil (o PC da loja pode NASCER nele)
+    from app.qt.telas.modo_pai import ModoPaiTela, modo_pai_lembrado
+    modo_pai = ModoPaiTela(ao_sair=lambda: shell.ir_para("inicio"))
+    holder["modo_pai"] = modo_pai
+    shell.adicionar_tela("modo_pai", modo_pai)
+    shell.ir_para("modo_pai" if modo_pai_lembrado() else "inicio")
     shell.set_dica("Preparando as demais telas…")
     return shell
 
