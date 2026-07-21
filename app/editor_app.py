@@ -128,7 +128,34 @@ def _layout_padrao_do_banco():
             return ldef, (ldef.arquivo_fundo or ARTE)
     except Exception:
         pass
-    return _grade_real(), ARTE
+    try:
+        return _grade_real(), ARTE
+    except Exception:
+        # frota F12: no exe/PC limpo a arte de bancada não existe — o
+        # fallback FORA do try derrubava a montagem das telas inteira
+        # (Mesa/Fábrica/… nunca nasciam, sem nenhum aviso). A grade
+        # sintética segura o boot; o dono cria/importa o layout dele.
+        return _grade_sintetica(), None
+
+
+def _grade_sintetica():
+    """Uma grade 3×5 A4 construída em CÓDIGO (nenhum arquivo) — o chão de
+    fábrica do 1º boot num PC limpo, até o dono trazer a arte dele."""
+    from app.rendering.model import (
+        Ajuste, LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    slots = []
+    larg, alt = 64.0, 52.0
+    for lin in range(5):
+        for col in range(3):
+            x = 6 + col * (larg + 3)
+            y = 8 + lin * (alt + 4)
+            slots.append(Slot(f"c{lin}_{col}", [
+                Regiao(TipoRegiao.IMAGEM, Retangulo(x, y, larg, alt - 16),
+                       ajuste=Ajuste.PREENCHER),
+                Regiao(TipoRegiao.NOME, Retangulo(x, y + alt - 15, larg, 7)),
+                Regiao(TipoRegiao.PRECO, Retangulo(x, y + alt - 8, larg, 8)),
+            ], origem_mm=(x, y)))
+    return LayoutDef(210, 297, dpi=150, paginas=[Pagina(slots)])
 
 
 def _montar_shell(holder: dict):
@@ -407,7 +434,11 @@ def main() -> int:
             _toast(shell, f"Lixeira: {len(purgados)} item(ns) com mais de "
                           "30 dias foram apagados de vez (log no console).")
         shell._editor = _completar_janela(shell, holder)
-        if tela_lembrada != "inicio":   # passo 60: reabre onde parou
+        # passo 60 (R-023): reabre onde parou — MAS o Modo Pai lembrado
+        # (R-150) vence (frota F12: a última tela atropelava o modo e o
+        # PC do pai acordava na Mesa)
+        from app.qt.telas.modo_pai import modo_pai_lembrado
+        if tela_lembrada != "inicio" and not modo_pai_lembrado():
             shell.ir_para(tela_lembrada)
         # FASE 1 (passo 81): saudação da PRIMEIRA execução (3 caminhos)
         from app.qt.design.boas_vindas import mostrar_se_primeira_execucao
@@ -453,8 +484,27 @@ def main() -> int:
         vig.ok.connect(_avisar_integridade)
         shell._trabalhos_globais.rodar(vig)
 
+    def _completar_seguro() -> None:
+        # frota F12: com console=False, uma exceção aqui era INVISÍVEL e o
+        # app ficava meio-morto ("as telas ainda estão sendo preparadas…"
+        # para sempre). O erro agora aparece na cara (I2) — o app segue
+        # vivo com o que montou.
+        try:
+            _completar()
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                shell, "O AutoTabloide abriu pela metade",
+                "Uma parte das telas não conseguiu montar. O programa "
+                "segue aberto, mas algo vai faltar.\n\nMande esta linha "
+                "para quem cuida do programa:\n"
+                + "".join(traceback.format_exception_only(
+                    *sys.exc_info()[:2])).strip())
+
     from PySide6.QtCore import QTimer
-    QTimer.singleShot(0, _completar)    # roda com a janela já pintada
+    QTimer.singleShot(0, _completar_seguro)   # roda com a janela já pintada
     return app.exec()
 
 

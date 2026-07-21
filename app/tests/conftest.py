@@ -23,19 +23,22 @@ def _encerrar_qt_apos_teste():
     timer vivo no teardown causa segfault intermitente."""
     yield
     try:
-        from PySide6.QtCore import QEvent
+        from PySide6.QtCore import QCoreApplication, QEvent
         from PySide6.QtWidgets import QApplication
         from app.qt.workers import encerrar_todos
         encerrar_todos(espera_ms=1000)
         app = QApplication.instance()
         if app is not None:
+            # FASE 12 (2ª rodada do segfault): ENTREGAR os deleteLater
+            # pendentes era a estratégia ERRADA — quando o alvo já foi
+            # destruído entre o agendamento e a entrega, a entrega É o
+            # access violation. DESCARTÁ-los é seguro: vazamento mínimo
+            # dentro do processo de teste; crash, nunca.
+            _drop = QEvent.Type.DeferredDelete
+            QCoreApplication.removePostedEvents(None, _drop)
             app.closeAllWindows()
-            # FASE 12: além do drain simples, ENTREGAR os deleteLater
-            # pendentes AGORA — um widget agendado para morrer num teste
-            # e destruído no teardown de OUTRO era o segfault intermitente
-            # (access violation no _encerrar_qt_apos_teste)
-            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
+            QCoreApplication.removePostedEvents(None, _drop)
             app.processEvents()
     except Exception:
         pass

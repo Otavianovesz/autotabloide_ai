@@ -98,6 +98,8 @@ def lembretes_ligados() -> bool:
 def criar_evento_comemorativo(data_info: dict) -> int:
     """A data vira um EVENTO normal do app (F2/F3) — com a cor da data e o
     dia certo. Devolve o id do evento (idempotente pelo nome)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: cria evento no banco
     from app.core.database import Database
     from app.qt.telas.eventos import criar_evento
     db = Database().init()

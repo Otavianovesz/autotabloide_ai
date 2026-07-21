@@ -2254,44 +2254,11 @@ class MesaTela(QWidget):
 
     def _dados_de(self, it: servico.ItemMesa,
                   abreviacoes: dict | None = None) -> DadosProduto:
-        # F7.1: `imagens` não-vazia = a lista completa que o slot desenha (F4.5)
-        from app.rendering.arranjo import ModoArranjo
-        from app.rendering.compositor import ImagemSlot
-        try:
-            arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
-        except ValueError:
-            arranjo = ModoArranjo.LEQUE       # valor estranho: leque padrão
-        # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
-        nome = (servico.abreviar_para_tabloide(it.nome, abreviacoes)
-                if abreviacoes else it.nome)
-        # RG-33: os selos escolhidos do item viram selos_extra do passe final
-        extras = (servico.selos_do_item(it.selos, self._registro_selos)
-                  if it.selos else [])
-        # RG-34: item com validade cadastrada ganha "De olho na validade"
-        # AUTOMÁTICO (decisão travada do padrão +18: automático é automático)
-        if it.validade:
-            from app.rendering.selos import Canto, Selo
-            extras = extras + [Selo("VALIDADE",
-                                    Canto.INFERIOR_ESQUERDO)]
-        return DadosProduto(
-            nome,
-            selos_extra=extras,
-            preco_por=servico.preco_decimal(it.preco),
-            multi_preco=it.multi_preco,          # R-070: "3 por R$10"
-            observacao=it.observacao,            # R-071: "limite 2 por cliente"
-            imagem_path=it.imagem,
-            imagens=[ImagemSlot(c) for c in (it.imagens or [])],
-            modo_arranjo=arranjo,
-            mais18=it.mais18,
-            unidade=it.unidade,
-            categoria=it.categoria,          # F8.2: as seções derivam daqui
-            # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE
-            # …"); o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
-            texto_legal=(self._validade
-                         if (self._validade or "").upper().startswith("OFERTA")
-                         else f"Ofertas válidas {self._validade}"
-                         if self._validade else None),
-        )
+        # F12 (frota): a montagem virou a OFICIAL do serviço — Mesa, export
+        # e Modo Pai compõem pela MESMA função (antes o Modo Pai divergia)
+        return servico.dados_para_desenho(it, abreviacoes,
+                                          self._registro_selos,
+                                          self._validade)
 
     def _dados_por_slot(self) -> dict[str, DadosProduto]:
         """Resolve o mapa slot→uid em slot→DadosProduto (o contrato do compositor).

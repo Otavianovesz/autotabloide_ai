@@ -102,6 +102,11 @@ class BibliotecaImagens:
         Com `webp` ligado (#51/#52), a nova sai em WebP LOSSLESS (alfa
         preservado); senão, PNG como sempre.
         """
+        # R-131 (frota F12): o guard fica AQUI, no funil do disco — antes
+        # dele, o Estúdio/Restaurar trocava a foto no disco e SÓ o UPDATE
+        # do banco era barrado (a troca valia "por baixo" no PC da loja)
+        from app.core.modo import exigir_escrita
+        exigir_escrita()
         img = self._carregar_fonte(fonte).convert("RGBA")
         if self.processador is not None:
             img = self.processador(img)

@@ -37,13 +37,37 @@ def _semear_raiz_nova(raiz: Path) -> None:
 
 
 def main() -> int:
-    if getattr(sys, "frozen", False) and not os.environ.get(
-            "AUTOTABLOIDE_ROOT"):
-        # congelado: a raiz de dados mora AO LADO do executável (portátil)
-        raiz = Path(sys.executable).parent / "AutoTabloide_System_Root"
-        os.environ["AUTOTABLOIDE_ROOT"] = str(raiz)
+    if getattr(sys, "frozen", False):
+        raiz = os.environ.get("AUTOTABLOIDE_ROOT")
+        if not raiz:
+            # congelado: a raiz de dados mora AO LADO DA PASTA do app
+            # (irmã, não dentro) — desinstalar = apagar a pasta
+            # AutoTabloide SEM levar o acervo (passo 77); portátil =
+            # mover as duas pastas
+            raiz = str(Path(sys.executable).parent.parent
+                       / "AutoTabloide_System_Root")
+        raiz = Path(raiz)
         from app.core.paths import SystemRoot
-        SystemRoot(raiz).criar_estrutura()
+        try:
+            SystemRoot(raiz).criar_estrutura()
+        except OSError:
+            # frota F12: extraído em Program Files (sem escrita), o boot
+            # morreria criando a raiz — os dados caem no perfil do usuário
+            # e um LEIA-ME diz onde (I2, nunca em silêncio)
+            raiz = (Path(os.environ.get("LOCALAPPDATA", Path.home()))
+                    / "AutoTabloide" / "AutoTabloide_System_Root")
+            SystemRoot(raiz).criar_estrutura()
+            aviso = raiz.parent / "LEIA-ME (por que os dados estão aqui).txt"
+            if not aviso.exists():
+                aviso.write_text(
+                    "A pasta do programa não aceita escrita (ex.: Program "
+                    "Files),\nentão o acervo do AutoTabloide mora aqui. "
+                    "Para levar tudo num\npendrive, prefira extrair o "
+                    "programa numa pasta comum (ex.: C:\\AutoTabloide).\n",
+                    encoding="utf-8")
+        os.environ["AUTOTABLOIDE_ROOT"] = str(raiz)
+        # a semente roda SEMPRE no congelado (mesmo com raiz da env — a
+        # frota pegou a raiz nova nascendo sem fontes nesse caminho)
         _semear_raiz_nova(raiz)
     from app.editor_app import main as _main
     return _main()

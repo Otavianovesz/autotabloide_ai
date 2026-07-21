@@ -1124,7 +1124,10 @@ class ConfiguracoesTela(QWidget):
             f"O banco antigo tem {previa['total_antigo']} produto(s): "
             f"{previa['novos']} novo(s) para trazer e "
             f"{previa['existentes']} que você JÁ tem (serão pulados — "
-            "nada duplica nem sobrescreve). Continuar?",
+            "nada duplica nem sobrescreve)."
+            + (f" O banco antigo repete {r} entre si (entra 1 de cada)."
+               if (r := previa.get('repetidos_no_lote', 0)) else "")
+            + " Continuar?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resp != QMessageBox.StandardButton.Yes:
             return

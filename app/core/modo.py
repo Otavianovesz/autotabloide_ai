@@ -4,8 +4,20 @@ Modo somente-leitura (FASE 12, Bloco A — R-131)
 O PC da LOJA aprova e imprime — não edita à toa (à prova de dedo). Com a
 chave ligada (Config `app.somente_leitura`), as PORTAS DE ESCRITA do acervo
 e dos projetos levantam `SomenteLeitura` com a mensagem em PT-BR (os workers
-já a mostram como toast — nada falha em silêncio, I2). Aprovar, exportar,
-imprimir e compartilhar seguem LIVRES — é para isso que o modo existe.
+já a mostram como toast — nada falha em silêncio, I2).
+
+PORTAS GUARDADAS (a frota adversarial da F12 achou 6 desguarnecidas — o
+mapa vive aqui para a porta nova da próxima fase não nascer aberta):
+produto (editar/excluir/criar/fundir/finalizar), projeto (salvar/excluir/
+renomear/duplicar/abrir-versão-como-novo), foto (BibliotecaImagens.ingerir
+— o funil do DISCO: Estúdio, Ajustar, Refinar, Restaurar do histórico),
+Excel (aplicar_importacao_planilha), IA em lote (enriquecer_banco/
+categorizar_acervo), trazer .atproj (importar_atproj), calendário
+(criar_evento_comemorativo) e a migração antiga.
+
+LIVRES DE PROPÓSITO (decisão, não esquecimento): aprovar, exportar,
+imprimir, compartilhar — e os marcadores de fluxo que eles usam
+(`marcar_status("exportado")`, favorito), que não alteram conteúdo.
 Sair do modo é gesto consciente (confirmação na tela de Configurações).
 """
 

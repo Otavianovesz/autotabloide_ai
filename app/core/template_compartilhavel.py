@@ -15,8 +15,11 @@ from pathlib import Path
 FORMATO = "attpl"
 VERSAO_FORMATO = 1
 
-# campos de Regiao que NUNCA viajam (conteúdo/vínculo do dono)
-_CAMPOS_PRIVADOS_REGIAO = {"texto_fixo", "uid", "ref_mestre", "overrides"}
+# campos de Regiao que NUNCA viajam (CONTEÚDO do dono). uid/ref_mestre
+# FICAM (frota F12): são uuid4 gerados pelo app — não são dado do dono, e
+# removê-los fazia o vínculo mestra↔cópia renascer POR POSIÇÃO no import
+# (o caminho legado _migrar_refs cruzava os pares após reordenação — I4)
+_CAMPOS_PRIVADOS_REGIAO = {"texto_fixo", "overrides"}
 
 
 def _limpar_regiao(d: dict) -> dict:
@@ -47,9 +50,10 @@ def exportar_template(layout_def, destino: str | Path,
 
 
 def importar_template(arquivo: str | Path):
-    """Lê o .attpl e devolve o LayoutDef pronto para o editor (uids
-    NOVOS nascem no from_dict/uso — nada colide com o que o outro
-    mercado tinha, I1). Levanta ValueError em arquivo inválido."""
+    """Lê o .attpl e devolve o LayoutDef pronto para o editor. Os uids das
+    regiões VIAJAM no template (I4: o casamento mestra↔cópia continua por
+    identidade, imune a reordenação) — eles só têm significado DENTRO
+    deste layout, nada colide. Levanta ValueError em arquivo inválido."""
     from app.rendering.model import LayoutDef
     dados = json.loads(Path(arquivo).read_text(encoding="utf-8"))
     if dados.get("formato") != FORMATO:

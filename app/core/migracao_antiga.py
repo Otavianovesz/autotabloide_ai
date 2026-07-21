@@ -78,10 +78,24 @@ def analisar_banco_antigo(caminho_db: str | Path) -> dict:
                       for p in s.execute(select(Produto)).scalars()}
     finally:
         db.engine.dispose()
-    novos = [a for a in antigos
-             if chave_natural(a["nome"], a["marca"] or "") not in atuais]
+    # dedup em DUAS frentes (frota F12): contra o acervo E dentro do
+    # próprio lote — duas linhas antigas com a mesma chave natural
+    # ("Cafe"/"Café") viravam dois produtos
+    novos: list[dict] = []
+    vistas_no_lote: set = set()
+    repetidos_no_lote = 0
+    for a in antigos:
+        ch = chave_natural(a["nome"], a["marca"] or "")
+        if ch in atuais:
+            continue
+        if ch in vistas_no_lote:
+            repetidos_no_lote += 1       # pulado e CONTADO (I2)
+            continue
+        vistas_no_lote.add(ch)
+        novos.append(a)
     return {"total_antigo": len(antigos), "novos": len(novos),
-            "existentes": len(antigos) - len(novos),
+            "existentes": len(antigos) - len(novos) - repetidos_no_lote,
+            "repetidos_no_lote": repetidos_no_lote,
             "produtos_novos": novos}
 
 

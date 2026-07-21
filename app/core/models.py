@@ -26,6 +26,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -321,6 +322,37 @@ class ProjetoSalvo(Base):
 
     def __repr__(self) -> str:
         return f"<Projeto {self.nome!r} layout={self.layout_id}>"
+
+
+# ==============================================================================
+# ÍNDICE DE SIGNIFICADO (FASE 12 — a promessa do sqlite-vec cumprida simples)
+# ==============================================================================
+
+
+class EmbeddingProduto(Base):
+    """O vetor de significado de UM produto, embedado UMA vez e persistido
+    (frota F12): a conciliação compara a oferta contra o acervo INTEIRO por
+    cosseno local (matemática, não POST) — a ordem travada embeddings→fuzzy
+    volta a valer sem reembedar 5k nomes a cada lote.
+
+    A linha guarda a CHAVE que foi embedada: se o dono renomear o produto,
+    a chave atual diverge e o vetor é refeito sozinho no próximo lote
+    (invalidação por conteúdo — nenhum gancho de edição para esquecer)."""
+
+    __tablename__ = "produto_embeddings"
+
+    produto_id: Mapped[int] = mapped_column(
+        ForeignKey("produtos.id", ondelete="CASCADE"), primary_key=True)
+    modelo: Mapped[str] = mapped_column(String(120), default="")
+    chave: Mapped[str] = mapped_column(Text, default="")
+    vetor: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    dim: Mapped[int] = mapped_column(default=0)
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, server_default=func.now(),
+        onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<EmbeddingProduto {self.produto_id} dim={self.dim}>"
 
 
 # ==============================================================================

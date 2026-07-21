@@ -11,3 +11,4 @@
 *.db binary
 *.pth binary
 *.xlsx binary
+*.otf binary

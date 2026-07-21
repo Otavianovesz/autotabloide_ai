@@ -74,6 +74,8 @@ def ler_manifesto(arquivo: str | Path) -> dict | None:
             m = json.loads(z.read("manifesto.json").decode("utf-8"))
             if m.get("formato") != FORMATO:
                 return None
+            if "overrides.json" not in z.namelist():
+                return None              # incompleto: a prévia já recusa
             estado = json.loads(z.read("estado.json").decode("utf-8"))
             m["itens"] = len(estado.get("itens", []))
             m["paginas"] = len((estado.get("layout") or {})
@@ -87,11 +89,28 @@ def importar_atproj(arquivo: str | Path) -> int:
     """Recria o projeto deste PC: linha nova (uuid PRÓPRIO — nunca colide
     com um projeto local, I1) + a pasta extraída. O estado entra byte a byte
     como veio (nada é recongelado — as fotos já são relativas à pasta)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # trazer projeto É escrita no acervo
     arquivo = Path(arquivo)
     with zipfile.ZipFile(arquivo) as z:
         manifesto = json.loads(z.read("manifesto.json").decode("utf-8"))
         if manifesto.get("formato") != FORMATO:
             raise ValueError("Este arquivo não é um projeto .atproj.")
+        try:
+            versao = int(manifesto.get("versao") or 1)
+        except (TypeError, ValueError):
+            versao = VERSAO_FORMATO + 1
+        if versao > VERSAO_FORMATO:
+            raise ValueError(
+                "Este projeto foi feito numa versão MAIS NOVA do "
+                "AutoTabloide — atualize o programa deste PC para trazê-lo.")
+        presentes = set(z.namelist())
+        faltando = [n for n in ("estado.json", "overrides.json")
+                    if n not in presentes]
+        if faltando:
+            raise ValueError("O .atproj veio incompleto — falta "
+                             + " e ".join(faltando)
+                             + ". Exporte o projeto de novo no PC de origem.")
         estado = z.read("estado.json").decode("utf-8")
         overrides = z.read("overrides.json").decode("utf-8")
         dados = json.loads(estado)
@@ -99,15 +118,18 @@ def importar_atproj(arquivo: str | Path) -> int:
         lay = LayoutDef.from_dict(dados["layout"])   # valida antes de gravar
 
         novo_uuid = str(_uuid.uuid4())
-        pasta = _pasta(novo_uuid)
+        pasta = _pasta(novo_uuid).resolve()
         pasta.mkdir(parents=True, exist_ok=True)
         for nome in z.namelist():
             if not nome.startswith("arquivos/") or nome.endswith("/"):
                 continue
             rel = Path(nome[len("arquivos/"):])
-            if rel.is_absolute() or ".." in rel.parts:
+            # contenção por caminho CANÔNICO: barra absoluto, "..", raiz
+            # sem letra de drive ("/Windows/...", que no Windows NÃO é
+            # "absolute" mas ancora na raiz do drive) e link para fora
+            alvo = (pasta / rel).resolve()
+            if pasta != alvo and pasta not in alvo.parents:
                 continue                 # zip malicioso não escapa da pasta
-            alvo = pasta / rel
             alvo.parent.mkdir(parents=True, exist_ok=True)
             alvo.write_bytes(z.read(nome))
 

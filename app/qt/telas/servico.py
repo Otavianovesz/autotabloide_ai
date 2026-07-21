@@ -653,6 +653,88 @@ def aplicar_override(dados, ov: dict):
     return novo
 
 
+def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
+                       registro_selos: list | None = None,
+                       validade: str | None = None):
+    """A montagem OFICIAL item→DadosProduto — a MESMA para Mesa, export e
+    Modo Pai (frota F12: o Modo Pai montava a peça 'à mão' e imprimia
+    DIFERENTE do export — sem multi-preço, sem selo +18, sem validade)."""
+    from app.rendering.arranjo import ModoArranjo
+    from app.rendering.compositor import DadosProduto, ImagemSlot
+    try:
+        arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
+    except ValueError:
+        arranjo = ModoArranjo.LEQUE           # valor estranho: leque padrão
+    # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
+    nome = (abreviar_para_tabloide(it.nome, abreviacoes)
+            if abreviacoes else it.nome)
+    # RG-33: os selos escolhidos do item viram selos_extra do passe final
+    extras = selos_do_item(it.selos, registro_selos) if it.selos else []
+    # RG-34: item com validade cadastrada ganha "De olho na validade"
+    # AUTOMÁTICO (decisão travada do padrão +18: automático é automático)
+    if it.validade:
+        from app.rendering.selos import Canto, Selo
+        extras = extras + [Selo("VALIDADE", Canto.INFERIOR_ESQUERDO)]
+    return DadosProduto(
+        nome,
+        selos_extra=extras,
+        preco_por=preco_decimal(it.preco),
+        multi_preco=it.multi_preco,          # R-070: "3 por R$10"
+        observacao=it.observacao,            # R-071: "limite 2 por cliente"
+        imagem_path=it.imagem,
+        imagens=[ImagemSlot(c) for c in (it.imagens or [])],
+        modo_arranjo=arranjo,
+        mais18=it.mais18,
+        unidade=it.unidade,
+        categoria=it.categoria,          # F8.2: as seções derivam daqui
+        # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
+        # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
+        texto_legal=(validade
+                     if (validade or "").upper().startswith("OFERTA")
+                     else f"Ofertas válidas {validade}"
+                     if validade else None),
+    )
+
+
+def dados_de_projeto_aberto(aberto):
+    """slot→DadosProduto de um ``ProjetoAberto``, com a precedência oficial
+    (override > item > banco) e as FALTAS visíveis (I2 — foto sumida nunca
+    é pulada em silêncio). Devolve ``(dados, faltas)``. Projeto CARTAZ usa
+    a montagem do cartaz (de/por + %-calculado)."""
+    itens = [ItemMesa.from_dict(d) for d in aberto.itens]
+    por_uid = {it.uid: it for it in itens}
+    faltas: list[str] = []
+    dados: dict = {}
+    if (aberto.tipo or "").upper() == "CARTAZ":
+        for sid, uid in (aberto.mapa or {}).items():
+            it = por_uid.get(uid)
+            if it is None:
+                faltas.append(f"célula {sid}: o item do projeto sumiu")
+                continue
+            dados[sid] = dados_cartaz_de_produto(
+                {"nome": it.nome, "preco": it.preco,
+                 "preco_de": it.preco_de, "imagem": it.imagem,
+                 "validade": it.validade},
+                validade_texto=aberto.validade_oferta)
+    else:
+        abrev = abreviacoes_tabloide()
+        registro = selos_disponiveis()
+        for sid, uid in (aberto.mapa or {}).items():
+            it = por_uid.get(uid)
+            if it is None:
+                faltas.append(f"célula {sid}: o item do projeto sumiu")
+                continue
+            d = dados_para_desenho(it, abrev or None, registro,
+                                   aberto.validade_oferta)
+            ov = (aberto.overrides or {}).get(sid)
+            dados[sid] = aplicar_override(d, ov) if ov else d
+    for sid, d in dados.items():
+        cam = getattr(d, "imagem_path", None)
+        if cam and not Path(cam).exists():
+            faltas.append(f"a foto de “{d.nome}” sumiu do disco")
+    return dados, faltas
+
+
 # --- agrupar por categoria (F8.2/A2): ordenação prévia, nunca vínculo ------------
 
 OUTROS = "Outros"
@@ -1502,7 +1584,8 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
     itens: list[ItemMesa] = []
     try:
         with db.Session() as session:
-            conc = Conciliador(session, motor=motor, embedder=motor)
+            conc = Conciliador(session, motor=motor, embedder=motor,
+                               status_cb=status_cb)
             for i, (desc, preco, ean) in enumerate(linhas, 1):
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
                 v = conc.conciliar(desc)
@@ -1531,6 +1614,11 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                                if p and p.categoria else None),   # F8
                     imagens=imagens_do_produto(p) if p else [],   # RG-28
                 ))
+        # I2 (frota F12): a degradação do conciliador (embeddings mortos)
+        # sobe até a tela — antes ficava engolida e o dono acreditava que
+        # a camada de significado tinha trabalhado
+        for a in conc.avisos:
+            aviso = f"{aviso} · {a}" if aviso else a
     finally:
         db.engine.dispose()
     return ResultadoMesa(itens=itens, validade_oferta=validade, aviso=aviso,
@@ -1723,16 +1811,22 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
 
 def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
                          status_cb: StatusCb = lambda _m: None,
-                         *, dpi_folha: int | None = None):
+                         *, dpi_folha: int | None = None,
+                         rascunho: bool = True):
     """R-144 (FASE 12): dezenas de etiquetas por FOLHA — uma etiqueta por
     item selecionado (a mesma fonte de verdade do cartaz), impostas em A4
     com marcas de corte (imposição CONTROLADA, só no fluxo do cartaz).
     Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
-    etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio)."""
+    etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio).
+
+    ``rascunho=True`` é o PADRÃO (frota F12: esta era a 4ª PORTA esquecida
+    — relâmpago foi a 3ª, a Fábrica a 2ª): etiqueta com preço só sai LIMPA
+    quando o chamador prova aprovação (`not pode_exportar_limpo` → True)."""
     from app.rendering.cartaz import layout_etiqueta
     from app.rendering.compositor import compor_pagina
     from app.rendering.export import exportar_pdf_multipagina
     from app.rendering.imposicao import impor_etiquetas
+    from app.rendering.marca_dagua import carimbar_rascunho
     if not itens:
         raise ValueError("nenhum item selecionado para as etiquetas")
     lay = layout_etiqueta()
@@ -1747,7 +1841,10 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
             "validade": it.validade})
         avisos.extend(f"“{it.nome}”: {a}"
                       for a in validar_composicao(lay, {sid: d}, cartaz=True))
-        etiquetas.append(compor_pagina(lay, lay.paginas[0], {sid: d}))
+        img = compor_pagina(lay, lay.paginas[0], {sid: d})
+        if rascunho:
+            img = carimbar_rascunho(img)
+        etiquetas.append(img)
     status_cb("Impondo as etiquetas na folha…")
     folhas = impor_etiquetas(etiquetas, lay.dpi)
     caminho = exportar_pdf_multipagina(folhas, destino,

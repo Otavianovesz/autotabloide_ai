@@ -3,6 +3,11 @@
 > O programa que monta o tabloide e o cartaz de gôndola do Belo Brasil.
 > Tudo funciona **sem internet** — a IA local (LM Studio) é um acelerador,
 > nunca uma exigência.
+>
+> As **duas únicas exceções**, ambas uma vez só: o **primeiro recorte de
+> foto** baixa o modelo de recorte (~900 MB, automático; depois nunca
+> mais) e a **busca de fotos na Web** (que é Web por natureza). Sem
+> internet nessas horas, o app avisa e segue — nada trava.
 
 ## As telas (na ordem da barra)
 
@@ -50,6 +55,20 @@
   imprime, mas não edita nada sem querer.
 - O **Modo simples** pode ficar fixo: botões grandes, 3 passos, nenhum
   perigo. Ideal para quem só confere e imprime.
+
+## Instalar, mover e desinstalar
+
+- **Instalar**: descompacte o .zip onde quiser (ex.: `C:\AutoTabloide`) e
+  abra o `AutoTabloide.exe`. Na primeira vez ele cria, **ao lado da pasta do
+  programa**, a pasta `AutoTabloide_System_Root` — é lá que vivem o banco,
+  as fotos e os projetos. Nada de internet, nada de instalador demorado.
+  Dica para o PC SEM internet da loja: faça o primeiro recorte de foto num
+  PC com internet (baixa o modelo uma vez) e leve junto a pasta `.u2net`
+  que nasce na pasta do usuário — ou simplesmente não use recorte lá.
+- **Mover/levar no pendrive**: copie as DUAS pastas juntas (a do programa e
+  a `AutoTabloide_System_Root`).
+- **Desinstalar**: apague a pasta do programa. O seu acervo
+  (`AutoTabloide_System_Root`) fica intacto — só some se você apagar também.
 
 ## Levar para outro PC
 

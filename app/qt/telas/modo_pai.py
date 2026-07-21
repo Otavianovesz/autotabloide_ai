@@ -249,11 +249,17 @@ class ModoPaiTela(QWidget):
         else:
             mostrar_toast(self, "Falta arrumar antes de aprovar: "
                           + "; ".join(faltas), tipo="erro")
+        # frota F12: sem isto, o recém-aprovado imprimia do cache — COM a
+        # marca RASCUNHO composta antes da aprovação
+        self._paginas_cache = None
         self._atualizar_situacao()
 
     def _paginas(self):
-        """Compõe as páginas do projeto (com RASCUNHO se não aprovado — a
-        marca vale em TODA porta). Devolve (paginas, layout) ou None."""
+        """Compõe as páginas do projeto pela montagem OFICIAL do serviço
+        (frota F12: a versão anterior montava 'à mão' e imprimia SEM
+        multi-preço, selo +18, override e validade — peça diferente do
+        export da Mesa). Com RASCUNHO se não aprovado — a marca vale em
+        TODA porta. Devolve (paginas, layout, faltas) ou None."""
         if self._paginas_cache is not None:
             return self._paginas_cache
         p = self._projeto_atual()
@@ -266,26 +272,31 @@ class ModoPaiTela(QWidget):
         aberto = _proj.abrir_projeto(p["id"])
         if aberto is None:
             return None
-        from app.rendering.compositor import DadosProduto
-        from app.qt.telas.servico import ItemMesa
-        itens = [ItemMesa.from_dict(d) for d in aberto.itens]
-        por_uid = {it.uid: it for it in itens}
-        dados = {}
-        for sid, uid in (aberto.mapa or {}).items():
-            it = por_uid.get(uid)
-            if it is None:
-                continue
-            dados[sid] = DadosProduto(
-                it.nome, preco_por=servico.preco_decimal(it.preco),
-                imagem_path=it.imagem)
+        dados, faltas = servico.dados_de_projeto_aberto(aberto)
         paginas = [compor_pagina(aberto.layout, pag, dados,
                                  fundo_path=aberto.layout.arquivo_fundo
                                  if i == 0 else None)
                    for i, pag in enumerate(aberto.layout.paginas)]
         if not _proj.esta_aprovado(p["id"]):     # a marca vale em TODA porta
             paginas = [carimbar_rascunho(im) for im in paginas]
-        self._paginas_cache = (paginas, aberto.layout)
+        self._paginas_cache = (paginas, aberto.layout, faltas)
         return self._paginas_cache
+
+    def _confirmar_faltas(self, faltas: list[str], acao: str) -> bool:
+        """I2 no Modo Pai: foto sumida/item perdido NUNCA passa mudo — o
+        pai decide com a falta na frente (em linguagem simples)."""
+        if not faltas:
+            return True
+        from PySide6.QtWidgets import QMessageBox
+        resp = QMessageBox.question(
+            self, f"{acao} mesmo assim?",
+            "Atenção — esta oferta tem problema:\n\n"
+            + "\n".join(f"• {f}" for f in faltas[:6])
+            + f"\n\n{acao} mesmo assim? (o certo é pedir para quem edita "
+            "arrumar antes)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return resp == QMessageBox.StandardButton.Yes
 
     def _imprimir(self) -> None:
         """Reusa a impressão direta da F11 (R-112): tamanho físico em mm +
@@ -295,7 +306,9 @@ class ModoPaiTela(QWidget):
             mostrar_toast(self, "Nada para imprimir nesta oferta.",
                           tipo="erro")
             return
-        paginas, layout = resultado
+        paginas, layout, faltas = resultado
+        if not self._confirmar_faltas(faltas, "Imprimir"):
+            return
         from PySide6.QtPrintSupport import (
             QPrintDialog, QPrinter, QPrintPreviewDialog)
 
@@ -320,7 +333,9 @@ class ModoPaiTela(QWidget):
             mostrar_toast(self, "Nada para enviar nesta oferta.",
                           tipo="erro")
             return
-        paginas, _lay = resultado
+        paginas, _lay, faltas = resultado
+        if not self._confirmar_faltas(faltas, "Enviar"):
+            return
         destino = Path(tempfile.mkdtemp(prefix="modo_pai_")) / "oferta.png"
         paginas[0].save(destino)
         from app.qt.telas import compartilhar

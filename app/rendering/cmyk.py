@@ -15,11 +15,16 @@ As regras travadas da ordem:
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable
+
+# frota F12: no exe SEM console (windowed), cada Ghostscript abria uma
+# janela de console preta piscando na cara do dono
+_SEM_JANELA = (subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
 
 _SEM_STATUS: Callable[[str], None] = lambda _m: None
 
@@ -51,7 +56,8 @@ def converter_pdf_cmyk(origem: str | Path, destino: str | Path | None = None,
     if perfil_icc and Path(perfil_icc).is_file():
         comando.append(f"-sOutputICCProfile={perfil_icc}")
     comando += ["-o", str(saida), str(origem)]
-    resultado = subprocess.run(comando, capture_output=True, timeout=300)
+    resultado = subprocess.run(comando, capture_output=True, timeout=300,
+                               creationflags=_SEM_JANELA)
     if resultado.returncode != 0 or not saida.is_file():
         erro = (resultado.stderr or b"").decode(errors="replace")[-400:]
         raise RuntimeError(f"a conversão CMYK falhou (Ghostscript): {erro}")

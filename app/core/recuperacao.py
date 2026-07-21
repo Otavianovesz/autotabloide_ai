@@ -154,9 +154,11 @@ def _logar(msg: str) -> None:
 
 
 def restaurar_de_snapshot(projeto_id: int, snapshot: dict) -> bool:
-    """Restaura o estado do snapshot escolhido. O estado CORROMPIDO vira
-    `corrompido_<agora>.bak.json` na pasta do projeto (reversível — nada é
-    apagado) e a operação fica em `logs/recuperacoes.log`."""
+    """Restaura o snapshot escolhido. O estado CORROMPIDO vira
+    `corrompido_<agora>.bak.json` (e os arquivos de agora, uma pasta
+    `corrompido_<agora>_arquivos/`) — reversível, nada é apagado; a
+    operação fica em `logs/recuperacoes.log`."""
+    import shutil
     db = Database().init()
     try:
         with db.Session() as s:
@@ -164,27 +166,53 @@ def restaurar_de_snapshot(projeto_id: int, snapshot: dict) -> bool:
             if row is None:
                 return False
             pasta = _pasta(row.uuid)
+            nome, evento = row.nome, row.evento
+    finally:
+        db.engine.dispose()
 
-            if snapshot["origem"] == "versão":
-                pv = pasta / "versoes" / str(snapshot["ts"])
-                try:
-                    estado = (pv / "estado.json").read_text(encoding="utf-8")
-                    overrides = (pv / "overrides.json").read_text("utf-8") \
-                        if (pv / "overrides.json").exists() else "{}"
-                except OSError:
-                    return False
-            else:                            # rascunho automático (F6)
-                from app.core import rascunho
-                dados = rascunho.carregar_rascunho()
-                if not dados or dados.get("projeto_id") != projeto_id:
-                    return False
-                estado = json.dumps(
-                    {"tipo": "TABLOIDE", "layout": dados.get("layout"),
-                     "itens": dados.get("itens", []),
-                     "validade_oferta": dados.get("validade"),
-                     "mapa": dados.get("mapa", {})}, ensure_ascii=False)
-                overrides = json.dumps(dados.get("overrides", {}),
-                                       ensure_ascii=False)
+    if snapshot["origem"] == "rascunho":
+        # frota F12 (I3): o rascunho carrega caminhos ABSOLUTOS — persistir
+        # direto violava o I3 e pulava o congelamento. O caminho oficial
+        # (salvar_projeto) congela as fotos na pasta e relativiza tudo —
+        # e ainda guarda a versão anterior (reversível de graça).
+        from app.core import projetos as _proj
+        from app.core import rascunho
+        from app.rendering.model import LayoutDef
+        dados = rascunho.carregar_rascunho()
+        if not dados or dados.get("projeto_id") != projeto_id:
+            return False
+        try:
+            lay = LayoutDef.from_dict(dados.get("layout") or {})
+        except Exception:
+            return False
+        from app.core.modo import SomenteLeitura
+        try:
+            _proj.salvar_projeto(
+                nome, evento, "TABLOIDE", lay, dados.get("itens", []),
+                validade_oferta=dados.get("validade"),
+                projeto_id=projeto_id, mapa=dados.get("mapa", {}),
+                overrides=dados.get("overrides", {}))
+        except SomenteLeitura:
+            raise                        # a mensagem PT-BR sobe até o toast
+        except Exception:
+            return False
+        _logar(f"projeto {projeto_id} restaurado do rascunho "
+               f"({snapshot.get('quando')}) pelo salvar oficial")
+        return True
+
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            row = s.get(ProjetoSalvo, projeto_id)
+            if row is None:
+                return False
+            pv = pasta / "versoes" / str(snapshot["ts"])
+            try:
+                estado = (pv / "estado.json").read_text(encoding="utf-8")
+                overrides = (pv / "overrides.json").read_text("utf-8") \
+                    if (pv / "overrides.json").exists() else "{}"
+            except OSError:
+                return False
             if _estado_valido(estado) is None:
                 return False                 # nunca restaurar outro lixo
 
@@ -197,11 +225,32 @@ def restaurar_de_snapshot(projeto_id: int, snapshot: dict) -> bool:
                  "overrides_json": row.overrides_json},
                 ensure_ascii=False), encoding="utf-8")
 
+            # frota F12: a versão é snapshot COMPLETO da pasta e as fotos
+            # congeladas têm nome POSICIONAL (imagens/00.png) — restaurar
+            # SÓ o estado deixava o nome de um produto com a FOTO de outro
+            # (troca silenciosa, I5). Os arquivos de agora ficam guardados;
+            # os da versão voltam.
+            guardado = pasta / f"corrompido_{ts}_arquivos"
+            guardado.mkdir(exist_ok=True)
+            for item in list(pasta.iterdir()):
+                if (item.name == "versoes"
+                        or item.name.startswith("corrompido_")):
+                    continue
+                shutil.move(str(item), str(guardado / item.name))
+            for item in pv.iterdir():
+                if item.name in ("estado.json", "overrides.json",
+                                 "meta.json"):
+                    continue
+                if item.is_dir():
+                    shutil.copytree(item, pasta / item.name)
+                else:
+                    shutil.copyfile(item, pasta / item.name)
+
             row.estado_slots = estado
             row.overrides_json = overrides
             s.commit()
             _logar(f"projeto {projeto_id} restaurado de "
-                   f"{snapshot['origem']} ({snapshot.get('quando')}); "
+                   f"versão ({snapshot.get('quando')}); "
                    f"corrompido guardado em {bak.name}")
             return True
     finally:

@@ -18,9 +18,12 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas = [
     # SEMENTES da raiz de dados (o launcher as copia no 1º boot): as fontes
-    # reais do compositor (sem elas, acento vira caixa) + logo/sons
-    ("AutoTabloide_System_Root/fontes", "semente/fontes"),
-    ("AutoTabloide_System_Root/assets", "semente/assets"),
+    # do compositor (Quicksand OFL + Roboto Apache — sem elas, acento vira
+    # caixa) + os logos. VERSIONADAS no repo (frota F12: apontar para a
+    # raiz de runtime do dev quebrava o build em clone limpo E empacotava
+    # lixo de cache da máquina do dono para todos os clientes).
+    ("app/assets/semente/fontes", "semente/fontes"),
+    ("app/assets/semente/assets", "semente/assets"),
 ]
 binaries = []
 hiddenimports = []
@@ -47,7 +50,14 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=["tkinter", "matplotlib", "IPython", "jupyter", "notebook",
-              "pytest", "PyQt5", "PyQt6"],
+              "pytest", "PyQt5", "PyQt6",
+              # caronas da bancada que o app NÃO usa (o 1º build media
+              # 4,4 GB; o PyInstaller os seguia por imports opcionais).
+              # NÃO excluir: cv2/scipy/pymatting/numba/llvmlite (o rembg
+              # precisa) nem sympy (o torch exige).
+              "xformers", "jax", "jaxlib", "bitsandbytes", "paddle",
+              "paddleocr", "cupy", "googleapiclient", "pyarrow", "av",
+              "pandas", "tensorboard"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -63,8 +73,8 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon="AutoTabloide_System_Root/assets/logo.ico"
-    if os.path.exists("AutoTabloide_System_Root/assets/logo.ico") else None,
+    icon="app/assets/semente/assets/logo.ico"
+    if os.path.exists("app/assets/semente/assets/logo.ico") else None,
 )
 coll = COLLECT(
     exe,

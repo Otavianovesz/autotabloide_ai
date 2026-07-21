@@ -12,12 +12,17 @@ rápido e fiel). Nada de motor de vídeo pesado: só o ffmpeg do sistema.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from PIL import Image
+
+# frota F12: no exe SEM console (windowed), cada ffmpeg/ffprobe abria uma
+# janela de console preta piscando na cara do dono
+_SEM_JANELA = (subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
 
 _SEM_FFMPEG = ("O vídeo pede o componente “ffmpeg”, que não foi encontrado neste "
                "computador. Os PNGs das páginas foram salvos normalmente — só o "
@@ -51,7 +56,7 @@ def _salvar_frames(imagens: list[Image.Image], pasta: Path) -> list[Path]:
 def _rodar_ffmpeg(args: list[str], exe: str) -> tuple[bool, str]:
     try:
         r = subprocess.run([exe, *args], capture_output=True, text=True,
-                           timeout=120)
+                           timeout=120, creationflags=_SEM_JANELA)
         return (r.returncode == 0), (r.stderr or "")
     except Exception as e:                       # timeout/erro do processo
         return False, str(e)
@@ -179,7 +184,8 @@ def contar_frames(caminho: str | Path) -> int | None:
         r = subprocess.run(
             [exe, "-v", "error", "-count_frames", "-select_streams", "v:0",
              "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0",
-             str(caminho)], capture_output=True, text=True, timeout=60)
+             str(caminho)], capture_output=True, text=True, timeout=60,
+            creationflags=_SEM_JANELA)
         return int((r.stdout or "").strip())
     except Exception:
         return None
@@ -193,7 +199,8 @@ def duracao_video(caminho: str | Path) -> float | None:
         r = subprocess.run(
             [exe, "-v", "error", "-show_entries", "format=duration",
              "-of", "csv=p=0", str(caminho)],
-            capture_output=True, text=True, timeout=60)
+            capture_output=True, text=True, timeout=60,
+            creationflags=_SEM_JANELA)
         return float((r.stdout or "").strip())
     except Exception:
         return None

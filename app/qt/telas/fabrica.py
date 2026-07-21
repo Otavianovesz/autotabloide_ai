@@ -685,8 +685,13 @@ class FabricaTela(QWidget):
             mostrar_toast(self, "Nenhum item pronto neste lote.", tipo="info")
             return
 
+        # a 4ª porta de exportação (frota F12): etiqueta com preço só sai
+        # LIMPA com o projeto do lote APROVADO — a mesma régua do _exportar
+        marca = not servico.pode_exportar_limpo(self._projeto_id)
+
         def _trabalho(st, itens=list(prontos), destino=caminho):
-            return servico.gerar_etiquetas_lote(itens, destino, st)
+            return servico.gerar_etiquetas_lote(itens, destino, st,
+                                                rascunho=marca)
 
         trab = Trabalhador(_trabalho)
         trab.status.connect(self._overlay.mostrar)

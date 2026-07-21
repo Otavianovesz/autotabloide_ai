@@ -420,6 +420,8 @@ def abrir_versao_como_novo(projeto_id: int, ts: str) -> int | None:
     """Passo 61: a ÚNICA ação sobre versão — clonar como projeto NOVO
     ("Nome (versão de DD/MM)"). Restaurar por cima é PROIBIDO (I1: o
     projeto vivo nunca é sobrescrito por versão)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: cria projeto novo
     db = Database().init()
     try:
         with db.Session() as s:
@@ -823,6 +825,8 @@ def historico_edicoes(limite: int | None = None) -> list[dict]:
 
 def renomear_projeto(projeto_id: int, novo_nome: str,
                      novo_evento: str | None = None) -> None:
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: PC da loja não renomeia
     db = Database().init()
     try:
         with db.Session() as s:
@@ -838,6 +842,8 @@ def renomear_projeto(projeto_id: int, novo_nome: str,
 
 def duplicar_projeto(projeto_id: int, novo_nome: str) -> int | None:
     """Copiar um antigo para fazer o novo (linha + pasta de arquivos)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: cria projeto novo
     db = Database().init()
     try:
         with db.Session() as s:
@@ -869,5 +875,7 @@ def excluir_projeto(projeto_id: int) -> None:
     """FASE 2 (passo 82): excluir da UI é SOFT — o projeto vai para a
     lixeira do Cofre por 30 dias (pasta intacta, versões junto — passo 63);
     a morte real é a purga ou o 'Excluir agora' de lá."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: o gesto MAIS perigoso
     from app.core.lixeira import excluir_suave
     excluir_suave("projeto", projeto_id)
