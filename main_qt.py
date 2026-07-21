@@ -34,13 +34,22 @@ from src.core.boot_safety import (
 )
 from src.core.instance_lock import acquire_or_focus, release_instance_lock
 
-from PySide6.QtWidgets import (
-    QApplication, QSplashScreen, QMessageBox, QSystemTrayIcon
-)
-from PySide6.QtCore import (
-    Qt, QTimer, Signal, QObject, QThread, QSharedMemory, QSettings
-)
-from PySide6.QtGui import QPixmap, QFontDatabase, QFont, QPainter, QColor
+try:
+    from PySide6.QtWidgets import (
+        QApplication, QSplashScreen, QMessageBox, QSystemTrayIcon
+    )
+    from PySide6.QtCore import (
+        Qt, QTimer, Signal, QObject, QThread, QSharedMemory, QSettings
+    )
+    from PySide6.QtGui import QPixmap, QFontDatabase, QFont, QPainter, QColor
+except ImportError as e:
+    import sys
+    print("\n[ERRO CRÍTICO] Dependências não encontradas.")
+    print(f"Detalhe: {e}")
+    print("\nPOR FAVOR, EXECUTE O SEGUINTE NO TERMINAL:")
+    print("  poetry install")
+    print("\nIsso instalará o 'PySide6' e outras bibliotecas necessárias.\n")
+    sys.exit(1)
 
 # ==============================================================================
 # CONSTANTES CRÍTICAS - NÃO MODIFICAR
@@ -659,8 +668,9 @@ def main():
     
     # PASSO 52: Tratamento de DPI (Industrial Grade)
     # Habilita suporte a monitores 4K e scaling do OS
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # High DPI defaults are enabled in Qt6, attributes are deprecated
+    # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    # QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
     # Cria aplicação
     app = QApplication(sys.argv)

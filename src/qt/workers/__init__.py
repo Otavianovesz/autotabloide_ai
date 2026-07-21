@@ -8,6 +8,7 @@ from PySide6.QtCore import QThread, Signal, Slot, QMutex, QWaitCondition
 from typing import Optional, Callable, Any, List, Dict
 from pathlib import Path
 import time
+from src.ai.sentinel_worker import SentinelWorker
 
 
 class BaseWorker(QThread):
@@ -53,116 +54,7 @@ class BaseWorker(QThread):
         self._mutex.unlock()
 
 
-class SentinelWorker(BaseWorker):
-    """Worker do Sentinel - carrega LLM e processa em background."""
-    
-    llm_loaded = Signal(bool)  # sucesso
-    llm_response = Signal(str, str)  # prompt, resposta
-    
-    def __init__(self, model_path: str = "", parent=None):
-        super().__init__(parent)
-        self.model_path = model_path
-        self._llm = None
-        self._request_queue: List[Dict] = []
-    
-    def run(self) -> None:
-        """Loop principal do Sentinel."""
-        self.status.emit("Iniciando Sentinel...")
-        
-        # Carrega LLM
-        if self.model_path:
-            self._load_llm()
-        
-        # Loop de processamento
-        while self._running:
-            self.check_pause()
-            
-            if self._request_queue:
-                request = self._request_queue.pop(0)
-                self._process_request(request)
-            else:
-                time.sleep(0.1)
-        
-        self.status.emit("Sentinel finalizado")
-        self.finished_work.emit()
-    
-    def _load_llm(self) -> None:
-        """Carrega modelo LLM com fallback graceful."""
-        try:
-            self.progress.emit(10, "Verificando modelo...")
-            
-            model_path = Path(self.model_path)
-            if not model_path.exists():
-                self.status.emit("Modelo LLM não encontrado - modo offline ativado")
-                self.llm_loaded.emit(False)
-                return
-            
-            self.progress.emit(50, "Carregando modelo LLM...")
-            
-            # Tenta carregar llama-cpp-python
-            try:
-                from llama_cpp import Llama
-                
-                # Obtém configurações de GPU
-                try:
-                    from src.core.settings_service import settings_service
-                    n_gpu_layers = settings_service.get("llm.n_gpu_layers", 0)
-                    n_ctx = settings_service.get("llm.context_size", 2048)
-                except Exception:
-                    n_gpu_layers = 0
-                    n_ctx = 2048
-                
-                self._llm = Llama(
-                    model_path=str(model_path),
-                    n_gpu_layers=n_gpu_layers,
-                    n_ctx=n_ctx,
-                    verbose=False
-                )
-                
-                self.progress.emit(100, "LLM carregado!")
-                self.llm_loaded.emit(True)
-                self.status.emit("LLM pronto para uso")
-                
-            except ImportError:
-                self.status.emit("llama-cpp-python não instalado - modo offline")
-                self.llm_loaded.emit(False)
-                
-        except Exception as e:
-            self.error.emit(f"Erro ao carregar LLM: {e}")
-            self.llm_loaded.emit(False)
-    
-    def _process_request(self, request: Dict) -> None:
-        """Processa requisição usando LLM real ou fallback."""
-        prompt = request.get("prompt", "")
-        request_id = request.get("id", "")
-        
-        self.status.emit(f"Processando: {prompt[:50]}...")
-        
-        if self._llm:
-            try:
-                # Usa LLM real
-                output = self._llm(
-                    prompt,
-                    max_tokens=256,
-                    temperature=0.1,
-                    top_p=0.9,
-                    stop=["\\n\\n"]
-                )
-                response = output["choices"][0]["text"].strip()
-            except Exception as e:
-                response = f"[Erro LLM: {e}]"
-        else:
-            # Fallback sem LLM
-            response = f"[Modo offline - prompt: {prompt[:100]}...]"
-        
-        self.llm_response.emit(request_id, response)
-    
-    def queue_request(self, prompt: str, request_id: str = "") -> None:
-        """Adiciona requisição à fila."""
-        self._request_queue.append({
-            "prompt": prompt,
-            "id": request_id
-        })
+
 
 
 class RenderWorker(BaseWorker):

@@ -73,7 +73,7 @@ class ProductRepository:
             )
             self.session.add(produto)
         
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(produto)
         return produto
 
@@ -156,7 +156,8 @@ class ProductRepository:
             confidence=Decimal(str(confidence))
         )
         self.session.add(alias)
-        await self.session.commit()
+        self.session.add(alias)
+        await self.session.flush()
 
     async def update_quality_status(self, produto_id: int, status: int):
         """Atualiza status de qualidade do produto."""
@@ -166,7 +167,8 @@ class ProductRepository:
             .values(status_qualidade=status)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.execute(stmt)
+        await self.session.flush()
 
     async def update_images(self, produto_id: int, hashes: List[str]):
         """Atualiza lista de imagens do produto."""
@@ -176,7 +178,8 @@ class ProductRepository:
             .values(img_hash_ref=json.dumps(hashes))
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.execute(stmt)
+        await self.session.flush()
     
     async def add_image_to_product(self, produto_id: int, img_hash: str):
         """Adiciona uma imagem ao produto e recalcula qualidade."""
@@ -300,7 +303,7 @@ class ProductRepository:
             )
             self.session.add(new_alias)
         
-        await self.session.commit()
+        await self.session.flush()
 
     async def get_learned_value(self, raw_input: str, field: str) -> Optional[str]:
         """
@@ -319,7 +322,7 @@ class ProductRepository:
             if field in overrides:
                 # Incrementa uso
                 alias.usage_count = (alias.usage_count or 0) + 1
-                await self.session.commit()
+                await self.session.flush()
                 return overrides[field]
         
         return None
@@ -378,8 +381,12 @@ class LayoutRepository:
             estrutura_json=json.dumps(estrutura or {}),
             integrity_hash=integrity_hash
         )
+        
+        if os.path.isabs(arquivo):
+            raise ValueError(f"Caminho absoluto proibido: {arquivo}. Use caminho relativo.")
+            
         self.session.add(layout)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(layout)
         return layout
 
@@ -411,14 +418,18 @@ class LayoutRepository:
             .where(LayoutMeta.id == layout_id)
             .values(thumbnail_path=thumbnail_path)
         )
+        
+        if thumbnail_path and os.path.isabs(thumbnail_path):
+            raise ValueError(f"Caminho absoluto proibido para thumbnail: {thumbnail_path}")
+            
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
     async def delete(self, layout_id: int):
         """Remove um layout."""
         stmt = delete(LayoutMeta).where(LayoutMeta.id == layout_id)
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
 
 # ==============================================================================
@@ -447,7 +458,7 @@ class ProjectRepository:
             author_id=author_id
         )
         self.session.add(projeto)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(projeto)
         return projeto
 
@@ -492,7 +503,7 @@ class ProjectRepository:
             )
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
     async def set_dirty(self, projeto_id: int, dirty: bool = True):
         """Marca projeto como modificado (para autosave)."""
@@ -502,7 +513,7 @@ class ProjectRepository:
             .values(is_dirty=dirty)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
     async def lock(self, projeto_id: int, locked: bool = True):
         """Trava/destrava projeto para edição."""
@@ -512,13 +523,13 @@ class ProjectRepository:
             .values(is_locked=locked)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
     async def delete(self, projeto_id: int):
         """Remove um projeto."""
         stmt = delete(ProjetoSalvo).where(ProjetoSalvo.id == projeto_id)
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()
 
     async def duplicate(self, projeto_id: int, new_name: str) -> ProjetoSalvo:
         """Cria uma cópia profunda do projeto."""
@@ -536,7 +547,7 @@ class ProjectRepository:
             author_id=original.author_id
         )
         self.session.add(copy)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(copy)
         return copy
 
@@ -572,7 +583,7 @@ class AuditRepository:
             severity=severity
         )
         self.session.add(entry)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(entry)
         return entry
 
@@ -704,7 +715,7 @@ class KnowledgeRepository:
             priority_boost=Decimal(str(priority_boost))
         )
         self.session.add(vector)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(vector)
         return vector
 
@@ -738,7 +749,7 @@ class KnowledgeRepository:
             confidence_delta=Decimal(str(confidence_delta)) if confidence_delta else None
         )
         self.session.add(correction)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(correction)
         return correction
 
@@ -760,4 +771,4 @@ class KnowledgeRepository:
             .values(processed=True)
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        await self.session.flush()

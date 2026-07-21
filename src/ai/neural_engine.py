@@ -137,6 +137,16 @@ def neural_worker(
                 verbose=False
             )
             logger.info("Modelo LLM carregado com sucesso")
+            
+            # Pre-compile grammar if available
+            try:
+                from llama_cpp import LlamaGrammar
+                global _compiled_grammar
+                _compiled_grammar = LlamaGrammar.from_string(ACTIVE_GRAMMAR, verbose=False)
+                logger.info("Gramática GBNF compilada com sucesso")
+            except Exception as e:
+                logger.warning(f"Erro ao compilar gramática: {e}")
+                
         else:
             logger.warning(f"Modelo LLM não encontrado: {model_path}")
     except ImportError:
@@ -241,6 +251,11 @@ def _sanitize_product(task: NeuralTask, llm) -> NeuralResult:
     try:
         prompt = f"{SYSTEM_PROMPT_ETL}\n\nEntrada: \"{raw_text}\"\nSaída:"
         
+        # Prepare grammar
+        grammar = None
+        if '_compiled_grammar' in globals() and _compiled_grammar:
+            grammar = _compiled_grammar
+
         response = llm.create_chat_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT_ETL},
@@ -248,7 +263,8 @@ def _sanitize_product(task: NeuralTask, llm) -> NeuralResult:
             ],
             max_tokens=256,
             temperature=0.0,
-            top_p=0.1
+            top_p=0.1,
+            grammar=grammar
         )
         
         output = response["choices"][0]["message"]["content"]

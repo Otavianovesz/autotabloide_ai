@@ -1,63 +1,45 @@
 # AutoTabloide AI
 
-## Overview
+App desktop offline (Windows) que automatiza a produção de material gráfico de
+ofertas de supermercado: importar tabela/foto → conciliar com o banco → sanitizar
+nomes → tratar imagens → montar o layout → exportar. Ver `CLAUDE.md`, `docs/` e
+`docs/PLANO_DE_CONSTRUCAO.md`.
 
-Offline-first AI-powered tabloid generation system for retail graphic automation.
+> Reconstrução limpa em `app/` (o `src/` antigo é legado, será removido). Stack:
+> Python 3.12 + PySide6/Qt6, SQLite (SQLAlchemy síncrono), Pillow para compor,
+> rembg/Real-ESRGAN/icrawler para imagens, IA local via API compatível-OpenAI.
 
-## Features
+## Como rodar
 
-- **Industrial-grade rendering**: SVG vector manipulation with CMYK support
-- **Local AI**: LLM for data sanitization, image search, background removal
-- **Qt Desktop UI**: 5 screens (Ateliê, Almoxarifado, Fábrica, Cofre, Configurações)
-- **Offline-First**: Complete autonomy without cloud dependencies
+A IA usa um servidor local (LM Studio) — ver `docs/INSTALAR_LM_STUDIO.md`.
 
-## Setup Instructions
+```bash
+# Abrir o EDITOR numa janela real (arte do Belo Brasil + célula-mestre):
+python -m app.editor_app
+#   (equivalente: python -m app.main --editor)
 
-1. **Initialize Requirements**:
-   Run the setup script to create the directory structure:
+# Janela base:
+python -m app.main
 
-   ```bash
-   python setup.py
-   ```
+# Testes:
+python -m pytest app/tests -q
+```
 
-2. **Critical Binaries (Manual Step)**:
-   Per strict offline protocols, you must manually populate the `AutoTabloide_System_Root/bin/` directory with:
+### Demos (geram imagens numa pasta de saída)
 
-   - `vec0.dll` (Windows) or `vec0.so` (Linux) - [sqlite-vec extension] (optional, for RAG)
-   - `gswin64c.exe` (Windows) or `gs` (Linux) - [Ghostscript] (required for PDF/CMYK)
+```bash
+python -m app.scripts.gate_fidelidade saida/frente.png   # produto sobre a arte real
+python -m app.scripts.demo_editor saida/editor.png       # editor com camadas
+python -m app.scripts.demo_multi_imagem saida_multi      # múltiplas imagens no slot
+python -m app.scripts.demo_conciliacao                   # semáforo verde/amarelo/vermelho
+python -m app.scripts.demo_busca_imagem "Nutella 350g Ferrero"
+```
 
-3. **Install Dependencies**:
+## Estrutura (`app/`)
 
-   ```bash
-   poetry install
-   ```
-
-4. **Verify Installation**:
-
-   ```bash
-   python verify_system.py
-   ```
-
-5. **Run Application**:
-   ```bash
-   python main.py
-   ```
-
-## Architecture
-
-- **Root**: `AutoTabloide_System_Root/`
-- **Database**: SQLite (WAL mode) + optional `sqlite-vec` for vector search
-- **GUI**: PySide6 (Qt6)
-- **AI**: Local GGUF models via `llama-cpp-python`
-- **Rendering**: lxml + CairoSVG + Ghostscript
-
-## Tech Stack
-
-| Component      | Technology                    |
-| -------------- | ----------------------------- |
-| Language       | Python 3.12+                  |
-| UI Framework   | PySide6 (Qt6)                 |
-| Database       | SQLAlchemy Async + SQLite WAL |
-| Vector Engine  | lxml + CairoSVG               |
-| AI/ML          | llama-cpp-python, rembg, ONNX |
-| PDF Processing | Ghostscript, pypdf            |
+- `core/` — banco, modelos, sanitização, repositórios.
+- `rendering/` — compositor (Pillow), modelo de layout (mm/px), arranjo, selos, persistência.
+- `images/` — busca (Bing), remoção de fundo (rembg), upscale (Real-ESRGAN), biblioteca.
+- `ai/` — cliente IA, enriquecimento, conciliação (3 camadas), OCR, pipeline.
+- `qt/` — editor visual (canvas WYSIWYG, camadas, propriedades).
+- `AutoTabloide_System_Root/` — dados do sistema (banco, imagens, layouts, fontes…).

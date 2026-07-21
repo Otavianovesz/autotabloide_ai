@@ -8,39 +8,41 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "~3.12"
-# === Qt Framework (Replaces Flet) ===
+# === Qt Framework (interface) ===
 pyside6 = "6.6.1"
-qasync = "0.27.1"  # Qt-Asyncio integration
-# === Database ===
+# === Banco (SQLAlchemy síncrono — sem async) ===
 sqlalchemy = "2.0.25"
-aiosqlite = "0.19.0"
-# === Rendering ===
+# === Leitura de SVG do Illustrator (coordenadas de slots) ===
 lxml = "5.1.0"
-cairosvg = "2.7.1"
-# === AI/ML ===
-llama-cpp-python = "0.2.23"
-# === Image Processing ===
+# === Processamento de imagem (Fase 4) ===
 pillow = "10.2.0"
-rembg = "2.0.50"
+rembg = "^2.0.50"
 opencv-python-headless = "4.9.0.80"
-onnxruntime = "1.17.0"
-# === Utilities ===
+# RG-02 (achado da Onda 1): 1.17.0 é incompatível com numpy 2.x (o import do
+# rembg morria no ambiente poetry). >=1.19.2 tem wheels compatíveis; o
+# ambiente vivo da máquina roda 1.23.x + numpy 2.4 sem problema.
+onnxruntime = ">=1.19.2,<2"
+spandrel = ">=0.3"       # Real-ESRGAN (upscale F4.3) — traz torch
+# === Exportação PDF ===
 pypdf = "4.0.1"
+# === Utilidades ===
 loguru = "0.7.2"
 pydantic = "2.6.0"
-rapidfuzz = "3.6.0"
+rapidfuzz = "3.6.0"       # fuzzy da conciliação (Fase 3)
 psutil = "7.1.3"
-chardet = "5.2.0"  # Encoding detection for Excel
-openpyxl = "3.1.2"  # Excel parsing
-# === Web/Network ===
-playwright = "1.41.0"
+chardet = "5.2.0"         # detecção de encoding de planilhas
+openpyxl = "3.1.2"        # leitura de Excel
+# === Rede: IA local via API compatível-OpenAI + busca de imagens (Fases 3/4) ===
 httpx = "0.26.0"
-aiofiles = "23.2.1"
-# === Typography ===
+ddgs = "^9.0"            # busca de imagens (DuckDuckGo; o icrawler quebrou e trazia lixo)
+# === Tipografia (ajuste de fonte e hifenização) ===
 fonttools = "4.47.0"
 pyphen = "0.15.0"
-# === Database Migrations ===
-alembic = "1.13.1"
+
+# Removidos na reconstrução (arquitetura antiga):
+#   cairosvg, llama-cpp-python, playwright, qasync, aiosqlite, aiofiles, alembic
+# A IA passa a ser acessada pela API padrão (httpx); embeddings via sqlite-vec (Fase 3);
+# busca de imagens via ddgs/DuckDuckGo (Fase 4). Entram quando a fase chegar.
 
 
 
@@ -87,4 +89,5 @@ exclude = [".eggs", ".git", ".venv", "build", "dist", "alembic"]
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q"
-testpaths = ["tests"]
+# Testes da reconstrução limpa. O "tests/" antigo (do protótipo) fica de fora.
+testpaths = ["app/tests"]

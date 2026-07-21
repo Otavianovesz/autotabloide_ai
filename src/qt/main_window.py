@@ -12,8 +12,9 @@ from PySide6.QtWidgets import (
     QStackedWidget, QPushButton, QFrame, QLabel, QStatusBar,
     QSizePolicy, QSpacerItem, QApplication, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QTimer
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QRectF, QByteArray
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtGui import QCloseEvent, QColor, QPainterPath, QPainter, QBrush, QPen, QFont
 
 from .widgets.dashboard import DashboardWidget
 from .widgets.estoque import EstoqueWidget
@@ -69,7 +70,7 @@ class NavButton(QPushButton):
         
         # SVG path
         self.path = QPainterPath()
-        from PySide6.QtGui import QPainterPath
+
         # Parse simples do SVG path string não é trivial sem QPainterPath.addPath (disponível QT 6.4+?)
         # Para compatibilidade, vamos usar QIcon com QPixmap mask colorization se addPath falhar,
         # MAS, como prometido SVG via código, vamos tentar usar parser básico ou QFont com icon font?
@@ -83,7 +84,7 @@ class NavButton(QPushButton):
         pass
 
     def paintEvent(self, event):
-        from PySide6.QtGui import QPainter, QBrush, QPen, QColor, QFont
+
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -127,8 +128,7 @@ class NavButton(QPushButton):
         # DECISÃO: Para cumprir "SVG via código", vou usar QPainterPath com coordenadas relativas? Muito complexo.
         # VOU USAR QSvgRenderer carregando BYTES do SVG construído on-the-fly.
         
-        from PySide6.QtSvg import QSvgRenderer
-        from PySide6.QtCore import QByteArray
+
         
         # Monta SVG string com fill color dinâmico
         color_hex = icon_color.name()

@@ -1,0 +1,9 @@
+{
+  "_aviso": "Resposta de EXEMPLO do OCR (escrita à mão) — NÃO é o modelo lendo uma imagem. Serve para validar o encanamento do fluxo. A precisão real só se prova com um print real do WhatsApp.",
+  "validade_oferta": "01/07/2026 até 27/07/2026",
+  "linhas": [
+    {"descricao": "BOMBRIL 45 g", "preco": "2,66"},
+    {"descricao": "REFRI KITUBAINA 1,5 L", "preco": "5,50"},
+    {"descricao": "AZEITE E. VIRGEM CARBONELL e GALLO CLÁSSICO 500 ml", "preco": "38,80"}
+  ]
+}

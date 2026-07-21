@@ -85,23 +85,24 @@ class ProjectManager:
         if not layout:
             raise ValueError(f"Layout {layout_id} nao encontrado")
         
-        # Cria projeto
-        project = await self.project_repo.create(
-            nome=name,
-            layout_id=layout_id,
-            author_id=author_id
-        )
-        
-        # Registra auditoria
-        await self.audit_repo.log(
-            entity_type=TipoEntidade.PROJETO.value,
-            entity_id=project.id,
-            action_type=TipoAcao.CREATE.value,
-            description=f"Projeto '{name}' criado"
-        )
-        
-        logger.info(f"Projeto criado: {project.id} - {name}")
-        return project
+        async with self.session.begin():
+            # Cria projeto
+            project = await self.project_repo.create(
+                nome=name,
+                layout_id=layout_id,
+                author_id=author_id
+            )
+            
+            # Registra auditoria
+            await self.audit_repo.log(
+                entity_type=TipoEntidade.PROJETO.value,
+                entity_id=project.id,
+                action_type=TipoAcao.CREATE.value,
+                description=f"Projeto '{name}' criado"
+            )
+            
+            logger.info(f"Projeto criado: {project.id} - {name}")
+            return project
 
     async def load_project(self, project_id: int) -> Dict[str, Any]:
         """
@@ -178,30 +179,31 @@ class ProjectManager:
         layout = await self.layout_repo.get_by_id(project.layout_id)
         layout_hash = layout.integrity_hash if layout else None
         
-        # Enriquece slots com dados completos do produto
-        enriched_slots = await self._enrich_slots(slots)
-        
-        # Salva snapshot
-        await self.project_repo.save_snapshot(
-            projeto_id=project_id,
-            slots=enriched_slots,
-            overrides=overrides,
-            layout_hash=layout_hash
-        )
-        
-        # Remove do set de dirty
-        self._dirty_projects.discard(project_id)
-        
-        # Registra auditoria
-        await self.audit_repo.log(
-            entity_type=TipoEntidade.PROJETO.value,
-            entity_id=project_id,
-            action_type=TipoAcao.UPDATE.value,
-            description="Projeto salvo"
-        )
-        
-        logger.info(f"Projeto {project_id} salvo")
-        return True
+        async with self.session.begin():
+            # Enriquece slots com dados completos do produto
+            enriched_slots = await self._enrich_slots(slots)
+            
+            # Salva snapshot
+            await self.project_repo.save_snapshot(
+                projeto_id=project_id,
+                slots=enriched_slots,
+                overrides=overrides,
+                layout_hash=layout_hash
+            )
+            
+            # Remove do set de dirty
+            self._dirty_projects.discard(project_id)
+            
+            # Registra auditoria
+            await self.audit_repo.log(
+                entity_type=TipoEntidade.PROJETO.value,
+                entity_id=project_id,
+                action_type=TipoAcao.UPDATE.value,
+                description="Projeto salvo"
+            )
+            
+            logger.info(f"Projeto {project_id} salvo")
+            return True
 
     async def _enrich_slots(self, slots: Dict[str, Dict]) -> Dict[str, Dict]:
         """
@@ -543,18 +545,19 @@ class ProjectManager:
         Returns:
             Novo projeto criado
         """
-        new_project = await self.project_repo.duplicate(project_id, new_name)
-        
-        # Registra auditoria
-        await self.audit_repo.log(
-            entity_type=TipoEntidade.PROJETO.value,
-            entity_id=new_project.id,
-            action_type=TipoAcao.CREATE.value,
-            description=f"Projeto duplicado de #{project_id}"
-        )
-        
-        logger.info(f"Projeto {project_id} duplicado como {new_project.id}")
-        return new_project
+        async with self.session.begin():
+            new_project = await self.project_repo.duplicate(project_id, new_name)
+            
+            # Registra auditoria
+            await self.audit_repo.log(
+                entity_type=TipoEntidade.PROJETO.value,
+                entity_id=new_project.id,
+                action_type=TipoAcao.CREATE.value,
+                description=f"Projeto duplicado de #{project_id}"
+            )
+            
+            logger.info(f"Projeto {project_id} duplicado como {new_project.id}")
+            return new_project
 
     # ==========================================================================
     # LISTAGEM
@@ -597,14 +600,15 @@ class ProjectManager:
         if project.is_locked:
             raise PermissionError("Projeto travado nao pode ser excluido")
         
-        # Registra auditoria ANTES de deletar
-        await self.audit_repo.log(
-            entity_type=TipoEntidade.PROJETO.value,
-            entity_id=project_id,
-            action_type=TipoAcao.DELETE.value,
-            diff={"nome": project.nome_projeto},
-            description=f"Projeto '{project.nome_projeto}' excluido"
-        )
-        
-        await self.project_repo.delete(project_id)
-        logger.info(f"Projeto {project_id} excluido")
+        async with self.session.begin():
+            # Registra auditoria ANTES de deletar
+            await self.audit_repo.log(
+                entity_type=TipoEntidade.PROJETO.value,
+                entity_id=project_id,
+                action_type=TipoAcao.DELETE.value,
+                diff={"nome": project.nome_projeto},
+                description=f"Projeto '{project.nome_projeto}' excluido"
+            )
+            
+            await self.project_repo.delete(project_id)
+            logger.info(f"Projeto {project_id} excluido")
