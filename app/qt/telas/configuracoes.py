@@ -283,6 +283,16 @@ class ConfiguracoesTela(QWidget):
             "imprimir seguem livres. Desligar pede confirmação.")
         self.chk_somente_leitura.toggled.connect(self._somente_leitura_mudou)
         form_backups.addRow(self.chk_somente_leitura)
+        # FASE 12 (passos 70-71): trazer o acervo do AutoTabloide ANTIGO
+        self.btn_migrar_antigo = QPushButton(
+            " Migrar do AutoTabloide antigo…")
+        self.btn_migrar_antigo.setIcon(icone("abrir", tamanho=14))
+        self.btn_migrar_antigo.setToolTip(
+            "Lê o banco do programa antigo (só leitura) e traz os produtos "
+            "que você ainda não tem — com prévia antes; nada duplica, nada "
+            "sobrescreve o seu acervo.")
+        self.btn_migrar_antigo.clicked.connect(self._migrar_antigo)
+        form_backups.addRow(self.btn_migrar_antigo)
         form_imagens = QFormLayout()
         form_imagens.setVerticalSpacing(t.ESP_2)
         # FASE 3 (passos 49-50): upscale desligável, pasta da biblioteca
@@ -1092,6 +1102,40 @@ class ConfiguracoesTela(QWidget):
                             "aprova e imprime." if ligado
                       else "Modo somente-leitura desligado — edição "
                            "liberada.")
+
+    def _migrar_antigo(self) -> None:
+        """FASE 12: prévia → confirmação → migra em worker (chave natural)."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from app.core.migracao_antiga import (
+            analisar_banco_antigo, migrar_banco_antigo)
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "O banco do AutoTabloide antigo", "",
+            "Banco SQLite (*.db *.sqlite *.sqlite3);;Todos (*.*)")
+        if not arquivo:
+            return
+        try:
+            previa = analisar_banco_antigo(arquivo)
+        except ValueError as exc:
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        resp = QMessageBox.question(
+            self, "Trazer o acervo antigo?",
+            f"O banco antigo tem {previa['total_antigo']} produto(s): "
+            f"{previa['novos']} novo(s) para trazer e "
+            f"{previa['existentes']} que você JÁ tem (serão pulados — "
+            "nada duplica nem sobrescreve). Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        from app.qt.workers import Trabalhador
+        trab = Trabalhador(lambda st: migrar_banco_antigo(arquivo, st))
+        trab.ok.connect(lambda r: mostrar_toast(
+            self, f"Migração pronta: {r['importados']} trazidos, "
+                  f"{r['pulados']} pulados (já existiam), "
+                  f"{r['aliases']} apelidos aprendidos.", tipo="sucesso"))
+        trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+        self._trabalhos.rodar(trab)
 
     def _verificar_atualizacao(self) -> None:
         """R-127 (FASE 12): checa em worker (a UI não congela); o resultado

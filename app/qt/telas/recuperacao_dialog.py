@@ -59,7 +59,7 @@ class RecuperacaoDialog(QDialog):
             li.setData(Qt.ItemDataRole.UserRole, sn)
             self.lista.addItem(li)
         vazio = EstadoVazio(
-            "alerta", "Nenhum snapshot bom encontrado",
+            "alerta_circulo", "Nenhum ponto bom encontrado",
             "Sem versões nem rascunho válidos — restaure de um backup do\n"
             "Cofre (Configurações › Backups).")
         raiz.addWidget(self.lista, 1)

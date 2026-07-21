@@ -97,6 +97,31 @@ def test_a_recuperacao_restaura_do_snapshot_bom(raiz_env):
     assert log.exists() and "restaurado" in log.read_text(encoding="utf-8")
 
 
+def test_a_dialogo_de_recuperacao_constroi_e_escolhe(raiz_env):
+    """A galeria da F12 pegou um KeyError de ícone aqui (o diálogo nunca era
+    construído em teste — lacuna). Agora é, nos DOIS caminhos: com snapshots
+    (escolha devolvida por conteúdo) e sem (EstadoVazio + Restaurar cego
+    desabilitado)."""
+    from app.qt.telas.recuperacao_dialog import RecuperacaoDialog
+    _app()
+    sn = [{"origem": "versao", "quando": "21/07/2026 09:12", "itens": 3,
+           "estado": {"x": 1}},
+          {"origem": "rascunho", "quando": "21/07/2026 09:15", "itens": 4,
+           "estado": {"x": 2}}]
+    dlg = RecuperacaoDialog(["JSON inválido na linha 1"], sn)
+    dlg.lista.setCurrentRow(1)
+    dlg._confirmar()
+    assert dlg.snapshot_escolhido == sn[1]       # o ESCOLHIDO, não o 1º
+    dlg.close()
+
+    vazio = RecuperacaoDialog(["JSON inválido"], [])
+    assert not vazio._btn_ok.isEnabled()
+    assert not vazio.lista.isVisible() or vazio.lista.count() == 0
+    vazio._confirmar()                           # sem item: não aceita nada
+    assert vazio.snapshot_escolhido is None
+    vazio.close()
+
+
 def test_a_recuperacao_usa_o_rascunho_do_projeto_certo(raiz_env):
     """R-137: o rascunho automático só entra como candidato se é DESTE
     projeto (por id, I1) — o rascunho de outro projeto nunca vaza."""
@@ -273,6 +298,12 @@ def test_b_etiquetas_em_lote_medem_certo(raiz_env, tmp_path):
     px = folhas[0].getpixel((ox0 + ew + ew // 2, oy0 + eh // 2))
     assert px[0] > 150 and px[1] < 80            # a vermelha na 2ª coluna
 
+    # marcas de corte SÓ na área USADA (a galeria pegou marca no vazio da
+    # folha parcial): com 2 etiquetas (1 linha de 4), a borda da linha usada
+    # tem marca cinza; a altura da 4ª linha fica branca
+    assert folhas[0].getpixel((ox0 - 2, oy0 + eh))[0] < 200
+    assert folhas[0].getpixel((ox0 - 2, oy0 + 3 * eh))[0] > 240
+
     gigante = Image.new("RGB", (round(mm_para_px(300, dpi)), 100), "red")
     with pytest.raises(ValueError):
         impor_etiquetas([gigante], dpi)          # recusa nominal (I2)
@@ -380,7 +411,7 @@ def test_c_modo_pai_so_tem_acoes_seguras(raiz_env):
     assert any("imprimir" in txt for txt in textos)
     assert any("enviar" in txt for txt in textos)
     assert any("sair do modo simples" in txt for txt in textos)
-    tela.deleteLater()
+    tela.close()
 
 
 def test_c_fluxo_3_passos_do_pronto_ao_envio(raiz_env, tmp_path, monkeypatch):
@@ -410,7 +441,7 @@ def test_c_fluxo_3_passos_do_pronto_ao_envio(raiz_env, tmp_path, monkeypatch):
     from PIL import Image
     im = Image.open(enviados[0])
     assert im.width > 50 and im.height > 50      # a peça de verdade
-    tela.deleteLater()
+    tela.close()
 
 
 def test_c_modo_pai_lembrado_por_perfil(raiz_env):
@@ -427,7 +458,7 @@ def test_c_modo_pai_lembrado_por_perfil(raiz_env):
     tela._sair()
     assert saiu == [True]
     assert modo_pai_lembrado() is False          # sair é consciente e desliga
-    tela.deleteLater()
+    tela.close()
 
 
 # ============================================================================
@@ -614,3 +645,58 @@ def test_d_performance_5k_medida(tmp_path, monkeypatch):
     assert t_conc < 45.0, "conciliar 3 em 5k levou %.1fs (teto 45s)" % t_conc
     print("\n[MEDIDO] abrir=%.3fs - conciliar 3 itens contra 5k=%.1fs"
           % (t_abrir, t_conc))
+
+
+# ============================================================================
+# Bloco E — empacotamento e entrega (migração do protótipo antigo)
+# ============================================================================
+
+def test_e_migracao_do_prototipo_por_chave_natural(raiz_env, tmp_path):
+    """Passos 70-71, 79: um banco ANTIGO sintético (o schema real do
+    protótipo) entra por CHAVE NATURAL — o repetido NÃO duplica (e é
+    contado), marca/preço/categoria/aliases chegam íntegros, e o banco
+    antigo não é tocado (só leitura)."""
+    import sqlite3
+
+    from app.core.migracao_antiga import (
+        analisar_banco_antigo, migrar_banco_antigo)
+    velho = tmp_path / "autotabloide_antigo.db"
+    con = sqlite3.connect(velho)
+    con.executescript(
+        "CREATE TABLE produtos (id INTEGER PRIMARY KEY, sku_origem TEXT, "
+        "nome_sanitizado TEXT, marca_normalizada TEXT, detalhe_peso TEXT, "
+        "categoria TEXT, preco_venda_atual REAL);"
+        "CREATE TABLE produto_aliases (id INTEGER PRIMARY KEY, "
+        "produto_id INTEGER, alias_raw TEXT);")
+    con.executemany(
+        "INSERT INTO produtos (id, nome_sanitizado, marca_normalizada, "
+        "detalhe_peso, categoria, preco_venda_atual) VALUES (?,?,?,?,?,?)",
+        [(1, "Arroz 5kg", "Camil", "5kg", "Mercearia", 24.90),
+         (2, "Café Torrado 500g", "Pilão", "500g", "Mercearia", 18.50),
+         (3, "Detergente 500ml", "Ypê", "500ml", "Limpeza", 2.49)])
+    con.executemany(
+        "INSERT INTO produto_aliases (produto_id, alias_raw) VALUES (?,?)",
+        [(1, "ARROZ TP1 CAMIL 5KG"), (2, "CAFE PILAO TRAD")])
+    con.commit()
+    con.close()
+    bytes_antes = velho.read_bytes()
+
+    # o "Arroz Camil" JÁ existe no acervo novo → a chave natural o pula
+    seeds.add_produto(raiz_env, "Arroz 5kg", "Camil", "22.00")
+
+    previa = analisar_banco_antigo(velho)        # o rito: PRÉVIA primeiro
+    assert previa["total_antigo"] == 3
+    assert previa["novos"] == 2
+    assert previa["existentes"] == 1             # o repetido é CONTADO (I2)
+
+    r = migrar_banco_antigo(velho)
+    assert r == {"importados": 2, "pulados": 1, "aliases": 1}
+    cafe = seeds.produto_por_chave(raiz_env, "Café Torrado 500g", "Pilão")
+    assert cafe is not None and cafe["preco"] == "18.50"    # íntegro
+    arroz = seeds.produto_por_chave(raiz_env, "Arroz 5kg", "Camil")
+    assert arroz["preco"] == "22.00"             # o MEU acervo venceu (não
+    # foi sobrescrito pelo antigo — chave natural pula, nunca atropela)
+    from app.qt.telas import servico as _srv
+    aliases = _srv.correcoes_aprendidas()
+    assert any(a["alias"] == "CAFE PILAO TRAD" for a in aliases)
+    assert velho.read_bytes() == bytes_antes     # o antigo intocado (byte)

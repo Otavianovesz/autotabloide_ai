@@ -124,15 +124,19 @@ def impor_etiquetas(etiquetas: list[Image.Image], dpi: int, *,
             c, li = k % cols, k // cols
             canvas.paste(im.convert("RGB"), (ox0 + c * ew, oy0 + li * eh))
         if marcas_corte:
+            # as marcas cobrem SÓ a área ocupada — na última folha (parcial),
+            # marca no vazio confunde a tesoura
+            linhas_usadas = -(-len(lote) // cols)
             d = ImageDraw.Draw(canvas)
             cor = (120, 120, 120)
             tick = round(mm_para_px(4, dpi))
             for c in range(cols + 1):        # verticais da grade
                 x = ox0 + c * ew
                 d.line((x, max(0, oy0 - tick), x, oy0), fill=cor, width=1)
-                d.line((x, oy0 + linhas * eh, x,
-                        min(h, oy0 + linhas * eh + tick)), fill=cor, width=1)
-            for li in range(linhas + 1):     # horizontais da grade
+                d.line((x, oy0 + linhas_usadas * eh, x,
+                        min(h, oy0 + linhas_usadas * eh + tick)),
+                       fill=cor, width=1)
+            for li in range(linhas_usadas + 1):  # horizontais da grade
                 y = oy0 + li * eh
                 d.line((max(0, ox0 - tick), y, ox0, y), fill=cor, width=1)
                 d.line((ox0 + cols * ew, y,
