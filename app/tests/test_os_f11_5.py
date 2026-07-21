@@ -424,6 +424,391 @@ def test_f6_81_rascunho_com_caminhos_relativos(raiz_env, tmp_path):
     assert de_volta["itens"][0]["imagem"] == it.imagem
 
 
+# ============================================================================
+# §5 — FASE 7 (Mesa II / produção em massa)
+# ============================================================================
+
+def _conciliacao(itens):
+    """ConciliacaoDialog com um ResultadoMesa duble (sem VERMELHO → sem fila
+    de enriquecimento viva)."""
+    from app.qt.telas.conciliacao_dialog import ConciliacaoDialog
+    from app.qt.telas.servico import ResultadoMesa
+    _app()
+    return ConciliacaoDialog(ResultadoMesa(itens=itens), None)
+
+
+def test_f7_19_22_aceitar_verdes_e_desfazer(raiz_env):
+    """#19/#21/#22 (R-053): o botão reduz a lista AOS verdes (por uid), o
+    contador diz "verdes aceitos/para revisar/novos", e o Desfazer devolve a
+    lista INTEIRA — tudo por conteúdo."""
+    from app.qt.telas.servico import ItemMesa
+    v1 = ItemMesa("Arroz 5kg", "24,90", "VERDE", "Arroz 5kg")
+    v2 = ItemMesa("Feijão 1kg", "7,99", "VERDE", "Feijão 1kg")
+    am = ItemMesa("Óleo 900ml", "6,49", "AMARELO", "Óleo 900ml")
+    dlg = _conciliacao([v1, am, v2])
+    assert "1 para revisar" in dlg._resumo.text()
+    assert dlg.btn_verdes.isVisible() or dlg.btn_verdes.isVisibleTo(dlg)
+    dlg._aceitar_verdes()
+    assert [it.uid for it in dlg.itens] == [v1.uid, v2.uid]   # SÓ os verdes
+    assert "2 verdes aceitos" in dlg._resumo.text()
+    assert "0 para revisar" in dlg._resumo.text()
+    dlg._desfazer_verdes()
+    assert [it.uid for it in dlg.itens] == [v1.uid, am.uid, v2.uid]
+    dlg.done(0)
+
+
+def test_f7_15_atalhos_movem_foco_e_estado(raiz_env):
+    """#15: N pula ao PRÓXIMO amarelo (com volta ao início); R tira o item
+    focado da lista (por uid)."""
+    from app.qt.telas.servico import ItemMesa
+    itens = [ItemMesa("V1", "1,00", "VERDE", "V1"),
+             ItemMesa("A1", "2,00", "AMARELO", "A1"),
+             ItemMesa("V2", "3,00", "VERDE", "V2"),
+             ItemMesa("A2", "4,00", "AMARELO", "A2")]
+    uid_a2 = itens[3].uid
+    dlg = _conciliacao(list(itens))
+    dlg.tabela.setCurrentCell(0, 0)
+    dlg._ir_proximo_amarelo()
+    assert dlg.tabela.currentRow() == 1               # foco no 1º amarelo
+    dlg._ir_proximo_amarelo()
+    assert dlg.tabela.currentRow() == 3               # no seguinte
+    dlg._ir_proximo_amarelo()
+    assert dlg.tabela.currentRow() == 1               # deu a volta
+    dlg.tabela.setCurrentCell(3, 0)
+    dlg._rejeitar_focado()                            # R no amarelo focado
+    assert uid_a2 not in [it.uid for it in dlg.itens]
+    assert len(dlg.itens) == 3
+    dlg.done(0)
+
+
+def test_f7_13_edicao_inline_reflete_no_item(raiz_env):
+    """#13: editar Importado/Preço direto na tabela muda o ItemMesa (por
+    linha da view = mesma lista); a coluna "No banco" segue TRAVADA."""
+    from PySide6.QtCore import Qt as _Qt
+
+    from app.qt.telas.servico import ItemMesa
+    it = ItemMesa("ARROZ TP1 5KG", "24,90", "AMARELO", "Arroz 5kg")
+    dlg = _conciliacao([it])
+    dlg.tabela.item(0, 1).setText("Arroz tipo 1 5kg")
+    assert it.descricao == "Arroz tipo 1 5kg"
+    dlg.tabela.item(0, 2).setText("19,90")
+    assert it.preco == "19,90"
+    assert not (dlg.tabela.item(0, 3).flags() & _Qt.ItemFlag.ItemIsEditable)
+    dlg.done(0)
+
+
+def test_f7_44_45_diff_dialog_reflete_o_diff(raiz_env):
+    """#44/#45 (R-062): o diálogo lista por CONTEÚDO quem entrou, quem saiu
+    e o preço que subiu (com a seta) — direto do diff_edicoes real."""
+    from PySide6.QtWidgets import QListWidget
+
+    from app.qt.telas import servico
+    from app.qt.telas.diff_dialog import DiffEdicaoDialog
+    from app.qt.telas.servico import ItemMesa
+    _app()
+    ant = [ItemMesa("Arroz 5kg", "10,00", "VERDE", "Arroz 5kg", ean="111"),
+           ItemMesa("Feijão 1kg", "5,00", "VERDE", "Feijão 1kg", ean="222")]
+    atu = [ItemMesa("Arroz 5kg", "12,00", "VERDE", "Arroz 5kg", ean="111"),
+           ItemMesa("Café 500g", "18,00", "VERDE", "Café 500g", ean="333")]
+    diff = servico.diff_edicoes(atu, ant)
+    dlg = DiffEdicaoDialog(diff)
+    from PySide6.QtWidgets import QTabWidget
+    tabs = dlg.findChild(QTabWidget)
+    assert tabs.tabText(0) == "Preços (1)"
+    assert tabs.tabText(1) == "Entraram (1)"
+    assert tabs.tabText(2) == "Saíram (1)"
+    lista_precos = tabs.widget(0).findChild(QListWidget)
+    linha = lista_precos.item(0).text()
+    assert "Arroz 5kg" in linha and "10,00 → 12,00" in linha
+    assert "subiu" in linha
+    assert tabs.widget(1).findChild(QListWidget).item(0).text() == "Café 500g"
+    assert tabs.widget(2).findChild(QListWidget).item(0).text() == "Feijão 1kg"
+    dlg.close()
+
+
+def test_f7_48_50_checklist_pdf_com_conteudo(raiz_env, tmp_path):
+    """#48/#50 (R-063): o conteúdo do checklist se prova no HTML EXATO que é
+    impresso ("1 sem foto", a validade); a TINTA se prova rasterizando o PDF
+    com o Ghostscript real (o Qt offscreen imprime texto como curvas — não há
+    texto extraível; pixel escuro é a prova do papel)."""
+    import subprocess
+
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from app.qt.telas import servico
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering import cmyk
+    _app()
+    com_foto = ItemMesa("Arroz 5kg", "24,90", "VERDE", "Arroz 5kg")
+    foto = tmp_path / "a.png"
+    foto.write_bytes(seeds.png("#FF0000"))
+    com_foto.imagem = str(foto)
+    sem_foto = ItemMesa("Feijão 1kg", "7,99", "VERDE", "Feijão 1kg")
+    itens = [com_foto, sem_foto]
+    validade = "OFERTA VÁLIDA SOMENTE 21/07"
+    # 1) o conteúdo — o HTML impresso carrega o estado REAL do projeto
+    html = servico.html_do_checklist(itens, validade)
+    assert "Checklist da edição" in html
+    assert "1 sem foto" in html                        # o detalhe REAL
+    assert "SOMENTE 21/07" in html                     # a validade impressa
+    assert "✘" in html and "✔" in html                 # falha E ok marcados
+    # 2) o papel — o PDF existe, tem 1 página e TINTA de verdade
+    destino = tmp_path / "saida" / "checklist.pdf"
+    saida = servico.exportar_checklist_pdf(itens, validade, destino)
+    assert Path(saida).is_file()
+    assert len(PdfReader(str(saida)).pages) == 1
+    gs = cmyk.ghostscript_disponivel()
+    assert gs, "a ordem afirma o Ghostscript no ambiente"
+    png_out = tmp_path / "chk.png"
+    subprocess.run([gs, "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", "-r60",
+                    f"-sOutputFile={png_out}", str(saida)],
+                   check=True, capture_output=True)
+    img = Image.open(png_out).convert("L")
+    escuros = sum(img.histogram()[:128])
+    assert escuros > 200                               # há texto impresso
+
+
+def _mesa_com_grade(raiz_env, itens, n_slots=2):
+    """Mesa viva com layout de `n_slots` células numa página."""
+    from app.rendering.compositor import DadosProduto
+    from app.rendering.model import (
+        Ajuste, LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    m = _mesa_viva(raiz_env, itens)
+    slots = [Slot(f"c{i}", [Regiao(TipoRegiao.IMAGEM,
+                                   Retangulo(5 + i * 60, 5, 50, 50),
+                                   ajuste=Ajuste.PREENCHER)],
+                  origem_mm=(5 + i * 60, 5))
+             for i in range(n_slots)]
+    lay = LayoutDef(200, 100, dpi=96, paginas=[Pagina(slots)])
+    m._layout = lay
+    m.area.canvas.carregar(lay, DadosProduto(""))
+    return m
+
+
+def test_f7_23_25_destino_do_resto(raiz_env, monkeypatch):
+    """#23/#25 (R-056): cada escolha faz o que promete — 'pagina' cria a
+    página e ENCHE (todos os uids no mapa), 'fora' tira da estante (por uid,
+    com a cópia p/ desfazer), 'fila' deixa tudo como está."""
+    import app.qt.telas.prevoo as prevoo
+    from app.qt.telas.servico import ItemMesa
+    monkeypatch.setattr(prevoo, "confirmar_pre_voo",
+                        lambda *a, **k: True)
+
+    def _itens(n):
+        return [ItemMesa(f"P{i}", "1,00", "VERDE", f"P{i}") for i in range(n)]
+
+    # 'pagina': 4 itens em 2 células → nova página, TODOS mapeados
+    itens = _itens(4)
+    m = _mesa_com_grade(raiz_env, itens)
+    monkeypatch.setattr(m, "_perguntar_destino_resto", lambda n: "pagina")
+    m.encher_pagina()
+    assert m.area.canvas.total_paginas() == 2
+    assert set(m._mapa.values()) == {it.uid for it in itens}
+    m.close()
+
+    # 'fora': 3 itens em 2 células → o resto SAI da estante (por uid)
+    itens = _itens(3)
+    m = _mesa_com_grade(raiz_env, itens)
+    monkeypatch.setattr(m, "_perguntar_destino_resto", lambda n: "fora")
+    m.encher_pagina()
+    assert m.area.canvas.total_paginas() == 1
+    assert len(m._itens) == 2
+    assert itens[2].uid not in [it.uid for it in m._itens]
+    m.close()
+
+    # 'fila': nada some, o resto segue visível na estante
+    itens = _itens(3)
+    m = _mesa_com_grade(raiz_env, itens)
+    monkeypatch.setattr(m, "_perguntar_destino_resto", lambda n: "fila")
+    m.encher_pagina()
+    assert len(m._itens) == 3
+    assert len(m._mapa) == 2
+    m.close()
+
+
+def test_f7_2_fila_multiarquivo_estado_por_arquivo(raiz_env, tmp_path):
+    """#2 (R-049): o serviço narra o estado POR ARQUIVO (lendo → pronto/erro)
+    e o widget da fila pinta cada linha — o erro fica visível (I2)."""
+    from app.qt.telas import servico
+    from app.qt.telas.fila_importacao import FilaImportacaoDialog
+    _app()
+    bom = tmp_path / "boa.txt"
+    bom.write_text("Arroz 5kg | 24,90\n", encoding="utf-8")
+    sumiu = str(tmp_path / "sumiu.txt")
+    eventos: list[tuple[str, str]] = []
+    servico.importar_varios([str(bom), sumiu], lambda _m: None,
+                            progresso_cb=lambda n, e: eventos.append((n, e)))
+    assert eventos == [("boa.txt", "lendo"), ("boa.txt", "pronto"),
+                       ("sumiu.txt", "lendo"), ("sumiu.txt", "erro")]
+    dlg = FilaImportacaoDialog(["boa.txt", "sumiu.txt"])
+    assert dlg.estados == {"boa.txt": "na fila", "sumiu.txt": "na fila"}
+    for n, e in eventos:
+        dlg.atualizar(n, e)
+    assert dlg.estados == {"boa.txt": "pronto", "sumiu.txt": "erro"}
+    assert not dlg.tudo_pronto()                       # o erro impede o "tudo ok"
+    assert "pronto" in dlg._chips["boa.txt"].text()
+    dlg.close()
+
+
+def test_f7_6_virgula_como_separador_na_colagem():
+    """#6: a vírgula+ESPAÇO separa nome de preço na colagem — sem colidir com
+    o decimal ("24,90" intacto) e sem atrapalhar os separadores fortes."""
+    from app.qt.telas.colagem import _nome_preco
+    assert _nome_preco("Arroz 5kg, 24,90") == ("Arroz 5kg", "24,90")
+    assert _nome_preco("Feijão, tipo 1, 12,50") == ("Feijão, tipo 1", "12,50")
+    assert _nome_preco("Queijo 24,90") == ("Queijo", "24,90")   # decimal puro
+    assert _nome_preco("Arroz, tipo 1") == ("Arroz, tipo 1", None)
+    assert _nome_preco("Coca 2L\t7,99") == ("Coca 2L", "7,99")  # tab ganha
+
+
+def test_f7_39_frase_nova_do_dono_persiste(raiz_env):
+    """#39: o combo soma as frases do DONO às padrão; adicionar grava na
+    config (`frases.validade`) e a repetida é recusada."""
+    from app.qt.telas import servico
+    base = servico.frases_do_combo()
+    assert "Imagens meramente ilustrativas" in base     # as padrão estão lá
+    nova = "Oferta relâmpago do {evento}"
+    assert servico.adicionar_frase_do_combo(nova) is True
+    assert nova in servico.frases_do_combo()            # apareceu no combo
+    assert servico.adicionar_frase_do_combo(nova) is False   # sem duplicar
+    assert servico.frases_do_combo().count(nova) == 1
+
+
+def test_f7_42_43_densidade_visual_na_barra(raiz_env):
+    """#42/#43 (R-060): o medidor é PERMANENTE e muda de faixa por conteúdo —
+    1/3 ocupado = "com respiro" (verde); 3/3 = "espremida" (vermelho)."""
+    from app.qt.design import tokens as t
+    from app.qt.telas.servico import ItemMesa
+    itens = [ItemMesa(f"P{i}", "1,00", "VERDE", f"P{i}") for i in range(3)]
+    m = _mesa_com_grade(raiz_env, itens, n_slots=3)
+    m.area.canvas.mapa["c0"] = itens[0].uid
+    m._atualizar_densidade()
+    assert "33%" in m._densidade_lbl.text()
+    assert "com respiro" in m._densidade_lbl.text()
+    assert t.SUCESSO in m._densidade_lbl.styleSheet()
+    m.area.canvas.mapa.update({"c1": itens[1].uid, "c2": itens[2].uid})
+    m._atualizar_densidade()
+    assert "100%" in m._densidade_lbl.text()
+    assert "espremida" in m._densidade_lbl.text()
+    assert t.PERIGO in m._densidade_lbl.styleSheet()
+    m.close()
+
+
+def test_f7_63_colagem_contra_glossario_nao_inventa_marca(raiz_env):
+    """#63: a linha COLADA com marca desconhecida NUNCA vira verde nem ganha
+    marca inventada — extrair_marca só devolve marca CONHECIDA (com fronteira
+    de palavra) e a conciliação manda o desconhecido p/ vermelho/amarelo."""
+    from app.core.aprendizado import extrair_marca
+    from app.qt.telas import servico
+    from app.qt.telas.colagem import linhas_para_tuplas, parse_colagem
+    conhecidas = ["Coca-Cola", "Camil"]
+    assert extrair_marca("Refri Zumba 2L", conhecidas) is None
+    assert extrair_marca("Arroz Camil 5kg", conhecidas) == "Camil"
+    assert extrair_marca("Camila fatiado 200g", conhecidas) is None  # fronteira
+    seeds.add_produto(raiz_env, "Refrigerante 2L", "Coca-Cola", "9.90")
+    linhas = parse_colagem("Refri Zumba 2L\t7,99")
+    res = servico.conciliar_linhas(linhas_para_tuplas(linhas),
+                                   lambda _m: None)
+    assert len(res.itens) == 1
+    it = res.itens[0]
+    assert it.semaforo != "VERDE"                  # desconhecido nunca casa só
+    if it.semaforo == "VERMELHO":                  # novo: o nome é o colado,
+        assert it.nome == "Refri Zumba 2L"         # sem marca inventada
+
+
+def test_f7_68_69_73_adversarial_itens_de_colagem_e_multiimport(
+        raiz_env, tmp_path):
+    """#68/#69/#73 (I1/I5): itens nascidos da COLAGEM e do MULTI-IMPORT no
+    mesmo tabuleiro — reordenar a estante NÃO muda o que cada célula mostra,
+    e a troca de células troca EXATAMENTE o par (nome+preço conferidos)."""
+    from app.qt.telas import servico
+    from app.qt.telas.colagem import linhas_para_tuplas, parse_colagem
+    res_col = servico.conciliar_linhas(
+        linhas_para_tuplas(parse_colagem("Colado A\t1,11\nColado B\t2,22")),
+        lambda _m: None)
+    txt = tmp_path / "multi.txt"
+    txt.write_text("Importado C | 3,33\n", encoding="utf-8")
+    res_multi, erros = servico.importar_varios([str(txt)], lambda _m: None)
+    assert not erros
+    itens = list(res_col.itens) + list(res_multi.itens)
+    assert len(itens) == 3
+    m = _mesa_com_grade(raiz_env, itens, n_slots=3)
+    c = m.area.canvas
+    c.mapa.update({"c0": itens[0].uid, "c1": itens[1].uid,
+                   "c2": itens[2].uid})
+
+    def _foto(sid):
+        d = m._dados_por_slot()[sid]
+        return (d.nome, str(d.preco_por))
+
+    antes = {sid: _foto(sid) for sid in ("c0", "c1", "c2")}
+    assert antes["c0"][0] == "Colado A" and antes["c2"][0] == "Importado C"
+    m._itens.reverse()                             # #69: reordenar a estante
+    m._recarregar_lista()
+    assert {sid: _foto(sid) for sid in ("c0", "c1", "c2")} == antes
+    assert c.trocar_conteudo_slots("c0", "c2")     # #73: troca controlada
+    assert _foto("c0") == antes["c2"]              # trocou o par exato…
+    assert _foto("c2") == antes["c0"]
+    assert _foto("c1") == antes["c1"]              # …sem arrastar o vizinho
+    m.close()
+
+
+def test_f7_76_orfa_de_colagem_avisada(raiz_env):
+    """#76 (I2): item de colagem apontando p/ célula REMOVIDA aparece no
+    aviso de órfãos com o NOME — nunca some calado."""
+    from app.qt.telas import servico
+    from app.qt.telas.colagem import linhas_para_tuplas, parse_colagem
+    res = servico.conciliar_linhas(
+        linhas_para_tuplas(parse_colagem("Órfão Colado\t9,99")),
+        lambda _m: None)
+    m = _mesa_com_grade(raiz_env, list(res.itens), n_slots=1)
+    m.area.canvas.mapa["celula_que_sumiu"] = res.itens[0].uid
+    avisos = m._avisos_orfaos()
+    assert any("Órfão Colado" in a for a in avisos)
+    m.close()
+
+
+def test_f7_80_i4_encher_pagina_em_grade_replicavel(raiz_env, monkeypatch):
+    """#80 (I4): encher a página numa grade com célula-MESTRE não toca o
+    vínculo ref_mestre (por uid) das cópias, e o conteúdo fica no slot certo
+    mesmo com os slots reordenados na lista (identidade, não posição)."""
+    import app.qt.telas.prevoo as prevoo
+    from app.qt.telas.servico import ItemMesa
+    from app.rendering.compositor import DadosProduto
+    from app.rendering.grade import propagar_mestre
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao)
+    monkeypatch.setattr(prevoo, "confirmar_pre_voo", lambda *a, **k: True)
+    regs = [Regiao(TipoRegiao.NOME, Retangulo(2, 2, 30, 8), nome="Nome")]
+    for r in regs:
+        r.de_mestre = True
+    pag = Pagina([Slot("celula_m", regs, mestre=True, origem_mm=(0, 0)),
+                  Slot("celula_a", origem_mm=(60, 0)),
+                  Slot("celula_b", origem_mm=(120, 0))])
+    lay = LayoutDef(200, 100, dpi=96, paginas=[pag])
+    propagar_mestre(pag)
+    uid_mestre = pag.slots[0].regioes[0].uid
+    refs_antes = {s.id: [r.ref_mestre for r in s.regioes]
+                  for s in pag.slots[1:]}
+    assert all(refs_antes[sid] == [uid_mestre] for sid in refs_antes)
+    itens = [ItemMesa(f"P{i}", "1,00", "VERDE", f"P{i}") for i in range(3)]
+    m = _mesa_viva(raiz_env, itens)
+    m._layout = lay
+    m.area.canvas.carregar(lay, DadosProduto(""))
+    m.encher_pagina()
+    assert set(m._mapa.values()) == {it.uid for it in itens}
+    # o vínculo mestra↔cópia sobreviveu ao encher (I4, por uid)
+    for s in pag.slots[1:]:
+        assert [r.ref_mestre for r in s.regioes] == [uid_mestre]
+    # identidade, não posição: embaralhar a LISTA de slots não muda o dono
+    por_slot = {sid: m._dados_por_slot()[sid].nome for sid in m._mapa}
+    pag.slots.reverse()
+    assert {sid: m._dados_por_slot()[sid].nome
+            for sid in m._mapa} == por_slot
+    m.close()
+
+
 def test_f6_82_mestra_intacta_apos_reordenar_estante(raiz_env):
     """#82 (I4): reordenar a ESTANTE não toca o vínculo mestra↔cópia
     (ref_mestre por uid) — o layout fica byte-idêntico."""

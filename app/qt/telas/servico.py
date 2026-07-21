@@ -641,6 +641,58 @@ BANCO_FRASES: list[str] = [
 ]
 
 
+def frases_do_combo() -> list[str]:
+    """OS F11.5 #39: as frases do combo = padrão (BANCO_FRASES) + as que o
+    DONO adicionou (config `frases.validade`), sem repetir. Falha de leitura
+    do banco degrada para o padrão (I2: o combo nunca fica vazio)."""
+    proprias: list[str] = []
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                proprias = list(ConfigRepositorio(s).get(
+                    "frases.validade", []) or [])
+        finally:
+            db.engine.dispose()
+    except Exception:
+        proprias = []
+    vistas = set()
+    saida: list[str] = []
+    for f in list(BANCO_FRASES) + proprias:
+        f = (f or "").strip()
+        if f and f not in vistas:
+            vistas.add(f)
+            saida.append(f)
+    return saida
+
+
+def adicionar_frase_do_combo(frase: str) -> bool:
+    """OS F11.5 #39: grava uma frase nova do dono na config `frases.validade`
+    (a mesma lista que a tela de Configurações edita). Devolve False se a
+    frase é vazia/repetida ou o banco falhou — a UI avisa (I2)."""
+    frase = (frase or "").strip()
+    if not frase or frase in frases_do_combo():
+        return False
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                rep = ConfigRepositorio(s)
+                atuais = list(rep.get("frases.validade", []) or [])
+                atuais.append(frase)
+                rep.set("frases.validade", atuais)
+                s.commit()
+        finally:
+            db.engine.dispose()
+        return True
+    except Exception:
+        return False
+
+
 def resolver_frase(template: str, contexto: dict) -> tuple[str, list[str]]:
     """R-058: resolve {data}, {evento} e qualquer {chave} do contexto numa frase
     pronta. Devolve (texto, faltantes): a variável SEM valor fica VISÍVEL como
@@ -711,6 +763,55 @@ def alertas_de_repeticao(itens: list[ItemMesa], historico=None, *,
         if aviso:
             fora.append((it, aviso))
     return fora
+
+
+def html_do_checklist(itens: list[ItemMesa], validade: str | None,
+                      *, titulo: str = "Checklist da edição",
+                      extras: list[str] | None = None) -> str:
+    """OS F11.5 #48/#50: o HTML EXATO que vira o PDF do checklist — função
+    pura separada para o conteúdo ser conferível (o Qt offscreen imprime o
+    texto como curvas; o conteúdo se prova aqui, a tinta se prova no PDF)."""
+    linhas = ["<h2>%s</h2>" % titulo]
+    for pergunta, ok, detalhe in checklist_final(itens, validade):
+        marca = "✔" if ok else "✘"
+        linhas.append(f"<p>{marca} <b>{pergunta}</b><br>&nbsp;&nbsp;"
+                      f"{detalhe}</p>")
+    for extra in (extras or []):
+        linhas.append(f"<p>{extra}</p>")
+    return "".join(linhas)
+
+
+def exportar_checklist_pdf(itens: list[ItemMesa], validade: str | None,
+                           destino, *, titulo: str = "Checklist da edição",
+                           extras: list[str] | None = None):
+    """OS F11.5 #48/#50 (R-063) e #39-F11 (R-117): o checklist/relatório vira
+    um PDF imprimível — a conferência a quatro olhos em papel. QTextDocument →
+    QPrinter PdfFormat (o molde da folha de cola da F3)."""
+    from PySide6.QtGui import QTextDocument
+    from PySide6.QtPrintSupport import QPrinter
+
+    doc = QTextDocument()
+    doc.setHtml(html_do_checklist(itens, validade, titulo=titulo,
+                                  extras=extras))
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    from pathlib import Path as _P
+    destino = _P(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    printer.setOutputFileName(str(destino))
+    doc.print_(printer)
+    return destino
+
+
+def diff_contra_ultima_edicao(itens: list[ItemMesa]):
+    """OS F11.5 #44 (R-062): o diff da oferta ATUAL contra a ÚLTIMA edição
+    salva (por chave natural, I1) — None quando não há edição anterior."""
+    from app.core import projetos
+    anteriores = projetos.itens_das_edicoes_recentes(1)
+    if not anteriores:
+        return None
+    anterior = [ItemMesa.from_dict(d) for d in anteriores[-1]]
+    return diff_edicoes(itens, anterior)
 
 
 # --- R-072: estatística da montagem (local, offline — sem telemetria) -------
@@ -1338,10 +1439,13 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                          caminho_fonte=caminho_fonte)
 
 
-def importar_varios(caminhos, status_cb: StatusCb):
+def importar_varios(caminhos, status_cb: StatusCb, progresso_cb=None):
     """R-049 (Fase 7): enfileira vários arquivos e processa em SÉRIE. Um
     arquivo com erro NÃO derruba a fila (I2): fica marcado e o resto segue.
-    Devolve (ResultadoMesa combinado, [(arquivo, erro)])."""
+    Devolve (ResultadoMesa combinado, [(arquivo, erro)]).
+    `progresso_cb(nome, estado)` (OS F11.5 #2) narra o estado POR ARQUIVO —
+    "lendo" → "pronto"/"erro" — para o widget da fila na Mesa."""
+    prog = progresso_cb or (lambda _n, _e: None)
     itens: list[ItemMesa] = []
     validade = None
     erros: list[tuple[str, str]] = []
@@ -1349,12 +1453,15 @@ def importar_varios(caminhos, status_cb: StatusCb):
     for i, cam in enumerate(caminhos, 1):
         nome = Path(cam).name
         status_cb(f"Arquivo {i}/{total}: {nome}…")
+        prog(nome, "lendo")
         try:
             res = importar_ofertas(cam, status_cb)
             itens.extend(res.itens)
             validade = validade or res.validade_oferta
+            prog(nome, "pronto")
         except Exception as e:               # I2: o erro fica visível, a fila segue
             erros.append((nome, str(e)))
+            prog(nome, "erro")
     aviso = (None if not erros else
              f"{len(erros)} de {total} arquivo(s) com erro — o resto foi lido "
              f"({total - len(erros)} ok).")

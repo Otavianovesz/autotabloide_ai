@@ -72,6 +72,13 @@ def _nome_preco(raw: str) -> tuple[str, str | None]:
                         nome = " ".join(campos[:i] + campos[i + 1:]).strip()
                         return (nome or campos[0]), campos[i]
                 return " ".join(campos[:-1]).strip(), campos[-1]
+    # OS F11.5 #6: a VÍRGULA como separador de coluna ("Arroz 5kg, 24,90") —
+    # sem colidir com o decimal: só a última ", " (vírgula+ESPAÇO) conta, e
+    # só quando o lado direito é um preço inteiro válido
+    if ", " in raw:
+        nome, _, resto = raw.rpartition(", ")
+        if nome.strip() and _parece_preco(resto):
+            return nome.strip(" -–:\t"), resto.strip()
     m = _RE_PRECO_FIM.search(raw)
     if m:
         return raw[:m.start()].strip(" -–:\t"), m.group(0).strip()

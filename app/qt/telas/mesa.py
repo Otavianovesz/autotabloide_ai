@@ -204,6 +204,16 @@ class MesaTela(QWidget):
         self._estatistica_lbl = QLabel("")
         self._estatistica_lbl.setProperty("papel", "legenda")
         hb.addWidget(self._estatistica_lbl)
+        # OS F11.5 #42/43 (RG-42): o medidor de densidade fica SEMPRE visível
+        # na barra (não só o toast de >90%) — verde com respiro, âmbar cheia,
+        # vermelho espremida; a página atual é a medida.
+        self._densidade_lbl = QLabel("")
+        self._densidade_lbl.setProperty("papel", "legenda")
+        self._densidade_lbl.setToolTip(
+            "Quanto da página está ocupado por produto (pesquisa 60-30-10: "
+            "respiro valoriza as ofertas). Verde ≤70% · âmbar ≤90% · "
+            "vermelho >90%")
+        hb.addWidget(self._densidade_lbl)
         hb.addWidget(self._validade_lbl)
         self._barra_mesa = barra
         self._barra_layout = hb
@@ -580,6 +590,28 @@ class MesaTela(QWidget):
             self.chk_secoes_pag.blockSignals(True)
             self.chk_secoes_pag.setChecked(pag.secoes_ligadas)
             self.chk_secoes_pag.blockSignals(False)
+        self._atualizar_densidade()
+
+    def _atualizar_densidade(self) -> None:
+        """OS F11.5 #42/43: o número da densidade da página ATUAL, colorido por
+        faixa. Some quando não há montagem (sem mapa) — sem mostrar 0% inútil."""
+        pag = self._pagina_atual()
+        if pag is None or not self._mapa:
+            self._densidade_lbl.setText("")
+            return
+        try:
+            d = servico.densidade_da_pagina(pag, self._dados_por_slot())
+        except Exception:
+            self._densidade_lbl.setText("")
+            return
+        if d > 0.9:
+            cor, rotulo = t.PERIGO, "espremida"
+        elif d > 0.7:
+            cor, rotulo = t.ALERTA, "cheia"
+        else:
+            cor, rotulo = t.SUCESSO, "com respiro"
+        self._densidade_lbl.setText(f"● {round(d * 100)}% {rotulo}")
+        self._densidade_lbl.setStyleSheet(f"color: {cor};")
 
     # --- seções por página (F8.2/B3) ------------------------------------------------
 
@@ -889,9 +921,24 @@ class MesaTela(QWidget):
                 lambda st, c=caminhos[0]: servico.importar_ofertas(c, st))
             trab.ok.connect(self._conciliar)
         else:
+            # OS F11.5 #2: a janelinha da fila mostra CADA arquivo mudando de
+            # estado (na fila → lendo → pronto/erro); a ponte leva o progresso
+            # da thread do worker para a UI por sinal Qt (thread-safe).
+            from pathlib import Path as _P
+
+            from app.qt.telas.fila_importacao import (
+                FilaImportacaoDialog, PonteFila)
+            fila_dlg = FilaImportacaoDialog(
+                [_P(c).name for c in caminhos], self)
+            ponte = PonteFila(fila_dlg)
+            ponte.mudou.connect(fila_dlg.atualizar)
+            fila_dlg.show()
             trab = Trabalhador(
-                lambda st, cs=caminhos: servico.importar_varios(cs, st))
-            trab.ok.connect(self._conciliar_varios)
+                lambda st, cs=caminhos, p=ponte:
+                servico.importar_varios(cs, st, progresso_cb=p.mudou.emit))
+            trab.ok.connect(lambda res, d=fila_dlg: (
+                d.accept() if d.tudo_pronto() else None,
+                self._conciliar_varios(res)))
         trab.status.connect(self._overlay.mostrar)
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
@@ -1017,19 +1064,25 @@ class MesaTela(QWidget):
         self._avisar_divergencia()        # R-123: mesmo item, preços diferentes
 
     def _avisar_repeticao(self) -> None:
-        """R-059: depois de importar, avisa (sem bloquear, I2) os itens que estão
-        no encarte há várias edições seguidas — o dono decide manter ou variar.
-        Falha de leitura do histórico não atrapalha o fluxo (aviso é opcional)."""
-        try:
-            repetidos = servico.alertas_de_repeticao(self._itens)
-        except Exception:
-            return
-        if not repetidos:
-            return
-        nomes = ", ".join(it.nome for it, _ in repetidos[:3])
-        extra = "…" if len(repetidos) > 3 else ""
-        mostrar_toast(self, f"{len(repetidos)} item(ns) repetem há várias "
-                            f"edições ({nomes}{extra}) — que tal variar?")
+        """R-059 (+ OS F11.5 #53): o alerta lê o HISTÓRICO em WORKER — a leitura
+        das edições salvas (disco) não segura o thread da UI logo após um
+        import grande. Avisa sem bloquear (I2); falha de leitura só silencia o
+        aviso opcional."""
+        itens = list(self._itens)
+        trab = Trabalhador(
+            lambda st, alvo=itens: servico.alertas_de_repeticao(alvo))
+
+        def _pronto(repetidos):
+            if not repetidos:
+                return
+            nomes = ", ".join(it.nome for it, _ in repetidos[:3])
+            extra = "…" if len(repetidos) > 3 else ""
+            mostrar_toast(self, f"{len(repetidos)} item(ns) repetem há várias "
+                                f"edições ({nomes}{extra}) — que tal variar?")
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda _m: None)     # aviso é opcional
+        self._trabalhos.rodar(trab)
 
     def _avisar_foto_repetida(self) -> None:
         """R-104: a MESMA foto em 2+ itens da edição (por hash de CONTEÚDO) —
@@ -1044,6 +1097,81 @@ class MesaTela(QWidget):
         nomes = ", ".join(it.nome for it in grupos[0][1][:3])
         mostrar_toast(self, f"A mesma foto aparece em {len(grupos[0][1])} itens "
                             f"({nomes}) — confira se não trocou.")
+
+    def _perguntar_destino_resto(self, n: int) -> str:
+        """#23: a pergunta — devolve 'pagina' | 'fila' | 'fora'."""
+        from PySide6.QtWidgets import QMessageBox
+        caixa = QMessageBox(self)
+        caixa.setWindowTitle("Sobraram itens")
+        caixa.setText(f"{n} item(ns) não couberam nesta página. "
+                      "O que faço com eles?")
+        b_pag = caixa.addButton("Criar página nova e encher",
+                                QMessageBox.ButtonRole.AcceptRole)
+        b_fila = caixa.addButton("Deixar na estante (fila)",
+                                 QMessageBox.ButtonRole.ActionRole)
+        b_fora = caixa.addButton("Tirar da oferta",
+                                 QMessageBox.ButtonRole.DestructiveRole)
+        caixa.setDefaultButton(b_fila)
+        caixa.exec()
+        clicado = caixa.clickedButton()
+        if clicado is b_pag:
+            return "pagina"
+        if clicado is b_fora:
+            return "fora"
+        return "fila"
+
+    def _aplicar_destino_resto(self, escolha: str, resto) -> None:
+        """#25: executa a escolha. 'fila' = o comportamento clássico (ficam
+        na estante, visíveis); 'pagina' duplica a página e enche de novo;
+        'fora' tira da estante COM desfazer (nunca some calado)."""
+        if escolha == "pagina":
+            antes = self.area.canvas.total_paginas()
+            self.area.canvas.duplicar_pagina_atual()
+            if self.area.canvas.total_paginas() > antes:
+                self.encher_pagina()
+            return
+        if escolha == "fora":
+            copia_itens = list(self._itens)
+            copia_mapa = dict(self._mapa)
+            uids_fora = {it.uid for it in resto}
+            self._itens = [it for it in self._itens
+                           if it.uid not in uids_fora]
+            self._recarregar_lista()
+            self._marcar_salvo(False)
+            from app.qt.design.toast import mostrar_toast_desfazer
+            mostrar_toast_desfazer(
+                self, f"{len(uids_fora)} item(ns) fora da oferta.",
+                lambda: self._restaurar_estante_toda(copia_itens, copia_mapa))
+            return
+        mostrar_toast(self, f"{len(resto)} item(ns) seguem na estante "
+                            "(fila) — “fora da grade”.")
+
+    def _mostrar_diff_edicao(self) -> None:
+        """OS F11.5 #44 (R-062): a comparação com a última edição salva."""
+        if not self._itens:
+            mostrar_toast(self, "Importe a oferta antes de comparar.")
+            return
+        diff = servico.diff_contra_ultima_edicao(self._itens)
+        if diff is None:
+            mostrar_toast(self, "Ainda não há edição salva para comparar.",
+                          tipo="info")
+            return
+        from app.qt.telas.diff_dialog import DiffEdicaoDialog
+        DiffEdicaoDialog(diff, self).exec()
+
+    def _exportar_checklist_pdf(self) -> None:
+        """OS F11.5 #48 (R-063): o checklist em PDF (conferência no papel)."""
+        from PySide6.QtWidgets import QFileDialog
+        if not self._itens:
+            mostrar_toast(self, "Monte a oferta antes do checklist.")
+            return
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Exportar checklist", "checklist.pdf", "PDF (*.pdf)")
+        if not destino:
+            return
+        saida = servico.exportar_checklist_pdf(
+            self._itens, self._validade, destino)
+        mostrar_toast(self, f"Checklist exportado: {Path(saida).name}")
 
     def _avisar_divergencia(self) -> None:
         """R-123: o MESMO item (por uid, I1) aparecendo com preços diferentes em
@@ -1131,11 +1259,12 @@ class MesaTela(QWidget):
         self.area.canvas.reatribuir_mapa(combinado)
         self._recarregar_lista()
         self._marcar_salvo(False)
+        # OS F11.5 #23/#25 (R-056): o RESTO tem destino PERGUNTADO — nova
+        # página (e enche de novo), fila (a estante, como sempre) ou fora
+        # (sai da estante, com desfazer). Nunca um toast mudo.
         if resto:
-            n = len(resto)
-            mostrar_toast(self, f"{n} item(ns) não couberam — estão na estante "
-                          "marcados “fora da grade”. Crie uma página nova para "
-                          "eles em Páginas.", tipo="info")
+            self._aplicar_destino_resto(self._perguntar_destino_resto(
+                len(resto)), resto)
 
     def refletir_planilha(self) -> None:
         """R-051 (passo 27): planilha e canvas são a MESMA fonte de verdade —
@@ -1242,6 +1371,11 @@ class MesaTela(QWidget):
              self._publicar),
             ("cofre", "Salvar projeto", "", self._salvar_projeto),
             ("abrir", "Abrir projeto", "", self._abrir_projeto),
+            # OS F11.5 #44/#48: o diff e o checklist agora têm porta de UI
+            ("restaurar", "O que mudou desde a última edição…", "",
+             self._mostrar_diff_edicao),
+            ("salvar", "Exportar o checklist em PDF…", "",
+             self._exportar_checklist_pdf),
         ]
         # OS F11.5 #57: navegar por página e abrir Configurações pela paleta
         canvas = self.area.canvas

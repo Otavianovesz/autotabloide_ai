@@ -163,13 +163,18 @@ def _dialogo_cls():
 
             # R-058: frases prontas com {data}/{evento} — escolher e inserir,
             # já resolvidas pelo contexto (o que não tiver valor fica visível).
-            from app.qt.telas.servico import BANCO_FRASES
+            # OS F11.5 #39: o combo soma as frases do DONO (config) às padrão,
+            # e o último item ("Nova frase…") adiciona e PERSISTE uma nova.
+            from app.qt.telas.servico import frases_do_combo
             self.combo_frases = QComboBox()
             self.combo_frases.addItem("Frases prontas…")
-            for f in BANCO_FRASES:
+            for f in frases_do_combo():
                 self.combo_frases.addItem(f)
+            self.combo_frases.addItem("＋ Nova frase…")
             self.combo_frases.setToolTip(
-                "Insere uma frase pronta; {data}/{evento} se resolvem sozinhos.")
+                "Insere uma frase pronta; {data}/{evento} se resolvem "
+                "sozinhos. A última opção adiciona uma frase SUA (fica salva "
+                "para as próximas vezes; edite tudo em Configurações).")
             self.combo_frases.activated.connect(self._inserir_frase)
             raiz.addWidget(self.combo_frases)
 
@@ -272,11 +277,37 @@ def _dialogo_cls():
             variável sem valor fica VISÍVEL (I2), o dono completa."""
             if idx <= 0:
                 return
+            # OS F11.5 #39: o último item cria uma frase NOVA e a persiste
+            if idx == self.combo_frases.count() - 1:
+                self._nova_frase()
+                return
             from app.qt.telas.servico import resolver_frase
             texto, _faltantes = resolver_frase(
                 self.combo_frases.itemText(idx), self._contexto)
             self.edit_livre.setText(texto)
             self.combo_frases.setCurrentIndex(0)
+
+        def _nova_frase(self) -> None:
+            """OS F11.5 #39: pergunta a frase, salva na config (a mesma lista
+            de Configurações) e já a deixa escolhida no combo."""
+            from PySide6.QtWidgets import QInputDialog, QMessageBox
+            self.combo_frases.setCurrentIndex(0)
+            frase, ok = QInputDialog.getText(
+                self, "Nova frase pronta",
+                "A frase (pode usar {data} e {evento}):")
+            frase = (frase or "").strip()
+            if not ok or not frase:
+                return
+            from app.qt.telas import servico
+            if not servico.adicionar_frase_do_combo(frase):
+                QMessageBox.information(
+                    self, "Nova frase",
+                    "Essa frase já existe (ou não deu para salvar agora) — "
+                    "nada foi duplicado.")
+                return
+            pos = self.combo_frases.count() - 1     # antes do "＋ Nova frase…"
+            self.combo_frases.insertItem(pos, frase)
+            self._inserir_frase(pos)                # já aplica no texto livre
 
         def resultado(self) -> tuple[PapelTexto, str | None]:
             p = self.papel_escolhido()
