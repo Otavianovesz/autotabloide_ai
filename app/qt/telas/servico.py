@@ -361,6 +361,17 @@ def _upscaler_real(modelo_path: str):
     return UpscalerRealESRGAN(modelo_path)
 
 
+def aquecer_upscaler() -> bool:
+    """OS F11.5 #80: pré-aquece o Real-ESRGAN pós-boot (como o rembg, RG-02) —
+    o 1º cartaz da sessão não paga a carga do .pth. Sem o modelo no disco,
+    não faz nada (False)."""
+    modelo = SystemRoot().modelos / "RealESRGAN_x4plus.pth"
+    if not modelo.exists():
+        return False
+    _upscaler_real(str(modelo))
+    return True
+
+
 def upscale_para_cartaz(caminho: str, lado_alvo_px: int,
                         status_cb: StatusCb) -> str:
     """RG-32: foto pequena esticada no cartaz grande saía "baixíssima
@@ -488,13 +499,94 @@ def preparar_extra(produto_id: int | None, fonte: str,
     return tratada
 
 
+def webp_ligado() -> bool:
+    """OS F11.5 #51/#52: a chave `imagem.webp` da Config — foto NOVA sai em
+    WebP lossless (alfa preservado). Falha de leitura = PNG de sempre."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                return bool(ConfigRepositorio(s).get("imagem.webp", False))
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return False
+
+
+def biblioteca_da_config():
+    """A BibliotecaImagens com o formato da Config (#51/#52) — o ponto único
+    dos fluxos de ingestão."""
+    from app.images.biblioteca import BibliotecaImagens
+    return BibliotecaImagens(SystemRoot().biblioteca_imagens,
+                             webp=webp_ligado())
+
+
+def migrar_acervo_webp(para_webp: bool, status_cb: StatusCb = lambda _m: None,
+                       *, previa: bool = False) -> dict:
+    """OS F11.5 #51/#52: converte as fotos 'atual' do acervo PNG↔WebP
+    (LOSSLESS — o alfa do packshot é sagrado), atualizando o caminho no
+    banco. `previa=True` só MEDE o ganho, byte a byte, sem tocar em nada.
+    REVERSÍVEL: rodar com `para_webp=False` volta tudo a PNG. Foto ilegível
+    é pulada e RELATADA (I2). Devolve {"fotos", "bytes_antes",
+    "bytes_depois", "puladas"}."""
+    import io
+
+    from PIL import Image as _Img
+
+    from sqlalchemy import select
+
+    from app.core.models import Produto
+    raiz = SystemRoot().biblioteca_imagens
+    alvo_ext = ".webp" if para_webp else ".png"
+    fotos = antes = depois = 0
+    puladas: list[str] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            rows = s.execute(select(Produto).where(
+                Produto.caminho_imagem.is_not(None))).scalars().all()
+            total = len(rows)
+            for i, p in enumerate(rows, 1):
+                rel = (p.caminho_imagem or "").replace("\\", "/")
+                origem = raiz / rel
+                if not origem.is_file() or origem.suffix.lower() == alvo_ext:
+                    continue
+                status_cb(f"{'Medindo' if previa else 'Convertendo'} "
+                          f"{i}/{total}…")
+                try:
+                    img = _Img.open(origem).convert("RGBA")
+                    buf = io.BytesIO()
+                    if para_webp:
+                        img.save(buf, "WEBP", lossless=True)
+                    else:
+                        img.save(buf, "PNG")
+                except Exception:
+                    puladas.append(rel)
+                    continue
+                fotos += 1
+                antes += origem.stat().st_size
+                depois += buf.tell()
+                if previa:
+                    continue
+                destino = origem.with_suffix(alvo_ext)
+                destino.write_bytes(buf.getvalue())
+                origem.unlink()
+                p.caminho_imagem = str(
+                    Path(rel).with_suffix(alvo_ext).as_posix())
+            if not previa:
+                s.commit()
+    finally:
+        db.engine.dispose()
+    return {"fotos": fotos, "bytes_antes": antes, "bytes_depois": depois,
+            "puladas": puladas}
+
+
 def definir_imagem(produto_id: int, imagem_tratada: str,
                    status_cb: StatusCb) -> dict:
     """Nova imagem do produto via biblioteca (a anterior vira versão)."""
-    from app.images.biblioteca import BibliotecaImagens
-
     status_cb("Guardando na biblioteca…")
-    bib = BibliotecaImagens(SystemRoot().biblioteca_imagens)
+    bib = biblioteca_da_config()
     bib.ingerir(produto_id, imagem_tratada)
     return editar_produto(produto_id,
                           caminho_imagem=bib.caminho_relativo(produto_id))
@@ -1854,13 +1946,46 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
                                         for c in enr.componentes])
 
 
+def candidatos_do_acervo(nome: str, limite: int = 2) -> list[str]:
+    """OS F11.5 #49: fotos JÁ TRATADAS do acervo cujo produto casa o nome
+    (fuzzy ≥ 82) — aparecem ANTES da web na curadoria: packshot pronto ganha
+    de download cru. Degrada para lista vazia."""
+    saida: list[tuple[float, str]] = []
+    try:
+        from rapidfuzz import fuzz
+        from sqlalchemy import select
+
+        from app.core.models import Produto
+        raiz = SystemRoot().biblioteca_imagens
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                rows = s.execute(select(
+                    Produto.nome_sanitizado, Produto.caminho_imagem).where(
+                    Produto.caminho_imagem.is_not(None))).all()
+        finally:
+            db.engine.dispose()
+        for nome_p, rel in rows:
+            score = fuzz.token_set_ratio((nome or "").lower(),
+                                         (nome_p or "").lower())
+            if score >= 82:
+                cam = raiz / str(rel).replace("\\", "/")
+                if cam.is_file():
+                    saida.append((score, str(cam)))
+    except Exception:
+        return []
+    saida.sort(key=lambda p: -p[0])
+    return [c for _s, c in saida[:limite]]
+
+
 def buscar_candidatos_para(nome: str, status_cb: StatusCb,
                            n_candidatos: int = 6,
                            ean: str | None = None) -> list[str]:
     """Candidatos de imagem para um nome JÁ enriquecido (degrada p/ vazio).
 
     RG-41 (a cascata da pesquisa): com EAN, o packshot do Open Food Facts
-    vem PRIMEIRO (foto oficial pelo código de barras); o ddgs completa. OFF
+    vem PRIMEIRO (foto oficial pelo código de barras); o ACERVO vem antes da
+    web (#49 — foto tratada da casa ganha de download); o ddgs completa. OFF
     sem resultado/sem rede AVISA e segue — nunca cala a busca (I2).
     """
     termo = remover_marcas_do_termo(nome)   # RG-30: a sigla não vai à busca
@@ -1875,6 +2000,11 @@ def buscar_candidatos_para(nome: str, status_cb: StatusCb,
         else:
             status_cb("Código não achado no Open Food Facts — "
                       "buscando na web…")
+    # #49: o ACERVO vem antes da web (depois da foto oficial do EAN)
+    do_acervo = candidatos_do_acervo(nome)
+    if do_acervo:
+        status_cb(f"{len(do_acervo)} foto(s) parecidas no seu acervo…")
+        encontrados.extend(do_acervo)
     status_cb(f"Buscando imagem de “{termo[:40]}”…")
     from app.images.busca import BaixadorWeb, buscar_imagens
     try:
@@ -1924,6 +2054,22 @@ def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
     return str(destino)
 
 
+def estudio_gerador_ligado() -> bool:
+    """OS F11.5 #20: a flag "Estúdio IA (gerador)" da Config — liga o degrau 2
+    (img2img local). Padrão DESLIGADO (o degrau 2 é opção condicionada à GPU,
+    nunca requisito). Falha de leitura = desligado."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                return bool(ConfigRepositorio(s).get("estudio.gerador", False))
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return False
+
+
 def tratar_estudio(fonte: str, status_cb: StatusCb, *,
                    com_gerador: bool = False) -> str:
     """R-091 (Estúdio degrau 1): foto crua → PACKSHOT (fundo limpo + luz + sombra
@@ -1945,7 +2091,10 @@ def tratar_estudio(fonte: str, status_cb: StatusCb, *,
         caminho = Path(tempfile.mkdtemp(prefix="atb_url_")) / "baixada"
         caminho.write_bytes(resp.content)
     status_cb("Estúdio: removendo o fundo e montando o packshot…")
-    pack = packshot_degrau1(Image.open(caminho))
+    # OS F11.5 #57 (R-102): a sombra acompanha o TEMA da arte em uso
+    from app.qt.design import tokens as _t
+    pack = packshot_degrau1(Image.open(caminho),
+                            tema=getattr(_t, "TEMA_ATUAL", "claro"))
     if com_gerador:
         status_cb("Estúdio gerador (degrau 2)…")
         melhor, aviso = refinar_com_gerador(pack)
@@ -1982,7 +2131,7 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
             if eh_marca_propria(nome) or eh_marca_propria(item.descricao):
                 repo.editar(produto.id, marca_propria=True)   # RG-30
             if imagem_tratada:
-                bib = BibliotecaImagens(SystemRoot().biblioteca_imagens)
+                bib = biblioteca_da_config()          # #51/#52: WebP opcional
                 bib.ingerir(produto.id, imagem_tratada)
                 repo.editar(produto.id,
                             caminho_imagem=bib.caminho_relativo(produto.id))

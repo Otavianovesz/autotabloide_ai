@@ -45,11 +45,16 @@ class BibliotecaImagens:
         processador: Callable[[Image.Image], Image.Image] | None = None,
         baixar_url: Callable[[str], bytes] | None = None,
         max_versoes: int = 10,
+        webp: bool = False,
     ):
         self.raiz = Path(raiz)
         self.processador = processador          # pipeline F4.2/F4.3 (opcional)
         self.baixar_url = baixar_url or _baixar_url_http
         self.max_versoes = max_versoes
+        # OS F11.5 #51/#52 (R-100): com webp=True a foto NOVA sai em WebP
+        # LOSSLESS (preserva o alfa do packshot — decisão travada); as antigas
+        # em PNG continuam sendo achadas normalmente (convivência)
+        self.webp = bool(webp)
 
     # --- caminhos --------------------------------------------------------------
 
@@ -57,18 +62,28 @@ class BibliotecaImagens:
         return self.raiz / str(produto_id)
 
     def caminho_atual(self, produto_id: int) -> Path:
-        return self.pasta(produto_id) / "atual.png"
+        """A foto 'atual' que EXISTE (png ou webp); sem nenhuma, o caminho do
+        formato configurado (onde a próxima será gravada)."""
+        png = self.pasta(produto_id) / "atual.png"
+        webp = self.pasta(produto_id) / "atual.webp"
+        preferido = webp if self.webp else png
+        outro = png if self.webp else webp
+        if preferido.exists() or not outro.exists():
+            return preferido
+        return outro
 
     def caminho_relativo(self, produto_id: int) -> str:
         """Caminho a guardar no banco (relativo à biblioteca — portável)."""
-        return f"{produto_id}/atual.png"
+        return f"{produto_id}/{self.caminho_atual(produto_id).name}"
 
     def _dir_versoes(self, produto_id: int) -> Path:
         return self.pasta(produto_id) / "versoes"
 
     def listar_versoes(self, produto_id: int) -> list[Path]:
         vdir = self._dir_versoes(produto_id)
-        return sorted(vdir.glob("*.png")) if vdir.exists() else []
+        if not vdir.exists():
+            return []
+        return sorted(list(vdir.glob("*.png")) + list(vdir.glob("*.webp")))
 
     # --- ingestão --------------------------------------------------------------
 
@@ -84,26 +99,34 @@ class BibliotecaImagens:
         """Recebe a imagem, processa (se houver processador) e a torna a 'atual'.
 
         Se já existia uma 'atual', ela é arquivada em versoes/ antes.
+        Com `webp` ligado (#51/#52), a nova sai em WebP LOSSLESS (alfa
+        preservado); senão, PNG como sempre.
         """
         img = self._carregar_fonte(fonte).convert("RGBA")
         if self.processador is not None:
             img = self.processador(img)
 
         self.pasta(produto_id).mkdir(parents=True, exist_ok=True)
-        atual = self.caminho_atual(produto_id)
-        if atual.exists():
-            self._arquivar(produto_id, atual)
-        img.save(atual, "PNG")
+        existente = self.caminho_atual(produto_id)
+        if existente.exists():
+            self._arquivar(produto_id, existente)
+        atual = self.pasta(produto_id) / (
+            "atual.webp" if self.webp else "atual.png")
+        if self.webp:
+            img.save(atual, "WEBP", lossless=True)
+        else:
+            img.save(atual, "PNG")
         return atual
 
     def _arquivar(self, produto_id: int, atual: Path) -> None:
         vdir = self._dir_versoes(produto_id)
         vdir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        destino = vdir / f"{ts}.png"
+        ext = atual.suffix.lower() or ".png"    # webp arquiva como webp
+        destino = vdir / f"{ts}{ext}"
         contador = 1
         while destino.exists():
-            destino = vdir / f"{ts}_{contador}.png"
+            destino = vdir / f"{ts}_{contador}{ext}"
             contador += 1
         shutil.move(str(atual), str(destino))
         self._podar(produto_id)

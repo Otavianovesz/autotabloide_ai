@@ -1507,3 +1507,450 @@ def test_f8_24_aprovacao_e_da_versao_nao_do_id(raiz_env):
     finally:
         db.engine.dispose()
     assert not projetos.esta_aprovado(pid)             # o hash não bate mais
+
+
+# ============================================================================
+# §8 — FASE 10 (imagens II + Estúdio IA)
+# ============================================================================
+
+def _quadrado_rgba(lado=200, cor=(200, 30, 30, 255)):
+    from PIL import Image
+    im = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
+    for x in range(20, lado - 20):
+        for y in range(20, lado - 20):
+            im.putpixel((x, y), cor)
+    return im
+
+
+def test_f10_57_sombra_acompanha_o_tema():
+    """#57 (R-102): a MESMA foto gera sombras DIFERENTES por tema — preta no
+    claro, halo claro no escuro (pixel na zona da sombra)."""
+    from app.images.estudio import cor_sombra_do_tema, packshot_degrau1
+    assert cor_sombra_do_tema("claro") == (0, 0, 0)
+    assert cor_sombra_do_tema("escuro") != (0, 0, 0)
+    fonte = _quadrado_rgba()
+    claro = packshot_degrau1(fonte, remover_fundo=lambda im: im, tema="claro")
+    escuro = packshot_degrau1(fonte, remover_fundo=lambda im: im,
+                              tema="escuro")
+    # a zona da sombra: logo abaixo do produto (produto ocupa até y≈920)
+    px_c = claro.getpixel((500, 935))
+    px_e = escuro.getpixel((500, 935))
+    assert px_c[3] > 0 and px_e[3] > 0                 # há sombra nos dois
+    assert px_c[:3] == (0, 0, 0)                       # claro: sombra preta
+    assert px_e[0] > 120 and px_e[2] > 120             # escuro: halo claro
+    assert px_c[:3] != px_e[:3]
+
+
+def test_f10_20_flag_gerador_liga_o_degrau2(raiz_env, tmp_path, monkeypatch):
+    """#20: a flag persiste na Config; com ela LIGADA o tratar_estudio chama
+    o degrau 2; sem GPU o aviso aparece (I2) e o degrau 1 entrega."""
+    from app.core.database import Database
+    from app.core.repositories import ConfigRepositorio
+    from app.qt.telas import servico
+    assert servico.estudio_gerador_ligado() is False   # padrão: desligado
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            ConfigRepositorio(s).set("estudio.gerador", True)
+            s.commit()
+    finally:
+        db.engine.dispose()
+    assert servico.estudio_gerador_ligado() is True    # persistiu
+
+    fonte = tmp_path / "foto.png"
+    _quadrado_rgba(120).save(fonte)
+    chamado: dict = {}
+    monkeypatch.setattr("app.images.estudio.packshot_degrau1",
+                        lambda img, **kw: _quadrado_rgba(64))
+    monkeypatch.setattr(
+        "app.images.estudio.refinar_com_gerador",
+        lambda pack, **kw: (chamado.setdefault("sim", True),
+                            (None, "Sem GPU — fiquei no degrau 1"))[-1])
+    status: list[str] = []
+    saida = servico.tratar_estudio(str(fonte), status.append,
+                                   com_gerador=True)
+    assert chamado.get("sim")                          # o degrau 2 foi tentado
+    assert any("Sem GPU" in m for m in status)         # degradou COM aviso
+    assert Path(saida).is_file()                       # e o degrau 1 entregou
+    chamado.clear()
+    servico.tratar_estudio(str(fonte), status.append, com_gerador=False)
+    assert not chamado                                 # desligado: nem tenta
+
+
+def test_f10_51_52_webp_no_armazenamento_e_migracao(raiz_env):
+    """#51/#52 (R-100): com a chave ligada a foto NOVA sai em WebP com o ALFA
+    preservado; a migração tem prévia (nada muda), converte, atualiza o banco
+    e é REVERSÍVEL (roundtrip por pixel)."""
+    from PIL import Image
+
+    from app.core.database import Database
+    from app.core.models import Produto
+    from app.images.biblioteca import BibliotecaImagens
+    from app.qt.telas import servico
+    bib_raiz = raiz_env.biblioteca_imagens
+    bib = BibliotecaImagens(bib_raiz, webp=True)
+    pid = seeds.add_produto(raiz_env, "Molho 340g", None, "4.99")
+    img = _quadrado_rgba(80)
+    tmp = bib_raiz / "_tmp.png"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    img.save(tmp)
+    atual = bib.ingerir(pid, str(tmp))
+    assert atual.name == "atual.webp"                  # saiu em WebP
+    reaberta = Image.open(atual)
+    assert reaberta.mode == "RGBA"
+    assert reaberta.getpixel((0, 0))[3] == 0           # o alfa sobreviveu
+    # convivência: a biblioteca em modo PNG ACHA a webp existente
+    assert BibliotecaImagens(bib_raiz).caminho_atual(pid).name == "atual.webp"
+
+    # migração: primeiro um acervo PNG de verdade
+    pid2 = seeds.add_produto(raiz_env, "Arroz 5kg", None, "24.90")
+    p2 = bib_raiz / str(pid2) / "atual.png"
+    p2.parent.mkdir(parents=True, exist_ok=True)
+    _quadrado_rgba(60, (10, 200, 10, 255)).save(p2)
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            s.get(Produto, pid2).caminho_imagem = f"{pid2}/atual.png"
+            s.commit()
+    finally:
+        db.engine.dispose()
+    pixels_antes = list(Image.open(p2).convert("RGBA").tobytes())
+    previa = servico.migrar_acervo_webp(True, previa=True)
+    assert previa["fotos"] >= 1 and p2.exists()        # prévia NÃO muda nada
+    r = servico.migrar_acervo_webp(True)
+    assert r["fotos"] >= 1
+    assert not p2.exists() and p2.with_suffix(".webp").exists()
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            assert s.get(Produto, pid2).caminho_imagem \
+                == f"{pid2}/atual.webp"                # o banco acompanhou
+    finally:
+        db.engine.dispose()
+    servico.migrar_acervo_webp(False)                  # REVERSÍVEL
+    assert p2.exists()
+    assert list(Image.open(p2).convert("RGBA").tobytes()) == pixels_antes
+
+
+def test_f10_63_82_genericas_nao_viram_orfas(raiz_env):
+    """#63/#82: fotos em `_genericas` são de FAMÍLIA por convenção — a
+    varredura de órfãs NÃO as lista (reverter o pulo faz este teste falhar)."""
+    from app.core.manutencao import verificar_acervo
+    gen = raiz_env.biblioteca_imagens / "_genericas" / "refrigerante.png"
+    gen.parent.mkdir(parents=True, exist_ok=True)
+    gen.write_bytes(seeds.png("#00AA66"))
+    solta = raiz_env.biblioteca_imagens / "999" / "atual.png"
+    solta.parent.mkdir(parents=True, exist_ok=True)
+    solta.write_bytes(seeds.png("#AA0066"))
+    r = verificar_acervo(raiz_env.raiz)
+    orfas = [str(o).replace("\\", "/") for o in r["orfas"]]
+    assert "999/atual.png" in orfas                    # a solta É órfã
+    assert not any("_genericas" in o for o in orfas)   # a genérica NUNCA
+
+
+def test_f10_31_32_pincel_de_refino(tmp_path):
+    """#31/#32: o gesto do pincel muda o ALFA de verdade — apagar zera,
+    restaurar devolve; Aplicar grava o PNG refinado (por pixel)."""
+    from PIL import Image
+
+    from app.qt.telas.refino_dialog import RefinoDialog
+    _app()
+    fonte = tmp_path / "recorte.png"
+    _quadrado_rgba(120).save(fonte)
+    dlg = RefinoDialog(str(fonte))
+    dlg.raio.setValue(6)
+    dlg.rb_apagar.setChecked(True)
+    dlg.pintar([(60, 60)])
+    assert dlg._img.getpixel((60, 60))[3] == 0         # apagou o alfa
+    dlg.rb_restaurar.setChecked(True)
+    dlg.pintar([(60, 60)])
+    assert dlg._img.getpixel((60, 60))[3] == 255       # restaurou
+    dlg.rb_apagar.setChecked(True)
+    dlg.pintar([(30, 30)])
+    dlg._aplicar()
+    assert dlg.caminho_final
+    salvo = Image.open(dlg.caminho_final)
+    assert salvo.getpixel((30, 30))[3] == 0            # o PNG saiu refinado
+    assert salvo.getpixel((90, 90))[3] == 255          # o resto intacto
+    dlg.close()
+
+
+def test_f10_8_41_previa_e_comparador_mostram_regua(raiz_env, tmp_path):
+    """#8/#41: a prévia antes/depois e o comparador de versões mostram a
+    RÉGUA real (resolução + peso) de cada lado."""
+    from app.qt.telas.almoxarifado import HistoricoImagensDialog
+    from app.qt.telas.previa_estudio_dialog import PreviaEstudioDialog
+    _app()
+    a = tmp_path / "a.png"
+    b = tmp_path / "b.png"
+    _quadrado_rgba(100).save(a)
+    _quadrado_rgba(240).save(b)
+    dlg = PreviaEstudioDialog(str(a), str(b))
+    rotulos = [w.text() for w in dlg.findChildren(
+        __import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel)]
+    assert any("100×100 px" in r for r in rotulos)
+    assert any("240×240 px" in r for r in rotulos)
+    dlg.close()
+    pid = seeds.add_produto(raiz_env, "Café 500g", None, "18.90")
+    atual = raiz_env.biblioteca_imagens / str(pid) / "atual.png"
+    atual.parent.mkdir(parents=True, exist_ok=True)
+    _quadrado_rgba(150).save(atual)
+    (atual.parent / "versoes").mkdir(exist_ok=True)
+    _quadrado_rgba(90).save(atual.parent / "versoes" / "v1.png")
+    hist = HistoricoImagensDialog(pid)
+    assert "150×150 px" in hist._foto_atual._info.text()
+    hist.lista.item(0).setSelected(True)
+    assert "90×90 px" in hist._foto_sel._info.text()
+    hist.close()
+
+
+def test_f10_80_aquecer_esrgan(raiz_env, monkeypatch):
+    """#80: sem o modelo no disco → False; com ele, o pré-aquecimento
+    CONSTRÓI o upscaler (capturado — reverter a chamada falha aqui)."""
+    from app.qt.telas import servico
+    servico._upscaler_real.cache_clear()
+    assert servico.aquecer_upscaler() is False         # sem o .pth
+    modelo = raiz_env.modelos / "RealESRGAN_x4plus.pth"
+    modelo.parent.mkdir(parents=True, exist_ok=True)
+    modelo.write_bytes(b"fake-modelo")
+    construidos: list[str] = []
+
+    class _FakeUp:
+        def __init__(self, caminho):
+            construidos.append(str(caminho))
+
+    monkeypatch.setattr("app.images.upscale.UpscalerRealESRGAN", _FakeUp)
+    servico._upscaler_real.cache_clear()
+    assert servico.aquecer_upscaler() is True
+    assert construidos == [str(modelo)]                # carregou DE VERDADE
+    servico._upscaler_real.cache_clear()
+
+
+def test_f10_46_curadoria_expoe_ajuste_e_refino(tmp_path):
+    """#46: a CuradoriaDialog ganhou Ajustar/Refinar — habilitam com a
+    seleção e a troca do candidato atualiza o caminho (por conteúdo)."""
+    from PySide6.QtCore import Qt
+
+    from app.qt.telas.curadoria_dialog import CuradoriaDialog
+    _app()
+    cand = tmp_path / "cand.png"
+    novo = tmp_path / "novo.png"
+    _quadrado_rgba(100).save(cand)
+    _quadrado_rgba(80, (0, 0, 200, 255)).save(novo)
+    dlg = CuradoriaDialog("Produto X", [str(cand)])
+    assert not dlg.btn_ajustar.isEnabled()
+    assert not dlg.btn_refinar.isEnabled()
+    dlg.lista.item(0).setSelected(True)
+    assert dlg.btn_ajustar.isEnabled() and dlg.btn_refinar.isEnabled()
+    dlg._trocar_candidato(str(novo))
+    assert dlg.lista.item(0).data(Qt.ItemDataRole.UserRole) == str(novo)
+    assert "arrumada" in dlg.lista.item(0).toolTip()
+    dlg.close()
+
+
+def test_f10_49_acervo_vem_antes_da_web(raiz_env, monkeypatch):
+    """#49: produto parecido COM foto no acervo entra na frente dos
+    resultados da web (a web devolve o dela depois)."""
+    from app.qt.telas import servico
+    pid = seeds.add_produto(raiz_env, "Refrigerante Cola 2L", None, "8.99")
+    foto = raiz_env.biblioteca_imagens / str(pid) / "atual.png"
+    foto.parent.mkdir(parents=True, exist_ok=True)
+    foto.write_bytes(seeds.png("#111111"))
+    from app.core.database import Database
+    from app.core.models import Produto
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            s.get(Produto, pid).caminho_imagem = f"{pid}/atual.png"
+            s.commit()
+    finally:
+        db.engine.dispose()
+    assert servico.candidatos_do_acervo("Refrigerante Cola 2L") \
+        == [str(foto)]
+
+    class _R:
+        candidatos = []
+    monkeypatch.setattr("app.images.busca.buscar_imagens",
+                        lambda *a, **k: _R())
+    achados = servico.buscar_candidatos_para("Refrigerante Cola 2L",
+                                             lambda _m: None)
+    assert achados and achados[0] == str(foto)         # o acervo veio antes
+
+
+def test_f10_72_73_adversariais_foto(raiz_env, tmp_path):
+    """#72: trocar a foto OFICIAL de um produto NÃO toca a foto do outro
+    (por hash de bytes). #73: o cache do upscale identifica por CONTEÚDO —
+    o mesmo byte com outro nome cai no MESMO arquivo de cache."""
+    import hashlib
+
+    from app.qt.telas import servico
+    pa = seeds.add_produto(raiz_env, "Produto A", None, "1.00")
+    pb = seeds.add_produto(raiz_env, "Produto B", None, "2.00")
+    for pid, cor in ((pa, "#AA0000"), (pb, "#00AA00")):
+        f = raiz_env.biblioteca_imagens / str(pid) / "atual.png"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(seeds.png(cor))
+    foto_b = raiz_env.biblioteca_imagens / str(pb) / "atual.png"
+    h_b = hashlib.sha256(foto_b.read_bytes()).hexdigest()
+    nova = tmp_path / "nova.png"
+    _quadrado_rgba(64, (0, 0, 250, 255)).save(nova)
+    servico.definir_imagem(pa, str(nova), lambda _m: None)
+    assert hashlib.sha256(
+        foto_b.read_bytes()).hexdigest() == h_b        # B intacto (byte)
+    # #73: mesmo CONTEÚDO, nomes diferentes → o MESMO cache
+    p1 = tmp_path / "um.png"
+    p2 = tmp_path / "dois.png"
+    _quadrado_rgba(100).save(p1)
+    import shutil as _sh
+    _sh.copy2(p1, p2)
+    d1 = servico.upscale_para_cartaz(str(p1), 400, lambda _m: None)
+    d2 = servico.upscale_para_cartaz(str(p2), 400, lambda _m: None)
+    assert d1 == d2 and Path(d1).is_file()
+
+
+# ============================================================================
+# §9 — FASE 11 (inteligência: os 5 menores) e §10 (polimento)
+# ============================================================================
+
+def test_f11_47_meta_do_evento_define_e_reflete(raiz_env, monkeypatch):
+    """#47 (R-122): o gesto na Mesa DEFINE a meta (persistida por evento) e o
+    pulso da barra passa a mostrar N/meta."""
+    from app.qt.telas import inteligencia as I
+    from app.qt.telas.servico import ItemMesa
+    m = _mesa_viva(raiz_env, [ItemMesa("A", "1,00", "VERDE", "A"),
+                              ItemMesa("B", "2,00", "VERDE", "B")])
+    m._evento = "Quintou"
+    monkeypatch.setattr(
+        "PySide6.QtWidgets.QInputDialog.getInt",
+        staticmethod(lambda *a, **k: (40, True)))
+    m._definir_meta_evento()
+    assert I.meta_evento("Quintou") == 40              # persistiu
+    m._atualizar_estatistica()
+    assert m._estatistica_lbl.text() == "2/40"         # o pulso refletiu
+    m.close()
+
+
+def test_f11_45_aba_sazonal_mostra_o_ano_passado(raiz_env, monkeypatch):
+    """#45 (R-121): a aba lista o que foi ofertado ~1 ano atrás (por data +
+    chave natural); edição recente NÃO entra."""
+    from datetime import datetime, timedelta
+
+    from app.qt.telas import inteligencia as I
+    from app.qt.telas.inteligencia_dialog import InteligenciaDialog
+    from app.qt.telas.servico import ItemMesa
+    _app()
+    antiga = {"criado_em": datetime.now() - timedelta(days=365),
+              "itens": [ItemMesa("x", "9,90", "VERDE",
+                                 "Panetone 500g").to_dict()]}
+    recente = {"criado_em": datetime.now() - timedelta(days=30),
+               "itens": [ItemMesa("x", "5,00", "VERDE",
+                                  "Sorvete 2L").to_dict()]}
+    sug = I.memoria_sazonal([antiga, recente])
+    assert [s["nome"] for s in sug] == ["Panetone 500g"]
+    monkeypatch.setattr("app.core.projetos.historico_edicoes",
+                        lambda *a, **k: [antiga, recente])
+    dlg = InteligenciaDialog()
+    nomes = [dlg.lista_sazonal.item(i).text()
+             for i in range(dlg.lista_sazonal.count())]
+    assert nomes == ["Panetone 500g"]                  # a aba reflete
+    dlg.close()
+
+
+def test_f11_51_52_saude_com_metas_e_integridade(raiz_env):
+    """#51/#52 (R-126): a saúde ganha metas (ok/abaixo por limiar), a
+    contagem de órfãs (R-129) e a nota das fotos (avaliador F9) — numa
+    visão só, por conteúdo."""
+    from app.qt.telas.inteligencia import METAS_SAUDE, saude_com_metas
+    pid = seeds.add_produto(raiz_env, "Único 1kg", None, "9.99")
+    foto = raiz_env.biblioteca_imagens / str(pid) / "atual.png"
+    foto.parent.mkdir(parents=True, exist_ok=True)
+    foto.write_bytes(seeds.png("#332211"))             # foto minúscula → ruim
+    from app.core.database import Database
+    from app.core.models import Produto
+    db = Database(raiz_env).init()
+    try:
+        with db.Session() as s:
+            s.get(Produto, pid).caminho_imagem = f"{pid}/atual.png"
+            s.commit()
+    finally:
+        db.engine.dispose()
+    orfa = raiz_env.biblioteca_imagens / "777" / "atual.png"
+    orfa.parent.mkdir(parents=True, exist_ok=True)
+    orfa.write_bytes(seeds.png("#AABBCC"))
+    s = saude_com_metas(raiz_env)
+    assert s["total"] == 1 and s["pct_foto"] == 100
+    assert s["metas"]["pct_foto"]["ok"] is True        # 100 ≥ meta 90
+    assert s["metas"]["pct_ean"]["alvo"] == METAS_SAUDE["pct_ean"]
+    assert s["metas"]["pct_ean"]["ok"] is False        # 0% de EAN: abaixo
+    assert s["orfas"] == 1                             # a integridade R-129
+    assert s["fotos_avaliadas"] == 2                   # produto + a órfã
+    assert s["fotos_ruins"] == 2                       # minúsculas → ruins (F9)
+
+
+def test_f11_39_relatorio_sai_em_pdf(raiz_env, tmp_path, monkeypatch):
+    """#39 (R-117): o relatório exporta em PDF de verdade — o conteúdo se
+    prova nas linhas (as MESMAS da tela) e o arquivo sai com página."""
+    from pypdf import PdfReader
+
+    from app.qt.telas.inteligencia_dialog import InteligenciaDialog
+    from app.qt.telas.servico import ItemMesa
+    _app()
+    itens = [ItemMesa("x", "10,00", "VERDE", "Arroz 5kg",
+                      categoria="Mercearia"),
+             ItemMesa("x", "5,00", "VERDE", "Feijão 1kg",
+                      categoria="Mercearia")]
+    dlg = InteligenciaDialog(itens)
+    linhas = dlg.linhas_relatorio()
+    assert any("2 itens na edição" in ln for ln in linhas)
+    assert any("Mercearia: 2" in ln for ln in linhas)
+    destino = tmp_path / "rel.pdf"
+    monkeypatch.setattr(
+        "PySide6.QtWidgets.QFileDialog.getSaveFileName",
+        staticmethod(lambda *a, **k: (str(destino), "PDF (*.pdf)")))
+    dlg._exportar_relatorio_pdf()
+    assert destino.is_file()
+    assert len(PdfReader(str(destino)).pages) >= 1
+    dlg.close()
+
+
+def test_f11_85_orfaos_da_f11_tem_chamador_de_ui():
+    """#85: varredura por IDENTIFICADOR — cada função da F11/F7 que a ordem
+    apontou como órfã agora tem CHAMADOR fora do módulo em que nasceu (e fora
+    dos testes). Reverter qualquer ligação de UI faz este teste falhar."""
+    raiz = Path(__file__).resolve().parents[1]        # app/
+    alvos = {
+        "definir_meta_evento": "inteligencia.py",
+        "memoria_sazonal": "inteligencia.py",
+        "saude_com_metas": "inteligencia.py",
+        "separar_por_semaforo": "servico.py",
+        "diff_contra_ultima_edicao": "servico.py",
+        "exportar_checklist_pdf": "servico.py",
+    }
+    for simbolo, arquivo_def in alvos.items():
+        chamadores = []
+        for py in raiz.rglob("*.py"):
+            rel = py.relative_to(raiz).as_posix()
+            if rel.startswith("tests/") or py.name == arquivo_def:
+                continue
+            texto = py.read_text(encoding="utf-8", errors="ignore")
+            if f"{simbolo}(" in texto and f"def {simbolo}" not in texto:
+                chamadores.append(rel)
+        assert chamadores, f"{simbolo} segue órfã (sem chamador de UI)"
+
+
+def test_pol_6_cor_publicado_vem_do_token(raiz_env):
+    """§10 #6: a cor do status "publicado" vem do TOKEN tematizado — no tema
+    escuro ela MUDA junto (o hex solto não mudava)."""
+    from app.qt.design import tokens as t
+    from app.qt.telas.dashboard import DashboardTela
+    _app()
+    dash = DashboardTela()
+    assert dash._cor_status("publicado") == t.PUBLICADO
+    claro = dash._cor_status("publicado")
+    t.ativar_tema("escuro")
+    try:
+        escuro = dash._cor_status("publicado")
+        assert escuro == t.PUBLICADO and escuro != claro   # tematizada
+    finally:
+        t.ativar_tema("claro")
+    dash.close()

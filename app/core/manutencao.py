@@ -133,8 +133,11 @@ def verificar_acervo(raiz=None) -> dict:
             if not arq.is_file() or arq.suffix.lower() not in _EXT_FOTO:
                 continue
             rel = arq.relative_to(bib).as_posix()
-            if rel.split("/")[0] in (PASTA_QUARENTENA, "_upscale_cartaz"):
-                continue                    # quarentena/cache não são órfãs
+            # OS F11.5 #63/#82: _genericas são fotos de FAMÍLIA por convenção
+            # de caminho (F10) — nunca órfãs, mesmo sem produto apontando
+            if rel.split("/")[0] in (PASTA_QUARENTENA, "_upscale_cartaz",
+                                     "_genericas"):
+                continue                    # quarentena/cache/genéricas ficam
             if rel.lower() not in usados:
                 orfas.append(arq.relative_to(bib))
     return {"orfas": orfas, "sem_arquivo": sem_arquivo}

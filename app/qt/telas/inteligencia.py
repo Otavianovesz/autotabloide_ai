@@ -275,3 +275,51 @@ def saude_acervo(raiz=None) -> dict:
         "com_preco": com_preco, "pct_preco": _pct(com_preco),
         "com_categoria": com_categoria, "pct_categoria": _pct(com_categoria),
     }
+
+
+# OS F11.5 #51/#52 (R-126): as METAS simples do acervo — o alvo de cada
+# métrica; abaixo do alvo o painel acende "abaixo da meta"
+METAS_SAUDE = {"pct_foto": 90, "pct_categoria": 80,
+               "pct_preco": 90, "pct_ean": 40}
+
+
+def saude_com_metas(raiz=None, max_avaliadas: int = 120) -> dict:
+    """OS F11.5 #51/#52: a saúde (R-126) com METAS/limiares por métrica +
+    a INTEGRIDADE R-129 (órfãs/aponta-pro-nada, só leitura) + a NOTA das
+    fotos (avaliador F9, numa amostra) — a visão única do acervo. SÓ LEITURA
+    como sempre; qualquer perna que falhe degrada com o campo ausente (I2
+    é do chamador exibir o que veio)."""
+    s = saude_acervo(raiz)
+    s["metas"] = {chave: {"alvo": alvo, "ok": s.get(chave, 0) >= alvo}
+                  for chave, alvo in METAS_SAUDE.items()}
+    try:                                    # R-129: integridade, só contagem
+        from app.core.manutencao import verificar_acervo
+        r = verificar_acervo(getattr(raiz, "raiz", raiz))
+        s["orfas"] = len(r.get("orfas", []))
+        s["sem_arquivo"] = len(r.get("sem_arquivo", []))
+    except Exception:
+        pass
+    try:                                    # F9: nota das fotos (amostra)
+        from app.core.paths import SystemRoot
+
+        from app.images.avaliador import avaliar_foto
+        raiz_bib = (raiz.biblioteca_imagens if raiz
+                    else SystemRoot().biblioteca_imagens)
+        ruins = avaliadas = 0
+        for pasta in sorted(raiz_bib.iterdir()) if raiz_bib.exists() else []:
+            if avaliadas >= max_avaliadas:
+                break
+            if not pasta.is_dir() or pasta.name.startswith("_"):
+                continue
+            atual = next((pasta / n for n in ("atual.png", "atual.webp")
+                          if (pasta / n).is_file()), None)
+            if atual is None:
+                continue
+            avaliadas += 1
+            if avaliar_foto(atual).nota == "ruim":
+                ruins += 1
+        s["fotos_avaliadas"] = avaliadas
+        s["fotos_ruins"] = ruins
+    except Exception:
+        pass
+    return s

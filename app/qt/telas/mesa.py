@@ -1635,7 +1635,36 @@ class MesaTela(QWidget):
         self._estatistica_lbl.setText(texto)
         self._estatistica_lbl.setToolTip(
             f"Montagem desta oferta: {r['resumo']} — cálculo local, "
-            "nada sai do seu computador." + dica_meta)
+            "nada sai do seu computador." + dica_meta
+            + "\nClique para definir a META de itens do evento (R-122).")
+        # OS F11.5 #47 (R-122): clicar na estatística DEFINE a meta
+        self._estatistica_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._estatistica_lbl.mousePressEvent = \
+            lambda _ev: self._definir_meta_evento()
+
+    def _definir_meta_evento(self) -> None:
+        """#47: o dono define a meta de itens do evento (persistida por
+        evento; o pulso '32/40' da barra passa a refletir na hora)."""
+        evento = (getattr(self, "_evento", None) or "").strip()
+        if not evento:
+            mostrar_toast(self, "Dê um nome/evento à oferta primeiro — a "
+                                "meta é POR evento (ex.: “Quintou”).")
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        from app.qt.telas import inteligencia
+        atual = inteligencia.meta_evento(evento) or 0
+        meta, ok = QInputDialog.getInt(
+            self, "Meta do evento",
+            f"Quantos itens o encarte de “{evento}” costuma ter?\n"
+            "(0 tira a meta — o pulso volta a ser só a contagem)",
+            atual, 0, 999)
+        if not ok:
+            return
+        inteligencia.definir_meta_evento(evento, int(meta))
+        self._atualizar_estatistica()
+        mostrar_toast(self, f"Meta de “{evento}”: "
+                            + (f"{meta} itens." if meta else "removida."))
 
     def contexto_frases(self) -> dict:
         """R-058: contexto VIVO para resolver {data}/{evento} nas frases prontas

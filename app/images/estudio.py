@@ -26,10 +26,20 @@ def _normalizar_luz(rgba: Image.Image) -> Image.Image:
     return Image.merge("RGBA", (r2, g2, b2, a))
 
 
+def cor_sombra_do_tema(tema: str | None) -> tuple[int, int, int]:
+    """OS F11.5 #57 (R-102): a cor da sombra sintética acompanha o TEMA da
+    arte — no claro, sombra preta clássica; no escuro, um halo CLARO (sombra
+    preta some em fundo escuro; o volume vem do contraste)."""
+    return (185, 195, 210) if tema == "escuro" else (0, 0, 0)
+
+
 def _enquadrar_com_sombra(produto: Image.Image, lado: int, margem_frac: float,
-                          intensidade: float) -> Image.Image:
+                          intensidade: float,
+                          cor_sombra: tuple[int, int, int] = (0, 0, 0)
+                          ) -> Image.Image:
     """Centraliza o produto num quadrado com margem de packshot e projeta uma
-    SOMBRA sintética suave sob ele (a partir do alfa; dá volume)."""
+    SOMBRA sintética suave sob ele (a partir do alfa; dá volume). A cor vem
+    do tema (#57) — preto no claro, halo claro no escuro."""
     disp = max(1, int(lado * (1 - 2 * margem_frac)))
     esc = min(disp / produto.width, disp / produto.height)
     pw, ph = max(1, round(produto.width * esc)), max(1, round(produto.height * esc))
@@ -45,8 +55,9 @@ def _enquadrar_com_sombra(produto: Image.Image, lado: int, margem_frac: float,
     mascara = mascara.filter(ImageFilter.GaussianBlur(raio))
     inten = max(0.0, min(1.0, intensidade))
     mascara = mascara.point(lambda v: int(v * inten))
-    sombra = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
-    sombra.putalpha(mascara)                       # preto translúcido (a=máscara)
+    r, g, b = cor_sombra
+    sombra = Image.new("RGBA", (lado, lado), (r, g, b, 0))
+    sombra.putalpha(mascara)                       # translúcido (a=máscara)
     canvas = Image.alpha_composite(canvas, sombra)   # sombra primeiro (embaixo)
     canvas.paste(prod, (px, py), prod)               # produto por cima
     return canvas
@@ -54,17 +65,20 @@ def _enquadrar_com_sombra(produto: Image.Image, lado: int, margem_frac: float,
 
 def packshot_degrau1(img: Image.Image, *, remover_fundo=None,
                      intensidade_sombra: float = 0.35, margem_frac: float = 0.08,
-                     lado: int = 1000) -> Image.Image:
+                     lado: int = 1000,
+                     tema: str | None = None) -> Image.Image:
     """DEGRAU 1: foto crua → packshot (RGBA, fundo transparente + sombra). CPU,
     qualquer PC. `remover_fundo` é INJETÁVEL (o teste não carrega o modelo de
-    ~1GB). Nunca deforma o produto (escala pela proporção)."""
+    ~1GB). Nunca deforma o produto (escala pela proporção). `tema` (#57)
+    escolhe a cor da sombra (claro=preta · escuro=halo claro)."""
     if remover_fundo is None:
         from app.images.fundo import remover_fundo_img
         remover_fundo = remover_fundo_img
     from app.images.fundo import recortar_conteudo
     rgba = recortar_conteudo(remover_fundo(img).convert("RGBA"))
     produto = _normalizar_luz(rgba)
-    return _enquadrar_com_sombra(produto, lado, margem_frac, intensidade_sombra)
+    return _enquadrar_com_sombra(produto, lado, margem_frac, intensidade_sombra,
+                                 cor_sombra=cor_sombra_do_tema(tema))
 
 
 # ---- Degrau 2: img2img local (opção condicionada à GPU) --------------------

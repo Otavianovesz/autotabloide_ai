@@ -418,6 +418,15 @@ def main() -> int:
         aquecedor = Trabalhador(
             lambda _st, m=modelo_configurado(): aquecer(m))
         shell._trabalhos_globais.rodar(aquecedor)
+        # OS F11.5 #80: o Real-ESRGAN também aquece (o 1º cartaz da sessão
+        # deixava de responder enquanto o .pth carregava)
+        def _aquecer_esrgan(_st):
+            try:
+                from app.qt.telas.servico import aquecer_upscaler
+                return aquecer_upscaler()
+            except Exception:
+                return False
+        shell._trabalhos_globais.rodar(Trabalhador(_aquecer_esrgan))
 
     from PySide6.QtCore import QTimer
     QTimer.singleShot(0, _completar)    # roda com a janela já pintada

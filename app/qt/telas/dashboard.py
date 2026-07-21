@@ -1139,9 +1139,11 @@ class DashboardTela(QWidget):
         self.recarregar()
 
     def _cor_status(self, status: str) -> str:
+        # OS F11.5 #6: "publicado" vem do TOKEN tematizado (era hex solto —
+        # bypass do design system; no escuro o violeta clareia junto)
         return {"rascunho": t.TEXTO_3, "pronto": t.PRIMARIA,
                 "exportado": t.SUCESSO,
-                "publicado": "#7C3AED"}.get(status, t.TEXTO_3)
+                "publicado": t.PUBLICADO}.get(status, t.TEXTO_3)
 
     def _capa_pixmap(self, ev: dict, itens: list[dict]) -> QPixmap:
         """Capa definida > miniatura do projeto mais recente (passo 8)."""
