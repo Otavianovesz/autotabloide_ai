@@ -273,6 +273,16 @@ class ConfiguracoesTela(QWidget):
         form_backups.setVerticalSpacing(t.ESP_2)
         form_backups.addRow("Backups automáticos guardados",
                             self.campo_rotacao)
+        # R-131 (FASE 12): o PC da loja aprova e imprime — não edita à toa
+        self.chk_somente_leitura = QCheckBox(
+            "Modo somente-leitura (o PC da loja: aprova e imprime, "
+            "não edita)")
+        self.chk_somente_leitura.setToolTip(
+            "Com esta chave, editar produto, criar, fundir e salvar projeto "
+            "ficam bloqueados (à prova de dedo) — aprovar, exportar e "
+            "imprimir seguem livres. Desligar pede confirmação.")
+        self.chk_somente_leitura.toggled.connect(self._somente_leitura_mudou)
+        form_backups.addRow(self.chk_somente_leitura)
         form_imagens = QFormLayout()
         form_imagens.setVerticalSpacing(t.ESP_2)
         # FASE 3 (passos 49-50): upscale desligável, pasta da biblioteca
@@ -1059,6 +1069,46 @@ class ConfiguracoesTela(QWidget):
         trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
         self._trabalhos.rodar(trab)
 
+    def _somente_leitura_mudou(self, ligado: bool) -> None:
+        """R-131: LIGAR é direto (proteger é seguro); DESLIGAR é gesto
+        consciente — pede confirmação (passo 5)."""
+        if getattr(self, "_refletindo_somente_leitura", False):
+            return
+        from app.core import modo
+        if not ligado and modo.somente_leitura():
+            from PySide6.QtWidgets import QMessageBox
+            resp = QMessageBox.question(
+                self, "Sair do somente-leitura?",
+                "Este PC volta a poder EDITAR o acervo e os projetos. "
+                "Continuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if resp != QMessageBox.StandardButton.Yes:
+                self._refletindo_somente_leitura = True
+                self.chk_somente_leitura.setChecked(True)
+                self._refletindo_somente_leitura = False
+                return
+        modo.definir_somente_leitura(ligado)
+        mostrar_toast(self, "Modo somente-leitura LIGADO — este PC só "
+                            "aprova e imprime." if ligado
+                      else "Modo somente-leitura desligado — edição "
+                           "liberada.")
+
+    def _verificar_atualizacao(self) -> None:
+        """R-127 (FASE 12): checa em worker (a UI não congela); o resultado
+        é sempre uma mensagem honesta — nunca obriga, nunca mente."""
+        from app.core.atualizacao import verificar_atualizacao
+        from app.qt.workers import Trabalhador
+        trab = Trabalhador(lambda _st: verificar_atualizacao())
+
+        def _pronto(r):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Verificar atualização",
+                                    r["mensagem"])
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda m: mostrar_toast(self, m, tipo="erro"))
+        self._trabalhos.rodar(trab)
+
     def _abrir_correcoes(self) -> None:
         """OS F11.5 #43/#53/#91: ver/reverter os aliases aprendidos."""
         from app.qt.telas.correcoes_dialog import CorrecoesDialog
@@ -1242,8 +1292,16 @@ class ConfiguracoesTela(QWidget):
             "Um .zip pequeno com versões, contagens e o log de travamentos "
             "— SEM fotos, sem banco, sem seus textos (R-128).")
         btn_diag.clicked.connect(self._gerar_diagnostico)
+        # R-127 (FASE 12): verificar atualização — honesto e nunca intrusivo
+        btn_atualizar = QPushButton(" Verificar atualização")
+        btn_atualizar.setIcon(icone("restaurar", tamanho=14))
+        btn_atualizar.setToolTip(
+            "Confere se há versão nova (precisa de internet). O app é "
+            "offline — sem rede, nada muda e nada trava.")
+        btn_atualizar.clicked.connect(self._verificar_atualizacao)
         linha_d = QHBoxLayout()
         linha_d.addWidget(btn_diag)
+        linha_d.addWidget(btn_atualizar)
         linha_d.addStretch(1)
         vl = QVBoxLayout()
         vl.setSpacing(t.ESP_2)
@@ -1848,6 +1906,12 @@ class ConfiguracoesTela(QWidget):
                         ", ".join(g) for g in
                         (cfg.get("sinonimos.regionais", []) or [])))
                     self.campo_sinonimos.blockSignals(False)
+                # R-131 (FASE 12): refletir a chave sem disparar o handler
+                if hasattr(self, "chk_somente_leitura"):
+                    self._refletindo_somente_leitura = True
+                    self.chk_somente_leitura.setChecked(
+                        bool(cfg.get("app.somente_leitura", False)))
+                    self._refletindo_somente_leitura = False
         finally:
             db.engine.dispose()
         self._recarregar_selos()   # RG-33 (conexão própria, fora do with)

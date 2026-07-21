@@ -871,10 +871,42 @@ class MesaTela(QWidget):
         if dlg.exec() != AbrirProjetoDialog.DialogCode.Accepted or dlg.projeto_id is None:
             return
         from app.qt.design.carregando import cursor_espera
-        with cursor_espera():            # FASE 1 (passo 75)
+        try:
+            with cursor_espera():        # FASE 1 (passo 75)
+                p = projetos.abrir_projeto(dlg.projeto_id)
+        except Exception:
+            p = None                     # corrompido: a recuperação assume
+        if p is not None:
+            self.abrir_projeto_congelado(p)
+            return
+        # R-137 (FASE 12): o projeto não abriu — diagnóstico honesto em
+        # PT-BR + os snapshots BONS com prévia; o dono escolhe (I2)
+        from app.core import recuperacao
+        problemas = recuperacao.diagnosticar_projeto(dlg.projeto_id)
+        snapshots = recuperacao.snapshots_de_recuperacao(dlg.projeto_id)
+        from app.qt.telas.recuperacao_dialog import RecuperacaoDialog
+        rec = RecuperacaoDialog(problemas or ["O projeto não conseguiu "
+                                              "abrir."], snapshots, self)
+        if rec.exec() != RecuperacaoDialog.DialogCode.Accepted \
+                or rec.snapshot_escolhido is None:
+            return
+        if not recuperacao.restaurar_de_snapshot(dlg.projeto_id,
+                                                 rec.snapshot_escolhido):
+            mostrar_toast(self, "A restauração falhou — tente outro "
+                                "snapshot ou um backup do Cofre.",
+                          tipo="erro")
+            return
+        try:
             p = projetos.abrir_projeto(dlg.projeto_id)
-            if p is not None:
-                self.abrir_projeto_congelado(p)
+        except Exception:
+            p = None
+        if p is not None:
+            self.abrir_projeto_congelado(p)
+            mostrar_toast(self, "Projeto recuperado — o estado danificado "
+                                "ficou guardado num .bak.", tipo="sucesso")
+        else:
+            mostrar_toast(self, "Ainda não abriu — tente outro snapshot.",
+                          tipo="erro")
 
     def abrir_projeto_congelado(self, p) -> None:
         """Reabre um ProjetoAberto idêntico (diálogo e Dashboard).

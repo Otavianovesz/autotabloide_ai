@@ -176,6 +176,8 @@ def salvar_projeto(
     ``{slot_id → item.uid}`` (I1 — o casamento exato, não a ordem);
     ``overrides`` = F7.3, ``{slot_id → {campo: valor}}`` — a foto do override
     também congela na pasta do projeto (relativa, I3)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # R-131: PC da loja não edita
     db = Database().init()
     try:
         with db.Session() as s:

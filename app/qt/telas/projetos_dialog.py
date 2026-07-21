@@ -23,10 +23,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pathlib import Path
+
 from app.core import projetos
 from app.qt.design import tokens as t
 from app.qt.design.componentes import EstadoVazio
 from app.qt.design.icones import icone
+from app.qt.design.toast import mostrar_toast
 
 _ICONE_TIPO = {"TABLOIDE": "grade", "CARTAZ": "impressora"}
 
@@ -117,9 +120,24 @@ class AbrirProjetoDialog(QDialog):
         self.abrir.setToolTip("Reabre o projeto congelado, idêntico ao salvo")
         self.abrir.clicked.connect(self._abrir)
 
+        # R-136 (FASE 12): o projeto viaja num arquivo só (.atproj)
+        self.btn_exp_atproj = QPushButton(" Levar (.atproj)")
+        self.btn_exp_atproj.setIcon(icone("cofre", tamanho=15))
+        self.btn_exp_atproj.setToolTip(
+            "Empacota o projeto (dados + fotos + arte) num arquivo único "
+            "para levar a outro PC")
+        self.btn_exp_atproj.clicked.connect(self._exportar_atproj)
+        btn_imp_atproj = QPushButton(" Trazer (.atproj)…")
+        btn_imp_atproj.setIcon(icone("abrir", tamanho=15))
+        btn_imp_atproj.setToolTip(
+            "Traz um projeto empacotado de outro PC (com prévia)")
+        btn_imp_atproj.clicked.connect(self._importar_atproj)
+
         botoes = QHBoxLayout()
         botoes.addWidget(excluir)
         botoes.addWidget(duplicar)
+        botoes.addWidget(self.btn_exp_atproj)
+        botoes.addWidget(btn_imp_atproj)
         botoes.addStretch(1)
         botoes.addWidget(cancelar)
         botoes.addWidget(self.abrir)
@@ -163,6 +181,69 @@ class AbrirProjetoDialog(QDialog):
 
     def _habilitar(self) -> None:
         self.abrir.setEnabled(self._selecionado() is not None)
+        if hasattr(self, "btn_exp_atproj"):
+            self.btn_exp_atproj.setEnabled(self._selecionado() is not None)
+
+    def _exportar_atproj(self) -> None:
+        """R-136: o projeto selecionado vira um .atproj único."""
+        pid = self._selecionado()
+        if pid is None:
+            return
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.core.atproj import exportar_atproj
+        destino, _ = QFileDialog.getSaveFileName(
+            self, "Levar o projeto", "projeto.atproj",
+            "Projeto AutoTabloide (*.atproj)")
+        if not destino:
+            return
+        try:
+            saida = exportar_atproj(pid, destino)
+        except Exception as exc:
+            mostrar_toast(self, f"Não deu para empacotar: {exc}",
+                          tipo="erro")
+            return
+        mostrar_toast(self, f"Projeto empacotado em {Path(saida).name} — "
+                            "leve este arquivo ao outro PC.",
+                      tipo="sucesso")
+
+    def _importar_atproj(self) -> None:
+        """R-136: traz um .atproj com PRÉVIA antes de criar qualquer coisa."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from app.core.atproj import importar_atproj, ler_manifesto
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "Trazer um projeto", "",
+            "Projeto AutoTabloide (*.atproj)")
+        if not arquivo:
+            return
+        m = ler_manifesto(arquivo)
+        if m is None:
+            mostrar_toast(self, "Este arquivo não é um projeto .atproj "
+                                "válido.", tipo="erro")
+            return
+        resp = QMessageBox.question(
+            self, "Trazer este projeto?",
+            f"“{m.get('nome')}”"
+            + (f" · evento {m['evento']}" if m.get("evento") else "")
+            + f"\n{m.get('itens', 0)} item(ns) · "
+              f"{m.get('paginas', 0)} página(s) · salvo em "
+              f"{m.get('criado_em', '?')}\n\nCriar uma CÓPIA dele neste PC?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            novo = importar_atproj(arquivo)
+        except Exception as exc:
+            mostrar_toast(self, f"Não deu para trazer: {exc}", tipo="erro")
+            return
+        self._recarregar()
+        for i in range(self.lista.count()):
+            if self.lista.item(i).data(Qt.ItemDataRole.UserRole) == novo:
+                self.lista.setCurrentRow(i)
+                break
+        mostrar_toast(self, f"“{m.get('nome')}” chegou — abra quando "
+                            "quiser.", tipo="sucesso")
 
     def _abrir(self) -> None:
         pid = self._selecionado()

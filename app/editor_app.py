@@ -427,6 +427,25 @@ def main() -> int:
             except Exception:
                 return False
         shell._trabalhos_globais.rodar(Trabalhador(_aquecer_esrgan))
+        # R-138 (FASE 12): a validação de integridade da abertura — PRAGMA +
+        # referências de foto, em worker; problema vira AVISO discreto (I2),
+        # nunca trava o boot
+        def _verificar_integridade(_st):
+            try:
+                from app.core.recuperacao import verificar_ao_abrir
+                return verificar_ao_abrir()
+            except Exception:
+                return {"avisos": []}
+
+        def _avisar_integridade(r):
+            avisos = (r or {}).get("avisos") or []
+            if avisos:
+                from app.qt.design.toast import mostrar_toast
+                mostrar_toast(shell, avisos[0] + " (Configurações › "
+                              "verificação da instalação)", tipo="erro")
+        vig = Trabalhador(_verificar_integridade)
+        vig.ok.connect(_avisar_integridade)
+        shell._trabalhos_globais.rodar(vig)
 
     from PySide6.QtCore import QTimer
     QTimer.singleShot(0, _completar)    # roda com a janela já pintada

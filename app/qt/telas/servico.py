@@ -219,6 +219,8 @@ def editar_produto(produto_id: int, **campos) -> dict:
     F8.1: categoria editada AQUI é gesto de HUMANO — fica marcada e nenhum
     passe de IA a sobrescreve depois.
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.repositories import ProdutoRepositorio
 
     if "categoria" in campos:
@@ -237,6 +239,8 @@ def editar_produto(produto_id: int, **campos) -> dict:
 def excluir_produtos(ids: list[int]) -> None:
     """FASE 2 (passo 82): excluir da UI é SOFT — lixeira de 30 dias no
     Cofre (as fotos da biblioteca ficam no lugar até a purga)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.lixeira import excluir_suave
     for pid in ids:
         excluir_suave("produto", pid)
@@ -1309,6 +1313,8 @@ def criar_como_composto(item: ItemMesa, nomes_componentes: list[str],
     A foto da curadoria vai ao PRIMEIRO componente (o segundo fica para a
     curadoria contínua do Almoxarifado — avisado no pré-voo como sempre).
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     subs: list[ItemMesa] = []
     for i, nome in enumerate(nomes_componentes[:2]):
         sub = ItemMesa(descricao=nome, preco=item.preco,
@@ -1715,6 +1721,39 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
     return caminho, avisos
 
 
+def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
+                         status_cb: StatusCb = lambda _m: None,
+                         *, dpi_folha: int | None = None):
+    """R-144 (FASE 12): dezenas de etiquetas por FOLHA — uma etiqueta por
+    item selecionado (a mesma fonte de verdade do cartaz), impostas em A4
+    com marcas de corte (imposição CONTROLADA, só no fluxo do cartaz).
+    Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
+    etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio)."""
+    from app.rendering.cartaz import layout_etiqueta
+    from app.rendering.export import exportar_pdf_multipagina
+    from app.rendering.imposicao import impor_etiquetas
+    if not itens:
+        raise ValueError("nenhum item selecionado para as etiquetas")
+    lay = layout_etiqueta()
+    sid = lay.paginas[0].slots[0].id
+    avisos: list[str] = []
+    etiquetas = []
+    for i, it in enumerate(itens, 1):
+        status_cb(f"Etiqueta {i}/{len(itens)}…")
+        d = dados_cartaz_de_produto({
+            "nome": it.nome, "preco": it.preco,
+            "preco_de": it.preco_de, "imagem": it.imagem,
+            "validade": it.validade})
+        avisos.extend(f"“{it.nome}”: {a}"
+                      for a in validar_composicao(lay, {sid: d}, cartaz=True))
+        etiquetas.append(compor_pagina(lay, lay.paginas[0], {sid: d}))
+    status_cb("Impondo as etiquetas na folha…")
+    folhas = impor_etiquetas(etiquetas, lay.dpi)
+    caminho = exportar_pdf_multipagina(folhas, destino,
+                                       dpi_folha or lay.dpi)
+    return caminho, avisos
+
+
 def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
                       layout_etiqueta_fn=None, n_etiquetas: int = 1,
                       validade_texto: str | None = None, qr_texto=None,
@@ -1786,6 +1825,8 @@ def fundir_duplicatas(pares: list[tuple[int, int]],
     """R-075: funde os pares escolhidos (vencedor_id, perdedor_id) — o repetido
     vai para a LIXEIRA (soft-delete, reversível) e os aliases migram. Devolve
     {"fundidos": n, "aliases": n}."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.database import Database
     from app.core.deduplicacao import fundir_no_banco
     from app.core.paths import SystemRoot
@@ -2115,6 +2156,8 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
     RG-23: a categoria da IA (mesmo prompt do enriquecer) entra JÁ na
     criação — acabou o acervo "tudo Outros" por lote nunca rodado.
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                 # R-131: PC da loja não edita
     from app.core.repositories import ProdutoRepositorio
     from app.images.biblioteca import BibliotecaImagens
 
