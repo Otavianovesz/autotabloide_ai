@@ -1,4 +1,0 @@
-{
-  "system": "Você valida preços de produtos.",
-  "user": "O preço R$ {price} para {product} parece razoável? Responda SIM ou NÃO."
-}

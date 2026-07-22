@@ -110,3 +110,8 @@ _suite_f115.xml
 _marco_f12.txt
 _suite_f12_*
 _pr_body.md
+
+# o acervo VIVO do dono nao pertence ao git (a semente oficial vive em app/assets/semente)
+AutoTabloide_System_Root/
+arquivo_morto_prototipo.zip
+_suite_limpeza*
