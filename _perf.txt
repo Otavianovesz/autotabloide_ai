@@ -1,3 +1,0 @@
-
-[MEDIDO] abrir=0.015s - 1o lote (indice 1x)=2.3s - recorrente=1.3s
-.
