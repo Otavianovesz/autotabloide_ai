@@ -25,11 +25,23 @@ PROMPT_OCR = (
     "Devolva SOMENTE um objeto JSON com duas chaves: "
     '"validade_oferta" (o período de validade da oferta, ex: '
     '"01/07/2026 até 27/07/2026", geralmente no rodapé; null se não houver) e '
-    '"linhas" (um array, um objeto por produto: '
+    '"linhas" (um array, um objeto por oferta: '
     '{"descricao": "<texto do produto como está na tabela>", '
     '"preco": "<preço no formato brasileiro, ex: 5,90>"}). '
     "Não invente itens nem pule itens. Ignore a coluna de quantidade/numeração. "
-    "Se um preço não estiver legível, use null. Leia a imagem:"
+    "Se um preço não estiver legível, use null. "
+    # bancada dos Exemplos (semana real do dono): promoção escrita em frase
+    # ("leve 3 e ganhe 25% de desconto", "pão francês com 50% de desconto",
+    # "lanche na chapa com 20% de desconto") era PULADA pelo modelo — e
+    # pular linha em silêncio é bug (I2)
+    "ATENÇÃO: promoção SEM preço numérico (desconto em %, leve-X-pague-Y, "
+    "brinde) TAMBÉM é uma linha de oferta — nunca a pule: ponha o produto em "
+    '"descricao" e o texto da promoção em "preco" (ex: "20% de desconto", '
+    '"leve 3 pague 2"). Isso vale até quando a promoção está no meio do '
+    "TEXTO CORRIDO do cabeçalho (ex: 'leve 3 sonhos e ganhe 25% de "
+    "desconto' vira uma linha) — mas SÓ promoção com mecânica concreta "
+    "(%, leve-X, brinde); slogan e frase de efeito não são oferta. "
+    "Leia a imagem:"
 )
 
 
@@ -141,11 +153,22 @@ def _cache_carregar() -> dict:
     return {}
 
 
+def _versao_prompt() -> str:
+    """Assinatura curta do PROMPT_OCR — quando o prompt evolui (bancada dos
+    Exemplos: ele aprendeu promoções em %), o cache velho INVALIDA sozinho;
+    sem isto, a foto relida devolvia a leitura do prompt antigo."""
+    import hashlib
+    return hashlib.sha1(PROMPT_OCR.encode("utf-8")).hexdigest()[:10]
+
+
 def cache_consultar(caminho: str | Path, modelo_visao: str) -> TabelaOCR | None:
-    """Leitura anterior da MESMA foto (mesmo conteúdo, mesmo modelo) — ou None."""
+    """Leitura anterior da MESMA foto (mesmo conteúdo, mesmo modelo e mesmo
+    PROMPT) — ou None."""
     entrada = _cache_carregar().get(_hash_arquivo(caminho))
     if not entrada or entrada.get("modelo") != modelo_visao:
         return None
+    if entrada.get("prompt") != _versao_prompt():
+        return None                      # prompt evoluiu: reler de verdade
     linhas = [LinhaOferta(d, p) for d, p in entrada.get("linhas", []) if d]
     if not linhas:
         return None
@@ -181,6 +204,7 @@ def cache_guardar(caminho: str | Path, modelo_visao: str,
         "linhas": [[ln.descricao, ln.preco] for ln in tabela.linhas],
         "validade_oferta": tabela.validade_oferta,
         "modelo": modelo_visao,
+        "prompt": _versao_prompt(),
         "arquivo": Path(caminho).name,
         "quando": datetime.now().isoformat(timespec="seconds"),
     }

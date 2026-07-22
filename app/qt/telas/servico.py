@@ -108,6 +108,10 @@ def preco_decimal(txt: str | None) -> Decimal | None:
     if txt is None:
         return None
     import re
+    # Bancada dos Exemplos (P0.3c): porcentagem NUNCA é preço — "50% de
+    # desconto" virava R$ 50,00 (valor errado é pior que ausente, I2); o
+    # número colado num % sai da mesa e o que sobrar decide
+    txt = re.sub(r"[\d.,]+\s*%", " ", str(txt))
     # P0.3b: tokens numéricos do texto ORIGINAL (nunca fundir grupos de dígitos)
     tokens = [t for t in re.findall(r"[\d.,]+", str(txt)) if re.search(r"\d", t)]
     if len(tokens) != 1:
@@ -1553,16 +1557,34 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
                     "Ligue o LM Studio ou importe a tabela como arquivo de texto.")
             tabela = ler_tabela(caminho, motor, status_cb=status_cb)
             cache_guardar(caminho, modelo_visao, tabela)
-        linhas = [(ln.descricao, ln.preco, None) for ln in tabela.linhas]
+        # bancada dos Exemplos (semana real): "preço" que é PROMOÇÃO em
+        # texto ("20% de desconto", "leve 3 pague 2") não é preço — vira
+        # multi_preco (R-070) e a bolha desenha a promoção, como a arte do
+        # dono faz ("R$ 20%"); o preço numérico segue o caminho de sempre
+        linhas = []
+        multi_precos: list[str | None] = []
+        for ln in tabela.linhas:
+            texto = (ln.preco or "").strip()
+            if texto and preco_decimal(texto) is None and (
+                    "%" in texto or any(t in texto.lower() for t in
+                                        ("leve", "pague", "ganhe",
+                                         "desconto", "brinde"))):
+                linhas.append((ln.descricao, None, None))
+                multi_precos.append(texto)
+            else:
+                linhas.append((ln.descricao, ln.preco, None))
+                multi_precos.append(None)
         validade = tabela.validade_oferta
-    else:
-        status_cb("Lendo a tabela…")
-        from app.scripts.importar_tabela import parse_tabela_ean
-        linhas = parse_tabela_ean(caminho)   # RG-41: o EAN da tabela flui
+        return conciliar_linhas(linhas, status_cb, validade=validade,
+                                aviso=aviso_cache,
+                                caminho_fonte=str(caminho),
+                                multi_precos=multi_precos)
 
-    fonte = str(caminho) if caminho.suffix.lower() in _EXT_IMAGEM else None
+    status_cb("Lendo a tabela…")
+    from app.scripts.importar_tabela import parse_tabela_ean
+    linhas = parse_tabela_ean(caminho)   # RG-41: o EAN da tabela flui
     return conciliar_linhas(linhas, status_cb, validade=validade,
-                            aviso=aviso_cache, caminho_fonte=fonte)
+                            aviso=aviso_cache, caminho_fonte=None)
 
 
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,

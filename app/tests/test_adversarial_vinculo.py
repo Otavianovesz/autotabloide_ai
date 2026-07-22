@@ -892,6 +892,12 @@ def test_preco_decimal_adversarial():
         "2 un 9,90": None,
         # número único com decoração continua ok
         "17,71 /kg": Decimal("17.71"), "10,00.": Decimal("10.00"),
+        # P0.3c (bancada dos Exemplos, semana real do dono): porcentagem
+        # NUNCA é preço — "50% de desconto" virava R$ 50,00 no balcão
+        "50% de desconto": None, "COM 20 % de DESCONTO": None,
+        "leve 3 pague 2": None,
+        # o % sai da mesa e o preço que SOBRAR continua valendo
+        "10% off por 9,90": Decimal("9.90"),
     }
     for entrada, esperado in casos.items():
         assert servico.preco_decimal(entrada) == esperado, f"falhou: {entrada!r}"
