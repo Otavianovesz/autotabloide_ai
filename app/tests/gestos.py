@@ -47,6 +47,18 @@ def teclar(w: QWidget, tecla, *, mods=Qt.KeyboardModifier.NoModifier) -> None:
     QTest.keyClick(w, tecla, mods)
 
 
+def ativar_janela(w: QWidget) -> None:
+    """Atalho de JANELA (WindowShortcut) só dispara com a janela ATIVA — e
+    offscreen nenhuma janela se ativa sozinha (foi assim que o Ctrl+K
+    morto ficou invisível à bancada, CF-02/CF-06). Chamar antes de
+    ``teclar`` num teste de atalho."""
+    from PySide6.QtWidgets import QApplication
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        QApplication.setActiveWindow(w)
+
+
 def acionar(acao) -> None:
     """Aciona uma ``QAction`` (``trigger()``) ou um botão (``click()``)
     de verdade — o caminho que o menu/a barra percorrem. Recusa acionar

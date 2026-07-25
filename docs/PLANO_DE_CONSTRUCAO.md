@@ -482,4 +482,54 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   4/0/0.** Fora (anotado na resposta): marca_propria no ItemMesa,
   QInputDialog nativo (tradutor cobre; spec confere no E), guarda de fechar
   o app (revertida por L8 + risco de pendurar a bancada; ideia anotada com
-  event.spontaneous()).
+  event.spontaneous()). **Bloco B SELADO pelo arquiteto (§5 da ordem, 25/07;
+  commit `5a4f0d0`)** — o achado do stop() virou LEI do projeto (CLAUDE.md);
+  COND-4 (contrato carregar×atualizar_dados DENTRO do canvas.py) e COND-5
+  (marca_propria no ItemMesa) herdadas pelo C; contrato dos vigias ativado
+  (§5.7: C1 inverte mut2, C3 inverte mut3, C5 inverte mut4 — nunca apagar).
+  —— **Bloco C (O EDITOR PARA DE BRIGAR — a trava nº 2 CAI) EXECUTADO
+  (25/07/2026) — PARADO no fim do bloco aguardando o selo do arquiteto (L7).**
+  Os 13 itens + VC-004/010/014, disciplina L1 em todos (rodada vermelha antes
+  de cada conserto; testes novos em `test_bloco_c_f13.py` sobre a bancada do
+  A): **C1** região nova NUNCA herda slot — cada uma nasce em `livre_<uuid8>`
+  PRÓPRIO com cascata de 4% (E-01 morto nas DUAS pernas: herança por seleção
+  E reuso do mesmo slot avulso; `test_mut2` INVERTIDO); **C2** o trio caiu —
+  clique/arrasto pega SÓ a peça clicada; "mover a célula inteira" virou gesto
+  próprio (menu: Selecionar/Duplicar a célula inteira; os testes do trio nas
+  4 suítes antigas FLIPADOS com docstring); **C3** Subir/Descer desinvertidos
+  + painel exibe topo=frente (convenção Illustrator; nascimento na frente
+  mantido e agora VISÍVEL; `test_mut3` INVERTIDO); **C4** `AlinhamentoV`
+  (TOPO/CENTRO/BASE) no modelo + `_y_alinhado` no compositor + combo no
+  painel, provado por PIXEL; **C5** resize sob rotação em coordenadas LOCAIS
+  com reancoragem sem deriva + campos Posição/tamanho em mm no painel
+  (VC-004; `test_mut4` INVERTIDO); **C6** duplicar a célula inteira (slot
+  novo, uids frescos, +4mm, selecionada); **C7** carimbar sem caixa nasce
+  central (35%), visível e selecionado; **C8** detector de grade com área
+  mínima + proporção (risco/respingo fora) e REVISÃO antes de salvar ("Criar
+  com N células"/"Criar sem grade"); **C9** agrupar explica CADA recusa por
+  toast nominal e confirma o sucesso; multi-slot de verdade
+  (`agrupar_como_mestre` junta soltas de várias origens); **C10** PREENCHER
+  recorta no caminho rápido (`img.crop` — nunca vaza da célula, por pixel);
+  **C11** selos com CONTROLE no painel (canto do +18/qualidade →
+  `definir_canto_automatico` + recompor) e o exemplo do Ateliê com
+  `mais18=True` (o selo aparece na prévia); **COND-5 decidida aqui:
+  `ItemMesa.marca_propria`** flui do catálogo→conciliação→composição→cartaz;
+  **C12** a mestra propaga `texto_fixo` (e `alinhamento_v`) —
+  ATRIBUTOS_ESTILO; **C13** Ctrl+K com UM dono (QShortcut cru removido;
+  paleta da Mesa em Ctrl+Shift+P via catálogo) + teste que APERTA a tecla;
+  **VC-010** chip de medidas VIVO no arrasto (some no soltar); **VC-014**
+  guias com medida em mm. **COND-4 cumprida** (contrato nos docstrings de
+  `carregar`/`atualizar_dados` no canvas.py). **Definição de pronto VERDE: o
+  teste da gravação** (criar IMAGEM/TEXTO/PREÇO por botão real, arrastar cada
+  uma, independência provada por pixel) **+ adversarial I1–I5 atualizado**
+  (fluxo_real com o contrato novo do agrupar multi-slot). Achados próprios
+  (L6): o trio mordia no ARRASTO (o clique parado já colapsava — os testes
+  antigos fixavam contrato morto); wrapper de item MORRE no commit do arrasto
+  (itens reconstruídos — repescar por `regiao is`); zona de disputa do z no
+  clique (margem de alça ±9px da vizinha acima rouba o clique — flake que SÓ
+  a ordem invertida pegou, 2×); atalho de janela exige janela ATIVA
+  (`ativar_janela` na bancada). **Placares (junit em `saida_f13/`): 904
+  verdes ×2, zero skips, exit-0; `--ordem-invertida` 904/0/0; janela real
+  4/0/0.** Fora (anotado na resposta): P5/`Regiao.grupo` não construído
+  (L8); região nova DENTRO da mestra agora só por colar/mover; toasts e
+  tutorial sem teste de pixel; QInputDialog nativo segue no tradutor.

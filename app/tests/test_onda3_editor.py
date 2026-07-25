@@ -288,52 +288,53 @@ def _canvas_celula_trio():
 
 
 def test_clique_frio_seleciona_o_trio_da_celula():
-    """RG-15 + RG-55 (Fase 4, decisão travada do passo 11): o 1º clique
-    numa região acende a CÉLULA inteira (para mover), MAS o painel mostra
-    a região efetivamente clicada — nunca "Nada selecionado" (painel
-    órfão do RG-55)."""
+    """FLIPADO na F13/C2 (a trava #2 caiu — decisão do dono, 24/07; a
+    forma antiga vive no git log): o 1º clique acende SÓ a peça clicada
+    (RG-15 morreu); o RG-55 segue intacto — o painel mostra a clicada."""
     _app()
     c = _canvas_celula_trio()
     nome = next(it for it in c._itens if it.regiao.nome == "Nome")
     nome.setSelected(True)                 # o que o Qt faz no clique…
-    nome._selecao_por_clique(False)        # …e a regra da célula por cima
-    do_trio = [it for it in c._itens if it.regiao.nome != "Dica"]
-    assert all(it.isSelected() for it in do_trio)   # o trio inteiro
-    avulsa = next(it for it in c._itens if it.regiao.nome == "Dica")
-    assert not avulsa.isSelected()         # a região de OUTRO slot não
+    nome._selecao_por_clique(False)        # …e a regra nova por cima
+    selecionados = [it for it in c._itens if it.isSelected()]
+    assert selecionados == [nome]          # SÓ a peça (C2)
     # RG-55: o painel mostra A REGIÃO CLICADA (a primária), não None
     assert c.selecionada() is nome.regiao
 
 
 def test_segundo_clique_sem_arrasto_entra_na_regiao():
+    """FLIPADO na F13/C2: não existe mais '2º clique para entrar' — o 1º
+    clique JÁ é a peça. Clicar noutra peça da célula troca a seleção."""
     _app()
     c = _canvas_celula_trio()
     nome = next(it for it in c._itens if it.regiao.nome == "Nome")
     nome.setSelected(True)
-    nome._selecao_por_clique(False)        # 1º clique: grupo
+    nome._selecao_por_clique(False)
     preco = next(it for it in c._itens if it.regiao.nome == "Preço")
+    c._scene.clearSelection()              # o clique do Qt troca a seleção
+    preco.setSelected(True)
     preco._pos_press = preco.pos()
-    preco._selecao_por_clique(False)       # 2º clique (grupo já ativo)
-    assert preco._colapsar_no_release      # marcado p/ entrar no release…
-    preco._colapsar_se_clique_parado()     # …clique parado: colapsa
+    preco._selecao_por_clique(False)
+    assert not preco._colapsar_no_release  # a máquina do colapso morreu
     assert preco.isSelected()
     assert not nome.isSelected()
     assert c.selecionada() is preco.regiao  # o painel mostra A região
 
 
 def test_arrasto_do_grupo_nao_colapsa():
-    """Clique+arrasto com o grupo ativo MOVE a célula inteira (não entra)."""
+    """FLIPADO na F13/C2: mover a célula inteira é gesto DELIBERADO
+    ('Selecionar a célula inteira' no menu) — a seleção do conjunto
+    sobrevive ao arrasto (o commit multi de sempre)."""
     _app()
     c = _canvas_celula_trio()
     nome = next(it for it in c._itens if it.regiao.nome == "Nome")
-    nome.setSelected(True)
-    nome._selecao_por_clique(False)
-    nome._pos_press = nome.pos()
-    nome._selecao_por_clique(False)        # 2º clique…
-    nome.setPos(nome.x() + 30, nome.y())   # …mas houve ARRASTO
-    nome._colapsar_se_clique_parado()
+    nome.selecionar_celula_inteira()       # o gesto explícito novo
     do_trio = [it for it in c._itens if it.regiao.nome != "Dica"]
-    assert all(it.isSelected() for it in do_trio)   # o grupo sobreviveu
+    assert all(it.isSelected() for it in do_trio)
+    nome._pos_press = nome.pos()
+    nome.setPos(nome.x() + 30, nome.y())   # houve ARRASTO
+    nome._colapsar_se_clique_parado()
+    assert all(it.isSelected() for it in do_trio)   # o conjunto sobreviveu
 
 
 def test_ctrl_clique_preserva_selecao_multipla():

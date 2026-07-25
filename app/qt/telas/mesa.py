@@ -692,11 +692,16 @@ class MesaTela(QWidget):
             self._timer_rascunho.setInterval(120_000)   # ~2 min
             self._timer_rascunho.timeout.connect(self._salvar_rascunho_bg)
             self._timer_rascunho.start()
-            # R-017: Ctrl+K abre a paleta de busca/comando também na Mesa
-            from PySide6.QtGui import QKeySequence, QShortcut
-            sc = QShortcut(QKeySequence("Ctrl+K"), self)
-            sc.activated.connect(self._abrir_paleta)
+            # F13/C13 (CF-02): a paleta de AÇÕES da Mesa saiu do Ctrl+K —
+            # o QShortcut cru daqui criava um SEGUNDO dono de janela para
+            # a mesma tecla e o Qt matava os dois (Ctrl+K morto na Mesa).
+            # Agora: Ctrl+K = busca global (um dono, no shell);
+            # Ctrl+Shift+P = paleta da tela, como no Ateliê — pelo
+            # catálogo (remap ao vivo + detector de conflito).
+            from app.qt.design.atalhos import criar_atalho
+            criar_atalho("mesa.paleta", self, self._abrir_paleta)
             # R-050: Ctrl+V cola uma tabela do WhatsApp/Excel (prévia + criar)
+            from PySide6.QtGui import QKeySequence, QShortcut
             sc_v = QShortcut(QKeySequence.StandardKey.Paste, self)
             sc_v.activated.connect(self._colar_tabela)
 

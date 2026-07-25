@@ -134,8 +134,10 @@ def test_clique_na_celula_isolada_nao_acende_o_trio():
 
 
 def test_fora_do_isolamento_o_trio_segue_valendo():
-    """RG-15 intacto (decisão travada): SEM isolamento, o 1º clique segue
-    acendendo o trio da célula — o modo novo não rouba o gesto antigo."""
+    """FLIPADO na F13/C2 (a trava #2 caiu — decisão do dono, 24/07; a
+    forma antiga vive no git log): fora do isolamento o clique TAMBÉM
+    seleciona SÓ a peça. O trio automático (RG-15) não existe mais em
+    lugar nenhum; mover a célula é gesto deliberado do menu."""
     c, lay = _canvas_com_grupo()
     solta = lay.paginas[0].slots[2]
     nome, preco = solta.regioes
@@ -143,7 +145,8 @@ def test_fora_do_isolamento_o_trio_segue_valendo():
     c._scene.clearSelection()
     it_nome.setSelected(True)
     it_nome._selecao_por_clique(False, None)
-    assert it_preco.isSelected()                 # o trio acendeu como sempre
+    assert not it_preco.isSelected()             # só a peça clicada (C2)
+    assert c.selecionada() is nome
 
 
 def test_veu_cobre_o_resto_com_buraco_nas_pecas():

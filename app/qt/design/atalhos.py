@@ -30,6 +30,10 @@ CATALOGO: dict[str, tuple[str, str, str]] = {
                           "Ctrl+K"),
     "geral.abas_config": ("Geral", "Circular as abas das Configurações",
                           "Ctrl+Tab"),
+    # F13/C13 (CF-02): a paleta de AÇÕES da Mesa tem tecla PRÓPRIA — o
+    # Ctrl+K é da busca global (um dono só; dois QShortcut de janela na
+    # mesma tecla = ambiguidade do Qt = NENHUM dispara, o Ctrl+K morto)
+    "mesa.paleta":       ("Mesa", "Paleta de ações da Mesa", "Ctrl+Shift+P"),
     "mesa.desfazer":     ("Mesa", "Desfazer", "Ctrl+Z"),
     "mesa.refazer":      ("Mesa", "Refazer", "Ctrl+Y"),
     "mesa.exportar":     ("Mesa", "Exportar (PNG/PDF)", "Ctrl+E"),

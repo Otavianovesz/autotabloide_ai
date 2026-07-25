@@ -166,7 +166,14 @@ ao vivo — `_emitir_medidas` **já calcula e joga fora**) e VC-014 (guias com m
 
 **Definição de pronto:** um teste de gesto que reproduz a sequência da gravação — criar
 IMAGEM, criar TEXTO, criar PREÇO, arrastar cada uma — e prova por conteúdo que **as três são
-independentes**; mais o adversarial I1–I5 atualizado e verde.
+independentes**; mais o adversarial I1–I5 atualizado e verde. E, do selo do Bloco B (§5.6/§5.7):
+
+1. **COND-4** — o contrato `carregar` (documento novo, zera histórico) × `atualizar_dados`
+   (dados, preserva pilha) documentado **dentro de `canvas.py`**, nos dois docstrings.
+2. **COND-5** — `marca_propria` no `ItemMesa` decidido no C11 ou registrado nominalmente no F.
+3. **COND-3 ativada** — C1 inverte `test_mut2`, C3 inverte `test_mut3`, C5 inverte `test_mut4`.
+   Inverter, nunca apagar nem `xfail`.
+4. Junit do bloco em `saida_f13/` (suíte ×2, ordem invertida, janela real).
 
 **PARE.**
 
@@ -379,6 +386,103 @@ especificação:
 > **Critério de pronto do B2, acrescentado:** `pytest app/tests -q --ordem-invertida` sai
 > **verde**. Enquanto `animacoes.py` guardar estado vivo entre testes, ele fica vermelho — e
 > deve ficar.
+
+---
+
+## §5 · SELO DO BLOCO B — reauditoria do arquiteto (25/07/2026)
+
+**BLOCO B SELADO.** Pode começar o C — **C1+C2 juntos**, como você propôs e como a ordem
+manda (derrubar a trava nº 2 sem resolver o E-01 troca um sintoma por outro).
+
+### 5.1 · As três condições do §4.3, conferidas uma a uma
+
+| | Verificado no disco |
+|---|---|
+| **COND-1** ✅ | `test_bancada_gesto_f13.py:105-112` — a asserção nova é `pai.findChild(QWidget,"veuDialogo") is None or not visible`, com a mensagem `"o véu CONTINUA NA TELA depois do diálogo morrer"`. É a asserção que eu pedi, com o texto certo. |
+| **COND-2** ✅ **e ultrapassada** | `test_b2_cond2_modal_no_meio_do_crossfade_janela_volta_ao_brilho` (`test_bloco_b_f13.py:261`). Usa o **Shell real** e a **PaletaBusca real**, filtro **instalado** (o docstring diz "nada de belt-out aqui"), e o modal abre no `showEvent` da tela destino — a mecânica exata do §19. Confere por **conteúdo**: `_veus_troca` vazio, nenhum `veuTrocaTela` visível, nenhum `veuDialogo` visível, a tela destino na frente **e a paleta não atravessou a troca**. Esse último assert cobre o L-10, que eu não tinha exigido. |
+| **COND-3** ✅ | `git diff f649732 5a4f0d0 -- app/tests/test_bancada_gesto_f13.py \| grep -c "mut2\|mut3\|mut4"` = **0**. Os três vigias de caracterização estão intocados, à espera do C. O único movimento no arquivo foi o `mut1` (COND-1) e a fixture `vida` migrando para o conftest — legítimo, a COND-2 também precisa dela. |
+
+### 5.2 · Disciplina de escopo — o que eu mais valorizei
+
+`git diff f649732 5a4f0d0 --stat` sobre os quatro arquivos que guardam os bugs do Bloco C:
+
+```
+app/qt/canvas.py            (nada)
+app/qt/painel_camadas.py    (nada)
+app/qt/itens.py             (nada)
+app/rendering/compositor.py (nada)
+```
+
+**Zero linhas.** Com o E-01, o R-02, o E-08 e o R-01 abertos na sua frente por horas, você não
+tocou em nenhum. 21 arquivos de produção mudados, 536 inserções, e nenhuma invasão do bloco
+seguinte. Isso é o que faz a ordem funcionar.
+
+### 5.3 · O §4.4 fechado
+
+`saida_f13/` tem os quatro junit, e eu li os atributos: `bloco_b_suite_1.xml` e
+`bloco_b_suite_2.xml` **886/0/0/0**, `bloco_b_invertida.xml` **886/0/0/0** (o critério do §4.5
+cumprido), `bloco_b_janela.xml` **4/0/0/0**. A lacuna do selo anterior está fechada — agora eu
+confiro placar, não só desenho.
+
+### 5.4 · Os consertos que eu inspecionei na fonte
+
+- **B1 está na camada certa.** Você consertou o *chamador* (`_aplicar_mapa(novo_documento=False)`
+  por padrão), não a semântica do `carregar()`. Era a decisão certa: `carregar` **deve** zerar a
+  pilha ao abrir documento novo; o bug era `_aplicar_mapa` chamar carregamento para refrescar
+  dado. E o docstring cita `_excluir_item (:443)` — a lição que o próprio código já tinha.
+- **B7 cobre os dois ramos** ("é novo" e candidato escolhido), com o piso validado
+  (`0 < juiz <= 1`, inválido cai no padrão — o mesmo padrão do "limiar quebrado nunca derruba a
+  conciliação"), e o desfecho é AMARELO **com o melhor palpite à vista** — honra a trava da F9
+  em vez de inventar.
+- **`perguntar` conserta o padrão-raiz do CF-01**: `setDefaultButton` **declarado** (o "não",
+  salvo indicação explícita) + `setEscapeButton(b_nao)`. E o `instalar_traducao_qt` fecha o L-03
+  além das 8 perguntas, alcançando os nativos do Qt.
+- **B2d ficou melhor do que eu tinha pedido**: três saídas, e o X/Esc caem em "deixar para
+  depois". O docstring articula o princípio certo — *"fechar a janelinha é o gesto universal de
+  'decido depois', nunca uma destruição calada"*.
+- **B10** removeu o hard-delete apontando para a porta oficial no comentário.
+- **Uma única exceção larga nova** em 536 inserções (`instalar_traducao_qt`), e ela é
+  I2-compatível por argumento explícito no docstring: falta de arquivo de tradução **não perde
+  conteúdo**, só deixa botão de fábrica em inglês — o dono vê com os próprios olhos. Aprovada.
+
+### 5.5 · O achado do `stop()` — promovido a lei do projeto
+
+Sua caça aos 2 vermelhos da ordem invertida achou algo que nenhum dos dois dossiês tinha, e que
+é maior que o Bloco B: **`QAbstractAnimation::stop()` não emite `finished`** — o Qt só emite no
+fim NATURAL. Toda animação interrompida ficava registrada "em voo" para sempre. Confirmei o
+conserto na raiz (`animacoes.py:92-124`: `stateChanged→Stopped` + `_prazo` de autoencerramento,
+com o caso do `stop()` numa já-parada tratado à parte).
+
+Isso entra no `CLAUDE.md` como lei, com a redação sua:
+
+> **Animação no Qt: `stop()` NÃO emite `finished`.** Quem precisa saber que uma animação
+> terminou escuta `stateChanged → Stopped`, nunca `finished` — e `stop()` numa animação já
+> parada não emite nada. Todo registro de "animação viva" precisa de prazo de
+> autoencerramento como rede.
+
+E um pedido: quando estiver no Bloco E, **verifique se essa lenda explica o segfault
+intermitente** que a F12 tratou com a regra do DeferredDelete. Pode ser a mesma raiz.
+
+### 5.6 · As duas condições que entram no Bloco C
+
+**COND-4 · O contrato do `carregar` vs `atualizar_dados` tem de morar no `canvas.py`.**
+Hoje ele está documentado no docstring do `_aplicar_mapa`, em `mesa.py` — do lado de quem
+chama. O próximo chamador (e o C1/C2 vão criar caminhos novos) vai repetir o erro. Ponha a
+regra no docstring de `CanvasView.carregar` e de `atualizar_dados`, em `canvas.py`:
+*"`carregar` = DOCUMENTO novo, zera o histórico. `atualizar_dados` = dados novos, preserva a
+pilha. Refrescar dado com `carregar` é o bug CD-01."*
+
+**COND-5 · `marca_propria` ausente do `ItemMesa` — não deixe virar dívida órfã.**
+Você declarou como fora de escopo, e está certo para o B. Mas o B6 unificou a receita do cartaz
+e esse campo **ainda não flui** — então o selo de marca própria tem o mesmo furo que o +18
+tinha, só que num campo diferente. Decida no C11 (a frente dos selos) ou registre nominalmente
+no Bloco F. Não pode sumir da lista.
+
+### 5.7 · Contrato dos vigias, ativado agora
+
+O C1 inverte o `test_mut2`; o C3 inverte o `test_mut3`; o C5 inverte o `test_mut4`.
+**Inverter, nunca apagar nem marcar `xfail`** — e o `git log` está limpo (`f649732`, `5a4f0d0`)
+para mostrar a linha antiga de cada um.
 
 ---
 
@@ -627,4 +731,118 @@ reauditoria, §4.4.)*
   ("N apagados e M FICARAM") — o texto antigo somava tudo como "apagados".
 
 **PARADO no fim do Bloco B (L7). O Bloco C não foi iniciado. Aguardando o
+selo do arquiteto.**
+
+---
+
+## RESPOSTA DO BUILDER — BLOCO C (Fable 5, 25/07/2026)
+
+O Bloco B foi fechado no commit `5a4f0d0` e selado no §5. Todos os itens
+abaixo seguiram a L1: **cada conserto tem a rodada VERMELHA registrada nesta
+bancada antes de virar verde** (*stash dance* nos consertos escritos antes
+de rodar — produção estashada, rodada vermelha executada e registrada,
+`git stash pop`). Os testes novos moram em `app/tests/test_bloco_c_f13.py`
+e usam a bancada de gesto do A. Comecei por **C1+C2 juntos**, como o §5
+mandou.
+
+### A tabela item × prova (vermelho → conserto → verde)
+
+| # | conserto | teste (vermelho antes) | onde mexi |
+|---|---|---|---|
+| C1 | região nova NUNCA herda slot: cada criação nasce em `livre_<uuid8>` **PRÓPRIO**, em cascata (offset 4% da página, passo circular de 8). O vermelho do mut2 invertido revelou que o E-01 tinha **DUAS pernas**: a herança pela seleção E o reuso do MESMO slot avulso para toda criação sem seleção — as duas mortas | `test_mut2` **INVERTIDO** (agora exige slot próprio e independência) + o DoD da gravação | `canvas.py` `_slot_novo_avulso`/`adicionar_regiao` (cascata zerada no `carregar`) |
+| C2 | **o trio caiu (trava nº 2)**: clique E arrasto pegam SÓ a peça clicada (`_selecao_por_clique` sem trio; o colapso-em-2-tempos virou costura vazia). Mover a célula inteira ganhou **gesto próprio**: menu → "Selecionar a célula inteira" (`selecionar_celula_inteira`) | `test_c2_arrastar_uma_peca_move_so_ela` + `test_c2_celula_inteira_pelo_menu`; os testes do trio em `test_adversarial_vinculo`/`test_fase4_editor`/`test_isolamento`/`test_onda3_editor` **FLIPADOS** com docstring "FLIPADO na F13/C2" | `itens.py` |
+| C3 | Subir/Descer **desinvertidos** (Subir = para a frente de verdade) e o painel exibe **topo = frente** (convenção Illustrator). Decisão de nascimento tomada junto: região nova SEGUE nascendo na frente — agora isso é VISÍVEL no painel, que era o que faltava | `test_mut3` **INVERTIDO** (de caracterização do bug a exigência do certo) + `test_c3_painel_topo_e_frente` | `painel_camadas.py` `_mover`/`recarregar` |
+| C4 | alinhamento vertical EXISTE: enum `AlinhamentoV` (TOPO/CENTRO/BASE) no modelo (serializado, default CENTRO — layout antigo abre igual), `_y_alinhado` no compositor, combo no painel | `test_c4_topo_centro_base_por_pixel` (tinta medida na caixa; TOPO/BASE/CENTRO distintos) + `test_c4_combo_no_painel` | `model.py`, `compositor.py`, `painel_propriedades.py` |
+| C5 | **resize sob rotação ligado**: a conta saiu do `scenePos` cru para coordenadas LOCAIS do item (`event.pos()`), com reancoragem (`setTransformOriginPoint` no centro novo) e compensação de deriva do canto fixo. E os campos **Posição e tamanho (mm)** entraram no painel (VC-004) — as DUAS alternativas da ordem, não uma | `test_mut4` **INVERTIDO** (arrastar a alça a 30° REDIMENSIONA e o canto oposto não deriva) + `test_c5_campos_mm_mudam_o_rect` | `itens.py` `mouseMoveEvent`, `painel_propriedades.py` `grp_pos` |
+| C6 | duplicar a CÉLULA inteira: comando novo `duplicar_celula` (slot novo, uids frescos, +4 mm, nasce selecionada) no menu da peça quando o slot tem >1 região — a peça sozinha continua com o duplicar de sempre | `test_c6_duplicar_celula_inteira_por_conteudo` (trio duplicado por pixel, uids todos novos, original intacta) | `canvas.py`, `itens.py` |
+| C7 | carimbar sem caixa desenhada deixa de nascer do tamanho da página: nasce CENTRAL (35% da página), em slot avulso próprio, **visível e selecionado** | `test_c7_carimbar_sem_caixa_nasce_central_e_selecionado` | `canvas.py` `carimbar_modelo` |
+| C8 | o detector de grade ganhou **área mínima E proporção** (risco de 3 px e respingo de 30×20 caem; caixas reais ficam) e o "Novo layout" ganhou **revisão ANTES de salvar**: "Criar com N células" / "Criar sem grade (marcar no editor)" | `test_c8_detector_ignora_risco_e_respingo` (arte sintética com 3 caixas + lixo → 3 células exatas) + `test_c8_novo_layout_revisa_antes_de_salvar` (pelo diálogo REAL, vigia; "sem grade" = layout limpo) | `grade.py` `detectar_caixas_preco`, `atelie.py` `_novo` |
+| C9 | agrupar **explica cada recusa** (toast nominal: qual região, por quê — derivada/mestra, em QUALQUER origem) e **confirma o sucesso** (toast + tutorial só quando agrupou). E ficou multi-slot de verdade: `agrupar_como_mestre` junta soltas de VÁRIAS origens | `test_c9_recusa_explicada_e_sucesso_confirmado`; `test_fluxo_real_grade_mais_destaque` atualizado ao contrato novo (3 slots → 1 mestre com as 3 por identidade) | `canvas.py` `agrupar_selecao`, `grade.py` |
+| C10 | `Ajuste.PREENCHER` **recorta no caminho rápido**: `img.crop` para a janela da região quando a foto redimensionada excede a célula — nunca mais vaza | `test_c10_preencher_nao_vaza_da_celula` (pixel FORA da região tem de ficar limpo; vermelho mostrou o vazamento real) | `compositor.py` |
+| C11 | selos com **CONTROLE**: grupo "Selos" no painel (canto do +18 e do selo de qualidade → `definir_canto_automatico` + recompor; `migrar_selos` idempotente antes da busca). E o exemplo do Ateliê agora tem `mais18=True` — o selo **aparece na prévia** de quem faz tudo certo | `test_c11_canto_do_selo_muda_por_pixel` + `test_c11_exemplo_do_atelie_mostra_selo` | `painel_propriedades.py`, `selos.py`, `atelie.py` `_EXEMPLO` |
+| C12 | a mestra **propaga o texto**: `texto_fixo` (e o `alinhamento_v` novo do C4) entraram em `ATRIBUTOS_ESTILO` — a "tag inteligente" funciona | `test_c12_mestra_propaga_texto_fixo_por_pixel` | `grade.py` |
+| C13 | Ctrl+K com **UM dono**: o QShortcut cru da Mesa foi removido; a paleta da Mesa virou `mesa.paleta` (Ctrl+Shift+P) no catálogo oficial de atalhos. O teste novo **APERTA a tecla** (o antigo chamava o método) | `test_c13_ctrl_k_um_dono_so` (por `teclar`, janela ATIVADA — ver achado nº 4) + `test_fase2_busca::test_ctrl_k` reescrito por gesto | `mesa.py`, `atalhos.py` |
+| VC-010 | o `_emitir_medidas` que "calculava e jogava fora" agora alimenta um **chip de medidas VIVO** no viewport (nome + mm), visível DURANTE o arrasto e some no soltar | `test_vc010_chip_vivo_durante_o_arrasto` (visível no meio do gesto, invisível após o release) | `canvas.py`, `itens.py` |
+| VC-014 | as guias de arrasto ganharam a **medida em mm** escrita (rótulo na escala da cena, acima das linhas) | `test_vc014_guia_com_medida` (texto "N mm" presente na cena durante o gesto) | `canvas.py` `mostrar_guias` |
+
+### A definição de pronto do bloco, ponto a ponto
+
+1. **O teste da gravação** ✅ — `test_c_dod_sequencia_da_gravacao_tres_criacoes_independentes`:
+   criar IMAGEM, criar TEXTO, criar PREÇO pelos TRÊS botões reais da barra,
+   arrastar CADA uma (na ordem topo→fundo do z, porque a cascata as
+   sobrepõe de propósito), e a prova por conteúdo: cada arrasto move SÓ a
+   sua, os três slots são distintos, os três pixels respondem independentes.
+   É a sequência exata da gravação do dono — e nasceu VERMELHA no código do
+   Bloco B.
+2. **Adversarial I1–I5 atualizado e verde** ✅ — `test_adversarial_vinculo`
+   com o contrato novo: o fluxo real agora cria 3 regiões em 3 slots
+   distintos (C1) e o agrupar as JUNTA por identidade (r1/r2/r3 no mestre,
+   `len==3`); os testes que fixavam o trio flipados, nunca apagados.
+3. **COND-3** ✅ — mut2 (C1), mut3 (C3) e mut4 (C5) **INVERTIDOS no mesmo
+   arquivo, mesmos nomes** (docstrings citam a COND-3); nenhum apagado,
+   nenhum xfail. As formas antigas estão no `git log` (`5a4f0d0`), como o
+   §5.7 pediu.
+4. **COND-4** ✅ — o contrato mora DENTRO de `canvas.py`, nos docstrings de
+   `carregar` ("DOCUMENTO novo — zera o histórico… Refrescar dado com
+   carregar é o bug CD-01") e `atualizar_dados` (dados novos, preserva a
+   pilha).
+5. **COND-5** ✅ **decidida no C11, como a ordem preferia** —
+   `ItemMesa.marca_propria` existe e FLUI: catálogo → conciliação → item
+   composto (OR, como o +18) → `dados_para_desenho` →
+   `dados_cartaz_de_item`. O selo de marca própria não tem mais o furo que o
+   +18 tinha.
+6. **Junit em `saida_f13/`** ✅ (§4.4) — os quatro placares abaixo.
+
+### Os placares (junit, máquina real, 25/07)
+
+| prova | resultado |
+|---|---|
+| suíte da raiz ×2 | **904 verdes ×2, 0 falhas, 0 skips, exit 0** (`bloco_c_suite_1.xml`, `bloco_c_suite_2.xml` — a 2ª regravada na árvore final) |
+| ordem invertida (árvore final) | **904/0/0, exit 0** (`bloco_c_invertida.xml`) |
+| janela real | **4/0/0** (`bloco_c_janela.xml`) |
+
+Evolução: 851 (§0) → 862 (A) → 886 (B) → **904 (C)**.
+
+### Achados próprios de bancada (L6)
+
+1. **O trio mordia no ARRASTO, não no clique** — o clique parado JÁ
+   colapsava para a peça (o release do Qt desfaz multi-seleção). Os testes
+   antigos do trio fixavam um contrato que só existia no arrasto — por isso
+   o C2 real foi consertar o `_selecao_por_clique` (que o arrasto usa), e os
+   flips dizem isso no docstring.
+2. **Wrapper de item MORRE no commit do arrasto** — o canvas RECONSTRÓI
+   `_itens` ao gravar o gesto; qualquer teste (ou código futuro) que guarde
+   o wrapper atravessando um arrasto fala com um morto. Repescar por
+   `regiao is` — duas rodadas vermelhas da ordem invertida vieram daí.
+3. **Zona de disputa do z no clique**: a área de acerto de uma peça inclui a
+   margem das alças (±9 px); se o centro da peça clicada cair dentro dessa
+   margem da vizinha ACIMA no z, a vizinha rouba o clique. Não é bug — é o
+   custo de alças pegáveis — mas os testes de gesto precisam arrastar para
+   LONGE da vizinha. Só a ordem invertida pegou (a 3ª rodada dela).
+4. **Atalho de janela exige janela ATIVA** — offscreen nada ativa sozinho;
+   `QShortcut` com contexto de janela fica surdo. A bancada ganhou
+   `ativar_janela` (`gestos.py`) e o teste do C13 só fala a verdade por
+   causa dela (CF-06 vizinho).
+5. **TOPO no C4 tem folga de ~5 px** — é a entrelinha do glifo (métrica da
+   fonte), não bug do `_y_alinhado`; a tolerância do teste (≤8 px) documenta
+   isso.
+6. **`layout_de_arte` sempre traz o slot-base `pagina`** — o assert do C8
+   ("sem grade" = limpo) confere ausência de `celula_*` e de regiões, não
+   lista vazia.
+
+### O que ficou de fora (e por quê)
+
+- **`Regiao.grupo`/P5 NÃO foi construído** (L8) — o Bloco C não o pediu; o
+  vínculo célula continua sendo o slot, e "mover a célula inteira" opera
+  por ele. Se o arquiteto quiser grupo como entidade própria, é ordem nova.
+- **Região nova DENTRO de uma célula da grade**: com o C1, criar nunca mais
+  cai no slot da seleção — o caminho para povoar uma mestra é colar/mover.
+  Declarado aqui para não parecer regressão.
+- **Toasts e tutorial do C9 sem teste de pixel** — a prova é do CONTEÚDO da
+  recusa/sucesso (a mensagem certa dispara), não do desenho do toast.
+- **QInputDialog nativo em inglês** — segue como no B: o tradutor qtbase
+  cobre no app real; a conferência do arquivo de tradução no pacote é do
+  Bloco E (CA-08).
+
+**PARADO no fim do Bloco C (L7). O Bloco D não foi iniciado. Aguardando o
 selo do arquiteto.**

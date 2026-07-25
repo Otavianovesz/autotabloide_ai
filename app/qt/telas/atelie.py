@@ -50,8 +50,11 @@ from app.rendering.persistencia import (
 
 _MINIATURA = 150
 _TIPOS = ["TABLOIDE", "CARTAZ", "ETIQUETA"]
+# F13/C11 (E-10): o exemplo carrega as DUAS flags de selo — sem isso o
+# dono fazia tudo certo e nenhum selo aparecia na prévia do editor.
 _EXEMPLO = DadosProduto("Produto Exemplo", preco_por=Decimal("9.99"),
-                        preco_de=Decimal("12.99"))
+                        preco_de=Decimal("12.99"),
+                        mais18=True, marca_propria=True)
 
 
 class AtelieTela(QWidget):
@@ -228,7 +231,23 @@ class AtelieTela(QWidget):
                 ldef, caixas = layout_grade_de_arte(arte)
                 aviso = f"Grade detectada: {len(caixas)} células."
             except Exception:
-                ldef, aviso = layout_de_arte(arte), "Sem grade detectada — marque no editor."
+                ldef, caixas = layout_de_arte(arte), []
+                aviso = "Sem grade detectada — marque no editor."
+            # F13/C8 (E-07): REVISÃO antes de persistir — o dono decide se
+            # a detecção presta (antes, a grade com lixo já estava no banco
+            # quando ele via qualquer coisa)
+            if caixas:
+                from app.qt.design.componentes import perguntar
+                if not perguntar(
+                        self, "Criar com a grade detectada?",
+                        f"A detecção achou {len(caixas)} células de preço "
+                        "na arte. Criar o layout já com essa grade? "
+                        "(Dá para ajustar tudo no editor depois.)",
+                        sim=f"Criar com {len(caixas)} células",
+                        nao="Criar sem grade (marcar no editor)",
+                        padrao_sim=True):
+                    ldef = layout_de_arte(arte)
+                    aviso = "Sem grade — marque as células no editor."
         else:
             ldef, aviso = layout_de_arte(arte), "Marque as regiões no editor."
 

@@ -69,9 +69,10 @@ def test_rg55_clique_no_preco_agrupado_mostra_no_painel():
     preco = next(it for it in c._itens if it.regiao.nome == "Preço")
     _clicar(preco, c)
 
-    # 1) o trio segue selecionado (mover a célula continua funcionando)
-    assert all(it.isSelected() for it in c._itens)
-    # 2) mas o painel mostra A REGIÃO CLICADA, nunca órfão (RG-55)
+    # 1) F13/C2 (trava #2 derrubada pelo dono): o clique acende SÓ a peça
+    # clicada — mover a célula inteira virou gesto deliberado do menu
+    assert [it for it in c._itens if it.isSelected()] == [preco]
+    # 2) e o painel mostra A REGIÃO CLICADA, nunca órfão (RG-55, intacto)
     assert c.selecionada() is preco.regiao
     painel.mostrar(c.selecionada())
     # isVisibleTo(painel): visibilidade relativa ao painel (o top-level não

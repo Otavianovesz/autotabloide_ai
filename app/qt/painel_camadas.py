@@ -68,8 +68,13 @@ class PainelCamadas(QWidget):
         descer = QPushButton(" Descer")
         descer.setIcon(icone("seta_baixo", tamanho=14))
         descer.setToolTip("Levar para trás na composição")
-        subir.clicked.connect(lambda: self._mover(-1))
-        descer.clicked.connect(lambda: self._mover(1))
+        # F13/C3 (R-02): "Subir" TRAZ PARA A FRENTE de verdade — índice
+        # MAIOR = desenhada DEPOIS = na frente. Os deltas estavam
+        # invertidos do tooltip (era por isso que "a imagem atrás do
+        # preço" nunca acontecia). A lista exibe na convenção Illustrator
+        # (topo = frente, ver recarregar).
+        subir.clicked.connect(lambda: self._mover(1))
+        descer.clicked.connect(lambda: self._mover(-1))
         botoes = QHBoxLayout()
         botoes.setSpacing(t.ESP_2)
         botoes.addWidget(subir)
@@ -110,7 +115,10 @@ class PainelCamadas(QWidget):
     def recarregar(self) -> None:
         selecionada = self._regiao_selecionada()
         self.lista.clear()
-        for reg in self.canvas.regioes():
+        # F13/C3: convenção Illustrator/Photoshop — a 1ª linha (TOPO) é a
+        # região da FRENTE (a última desenhada). Antes o topo era o fundo
+        # e o dono lia a pilha ao contrário.
+        for reg in reversed(self.canvas.regioes()):
             item = QListWidgetItem(self.lista)
             item.setData(Qt.ItemDataRole.UserRole, reg)
             linha = self._linha(reg)

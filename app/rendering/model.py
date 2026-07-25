@@ -68,6 +68,18 @@ class Alinhamento(str, Enum):
     JUSTIFICADO = "JUSTIFICADO"
 
 
+class AlinhamentoV(str, Enum):
+    """F13/C4 (R-01): alinhamento VERTICAL do bloco de texto na caixa.
+
+    Não era bug de UI — o campo NÃO EXISTIA no modelo (o compositor
+    centralizava incondicional). CENTRO é o padrão: layout antigo compõe
+    byte-idêntico."""
+
+    TOPO = "TOPO"
+    CENTRO = "CENTRO"
+    BASE = "BASE"
+
+
 class Ajuste(str, Enum):
     CONTER = "CONTER"       # aspect-fit (cabe inteira dentro do retângulo)
     PREENCHER = "PREENCHER"  # cobre o retângulo (pode cortar)
@@ -190,6 +202,9 @@ class Regiao:
     # A "data deitada" do template real do dono é rotacao_graus=90.
     rotacao_graus: float = 0.0
 
+    # F13/C4 (R-01): vertical do texto — CENTRO = o comportamento de sempre
+    alinhamento_v: AlinhamentoV = AlinhamentoV.CENTRO
+
     def to_dict(self) -> dict:
         return {
             "tipo": self.tipo.value,
@@ -227,6 +242,7 @@ class Regiao:
             "texto_fixo": self.texto_fixo,
             "papel_texto": self.papel_texto.value,
             "rotacao_graus": self.rotacao_graus,
+            "alinhamento_v": self.alinhamento_v.value,   # F13/C4
         }
 
     @classmethod
@@ -267,6 +283,8 @@ class Regiao:
             texto_fixo=d.get("texto_fixo"),
             papel_texto=PapelTexto(d.get("papel_texto", "LIVRE")),  # antigo: LIVRE
             rotacao_graus=d.get("rotacao_graus", 0.0),   # layout antigo: 0
+            # F13/C4: layout antigo sem a chave = CENTRO (byte-idêntico)
+            alinhamento_v=AlinhamentoV(d.get("alinhamento_v", "CENTRO")),
         )
 
 

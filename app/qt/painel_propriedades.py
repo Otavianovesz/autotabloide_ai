@@ -103,6 +103,14 @@ class PainelPropriedades(QWidget):
         self.alinha = QComboBox()
         self.alinha.addItems([a.value for a in Alinhamento])
         self.alinha.currentTextChanged.connect(lambda v: self._set_enum("alinhamento", Alinhamento, v))
+        # F13/C4 (R-01): o vertical existe — TOPO/CENTRO/BASE
+        from app.rendering.model import AlinhamentoV
+        self.alinha_v = QComboBox()
+        self.alinha_v.addItems([a.value for a in AlinhamentoV])
+        self.alinha_v.setToolTip("Onde o bloco de texto ancora na caixa "
+                                 "(em pé): topo, centro ou base")
+        self.alinha_v.currentTextChanged.connect(
+            lambda v: self._set_enum("alinhamento_v", AlinhamentoV, v))
 
         self.subtipo = QComboBox()
         self.subtipo.addItems([s.value for s in SubtipoPreco])
@@ -270,6 +278,7 @@ class PainelPropriedades(QWidget):
         form.addRow("Texto fixo", caixa_fixo)        # linha 6: só TEXTO_LEGAL
         form.addRow("Rotação", self.rotacao)         # linha 7: qualquer região
         form.addRow("Peso", self.peso)               # linha 8: regiões de texto
+        form.addRow("Alinhar (em pé)", self.alinha_v)  # linha 9 (F13/C4)
         self._form = form   # linhas 1..5 = estilo/fonte/tamanho/cor/alinhar (texto)
         caixa_form = QWidget()
         caixa_form.setLayout(form)
@@ -295,6 +304,59 @@ class PainelPropriedades(QWidget):
         fi.addRow(self.btn_centralizar)
         self.grp_img = SecaoRecolhivel("Imagem", corpo_img)
 
+        # F13/VC-004 (Transform em mm — a "versão Adobe mais barata"): a
+        # posição e o tamanho da região em milímetros, EDITÁVEIS. É também
+        # a alternativa por painel do C5 (redimensionar rotacionada).
+        from PySide6.QtWidgets import QDoubleSpinBox as _Spin
+        corpo_pos = QWidget()
+        fpz = QFormLayout(corpo_pos)
+        fpz.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.pos_x, self.pos_y, self.pos_l, self.pos_a = (
+            _Spin(), _Spin(), _Spin(), _Spin())
+        for spin, attr, minimo in ((self.pos_x, "x_mm", -2000.0),
+                                   (self.pos_y, "y_mm", -2000.0),
+                                   (self.pos_l, "larg_mm", 1.0),
+                                   (self.pos_a, "alt_mm", 1.0)):
+            spin.setRange(minimo, 2000.0)
+            spin.setDecimals(1)
+            spin.setSuffix(" mm")
+            spin.valueChanged.connect(
+                lambda v, a=attr: self._set_rect_mm(a, float(v)))
+        fpz.addRow("X", self.pos_x)
+        fpz.addRow("Y", self.pos_y)
+        fpz.addRow("Largura", self.pos_l)
+        fpz.addRow("Altura", self.pos_a)
+        self.grp_pos = SecaoRecolhivel("Posição e tamanho (mm)", corpo_pos)
+
+        # F13/C11 ("existe âncora, não existe controle"): a região SELO
+        # ganha o CONTROLE dos automáticos — canto do +18 e do Qualidade,
+        # gravados no gestor (F3). O +18 segue TRAVADO em bebida.
+        corpo_selos = QWidget()
+        fs = QFormLayout(corpo_selos)
+        fs.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        from app.core.selos import CANTOS, REGRA_MAIS18, REGRA_QUALIDADE
+        self.canto_mais18 = QComboBox()
+        self.canto_mais18.addItems(list(CANTOS))
+        self.canto_mais18.setToolTip("Canto do selo +18 (bebida alcoólica; "
+                                     "o selo em si é travado — sai sempre)")
+        self.canto_mais18.currentTextChanged.connect(
+            lambda v: self._canto_automatico(REGRA_MAIS18, v))
+        self.canto_qualidade = QComboBox()
+        self.canto_qualidade.addItems(list(CANTOS))
+        self.canto_qualidade.setToolTip("Canto do selo Qualidade "
+                                        "(marca própria)")
+        self.canto_qualidade.currentTextChanged.connect(
+            lambda v: self._canto_automatico(REGRA_QUALIDADE, v))
+        aviso_selo = QLabel("Esta região é a ÂNCORA dos selos da célula. "
+                            "+18 e Qualidade entram sozinhos pela flag do "
+                            "produto; os manuais, pelo item na Mesa.")
+        aviso_selo.setWordWrap(True)
+        aviso_selo.setProperty("papel", "legenda")
+        fs.addRow(aviso_selo)
+        fs.addRow("Canto do +18", self.canto_mais18)
+        fs.addRow("Canto do Qualidade", self.canto_qualidade)
+        self.grp_selos = SecaoRecolhivel("Selos automáticos", corpo_selos)
+
         # R-034/R-035: legibilidade do texto sobre a foto (pill + sombra/contorno)
         corpo_leg = QWidget()
         fl = QFormLayout(corpo_leg)
@@ -317,6 +379,8 @@ class PainelPropriedades(QWidget):
         lay.addWidget(self.vazio)
         lay.addWidget(self.tipo_lbl)
         lay.addWidget(caixa_form)
+        lay.addWidget(self.grp_pos)      # F13/VC-004
+        lay.addWidget(self.grp_selos)    # F13/C11
         lay.addWidget(self.grp_preco)
         lay.addWidget(self.grp_img)
         lay.addWidget(self.grp_leg)
@@ -469,6 +533,12 @@ class PainelPropriedades(QWidget):
             self.cor.setText(reg.cor)
             self._pintar_amostra(reg.cor)
             self.alinha.setCurrentText(reg.alinhamento.value)
+            self.alinha_v.setCurrentText(reg.alinhamento_v.value)  # F13/C4
+            # VC-004: posição e tamanho em mm, editáveis
+            self.pos_x.setValue(reg.rect.x_mm)
+            self.pos_y.setValue(reg.rect.y_mm)
+            self.pos_l.setValue(reg.rect.larg_mm)
+            self.pos_a.setValue(reg.rect.alt_mm)
             self.subtipo.setCurrentText(reg.subtipo_preco.value)
             self.papel.setCurrentText(reg.papel_preco.value)
             self.moeda.setChecked(reg.mostrar_moeda)
@@ -503,6 +573,16 @@ class PainelPropriedades(QWidget):
             if idx >= 0:
                 self.papel_texto.setCurrentIndex(idx)
         self._form.setRowVisible(8, texto)           # RG-14: peso da família
+        self._form.setRowVisible(9, texto)           # F13/C4: alinhar em pé
+        self.grp_pos.setVisible(reg is not None)     # VC-004: qualquer região
+        # F13/C11: o controle dos selos aparece na região SELO (a âncora)
+        eh_selo = reg is not None and reg.tipo == TipoRegiao.SELO
+        self.grp_selos.setVisible(eh_selo)
+        if eh_selo:
+            from app.core.selos import config_automaticos
+            cfg = config_automaticos()
+            self.canto_mais18.setCurrentText(cfg["MAIS18"]["canto"])
+            self.canto_qualidade.setCurrentText(cfg["QUALIDADE"]["canto"])
         if texto:
             self._popular_estilos()
             self._popular_pesos()
@@ -745,6 +825,25 @@ class PainelPropriedades(QWidget):
             return
         if self.canvas.restaurar_estilo(self.reg):
             self.mostrar(self.reg)
+
+    def _canto_automatico(self, regra: str, canto: str) -> None:
+        """F13/C11: grava o canto do selo automático no gestor e recompõe
+        (a prévia mostra o selo pulando de canto na hora)."""
+        if self._carregando or self.reg is None:
+            return
+        from app.core.selos import definir_canto_automatico
+        if definir_canto_automatico(regra, canto):
+            self.canvas.recompor()
+
+    def _set_rect_mm(self, campo: str, valor: float) -> None:
+        """F13/VC-004: edita X/Y/L/A da região em mm pelo painel. Passa por
+        ``notificar_edicao(reg, "rect")`` — override de célula e propagação
+        da mestra funcionam como no arrasto — e reconstrói as alças."""
+        if self._carregando or self.reg is None:
+            return
+        setattr(self.reg.rect, campo, float(valor))
+        self.canvas.notificar_edicao(self.reg, "rect")
+        self.canvas._construir_itens()   # a alça acompanha o rect novo
 
     def _set(self, attr: str, valor) -> None:
         if self._carregando or self.reg is None:

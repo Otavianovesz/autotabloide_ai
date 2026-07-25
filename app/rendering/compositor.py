@@ -157,6 +157,19 @@ def _reais_centavos(valor: Decimal) -> tuple[str, str]:
     return str(reais), f"{centavos:02d}"
 
 
+def _y_alinhado(y: int, alt: int, alt_conteudo: float, reg: "Regiao") -> int:
+    """F13/C4 (R-01): o Y do bloco de texto pelo alinhamento VERTICAL da
+    região. CENTRO é byte-idêntico ao comportamento de sempre; layout
+    antigo (sem o campo) cai em CENTRO pela serialização."""
+    from app.rendering.model import AlinhamentoV
+    av = getattr(reg, "alinhamento_v", AlinhamentoV.CENTRO)
+    if av == AlinhamentoV.TOPO:
+        return y
+    if av == AlinhamentoV.BASE:
+        return y + max(0, int(alt - alt_conteudo))
+    return y + max(0, int(alt - alt_conteudo) // 2)
+
+
 def _x_alinhado(x: int, larg: int, larg_conteudo: float, alinhamento: Alinhamento) -> float:
     if alinhamento == Alinhamento.CENTRO:
         return x + (larg - larg_conteudo) / 2
@@ -248,14 +261,25 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
         esp, img = pares[0]
         enquadrada = (esp.zoom != 1.0 or esp.foco_x != 0.5 or esp.foco_y != 0.5)
         if forma is None and not enquadrada:
-            # 1 imagem, sem forma nem enquadramento: caminho da F2, byte-idêntico
+            # 1 imagem, sem forma nem enquadramento: caminho da F2 —
+            # byte-idêntico no CONTER (min nunca estoura a caixa)
             if reg.ajuste == Ajuste.PREENCHER:
                 escala = max(rw / img.width, rh / img.height)
             else:
                 escala = min(rw / img.width, rh / img.height)
             nw, nh = max(1, round(img.width * escala)), max(1, round(img.height * escala))
             img = img.resize((nw, nh))
-            base.paste(img, (x + (rw - nw) // 2, y + (rh - nh) // 2), img)
+            ox, oy = x + (rw - nw) // 2, y + (rh - nh) // 2
+            if nw > rw or nh > rh:
+                # F13/C10 (R-03): PREENCHER estoura por definição (max) —
+                # o excedente é RECORTADO para a região; a foto NUNCA
+                # invade a célula vizinha (o caminho com máscara já
+                # recortava; o rápido, que é o padrão, vazava)
+                cx, cy = max(0, x - ox), max(0, y - oy)
+                img = img.crop((cx, cy,
+                                cx + min(rw, nw), cy + min(rh, nh)))
+                ox, oy = max(ox, x), max(oy, y)
+            base.paste(img, (ox, oy), img)
             return
         camada = _imagem_enquadrada(img, rw, rh, esp, reg.ajuste)
     else:
@@ -309,7 +333,7 @@ def _desenhar_texto(
         texto, fontes_dir / reg.fonte, rw, rh, reg.tamanho_max_pt, dpi, reg.tamanho_min_pt
     )
     total_h = aj.altura_linha_px * len(aj.linhas)
-    oy = y + max(0, (rh - total_h) // 2)  # centraliza o bloco na vertical
+    oy = _y_alinhado(y, rh, total_h, reg)     # F13/C4: TOPO/CENTRO/BASE
 
     # R-035: pílula atrás do texto (antes das letras), justa ao bloco usado
     if reg.pill:

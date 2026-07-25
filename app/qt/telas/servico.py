@@ -38,6 +38,10 @@ class ItemMesa:
     produto_id: int | None = None
     imagem: str | None = None      # caminho ABSOLUTO da imagem atual (ou None)
     mais18: bool = False
+    # F13/COND-5 (selo do B, §5.6): a marca própria FLUI — o selo
+    # "Qualidade" tinha o mesmo furo que o +18 tinha (campo que não
+    # viajava do banco até a receita do cartaz/tabloide)
+    marca_propria: bool = False
     via: str = ""                  # exato | alias | fuzzy | juiz | novo | banco
     score: float = 0.0
     candidato_nome: str = ""       # melhor palpite do banco (para o 🟡)
@@ -608,6 +612,7 @@ def item_do_catalogo(d: dict) -> ItemMesa:
         descricao=d.get("nome_bruto") or d["nome"], preco=d.get("preco"),
         semaforo="VERDE", nome=d["nome"], produto_id=d["id"],
         imagem=d.get("imagem"), mais18=d.get("mais18", False),
+        marca_propria=d.get("marca_propria", False),        # F13/COND-5
         via="banco", preco_de=d.get("preco"), unidade=unidade,
         categoria=d.get("categoria") or None,               # F8
         imagens=list(d.get("imagens") or []),               # RG-28
@@ -689,6 +694,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         imagens=[ImagemSlot(c) for c in (it.imagens or [])],
         modo_arranjo=arranjo,
         mais18=it.mais18,
+        marca_propria=it.marca_propria,                     # F13/COND-5
         unidade=it.unidade,
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
@@ -712,6 +718,7 @@ def dados_cartaz_de_item(it: "ItemMesa", *,
         "nome": it.nome, "preco": it.preco, "preco_de": it.preco_de,
         "imagem": it.imagem, "validade": it.validade,
         "mais18": it.mais18, "categoria": it.categoria,
+        "marca_propria": it.marca_propria,                  # F13/COND-5
     }, validade_texto=validade_texto)
 
 
@@ -1396,6 +1403,7 @@ def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
         imagens=fotos if len(fotos) == 2 else [],
         arranjo="LADO_A_LADO",         # o padrão da ordem para 2 produtos
         mais18=a.mais18 or b.mais18,
+        marca_propria=a.marca_propria or b.marca_propria,   # F13/COND-5
         via="composto",
         unidade=a.unidade if a.unidade == b.unidade else None,
         origem_composto=[a.to_dict(), b.to_dict()],
@@ -1638,6 +1646,7 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     produto_id=p.id if p else None,
                     imagem=_imagem_absoluta(p.caminho_imagem) if p else None,
                     mais18=bool(p.selo_mais18) if p else False,
+                    marca_propria=bool(p.marca_propria) if p else False,
                     via=v.via,
                     score=v.confianca,
                     candidato_nome=(v.candidatos[0].produto.nome_sanitizado

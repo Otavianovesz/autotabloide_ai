@@ -132,10 +132,16 @@ def _layout_editor():
 def test_mut2_e01_botao_da_barra_cria_regiao_e_ela_nasce_selecionada(
         raiz, tmp_path):
     """GESTO (L2): o clique REAL no botão 'Adicionar imagem' da barra cria
-    a região — prova a fiação botão→canvas que o T-05 acusou de nunca ser
-    testada — e a região nasce SELECIONADA (canvas.py:1396, a linha da
-    mutação nº2). CARACTERIZAÇÃO: a auto-seleção é a causa-raiz do "tudo
-    grudado" (E-01) e cai no Bloco C1 — quando cair, este teste flipa."""
+    a região — prova a fiação botão→canvas que o T-05 acusou — e a região
+    nasce SELECIONADA (o feedback do painel, RG-55; a linha vigiada pela
+    mutação nº2).
+
+    INVERTIDO no C1 (COND-3 do selo — o git log guarda a forma antiga em
+    5a4f0d0): a caracterização do E-01 virou a exigência do CERTO —
+    **duas criações seguidas NÃO nascem grudadas**: cada uma no seu slot
+    avulso, em retângulos DIFERENTES (cascata), sem virar irmã da
+    anterior. Era exatamente a sequência da gravação do dono
+    (IMAGEM→NOME no mesmo retângulo, E-01/L-07)."""
     from app.qt.editor import Editor
     _app()
     e = Editor()
@@ -150,8 +156,22 @@ def test_mut2_e01_botao_da_barra_cria_regiao_e_ela_nasce_selecionada(
     assert len(nova) == 1
     sel = e.canvas.selecionada()
     assert sel is nova[0], (
-        "a região criada pelo botão não está selecionada — "
-        "canvas.py:1396 mudou (mutação nº2)")
+        "a região criada pelo botão não está selecionada (o feedback do "
+        "painel morreu — mutação nº2)")
+
+    # C1 (E-01): a 2ª criação com a 1ª ainda selecionada NÃO gruda nela
+    clicar(botao_por_tooltip(e.barra, "Adicionar nome do produto"))
+    nome = e.canvas.selecionada()            # a recém-criada é a selecionada
+    assert nome is not None and nome.tipo == TipoRegiao.NOME
+    imagem = nova[0]
+    slot_img = e.canvas._slot_de(imagem)
+    slot_nome = e.canvas._slot_de(nome)
+    assert slot_img is not slot_nome, (
+        "a região nova HERDOU o slot da anterior — o tudo-grudado voltou "
+        "(E-01/C1)")
+    assert (nome.rect.x_mm, nome.rect.y_mm) != \
+        (imagem.rect.x_mm, imagem.rect.y_mm), (
+        "as duas criações nasceram no MESMO retângulo (E-01/L-07)")
 
 
 # ---------------------------------------------------------------------------
@@ -162,18 +182,26 @@ def test_mut2_e01_botao_da_barra_cria_regiao_e_ela_nasce_selecionada(
 def test_mut3_r02_botao_subir_mexe_o_indice_para_tras_caracterizacao(
         raiz):
     """GESTO (L2): clique REAL na linha do painel de camadas + clique REAL
-    no botão ' Subir'. CARACTERIZAÇÃO DO BUG R-02: hoje 'Subir' chama
-    _mover(-1) → índice MENOR → pintado ANTES → vai para TRÁS — o oposto
-    do tooltip 'Trazer para a frente'. O teste fixa a fiação atual para a
-    mutação nº3 (trocar os deltas) acender; o conserto de verdade é o C3
-    do Bloco C, que flipa este teste."""
+    no botão ' Subir'.
+
+    INVERTIDO no C3 (COND-3 do selo; a forma antiga — que FIXAVA o bug
+    R-02 — vive no git log em 5a4f0d0): agora o teste exige o CERTO, por
+    CONTEÚDO. Duas regiões SOBREPOSTAS na mesma célula; a de TRÁS é
+    selecionada pelo painel e 'Subir' a TRAZ PARA A FRENTE — o pixel do
+    miolo passa a ser a cor dela (era por isso que 'a imagem atrás do
+    preço' nunca acontecia: o botão fazia o oposto do tooltip)."""
     from PySide6.QtCore import Qt
     from app.qt.editor import Editor
     _app()
     e = Editor()
-    e.carregar(_layout_editor(), DadosProduto("x"))
+    lay = LayoutDef(100, 100, dpi=100, paginas=[Pagina([Slot("s", [
+        Regiao(TipoRegiao.NOME, Retangulo(10, 10, 40, 12), nome="Fundo",
+               texto_fixo=None),
+        Regiao(TipoRegiao.NOME, Retangulo(10, 10, 40, 12), nome="Frente"),
+    ])])])
+    e.carregar(lay, DadosProduto("x"))
     slot = e.canvas._layout.paginas[0].slots[0]
-    alvo = slot.regioes[1]                       # o Preço, índice 1
+    alvo = slot.regioes[0]                       # "Fundo": índice 0 = ATRÁS
 
     # seleciona pelo painel (gesto): clica a LINHA cujo dado é a região
     lista = e.camadas.lista
@@ -188,9 +216,14 @@ def test_mut3_r02_botao_subir_mexe_o_indice_para_tras_caracterizacao(
     assert e.canvas.selecionada() is alvo
 
     clicar(botao_por_texto(e.camadas, "Subir"))
-    assert slot.regioes.index(alvo) == 0, (
-        "'Subir' deixou de chamar _mover(-1) — os deltas do painel de "
-        "camadas mudaram (mutação nº3; o conserto oficial é o C3)")
+    assert slot.regioes.index(alvo) == 1, (
+        "'Subir' NÃO trouxe a região para a frente (índice maior = "
+        "desenhada depois = na frente) — o R-02 voltou")
+    # e a lista de camadas mostra a convenção Illustrator: TOPO = FRENTE
+    topo = e.camadas.lista.item(0).data(Qt.ItemDataRole.UserRole)
+    assert topo is alvo, (
+        "a 1ª linha do painel não é a região da FRENTE (convenção "
+        "Illustrator, C3)")
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +233,15 @@ def test_mut3_r02_botao_subir_mexe_o_indice_para_tras_caracterizacao(
 
 def test_mut4_e08_arrastar_alca_de_regiao_rotacionada_nao_redimensiona(
         raiz):
-    """GESTO (L2): arraste REAL (press/move/release no viewport) na alça
-    inferior-direita de uma região com 15° de rotação. CARACTERIZAÇÃO DO
-    BUG E-08 (provado ao vivo em L-08): a guarda itens.py:438 desliga o
-    resize — a região se move e MANTÉM o tamanho. Remover a guarda
-    (mutação nº4) faz o tamanho mudar e este teste acender. O conserto de
-    verdade (conta certa sob rotação OU campos L/A em mm) é o C5."""
+    """GESTO (L2): arraste REAL na alça inferior-direita de uma região com
+    15° de rotação.
+
+    INVERTIDO no C5 (COND-3 do selo; a forma antiga — que FIXAVA a guarda
+    do E-08 — vive no git log em 5a4f0d0): agora o teste exige o CERTO —
+    a alça REDIMENSIONA a região girada (a conta roda em coordenadas
+    LOCAIS do item, não no scenePos cru) e o canto OPOSTO fica parado na
+    cena (a âncora não anda). Era o gesto provado ao vivo em L-08:
+    +66,+55 de translação e nenhum resize."""
     from app.qt.canvas import CanvasView
     _app()
     lay = LayoutDef(100, 100, dpi=100, paginas=[Pagina([
@@ -223,13 +259,19 @@ def test_mut4_e08_arrastar_alca_de_regiao_rotacionada_nao_redimensiona(
     clicar_na_cena(c, centro)                    # seleciona pelo clique real
     assert item.isSelected()
 
+    ancora_cena = item.mapToScene(0, 0)          # o canto OPOSTO (sup-esq)
     canto = item.mapToScene(item._w, item._h)    # alça inferior-direita
     arrastar_na_cena(c, canto, canto + QPointF(40, 30))
 
-    assert reg.rect.larg_mm == pytest.approx(larg0), (
-        "a alça REDIMENSIONOU uma região rotacionada — a guarda "
-        "itens.py:438 caiu (mutação nº4; o conserto oficial é o C5)")
-    assert reg.rect.alt_mm == pytest.approx(alt0)
+    assert reg.rect.larg_mm > larg0 + 1.0, (
+        "a alça NÃO redimensionou a região rotacionada — o E-08 voltou "
+        "(rotação desligando o resize)")
+    assert reg.rect.alt_mm > alt0 + 1.0
+    item2 = next(i for i in c._itens if i.regiao is reg)
+    ancora_depois = item2.mapToScene(0, 0)
+    assert abs(ancora_depois.x() - ancora_cena.x()) < 3.0, (
+        "o canto oposto ANDOU durante o resize — a âncora não segurou")
+    assert abs(ancora_depois.y() - ancora_cena.y()) < 3.0
 
 
 # ---------------------------------------------------------------------------

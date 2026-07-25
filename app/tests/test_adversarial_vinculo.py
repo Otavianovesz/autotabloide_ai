@@ -331,16 +331,19 @@ def test_fluxo_real_grade_mais_destaque(raiz_tmp, tmp_path):
     grade_antes = {s.id: [r.uid for r in s.regioes]
                    for s in layout.paginas[0].slots}
 
-    # C1: sem seleção → a 1ª região nasce num slot LIVRE (nunca no mestre!)
+    # F13/C1 (contrato NOVO — o antigo "acompanha a seleção" era o E-01):
+    # cada criação nasce num slot livre PRÓPRIO, nunca no mestre nem
+    # grudada na anterior; o agrupar (abaixo) é quem JUNTA as soltas.
     v._scene.clearSelection()
     r1 = v.adicionar_regiao(TipoRegiao.IMAGEM)
     slot_livre = v._slot_de(r1)
     assert slot_livre.id.startswith("livre_")
     assert not r1.de_mestre and r1.ref_mestre is None
-    # as seguintes acompanham a seleção (r1 ficou selecionada) → mesmo slot
     r2 = v.adicionar_regiao(TipoRegiao.NOME)
     r3 = v.adicionar_regiao(TipoRegiao.PRECO)
-    assert v._slot_de(r2) is slot_livre and v._slot_de(r3) is slot_livre
+    assert v._slot_de(r2) is not slot_livre          # E-01 morto: sem grude
+    assert v._slot_de(r3) is not v._slot_de(r2)
+    assert all(v._slot_de(r).id.startswith("livre_") for r in (r2, r3))
     # posiciona o destaque na área livre
     r1.rect = Retangulo(12, 120, 24, 14)
     r1.ajuste = Ajuste.PREENCHER
@@ -362,13 +365,15 @@ def test_fluxo_real_grade_mais_destaque(raiz_tmp, tmp_path):
             it.setSelected(True)
     assert v.agrupar_selecao() is None
 
-    # agrupar o destaque (regiões livres) → ok; carimbar 2 cópias
+    # agrupar o destaque (as 3 soltas, cada uma no seu slot — F13/C1: o
+    # agrupar JUNTA soltas de vários slots livres) → ok; carimbar 2 cópias
     v._scene.clearSelection()
     for it in v._itens:
-        if v._slot_de(it.regiao) is slot_livre:
+        if it.regiao in (r1, r2, r3):
             it.setSelected(True)
     mestre_g = v.agrupar_selecao()
     assert mestre_g is not None and mestre_g.origem_mm == (12, 120)
+    assert len(mestre_g.regioes) == 3            # as 3 soltas viraram UMA célula
     # C5.3: o slot livre_ esvaziado saiu do layout — sem fantasma na raiz
     assert all(not s.id.startswith("livre_")
                for s in v._layout.paginas[0].slots)
