@@ -229,6 +229,13 @@ class PublicarDialog(QDialog):
         rotulo_destaque.setProperty("papel", "legenda")
         lay.addWidget(rotulo_destaque)
         lay.addWidget(self.combo_item)
+        # F13/D8: o RASCUNHO é opção EXPLÍCITA (a trava #1 caiu)
+        from PySide6.QtWidgets import QCheckBox
+        self.chk_rascunho = QCheckBox("Carimbar RASCUNHO (marca d'água)")
+        self.chk_rascunho.setToolTip(
+            "Marque para publicar com a marca d'água de rascunho — o "
+            "padrão agora é a peça LIMPA")
+        lay.addWidget(self.chk_rascunho)
         lay.addWidget(self._nota)
         lay.addWidget(self._lbl_limitacao)
         lay.addLayout(rodape)
@@ -329,7 +336,8 @@ class PublicarDialog(QDialog):
         pasta = QFileDialog.getExistingDirectory(self, "Salvar a publicação em…")
         if not pasta:
             return
-        marca = not self.mesa.esta_aprovado()
+        # F13/D8 (a trava #1): limpo por padrão; o carimbo é o checkbox
+        marca = self.chk_rascunho.isChecked()
         item = self._item_escolhido()
         mesa = self.mesa
         story_mp4 = self.chk_story_mp4.isChecked() and self.chk_story_mp4.isVisible()

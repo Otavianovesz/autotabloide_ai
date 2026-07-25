@@ -312,11 +312,13 @@ def test_reuso_compositor_mesmo_item_4_formatos(raiz_tmp, tmp_path):
 # Casca — marca d'água no export real + encerramento do worker (lei exit-0)
 # ===========================================================================
 
-def test_tabloide_marca_dagua_liga_desliga_com_aprovacao(raiz_tmp, tmp_path,
-                                                         monkeypatch):
-    """R-067/068/passo 26 (integração): exportar NÃO aprovado sai com RASCUNHO;
-    aprovado sai LIMPO — a mesma peça, só a marca muda. Prova de mutação: sem o
-    ramo `if marca` no _trabalho, os dois arquivos seriam idênticos."""
+def test_tabloide_sai_limpo_por_padrao_e_rascunho_por_opcao(raiz_tmp, tmp_path,
+                                                            monkeypatch):
+    """VIRADO na F13/D8 (a trava #1, decisão do dono 24/07 — a forma
+    antiga, em que a APROVAÇÃO ligava/desligava a marca, vive no git
+    log): o export sai LIMPO por padrão (aprovação virou selo, não
+    condição); o RASCUNHO é opção EXPLÍCITA. Prova de mutação: sem o
+    ramo `if marca`, os dois arquivos seriam idênticos."""
     from PySide6.QtWidgets import QFileDialog
     from app.qt.telas import servico
     from app.qt.telas.mesa import MesaTela
@@ -334,21 +336,19 @@ def test_tabloide_marca_dagua_liga_desliga_com_aprovacao(raiz_tmp, tmp_path,
     monkeypatch.setattr("app.qt.telas.prevoo.confirmar_pre_voo",
                         lambda *a, **k: True)
 
-    def _export(nome, aprovado):
-        monkeypatch.setattr(servico, "pode_exportar_limpo", lambda pid: aprovado)
-        m._salvo = aprovado                  # limpo exige salvo E aprovado
+    def _export(nome, rascunho):
         saida = tmp_path / nome
         monkeypatch.setattr(QFileDialog, "getSaveFileName",
                             lambda *a, **k: (str(saida), "PNG (*.png)"))
-        m._exportar()
+        m._exportar(rascunho=rascunho)
         m._trabalhos.encerrar(5000)          # espera o worker gravar
         QApplication.processEvents()
         return saida
 
-    rascunho = _export("rascunho.png", aprovado=False)
-    limpo = _export("limpo.png", aprovado=True)
-    assert rascunho.exists() and limpo.exists()
-    r = list(Image.open(rascunho).convert("RGB").getdata())
+    limpo = _export("limpo.png", rascunho=False)       # o PADRÃO
+    marcado = _export("rascunho.png", rascunho=True)   # a opção explícita
+    assert limpo.exists() and marcado.exists()
+    r = list(Image.open(marcado).convert("RGB").getdata())
     c = list(Image.open(limpo).convert("RGB").getdata())
     assert r != c                            # o rascunho tem marca; o limpo não
     m.close()
@@ -455,10 +455,12 @@ def test_lote_multipagina_nao_perde_paginas(raiz_tmp, tmp_path, monkeypatch):
 
 def test_cartaz_da_fabrica_tambem_leva_a_marca_dagua(raiz_tmp, tmp_path,
                                                      monkeypatch):
-    """[CRÍTICO achado da minha frota] A Fábrica de cartazes é a 2ª PORTA de
-    exportação — também aplica a marca d'água RASCUNHO quando NÃO aprovado (um
-    cartaz de preço errado não pode ir LIMPO ao PDV). Prova de mutação: sem o
-    ramo `if marca` no fabrica._exportar, os dois PDFs seriam idênticos."""
+    """A Fábrica é a 2ª PORTA de exportação. VIRADO na F13/D8 (a trava
+    #1): sai LIMPO por padrão; a marca vem do checkbox RASCUNHO explícito
+    (a forma antiga — aprovação como condição, via monkeypatch de
+    pode_exportar_limpo porque NÃO HAVIA caminho de UI, o P-07
+    fossilizado — vive no git log). Prova de mutação: sem o ramo
+    `if marca`, os dois PDFs seriam idênticos."""
     from PySide6.QtWidgets import QFileDialog
     from app.qt.telas import servico
     from app.qt.telas.fabrica import FabricaTela
@@ -470,8 +472,8 @@ def test_cartaz_da_fabrica_tambem_leva_a_marca_dagua(raiz_tmp, tmp_path,
     monkeypatch.setattr("app.qt.telas.prevoo.confirmar_pre_voo",
                         lambda *a, **k: True)
 
-    def _export(nome, aprovado):
-        monkeypatch.setattr(servico, "pode_exportar_limpo", lambda pid: aprovado)
+    def _export(nome, rascunho):
+        f.chk_rascunho.setChecked(rascunho)   # a opção EXPLÍCITA do dono
         saida = tmp_path / nome
         monkeypatch.setattr(QFileDialog, "getSaveFileName",
                             lambda *a, **k: (str(saida), "PDF (*.pdf)"))
@@ -480,8 +482,8 @@ def test_cartaz_da_fabrica_tambem_leva_a_marca_dagua(raiz_tmp, tmp_path,
         QApplication.processEvents()
         return saida
 
-    rascunho = _export("cart_rascunho.pdf", aprovado=False)
-    limpo = _export("cart_limpo.pdf", aprovado=True)
+    rascunho = _export("cart_rascunho.pdf", rascunho=True)
+    limpo = _export("cart_limpo.pdf", rascunho=False)
     assert rascunho.exists() and limpo.exists()
     # compara a IMAGEM EMBUTIDA no PDF (conteúdo) — os bytes do PDF diferem por
     # metadados/timestamp, então byte-diff seria um teste FALSO (a mutação

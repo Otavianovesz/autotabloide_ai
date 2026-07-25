@@ -353,6 +353,21 @@ def ordenar_slots_visualmente(slots: list) -> list:
                                       round(s.origem_mm[0], 1))) + sem
 
 
+def area_do_slot(slot) -> float:
+    """F13/D11: a ÁREA da célula em mm² — a caixa envolvente das regiões.
+    É a régua do DESTAQUE (a maior célula recebe o herói); mora aqui
+    porque a regra de slot vive neste módulo, uma vez só (a lei do A7).
+    Slot sem região tem área zero."""
+    regs = list(slot.regioes)
+    if not regs:
+        return 0.0
+    x0 = min(r.rect.x_mm for r in regs)
+    y0 = min(r.rect.y_mm for r in regs)
+    x1 = max(r.rect.x_mm + r.rect.larg_mm for r in regs)
+    y1 = max(r.rect.y_mm + r.rect.alt_mm for r in regs)
+    return max(0.0, x1 - x0) * max(0.0, y1 - y0)
+
+
 # Regiões que exibem CONTEÚDO DE PRODUTO (A7.1). TEXTO_LEGAL e SELO são
 # decorativos/derivados — um slot só com eles não pode "engolir" um produto.
 TIPOS_CONTEUDO = (TipoRegiao.IMAGEM, TipoRegiao.NOME,

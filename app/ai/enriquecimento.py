@@ -141,13 +141,54 @@ def tokens_inventados(bruto: str, sanitizado: str,
     return inventados
 
 
+def _com_a_caixa_de(palavra: str, molde: str) -> str:
+    """Reveste a palavra devolvida com a caixa que a IA usou no lugar dela
+    (o bruto vem em CAIXA ALTA; a convenção 1ª-maiúscula continua valendo)."""
+    if molde.istitle():
+        return palavra.capitalize()
+    if molde.islower():
+        return palavra.lower()
+    if molde.isupper():
+        return palavra.upper()
+    return palavra
+
+
 def remover_inventados(nome: str, bruto: str, permitidos=()) -> str:
-    """#78/#95: tira do nome os tokens inventados (a guarda DURA, não pedido
-    no prompt). Se sobrar nada, devolve o nome como veio (nunca apaga tudo)."""
+    """#78/#95: trata os tokens inventados (a guarda DURA, não pedido no
+    prompt). Se sobrar nada, devolve o nome como veio (nunca apaga tudo).
+
+    F13/D6 (C-08): inventado que SUBSTITUIU uma palavra do bruto (o typo
+    agressivo da IA: HUPPERS→Ruppers) não é mais simplesmente REMOVIDO —
+    a palavra do dono VOLTA ao lugar. Remover o substituto mutilava o
+    nome (a marca sumia inteira) e a única testemunha era a lista
+    tokens_perdidos, que só a curadoria mostra. Acréscimo puro (sigla/
+    protocolo do nada: INMETRO, NBR — nada do bruto sumiu no lugar)
+    continua caindo fora, como sempre."""
     inv = set(tokens_inventados(bruto, nome, permitidos))
     if not inv:
         return nome
-    sobrou = " ".join(t for t in nome.split() if t not in inv)
+    import difflib
+    orfaos = tokens_perdidos(bruto, nome)   # palavras do bruto que sumiram
+    saida = []
+    for tok in nome.split():
+        if tok not in inv:
+            saida.append(tok)
+            continue
+        par, melhor = None, 0.0
+        for cand in orfaos:
+            razao = difflib.SequenceMatcher(
+                None, _normalizar_token(tok),
+                _normalizar_token(cand)).ratio()
+            if razao > melhor:
+                par, melhor = cand, razao
+        # limiar 0,75: "ruppers"×"huppers" (0,86) é TYPO e devolve;
+        # "produto"×"bruto" (0,67) é reescrita total — não é substituição
+        # (o guardião da Onda 1 fixa esse lado; o do D6 fixa o outro)
+        if par is not None and melhor >= 0.75:
+            saida.append(_com_a_caixa_de(par, tok))   # a palavra do dono
+            orfaos.remove(par)
+        # senão: acréscimo puro → cai fora (o contrato antigo)
+    sobrou = " ".join(saida)
     return sobrou or nome
 
 

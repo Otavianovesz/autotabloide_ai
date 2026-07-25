@@ -195,6 +195,10 @@ class CanvasView(QGraphicsView):
         documento novo, histórico recomeça. ``atualizar_dados`` = dados
         novos no MESMO documento, pilha preservada. **Refrescar dado com
         ``carregar`` é o bug CD-01** (os 9 Ctrl+Z mortos da gravação)."""
+        # D2: pendência de digitação do documento ANTERIOR morre aqui
+        self._gesto_pendente = None
+        if hasattr(self, "_timer_gesto"):
+            self._timer_gesto.stop()
         self._layout, self._dados, self._fundo = layout, dados, fundo_path
         self._pagina_atual = 0
         self._cascata_criacao = 0        # F13/C1: a escadinha recomeça
@@ -322,6 +326,12 @@ class CanvasView(QGraphicsView):
         self.ir_para_pagina(para)
         return True
 
+    # F13/D2 (X-01): a PRÉVIA compõe neste dpi e estica de volta ao tamanho
+    # da cena — a cena continua em pixels do dpi do LAYOUT (alças, réguas,
+    # guias e snap intactos; sem o re-escalonamento tudo desloca por ~3×).
+    # Exportar/salvar não passam por aqui: seguem no dpi cheio.
+    DPI_PREVIA = 96
+
     def _compor_fundo(self) -> None:
         """Recompõe o preview (fundo) pelo compositor Pillow — sem tocar nas alças."""
         if self._layout is None or self._dados is None:
@@ -329,8 +339,18 @@ class CanvasView(QGraphicsView):
         # D8.2: o _fundo explícito (legado) só vale na página 1; nas demais a
         # arte é da própria página (pagina.arquivo_fundo, via compositor)
         fundo = self._fundo if self._pagina_atual == 0 else None
-        img = compor_pagina(self._layout, self._pagina(), self._dados, fundo_path=fundo)
+        rapida = self._layout.dpi > self.DPI_PREVIA
+        img = compor_pagina(self._layout, self._pagina(), self._dados,
+                            fundo_path=fundo,
+                            dpi=self.DPI_PREVIA if rapida else None)
         pm = pil_para_qpixmap(img)
+        if rapida:
+            from app.rendering.compositor import mm_para_px
+            pm = pm.scaled(
+                round(mm_para_px(self._layout.largura_mm, self._layout.dpi)),
+                round(mm_para_px(self._layout.altura_mm, self._layout.dpi)),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
         if self._bg is None:
             self._bg = self._scene.addPixmap(pm)
             self._bg.setZValue(0)
@@ -592,6 +612,7 @@ class CanvasView(QGraphicsView):
         self.selecao_mudou.emit(None)
 
     def desfazer(self) -> bool:
+        self.despachar_edicoes()     # D2: o gesto pendente entra na pilha
         estado = self._historico.desfazer() if self._historico else None
         if estado is None:
             return False
@@ -599,6 +620,7 @@ class CanvasView(QGraphicsView):
         return True
 
     def refazer(self) -> bool:
+        self.despachar_edicoes()
         estado = self._historico.refazer() if self._historico else None
         if estado is None:
             return False
@@ -1702,16 +1724,51 @@ class CanvasView(QGraphicsView):
         for it in self._itens:               # o badge do item reflete na hora
             it.update()
 
-    def notificar_edicao(self, reg, attr: str | None = None) -> None:
+    def notificar_edicao(self, reg, attr: str | None = None, *,
+                         adiar: bool = False) -> None:
         """Recompõe após uma edição de propriedade (chamado pelo painel).
 
         ``attr`` identifica o que mudou: na mestra dispara a propagação; numa
         célula da grade vira override (precedência local).
-        """
+
+        F13/D2 (X-01 + CD-04): ``adiar=True`` = rajada de digitação. O
+        MODELO já mudou (o chamador fez o setattr) e o item reflete na
+        hora; histórico + recomposição + ``editou`` fecham JUNTOS no fim
+        do gesto (~300ms de pausa) em ``despachar_edicoes()`` — cada
+        tecla custava um compor_pagina inteiro e um estado de desfazer
+        (apagar um nome digitado eram 9 Ctrl+Z). Quem precisa do fecho
+        ANTES (desfazer/refazer, troca de seleção, documento novo) chama
+        ``despachar_edicoes()`` — edição nunca fica pendurada."""
         self._apos_edicao(reg, attr)
         if attr == "rotacao_graus":      # RG-12: contornos giram na hora
             for it in self._itens:       # (todos: a propagação da mestra
                 it.aplicar_rotacao()     # muda as derivadas também)
+        if adiar:
+            self._agendar_fecho_do_gesto(reg)
+            return
+        self._registrar_hist()
+        self._compor_fundo()
+        self.editou.emit(reg)
+
+    def _agendar_fecho_do_gesto(self, reg) -> None:
+        from PySide6.QtCore import QTimer
+        if not hasattr(self, "_timer_gesto"):
+            self._timer_gesto = QTimer(self)
+            self._timer_gesto.setSingleShot(True)
+            self._timer_gesto.setInterval(300)
+            self._timer_gesto.timeout.connect(self.despachar_edicoes)
+        self._gesto_pendente = reg
+        self._timer_gesto.start()
+
+    def despachar_edicoes(self) -> None:
+        """Fecha AGORA o gesto de digitação pendente (D2). Sem pendência,
+        não faz nada — seguro chamar de qualquer fronteira."""
+        reg = getattr(self, "_gesto_pendente", None)
+        if reg is None:
+            return
+        self._gesto_pendente = None
+        if hasattr(self, "_timer_gesto"):
+            self._timer_gesto.stop()
         self._registrar_hist()
         self._compor_fundo()
         self.editou.emit(reg)

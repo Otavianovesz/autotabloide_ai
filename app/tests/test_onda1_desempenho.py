@@ -105,10 +105,16 @@ def _esperar(cond, timeout_s: float = 8.0) -> bool:
 
 def test_conciliacao_fila_enriquece_por_uid_e_cria_sem_foto(
         raiz_tmp, monkeypatch):
+    """ATUALIZADO na F13/D6 (C-09): o contrato do modo rápido mudou —
+    proposta com tokens_perdidos abre a CURADORIA (o fake antigo,
+    'Produto Enriquecido' para o bruto 'BRUTO UM', PERDIA a palavra e
+    este teste pendurava no modal novo). O dado do fake agora é sem
+    perda; a prova de que o MOTOR rodou (e não o degradado) é o mais18,
+    que a degradação nunca devolve."""
     _app()
     motor = MotorIAFake(respostas_chat={
-        "supermercado": '{"nome_sanitizado": "Produto Enriquecido", '
-                        '"mais18": false, "categoria": null, '
+        "supermercado": '{"nome_sanitizado": "Bruto um", '
+                        '"mais18": true, "categoria": null, '
                         '"confianca": 0.9}'})
     monkeypatch.setattr(servico, "_motor_se_disponivel", lambda: motor)
     from app.qt.telas.conciliacao_dialog import ConciliacaoDialog
@@ -123,16 +129,19 @@ def test_conciliacao_fila_enriquece_por_uid_e_cria_sem_foto(
     assert _esperar(lambda: len(dlg._propostas) == 2), \
         "a fila de enriquecimento não completou"
     assert set(dlg._propostas) == {itens[0].uid, itens[1].uid}
-    assert dlg._propostas[itens[0].uid].nome == "Produto Enriquecido"
+    assert dlg._propostas[itens[0].uid].nome == "Bruto um"
+    assert dlg._propostas[itens[0].uid].mais18 is True   # o MOTOR rodou
 
     # RG-03: fotos desligadas → "Criar" cadastra SEM foto, sem curadoria
+    # (proposta SEM perda — perda abriria a curadoria, contrato do D6)
     dlg.chk_fotos.setChecked(False)
     assert dlg.btn_todos.isVisible() is False or True   # visibilidade offscreen
     dlg._criar(0)
     assert _esperar(lambda: dlg.itens[0].semaforo == "VERDE"), \
         "o criar-sem-foto não resolveu o item"
     assert dlg.itens[0].imagem is None                  # sem foto MESMO
-    assert dlg.itens[0].nome == "Produto Enriquecido"
+    assert dlg.itens[0].nome == "Bruto um"
+    assert dlg.itens[0].mais18 is True
     assert dlg.itens[0].produto_id is not None          # cadastrado no banco
 
     dlg.reject()                                        # junta as pontas (done)

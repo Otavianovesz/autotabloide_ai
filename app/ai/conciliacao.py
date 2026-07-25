@@ -362,6 +362,24 @@ class Conciliador:
                 cands.append(Candidato(produto, float(score)))
         return cands
 
+    def categoria_do_vizinho(self, nome_bruto: str,
+                             piso: float | None = None):
+        """F13/D4 (VC-051): a categoria do VIZINHO mais parecido — a linha
+        que a conciliação sempre calculou e jogava fora. DOIS degraus
+        honestos: embeddings quando o LM responde, fuzzy puro sem ele (o
+        D4 não herda o ponto cego C-03 que veio consertar). Devolve
+        (nome_da_categoria | None, score); abaixo do piso (padrão: o
+        limiar do amarelo) não há palpite. UMA fonte para o lote, a
+        conciliação e a criação (a lição do B6: nunca três receitas)."""
+        piso = self.limiares.amarelo if piso is None else piso
+        for cand in self._candidatos(nome_bruto):
+            if cand.score < piso:
+                break                     # ordenado: dali para baixo não serve
+            cat = getattr(cand.produto, "categoria", None)
+            if cat is not None:
+                return cat.nome, float(cand.score)
+        return None, 0.0
+
     # --- "juiz" IA (só nos ambíguos; usa 3–5 candidatos, nunca o banco todo) ---
 
     def _juiz(self, nome_bruto: str, candidatos: list[Candidato]) -> Veredito | None:

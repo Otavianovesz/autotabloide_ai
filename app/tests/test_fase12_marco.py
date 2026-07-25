@@ -548,8 +548,9 @@ def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
     itens = []
     for i, (nome, preco) in enumerate(reais):
         foto = tmp_path / ("r%d.png" % i)
-        Image.new("RGB", (160, 160),
-                  ((i * 53) % 256, (i * 97) % 256, (i * 31) % 256)).save(foto)
+        from app.tests.acervo import foto_de_bancada
+        foto_de_bancada(foto, ((i * 53) % 256, (i * 97) % 256,
+                               (i * 31) % 256))   # F13/D10: nítida
         itens.append(ItemMesa(nome.upper(), preco, "VERDE", nome,
                               imagem=str(foto)))
     slots = []
@@ -724,18 +725,27 @@ def test_e_migracao_do_prototipo_por_chave_natural(raiz_env, tmp_path):
 # Frota adversarial F12 — cada conserto com sua prova (por CONTEÚDO)
 # ============================================================================
 
-def test_f_etiquetas_em_lote_saem_com_rascunho_por_padrao(raiz_env, tmp_path):
-    """A 4ª PORTA de exportação (frota F12): etiqueta com preço só sai LIMPA
-    com aprovação provada — o PADRÃO carimba. Prova por bytes: o PDF
-    carimbado difere do limpo (se alguém remover o carimbo, empatam)."""
+def test_f_etiquetas_em_lote_saem_limpas_por_padrao(raiz_env, tmp_path):
+    """A 4ª PORTA de exportação (frota F12). VIRADO na F13/D8 (a trava
+    #1 manda sobre a régua da frota — a forma antiga, 'o PADRÃO
+    carimba', vive no git log): SEM argumento sai LIMPA; rascunho=True
+    é a opção explícita que carimba. Prova por bytes da imagem
+    embutida."""
+    from pypdf import PdfReader
     from app.qt.telas import servico
     from app.qt.telas.servico import ItemMesa
     itens = [ItemMesa("x", "9,99", "VERDE", "Arroz Tio João 5kg")]
-    com_marca, _ = servico.gerar_etiquetas_lote(
-        itens, tmp_path / "marcada.pdf")            # SEM argumento: carimba
+
+    def _img(caminho):
+        return PdfReader(str(caminho)).pages[0].images[0].data
+
+    padrao, _ = servico.gerar_etiquetas_lote(itens, tmp_path / "padrao.pdf")
     limpa, _ = servico.gerar_etiquetas_lote(
         itens, tmp_path / "limpa.pdf", rascunho=False)
-    assert Path(com_marca).read_bytes() != Path(limpa).read_bytes()
+    marcada, _ = servico.gerar_etiquetas_lote(
+        itens, tmp_path / "marcada.pdf", rascunho=True)
+    assert _img(padrao) == _img(limpa)      # o padrão é LIMPO (trava #1)
+    assert _img(marcada) != _img(limpa)     # a opção explícita carimba
 
 
 def test_f_modo_pai_compoe_pela_montagem_oficial(raiz_env, tmp_path):

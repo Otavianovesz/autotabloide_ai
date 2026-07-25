@@ -765,33 +765,45 @@ def dados_de_projeto_aberto(aberto):
 OUTROS = "Outros"
 
 
-def checklist_final(itens: list[ItemMesa], validade: str | None):
+def checklist_final(itens: list[ItemMesa], validade: str | None,
+                    *, cartaz: bool = False):
     """R-063: checklist antes de exportar, gerado do ESTADO REAL do projeto —
-    marca sozinho o que já está ok. Devolve [(pergunta, ok, detalhe)]."""
+    marca sozinho o que já está ok. Devolve [(pergunta, ok, detalhe)].
+
+    F13/D8: no modo ``cartaz`` a pergunta da validade DA OFERTA sai — o
+    cartaz não tem validade de oferta (a de item é o RG-58); era por isso
+    que a aprovação seria inalcançável na Fábrica (P-07)."""
     n = len(itens)
     sem_foto = [it for it in itens if not (it.imagem or it.imagens)]
     sem_preco = [it for it in itens
                  if preco_decimal(it.preco) is None and not it.multi_preco]
     bebidas = [it for it in itens if it.mais18]
-    return [
+    perguntas = [
         ("Todos os itens têm foto?", not sem_foto,
          "ok" if not sem_foto else f"{len(sem_foto)} sem foto"),
         ("Todos os itens têm preço entendido?", not sem_preco,
          "ok" if not sem_preco else f"{len(sem_preco)} sem preço"),
-        ("A validade da oferta está definida?", bool(validade),
-         validade or "defina a validade de/até"),
+    ]
+    if not cartaz:
+        perguntas.append(
+            ("A validade da oferta está definida?", bool(validade),
+             validade or "defina a validade de/até"))
+    perguntas += [
         ("As bebidas alcoólicas estão com +18?", True,
          f"{len(bebidas)} bebida(s) — o selo +18 é automático"
          if bebidas else "nenhuma bebida alcoólica"),
         ("Há itens na oferta?", n > 0, f"{n} item(ns)"),
     ]
+    return perguntas
 
 
-def aprovar_projeto(projeto_id, itens: list[ItemMesa], validade: str | None):
+def aprovar_projeto(projeto_id, itens: list[ItemMesa], validade: str | None,
+                    *, cartaz: bool = False):
     """R-068 (aprovação em 2 etapas): aprovar EXIGE a conferência — roda o
     checklist da F7 e só aprova se TUDO estiver ok. Não é clique cego. Devolve
     (aprovado, faltas) — `faltas` é a lista de perguntas ainda não resolvidas."""
-    faltas = [p for p, ok, _d in checklist_final(itens, validade) if not ok]
+    faltas = [p for p, ok, _d in
+              checklist_final(itens, validade, cartaz=cartaz) if not ok]
     if faltas:
         return False, faltas
     if projeto_id is not None:
@@ -831,6 +843,54 @@ def diff_edicoes(atual: list[ItemMesa], anterior: list[ItemMesa]):
         if ant is not None and (it.preco or "") != (ant.preco or ""):
             precos.append((it, ant.preco, it.preco))
     return {"novos": novos, "removidos": removidos, "precos": precos}
+
+
+# --- F13/D12 (VC-081): atualizar preços da oferta ABERTA por chave natural --
+
+@dataclass
+class PlanoPrecos:
+    """A prévia do 'Atualizar preços' — nada muda até aplicar (o padrão
+    prévia→confirma da ponte Excel R-118)."""
+
+    atualizaveis: list = field(default_factory=list)   # (da_estante, novo)
+    sem_par: list = field(default_factory=list)        # novos sem par
+    nao_citados: list = field(default_factory=list)    # da estante, fora
+    identicos: int = 0
+
+
+def plano_atualizar_precos(estante: list["ItemMesa"],
+                           novos: list["ItemMesa"]) -> PlanoPrecos:
+    """A semana RECORRENTE: casa estante×tabela nova por CHAVE NATURAL
+    (nunca posição, I1) e lista o que mudaria. Não grava nada."""
+    por_chave: dict = {}
+    for it in estante:
+        por_chave.setdefault(chave_natural(it), it)
+    plano = PlanoPrecos()
+    casados: set = set()
+    for n in novos:
+        alvo = por_chave.get(chave_natural(n))
+        if alvo is None:
+            plano.sem_par.append(n)
+            continue
+        casados.add(alvo.uid)
+        if ((n.preco or "") != (alvo.preco or "")
+                or n.preco_de != alvo.preco_de
+                or n.multi_preco != alvo.multi_preco):
+            plano.atualizaveis.append((alvo, n))
+        else:
+            plano.identicos += 1
+    plano.nao_citados = [it for it in estante if it.uid not in casados]
+    return plano
+
+
+def aplicar_atualizacao_precos(plano: PlanoPrecos) -> int:
+    """Muta SÓ os campos de preço dos itens da ESTANTE — o uid, o mapa,
+    os overrides e a montagem ficam exatamente onde estão (I1)."""
+    for alvo, novo in plano.atualizaveis:
+        alvo.preco = novo.preco
+        alvo.preco_de = novo.preco_de
+        alvo.multi_preco = novo.multi_preco
+    return len(plano.atualizaveis)
 
 
 # --- R-058: frases prontas com variáveis {data}/{evento} --------------------
@@ -1446,6 +1506,26 @@ def separar_item(comp: ItemMesa) -> list[ItemMesa]:
 
 # --- pré-voo de exportação (P0.4, invariante I2: nada some em silêncio) ---------
 
+_NOTAS_FOTO: dict = {}
+
+
+def _nota_da_foto(caminho):
+    """D10 (VC-040): avaliar_foto com cache por (caminho, mtime) — o
+    pré-voo roda SÍNCRONO no exportar/salvar; 30 fotos sem cache pagam o
+    Laplaciano 30× por gesto. Nunca levanta (None quando nem dá)."""
+    try:
+        p = Path(caminho)
+        chave = (str(p), p.stat().st_mtime_ns)
+        av = _NOTAS_FOTO.get(chave)
+        if av is None:
+            from app.images.avaliador import avaliar_foto
+            av = avaliar_foto(p)
+            _NOTAS_FOTO[chave] = av
+        return av
+    except Exception:
+        return None
+
+
 def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                        fontes_dir=None) -> list[str]:
     """Pendências por slot ocupado, ANTES de exportar/salvar.
@@ -1498,6 +1578,14 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                     avisos.append(
                         f"{rotulo} ({nome}): usando foto GENÉRICA (placeholder)"
                         f"{idx} — troque pela foto real quando puder")
+                else:
+                    # F13/D10 (VC-040): a NOTA da foto entra no pré-voo —
+                    # o avaliador só falava no tooltip do Almoxarifado
+                    av = _nota_da_foto(c)
+                    if av is not None and av.nota == "ruim":
+                        avisos.append(
+                            f"{rotulo} ({nome}): foto com nota RUIM{idx} — "
+                            + "; ".join(av.motivos))
         if d.preco_por is None and not d.multi_preco:   # R-070: multi-preço TEM preço
             avisos.append(f"{rotulo} ({nome}): sem preço (ou preço não entendido)")
         # FASE 3 (passo 73, I2): selo escolhido cuja ARTE sumiu do disco —
@@ -1545,6 +1633,16 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                 if msg and msg not in vistos:
                     vistos.add(msg)
                     avisos.append(msg)
+
+    # F13/D10 (VC-050): o piso determinístico da REVISORA entra no pré-voo
+    # (nome cortado por medida, preço fora da faixa aprendida, de≤por).
+    # No cartaz o "de ≤ por" de cima já cobre POR CÉLULA — pula o par.
+    from app.ai.revisora import heuristicas_do_pre_voo
+    for a in heuristicas_do_pre_voo(layout, dados_por_slot, fontes_dir):
+        if cartaz and "risco PROCON" in a:
+            continue
+        if a not in avisos:
+            avisos.append(a)
     return avisos
 
 
@@ -1634,6 +1732,26 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
                 v = conc.conciliar(desc)
                 p = v.produto
+                # F13/D5 (C-01): o acervo se conserta SOZINHO a cada
+                # importação — produto casado SEM categoria ganha a do
+                # vizinho (o índice já está quente; humano nunca é
+                # vencido: só escreve onde está VAZIO). No PC da loja
+                # (somente leitura) pula sem drama — é enriquecimento
+                # oportunista, não conteúdo da oferta.
+                if p is not None and p.categoria is None:
+                    cat, _sc = conc.categoria_do_vizinho(desc)
+                    if cat:
+                        try:
+                            from app.core.repositories import (
+                                ProdutoRepositorio,
+                            )
+                            ProdutoRepositorio(session).editar(
+                                p.id, categoria=cat,
+                                categoria_origem="vizinho")
+                            session.commit()
+                            session.refresh(p)
+                        except Exception:
+                            session.rollback()
                 mp = (multi_precos[i - 1] if multi_precos
                       and i - 1 < len(multi_precos) else None)
                 itens.append(ItemMesa(
@@ -1807,9 +1925,11 @@ def dados_cartaz_de_produto(produto: dict, *,
     )
 
 
-def _compor_cartaz(layout, dados, *, rascunho: bool = True, qr_texto=None):
-    """Compõe 1 página de cartaz a partir de um DadosProduto (com marca d'água
-    RASCUNHO e QR opcional). Devolve (imagem, avisos_extra)."""
+def _compor_cartaz(layout, dados, *, rascunho: bool = False, qr_texto=None):
+    """Compõe 1 página de cartaz a partir de um DadosProduto (QR opcional).
+
+    F13/D8 (a trava #1, decisão do dono 24/07): sai LIMPO por padrão —
+    a marca d'água RASCUNHO virou opção EXPLÍCITA (``rascunho=True``)."""
     from app.rendering.compositor import compor_pagina
 
     avisos: list[str] = []
@@ -1830,14 +1950,17 @@ def _compor_cartaz(layout, dados, *, rascunho: bool = True, qr_texto=None):
 
 def cartaz_relampago(produto: dict, destino, *, layout=None,
                      validade_texto: str | None = None, qr_texto=None,
+                     rascunho: bool = False,
                      status_cb: StatusCb = lambda _m: None):
     """R-110: do produto ao PDF do cartaz num passo — sem montar nada na Mesa.
 
     Usa o layout padrão de cartaz + os dados do produto (de/por, foto oficial).
-    Roda o pré-voo cartaz=True (sem foto/preço/“de” avisa ANTES do PDF, I2) e
-    carimba a marca d'água RASCUNHO — não há projeto aprovado por trás, e um
-    preço de balcão errado não pode ir limpo ao PDV (decisão travada; a 3ª
-    porta de exportação). Devolve (Path, avisos)."""
+    Roda o pré-voo cartaz=True (sem foto/preço/“de” avisa ANTES do PDF, I2).
+
+    F13/D8 (a trava #1 derrubada pelo dono, 24/07 — manda sobre a decisão
+    da F11): o relâmpago sai LIMPO por padrão; a marca RASCUNHO virou
+    opção explícita. O pré-voo continua avisando ANTES do PDF (I2).
+    Devolve (Path, avisos)."""
     from app.rendering.cartaz import layout_cartaz_exemplo
     from app.rendering.export import exportar_pdf_multipagina
 
@@ -1847,7 +1970,8 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
     status_cb("Conferindo o cartaz…")
     avisos = validar_composicao(layout, {slot_id: dados}, cartaz=True)
     status_cb("Compondo o cartaz…")
-    img, extra = _compor_cartaz(layout, dados, rascunho=True, qr_texto=qr_texto)
+    img, extra = _compor_cartaz(layout, dados, rascunho=rascunho,
+                                qr_texto=qr_texto)
     avisos.extend(extra)
     status_cb("Gravando o PDF…")
     caminho = exportar_pdf_multipagina([img], destino, layout.dpi)
@@ -1857,16 +1981,16 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
 def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
                          status_cb: StatusCb = lambda _m: None,
                          *, dpi_folha: int | None = None,
-                         rascunho: bool = True):
+                         rascunho: bool = False):
     """R-144 (FASE 12): dezenas de etiquetas por FOLHA — uma etiqueta por
     item selecionado (a mesma fonte de verdade do cartaz), impostas em A4
     com marcas de corte (imposição CONTROLADA, só no fluxo do cartaz).
     Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
     etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio).
 
-    ``rascunho=True`` é o PADRÃO (frota F12: esta era a 4ª PORTA esquecida
-    — relâmpago foi a 3ª, a Fábrica a 2ª): etiqueta com preço só sai LIMPA
-    quando o chamador prova aprovação (`not pode_exportar_limpo` → True)."""
+    F13/D8 (a trava #1, decisão do dono 24/07 — manda sobre a lei da
+    frota F12): sai LIMPA por padrão; ``rascunho=True`` é a opção
+    EXPLÍCITA que carimba. As 9 portas seguem o MESMO padrão."""
     from app.rendering.cartaz import layout_etiqueta
     from app.rendering.compositor import compor_pagina
     from app.rendering.export import exportar_pdf_multipagina
@@ -1899,6 +2023,7 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
 def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
                       layout_etiqueta_fn=None, n_etiquetas: int = 1,
                       validade_texto: str | None = None, qr_texto=None,
+                      rascunho: bool = False,
                       status_cb: StatusCb = lambda _m: None):
     """R-113: o KIT ponta-de-gôndola — cartaz + etiquetas do MESMO item de uma
     vez, num PDF (página 1 = cartaz; as demais = etiquetas).
@@ -1920,13 +2045,13 @@ def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
         avisos.extend(f"{quando}: {a}"
                       for a in validar_composicao(lay, {sid: dados}, cartaz=True))
     status_cb("Compondo o cartaz…")
-    cartaz_img, extra = _compor_cartaz(lay_cartaz, dados, rascunho=True,
+    cartaz_img, extra = _compor_cartaz(lay_cartaz, dados, rascunho=rascunho,
                                        qr_texto=qr_texto)
     avisos.extend(extra)
     paginas = [cartaz_img]
     for k in range(max(1, n_etiquetas)):
         status_cb(f"Compondo etiqueta {k + 1}/{max(1, n_etiquetas)}…")
-        etiq_img, _ = _compor_cartaz(lay_etiq, dados, rascunho=True)
+        etiq_img, _ = _compor_cartaz(lay_etiq, dados, rascunho=rascunho)
         paginas.append(etiq_img)
     status_cb("Gravando o kit…")
     # o cartaz e a etiqueta têm o MESMO DPI; o PDF fica multipágina/multitamanho

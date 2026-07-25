@@ -615,21 +615,39 @@ def _dados_do_slot(dados, lista, i, slot_id=None):
     return lista[i] if i < len(lista) else None   # célula sem produto -> vazia
 
 
+def _texto_legal_da_pagina(dados) -> "str | None":
+    """F13/D7: o primeiro ``texto_legal`` vivo dos dados da página — a
+    validade da oferta é uma só; slot decorativo com papel VALIDADE bebe
+    da mesma fonte dos slots mapeados."""
+    valores = (dados.values() if isinstance(dados, dict)
+               else dados if isinstance(dados, (list, tuple)) else [dados])
+    for d in valores:
+        if d is not None and getattr(d, "texto_legal", None):
+            return d.texto_legal
+    return None
+
+
 def compor_pagina(
     layout: LayoutDef,
     pagina: Pagina,
     dados: "DadosProduto | list[DadosProduto]",
     fontes_dir: str | Path | None = None,
     fundo_path: str | Path | None = None,
+    dpi: int | None = None,
 ) -> Image.Image:
     """Compõe uma página e devolve a imagem.
 
     ``dados`` pode ser um DadosProduto (mesmo produto em todos os slots) ou uma
     LISTA de DadosProduto (um por slot — o tabloide de vários produtos).
+
+    ``dpi`` sobrepõe o do layout SÓ nesta composição (F13/D2: a prévia do
+    editor compõe em 96 e estica de volta ao tamanho da cena; exportar/
+    salvar não passam este parâmetro e seguem no dpi do layout).
     """
     fontes_dir = Path(fontes_dir) if fontes_dir else SystemRoot().fontes
-    w = round(mm_para_px(layout.largura_mm, layout.dpi))
-    h = round(mm_para_px(layout.altura_mm, layout.dpi))
+    dpi_ef = int(dpi) if dpi else layout.dpi
+    w = round(mm_para_px(layout.largura_mm, dpi_ef))
+    h = round(mm_para_px(layout.altura_mm, dpi_ef))
 
     # D8.2: prioridade explícita > arte DA PÁGINA > arte do layout (legado)
     fundo = fundo_path or pagina.arquivo_fundo or layout.arquivo_fundo
@@ -654,7 +672,7 @@ def compor_pagina(
         if secoes:
             cor, esp = config_secoes()
             estilo, por_cat = estilo_secoes()   # RG-31: o modo escolhido
-            desenhar_secoes(base, secoes, layout.dpi, cor=cor,
+            desenhar_secoes(base, secoes, dpi_ef, cor=cor,
                             espessura_mm=esp, fontes_dir=fontes_dir,
                             estilo=estilo, cores_por_categoria=por_cat)
 
@@ -667,19 +685,25 @@ def compor_pagina(
             # via _desenhar_regiao p/ a rotação valer também aqui (RG-12).
             # RG-57: a decisão "tem o que desenhar?" passa pelo mesmo helper de
             # papel (byte-idêntico ao legado, que era todo LIVRE).
-            vazio = DadosProduto("")
+            # F13/D7 (P-01, achado estrutural): a VALIDADE VIVA chega ao
+            # rodapé FORA de célula — o vazio herda o texto_legal da
+            # PÁGINA (o mesmo que os slots mapeados carregam); antes o
+            # rodapé típico do tabloide ficava mudo e o marco da F12
+            # contornava com texto_fixo.
+            vazio = DadosProduto(
+                "", texto_legal=_texto_legal_da_pagina(dados))
             for reg in slot.regioes:
                 if (reg.visivel and reg.tipo == TipoRegiao.TEXTO_LEGAL
                         and texto_composto_legal(reg, vazio)):
                     _desenhar_regiao(base, draw, reg, vazio,
-                                     layout.dpi, fontes_dir, False)
+                                     dpi_ef, fontes_dir, False)
             continue
         tem_unidade = any(r.tipo == TipoRegiao.UNIDADE and r.visivel for r in slot.regioes)
         for reg in slot.regioes:
-            _desenhar_regiao(base, draw, reg, d, layout.dpi, fontes_dir, tem_unidade)
+            _desenhar_regiao(base, draw, reg, d, dpi_ef, fontes_dir, tem_unidade)
         # selos (+18, Qualidade) por slot, ancorados na célula
         selos = _selos_do_produto(d)
         if selos:
-            desenhar_selos(base, _ancora_selos_slot(slot, layout.dpi, w, h), selos,
+            desenhar_selos(base, _ancora_selos_slot(slot, dpi_ef, w, h), selos,
                            fontes_dir / "Roboto-Bold.ttf")
     return base

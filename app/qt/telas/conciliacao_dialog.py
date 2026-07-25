@@ -87,13 +87,15 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setToolTip("Atalhos: N = próximo amarelo · A = aceitar · "
                                "R = rejeitar/ignorar")
         self.tabela.horizontalHeader().setStretchLastSection(False)
-        # FASE 1 (passo 55): nenhuma coluna vira um fiapo; as colunas de
-        # NOME dividem o espaço (elipse à direita é o padrão da view)
+        # FASE 1 (passo 55): nenhuma coluna vira um fiapo (minimum de 90).
+        # F13/D13 (C-10): as colunas de nome eram Stretch — o dono NÃO
+        # CONSEGUIA arrastá-las. Viraram Interactive; a largura inicial sai
+        # do conteúdo (1ª carga) ou da memória (ui.conciliacao.colunas).
         from PySide6.QtWidgets import QHeaderView
         cab = self.tabela.horizontalHeader()
         cab.setMinimumSectionSize(90)
-        cab.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        cab.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        cab.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        cab.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
 
         rodape = QHBoxLayout()
         self._validade_lbl = QLabel(
@@ -160,19 +162,22 @@ class ConciliacaoDialog(QDialog):
         # tabela ocupa tudo (paridade: a lógica é a MESMA, só muda o miolo).
         painel = self._painel_foto()
         if painel is not None:
-            from PySide6.QtWidgets import QSplitter
-            split = QSplitter(Qt.Orientation.Horizontal)
-            split.addWidget(painel)
-            split.addWidget(self.tabela)
-            split.setStretchFactor(0, 3)
-            split.setStretchFactor(1, 4)
+            # F13/D13 (C-10): o splitter cru virou o padrão da casa com
+            # memória (o mesmo do editor/almoxarifado/cofre/fábrica/mesa)
+            from app.qt.design.componentes import splitter_com_memoria
+            split = splitter_com_memoria("conciliacao", painel, self.tabela,
+                                         indice_lateral=0)
             lay.addWidget(split, 1)
-            self.resize(1200, 760)
-            self._tela_cheia = True     # o chamador maximiza no exec()
+            self._chave_ui = "ui.conciliacao.foto"
+            self._geometria_lembrada = self._restaurar_geometria((1200, 760))
+            # o chamador só maximiza quando NÃO há geometria lembrada
+            self._tela_cheia = not self._geometria_lembrada
         else:
             lay.addWidget(self.tabela, 1)
-            self.resize(860, 560)
+            self._chave_ui = "ui.conciliacao.tabela"
+            self._geometria_lembrada = self._restaurar_geometria((860, 560))
             self._tela_cheia = False
+        self.setMinimumSize(700, 460)
         lay.addLayout(rodape)
 
         self._overlay = OverlayOcupado(self)
@@ -315,7 +320,19 @@ class ConciliacaoDialog(QDialog):
                                    & ~Qt.ItemFlag.ItemIsEditable)
                 self.tabela.setItem(i, 3, cel_banco)
                 self.tabela.setCellWidget(i, 4, self._acoes(i, item))
-            self.tabela.resizeColumnsToContents()
+            # F13/D13 (C-10): o ajuste-ao-conteúdo só na 1ª carga — cada
+            # recarga ZERAVA a largura que o dono tinha arrastado. Depois
+            # da 1ª, a memória (ou o ajuste manual) manda.
+            if not getattr(self, "_colunas_prontas", False):
+                self.tabela.resizeColumnsToContents()
+                larguras = self._ui_get("ui.conciliacao.colunas")
+                try:
+                    for i, w in enumerate(list(larguras)[:5]):
+                        if int(w) > 0:
+                            self.tabela.setColumnWidth(i, int(w))
+                except Exception:
+                    pass                  # memória ausente/torta → conteúdo
+                self._colunas_prontas = True
         finally:
             self._recarregando = False
         self._atualizar_resumo()
@@ -465,13 +482,14 @@ class ConciliacaoDialog(QDialog):
         # RG-03: fotos desligadas = cadastrar SEM foto, na hora (modo rápido)
         if not self.chk_fotos.isChecked():
             if proposta is not None:
-                self._cadastrar(linha, proposta, None)
+                self._cadastrar_ou_revisar(linha, proposta)
             else:                      # a fila ainda não chegou neste item
                 trab = Trabalhador(lambda st, d=item.descricao:
                                    servico.enriquecer_descricao(
                                        d, servico._motor_se_disponivel()))
                 trab.status.connect(self._overlay.mostrar)
-                trab.ok.connect(lambda p, li=linha: self._cadastrar(li, p, None))
+                trab.ok.connect(lambda p, li=linha:
+                                self._cadastrar_ou_revisar(li, p))
                 trab.erro.connect(self._falhou)
                 self._overlay.mostrar("Enriquecendo nome…")
                 self._trabalhos.rodar(trab)
@@ -500,6 +518,18 @@ class ConciliacaoDialog(QDialog):
         trab.ok.connect(lambda prop, li=linha: self._curadoria(li, prop))
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
+
+    def _cadastrar_ou_revisar(self, linha: int,
+                              proposta: servico.PropostaCriacao) -> None:
+        """F13/D6 (C-09): perda de palavra NUNCA passa em silêncio — no
+        modo rápido, proposta com tokens_perdidos abre a curadoria (o
+        único lugar que AVISA e deixa consertar o nome), mesmo sem
+        fotos. Antes ela ia direto ao cadastro e o toast verde dizia
+        'pronto' sobre um nome mutilado."""
+        if proposta.tokens_perdidos:
+            self._curadoria(linha, proposta)
+            return
+        self._cadastrar(linha, proposta, None)
 
     @staticmethod
     def _com_candidatos(proposta, candidatos):
@@ -568,12 +598,19 @@ class ConciliacaoDialog(QDialog):
             return
         self.btn_todos.setEnabled(False)
         estado: dict = {}
+        self._para_revisar = []
 
         def _criar_um(item):
             if "motor" not in estado:
                 estado["motor"] = servico._motor_se_disponivel()
             proposta = self._propostas.get(item.uid) or \
                 servico.enriquecer_descricao(item.descricao, estado["motor"])
+            if proposta.tokens_perdidos:
+                # F13/D6 (C-09): a política do enriquecer_banco (RG-20)
+                # vale no lote — nome que PERDEU palavra não é cadastrado
+                # em silêncio; o item FICA vermelho e é nomeado no fim
+                self._para_revisar.append(item.descricao)
+                return item
             if len(proposta.componentes) >= 2:      # RG-29: nasce composto
                 return servico.criar_como_composto(
                     item, proposta.componentes, proposta.mais18, None,
@@ -582,15 +619,27 @@ class ConciliacaoDialog(QDialog):
                                              proposta.mais18, None,
                                              categoria=proposta.categoria)
 
+        def _fim_do_lote():
+            self._overlay.esconder()
+            self.btn_todos.setEnabled(True)
+            rev = list(self._para_revisar)
+            if rev:
+                nomes = ", ".join(f"“{d[:28]}”" for d in rev[:3]) \
+                    + ("…" if len(rev) > 3 else "")
+                mostrar_toast(
+                    self,
+                    f"{len(rev)} item(ns) FICARAM para revisar (a IA "
+                    f"descartou palavra do nome): {nomes} — clique em "
+                    "Criar neles; os demais foram criados.")
+            else:
+                mostrar_toast(self, "Criação em lote concluída — as "
+                                    "fotos vêm depois, na Mesa.")
+
         self._fila_criar = TrabalhadorFila(pares, _criar_um)
         self._fila_criar.item_pronto.connect(self._resolvido_uid)
         self._fila_criar.item_falhou.connect(
             lambda _u, msg: mostrar_toast(self, msg, tipo="erro"))
-        self._fila_criar.fila_terminou.connect(
-            lambda: (self._overlay.esconder(),
-                     self.btn_todos.setEnabled(True),
-                     mostrar_toast(self, "Criação em lote concluída — as "
-                                         "fotos vêm depois, na Mesa.")))
+        self._fila_criar.fila_terminou.connect(_fim_do_lote)
         self._overlay.mostrar("Criando todos sem foto…")
         self._trabalhos.rodar(self._fila_criar)
 
@@ -628,7 +677,60 @@ class ConciliacaoDialog(QDialog):
         self._overlay.esconder()
         mostrar_toast(self, msg, tipo="erro")
 
+    # --- memória de UI (F13/D13, C-10) --------------------------------------
+
+    @staticmethod
+    def _ui_get(chave, padrao=None):
+        """Leitura da Config com degradação muda ao padrão (o molde do
+        splitter_com_memoria — memória de UI nunca derruba o diálogo)."""
+        try:
+            from app.core.database import Database
+            from app.core.repositories import ConfigRepositorio
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    return ConfigRepositorio(s).get(chave, padrao)
+            finally:
+                db.engine.dispose()
+        except Exception:
+            return padrao
+
+    @staticmethod
+    def _ui_set(chave, valor) -> None:
+        try:
+            from app.core.database import Database
+            from app.core.repositories import ConfigRepositorio
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    ConfigRepositorio(s).set(chave, valor)
+                    s.commit()
+            finally:
+                db.engine.dispose()
+        except Exception:
+            pass
+
+    def _restaurar_geometria(self, padrao: tuple[int, int]) -> bool:
+        """Devolve True se restaurou da memória (validação dura, como o
+        ui.shell: 2 ints, mínimos sãos; qualquer coisa torta → padrão)."""
+        bruto = self._ui_get(self._chave_ui)
+        try:
+            w, h = int(bruto[0]), int(bruto[1])
+            if w >= 700 and h >= 460:
+                self.resize(w, h)
+                return True
+        except Exception:
+            pass
+        self.resize(*padrao)
+        return False
+
     def done(self, resultado: int) -> None:  # noqa: N802 (Qt)
+        # F13/D13: grava a memória de UI na saída ÚNICA (accept/reject/
+        # Esc/X caem todos aqui) — tamanho da janela e largura de coluna
+        if not self.isMaximized():
+            self._ui_set(self._chave_ui, [self.width(), self.height()])
+        self._ui_set("ui.conciliacao.colunas",
+                     [self.tabela.columnWidth(i) for i in range(5)])
         # junta as pontas ANTES de morrer: fila viva com o dono destruído
         # derruba o processo (a lição da Etapa C do Bloco E)
         for fila in (self._fila_enriquecer, self._fila_criar):

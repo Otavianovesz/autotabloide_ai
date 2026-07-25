@@ -115,6 +115,15 @@ class MesaTela(QWidget):
             "Exportar o tabloide em PNG ou PDF  ·  Ctrl+E")
         self.btn_exportar.setEnabled(False)
         self.btn_exportar.clicked.connect(self._exportar)
+        # F13/D8 (P-05): o "Aprovar" saiu da paleta invisível — botão REAL
+        # na barra, antes do Exportar (a ordem do fluxo do RG-53)
+        self.btn_aprovar = QPushButton(" Aprovar")
+        self.btn_aprovar.setIcon(icone("check_circulo", tamanho=16))
+        self.btn_aprovar.setToolTip(
+            "Passa o checklist final e marca a versão como APROVADA — o "
+            "selo de situação do projeto (o export já sai limpo por padrão)")
+        self.btn_aprovar.setEnabled(False)
+        self.btn_aprovar.clicked.connect(self.aprovar_projeto_atual)
         self.btn_salvar_proj = QPushButton(" Salvar projeto")
         self.btn_salvar_proj.setIcon(icone("cofre", tamanho=16))
         self.btn_salvar_proj.setToolTip(
@@ -171,7 +180,8 @@ class MesaTela(QWidget):
             [self.btn_importar, btn_banco],
             [self.btn_preencher, self.btn_fotos_lote,
              self.chk_agrupar, self.chk_herois],
-            [self.btn_exportar, self.btn_salvar_proj, btn_abrir_proj],
+            [self.btn_aprovar, self.btn_exportar, self.btn_salvar_proj,
+             btn_abrir_proj],
             [self._btn_pag_ant, self._pag_lbl, self._btn_pag_prox,
              self.chk_secoes_pag, self.btn_titulos],
         ):
@@ -237,6 +247,9 @@ class MesaTela(QWidget):
         self.lista = QListWidget()
         self.lista.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.lista.itemDoubleClicked.connect(self._editar_item)
+        # F13/D9 (VC-024): estante → canvas — selecionar a linha ACENDE a
+        # célula (o fio slot↔uid sempre existiu; agora os dois lados o veem)
+        self.lista.itemSelectionChanged.connect(self._estante_selecionou)
         # F7.1: botão direito no item → fotos (sabores) + edição rápida
         self.lista.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.lista.customContextMenuRequested.connect(self._menu_item)
@@ -351,6 +364,11 @@ class MesaTela(QWidget):
         self.area.canvas.ao_override = self._abrir_override
         # R-038: arrastar um PNG/JPG sobre a célula troca a foto do item (uid)
         self.area.canvas.ao_soltar_imagem = self._soltar_imagem
+        # F13/D9 (VC-024): canvas → estante — clicar a célula destaca a
+        # linha do item (guarda anti-laço: _sinc_estante, o padrão do
+        # painel de camadas)
+        self._sinc_estante = False
+        self.area.canvas.selecao_mudou.connect(self._celula_selecionou)
 
         # RG-06: atalhos de desfazer/refazer valendo na Mesa inteira
         from PySide6.QtGui import QKeySequence, QShortcut
@@ -837,6 +855,10 @@ class MesaTela(QWidget):
         if dlg.exec() != SalvarProjetoDialog.DialogCode.Accepted:
             return
         nome, evento = dlg.valores()
+        # F13/D7 (P-03, a "uma linha que ressuscita 3 funções"): o evento
+        # digitado VIVE no projeto — meta 32/40, pulso da barra e {evento}
+        # nas frases nasciam mortos porque isto era jogado fora
+        self._evento = evento or None
         # RG-24: campanha com dia fixo sugere o "ATÉ" quando não há validade
         if not self._validade:
             sugestao = servico.sugerir_validade(evento)
@@ -928,6 +950,9 @@ class MesaTela(QWidget):
         self._validade = p.validade_oferta
         self._validade_lbl.setText(
             f"Validade: {self._validade}" if self._validade else "")
+        # F13/D7 (P-03, a 2ª linha): o evento do projeto VOLTA com ele —
+        # p.evento chegava aqui e era ignorado (meta/pulso/{evento} mortos)
+        self._evento = getattr(p, "evento", None) or None
         self._overrides = {}          # nada vaza do projeto anterior (F7.3)
         self.carregar_layout(p.layout, p.layout.arquivo_fundo)
         self._mapa = dict(p.mapa) or {
@@ -942,6 +967,7 @@ class MesaTela(QWidget):
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
         self.btn_salvar_proj.setEnabled(bool(self._itens))
+        self.btn_aprovar.setEnabled(bool(self._itens))     # F13/D8
         self.area.canvas.ajustar()      # enquadra a página reaberta
         self._marcar_salvo(True)
         mostrar_toast(self, f"“{p.nome}” aberto — congelado de {p.criado_em}.")
@@ -1043,6 +1069,7 @@ class MesaTela(QWidget):
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
         self.btn_salvar_proj.setEnabled(bool(self._itens))
+        self.btn_aprovar.setEnabled(bool(self._itens))     # F13/D8
         self._marcar_salvo(False)
         mostrar_toast(self, f"{len(novos)} item(ns) do banco na estante.")
 
@@ -1069,14 +1096,26 @@ class MesaTela(QWidget):
 
         if self._itens:                       # P1.3: segundo import não apaga
             from PySide6.QtWidgets import QMessageBox
+            plano = servico.plano_atualizar_precos(self._itens, verdes)
             caixa = QMessageBox(self)
             caixa.setWindowTitle("Já existe trabalho na estante")
             caixa.setText(f"A estante tem {len(self._itens)} item(ns). "
                           f"O que fazer com os {len(verdes)} novos?")
             adicionar = caixa.addButton("Adicionar aos atuais",
                                         QMessageBox.ButtonRole.AcceptRole)
+            # F13/D12 (VC-081): a semana RECORRENTE — o 3º caminho, que o
+            # dono pedia: mesma oferta, preços novos, montagem INTACTA
+            # ("Substituir tudo" zera mapa e overrides — a arte morre)
+            atualizar = None
+            if plano.atualizaveis:
+                atualizar = caixa.addButton(
+                    "Atualizar os preços dos atuais",
+                    QMessageBox.ButtonRole.ActionRole)
             caixa.addButton("Substituir tudo", QMessageBox.ButtonRole.DestructiveRole)
             caixa.exec()
+            if atualizar is not None and caixa.clickedButton() is atualizar:
+                self._atualizar_precos(plano)
+                return
             if caixa.clickedButton() is adicionar:
                 ja = {it.produto_id for it in self._itens if it.produto_id}
                 verdes = [it for it in verdes if it.produto_id not in ja]
@@ -1094,6 +1133,7 @@ class MesaTela(QWidget):
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
         self.btn_salvar_proj.setEnabled(bool(self._itens))
+        self.btn_aprovar.setEnabled(bool(self._itens))     # F13/D8
         self._marcar_salvo(False)      # há trabalho não congelado
         aviso = (f" · {fora} ficaram de fora (🟡/🔴 não resolvidos)"
                  if fora else "")
@@ -1101,6 +1141,40 @@ class MesaTela(QWidget):
         self._avisar_repeticao()          # R-059: "está no encarte há N semanas"
         self._avisar_foto_repetida()      # R-104: mesma foto em 2+ itens (hash)
         self._avisar_divergencia()        # R-123: mesmo item, preços diferentes
+
+    def _atualizar_precos(self, plano) -> None:
+        """F13/D12: a prévia→confirma do 'Atualizar preços' (o molde da
+        ponte Excel R-118). Só os campos de preço mudam — uid, mapa,
+        overrides e o desfazer ficam intactos (I1/CD-01); quem ficou de
+        fora é NOMEADO (I2)."""
+        from app.qt.design.componentes import perguntar
+        n = len(plano.atualizaveis)
+        extras = []
+        if plano.sem_par:
+            extras.append(f"{len(plano.sem_par)} novo(s) da tabela ficam "
+                          "DE FORA (importe com “Adicionar” se quiser)")
+        if plano.nao_citados:
+            extras.append(f"{len(plano.nao_citados)} da estante não vieram "
+                          "na tabela (ficam como estão)")
+        if plano.identicos:
+            extras.append(f"{plano.identicos} sem mudança de preço")
+        detalhe = "".join(f"\n• {e}" for e in extras)
+        rotulo = f"Atualizar {n} preço" + ("s" if n != 1 else "")
+        if not perguntar(
+                self, "Atualizar preços",
+                f"{n} preço(s) mudam pela tabela nova (casados por chave "
+                f"natural).{detalhe}\n\nMapa, overrides e a montagem ficam "
+                "intactos.", sim=rotulo, nao="Cancelar"):
+            return
+        servico.aplicar_atualizacao_precos(plano)
+        self._aplicar_mapa()              # dados novos, pilha viva (CD-01)
+        self._recarregar_lista()
+        self._marcar_salvo(False)
+        msg = f"{n} preço(s) atualizados."
+        if plano.sem_par or plano.nao_citados:
+            msg += (f" {len(plano.sem_par)} sem par de fora; "
+                    f"{len(plano.nao_citados)} não citados mantidos.")
+        mostrar_toast(self, msg, tipo="sucesso")
 
     def _avisar_repeticao(self) -> None:
         """R-059 (+ OS F11.5 #53): o alerta lê o HISTÓRICO em WORKER — a leitura
@@ -1324,14 +1398,21 @@ class MesaTela(QWidget):
             "layout": lay.to_dict() if lay is not None else None,
             "itens": [it.to_dict() for it in self._itens],
             "validade": self._validade,
+            "evento": getattr(self, "_evento", None),   # F13/D7
             "mapa": dict(self._mapa),
             "overrides": dict(self._overrides),
         }
 
     def _salvar_rascunho_bg(self) -> None:
         """Passo 49-50: snapshot silencioso em BACKGROUND (worker; RG-05b cobre
-        o shutdown) — não trava a UI, não toca o projeto salvo."""
-        if not self._itens:
+        o shutdown) — não trava a UI, não toca o projeto salvo.
+
+        F13/D14 (P-10): projeto LIMPO não gera rascunho — o salvar descarta
+        a rede (R-061) e o tick seguinte do timer a recriava com o MESMO
+        estado já salvo; na abertura seguinte o app oferecia "recuperar"
+        trabalho pronto dizendo "fechado sem salvar". A dirty flag
+        (_marcar_salvo, ~35 pontos) é a verdade: sujo grava, limpo não."""
+        if not self._itens or getattr(self, "_salvo", False):
             return
         estado = self._estado_para_rascunho()
         from app.core.rascunho import salvar_rascunho
@@ -1395,6 +1476,7 @@ class MesaTela(QWidget):
         self._itens = [servico.ItemMesa.from_dict(d)
                        for d in estado.get("itens", [])]
         self._validade = estado.get("validade")
+        self._evento = estado.get("evento") or None     # F13/D7
         if estado.get("layout"):
             self._layout = LayoutDef.from_dict(estado["layout"])
             self.area.carregar(self._layout, {})
@@ -1416,9 +1498,13 @@ class MesaTela(QWidget):
             ("propriedades", "Modo planilha", "", self._abrir_planilha),
             ("texto", "Colar tabela (Ctrl+V)", "", self._colar_tabela),
             ("salvar", "Exportar", "", self._exportar),
+            # F13/D8: o RASCUNHO virou opção EXPLÍCITA (a trava #1 caiu —
+            # o export normal sai limpo)
+            ("salvar", "Exportar como RASCUNHO (marca d'água)", "",
+             lambda: self._exportar(rascunho=True)),
             ("salvar", "Exportar em perfis / lote (WhatsApp, Impressão)…", "",
              self._exportar_perfis),
-            ("check_circulo", "Aprovar (tira o RASCUNHO)", "",
+            ("check_circulo", "Aprovar (o selo do checklist final)", "",
              self.aprovar_projeto_atual),
             ("lampada", "Revisar a peça com a IA (avisa, não trava)…", "",
              self._revisar),
@@ -1733,6 +1819,85 @@ class MesaTela(QWidget):
             ctx["evento"] = ev
         return ctx
 
+    # --- F13/D9 (VC-024/VC-025): o fio item↔célula, visível dos dois lados --
+
+    def _estante_selecionou(self) -> None:
+        """Estante → canvas: a linha selecionada ACENDE a célula dela (com
+        troca de página se preciso). Guarda anti-laço: _sinc_estante."""
+        if getattr(self, "_reconstruindo", False) or \
+                getattr(self, "_sinc_estante", False):
+            return
+        li = self.lista.currentItem()
+        if li is None:
+            return
+        uid = li.data(Qt.ItemDataRole.UserRole)
+        sid = next((s for s, u in self._mapa.items() if u == uid), None)
+        canvas = self.area.canvas
+        if sid is None or canvas._layout is None:
+            return
+        alvo = None
+        for pi, pag in enumerate(canvas._layout.paginas):
+            alvo = next((s for s in pag.slots if s.id == sid), None)
+            if alvo is not None:
+                if pi != canvas._pagina_atual:
+                    self._ir_pagina(pi)
+                break
+        if alvo is None or not alvo.regioes:
+            return
+        self._sinc_estante = True
+        try:
+            for it in canvas._itens:
+                it.setSelected(any(it.regiao is r for r in alvo.regioes))
+            canvas._primaria = alvo.regioes[0]
+            canvas._emitir_selecao()
+        finally:
+            self._sinc_estante = False
+
+    def _celula_selecionou(self, reg) -> None:
+        """Canvas → estante: clicar a célula destaca a linha do item."""
+        if getattr(self, "_reconstruindo", False) or \
+                getattr(self, "_sinc_estante", False) or reg is None:
+            return
+        canvas = self.area.canvas
+        slot = canvas._slot_de(reg)
+        uid = self._mapa.get(slot.id) if slot is not None else None
+        if not uid:
+            return
+        self._sinc_estante = True
+        try:
+            for i in range(self.lista.count()):
+                if self.lista.item(i).data(Qt.ItemDataRole.UserRole) == uid:
+                    self.lista.setCurrentRow(i)
+                    self.lista.scrollToItem(self.lista.item(i))
+                    break
+        finally:
+            self._sinc_estante = False
+
+    def _miniatura_estante(self, caminho):
+        """D9 (VC-025): a foto da linha em 26px, com cache por caminho+mtime
+        (a estante recarrega a cada gesto — sem cache é I/O à toa; mtime
+        invalida quando a foto é trocada no MESMO caminho, ex. atual.png)."""
+        from pathlib import Path
+        if not caminho:
+            return None
+        p = Path(caminho)
+        if not p.exists():
+            return None
+        chave = (str(p), p.stat().st_mtime_ns)
+        cache = getattr(self, "_thumbs_estante", None)
+        if cache is None:
+            cache = self._thumbs_estante = {}
+        pm = cache.get(chave)
+        if pm is None:
+            from PySide6.QtGui import QPixmap
+            bruto = QPixmap(str(p))
+            if bruto.isNull():
+                return None
+            pm = bruto.scaled(26, 26, Qt.AspectRatioMode.KeepAspectRatio,
+                              Qt.TransformationMode.SmoothTransformation)
+            cache[chave] = pm
+        return pm
+
     def _recarregar_lista(self) -> None:
         self._reconstruindo = True               # não dispara reordenação
         self.lista.clear()
@@ -1766,15 +1931,30 @@ class MesaTela(QWidget):
                 extras.append("fora da grade")
             sufixo = ("   · " + " · ".join(extras)) if extras else ""
             li = QListWidgetItem(self.lista)
+            # F13/D9 (VC-025): a linha ganhou a MINIATURA da foto ao lado
+            # do texto (setIcon não aparece sob setItemWidget — o padrão é
+            # o do painel de camadas: QWidget + QHBoxLayout)
+            from PySide6.QtWidgets import QHBoxLayout, QWidget
+            linha_w = QWidget()
+            hl = QHBoxLayout(linha_w)
+            hl.setContentsMargins(t.ESP_2, 2, t.ESP_2, 2)
+            hl.setSpacing(t.ESP_2)
+            thumb = QLabel()
+            thumb.setFixedSize(26, 26)
+            pm = self._miniatura_estante(
+                it.imagens[0] if it.imagens else it.imagem)
+            if pm is not None:
+                thumb.setPixmap(pm)
+            hl.addWidget(thumb)
             rotulo = QLabel(
                 f'<span style="color:{_COR[it.semaforo]}">●</span> '
                 f'{it.nome}  <span style="color:{t.TEXTO_3}">'
                 f'{("R$ " + it.preco) if it.preco else ""}{sufixo}</span>')
             rotulo.setToolTip("Duplo-clique: editar nome e preço deste tabloide")
-            rotulo.setContentsMargins(t.ESP_2, 3, t.ESP_2, 3)
-            li.setSizeHint(rotulo.sizeHint())
+            hl.addWidget(rotulo, 1)
+            li.setSizeHint(linha_w.sizeHint())
             li.setData(Qt.ItemDataRole.UserRole, it.uid)   # R-055: uid por linha
-            self.lista.setItemWidget(li, rotulo)
+            self.lista.setItemWidget(li, linha_w)
         self._reconstruindo = False
         self._aplicar_filtro()
 
@@ -2335,15 +2515,29 @@ class MesaTela(QWidget):
             finally:
                 db.engine.dispose()
             fila = servico.ordenar_por_categoria(fila, ordem)
-        # RG-42: heróis abrem a capa (os mais baratos nos primeiros slots
-        # da página 1) — vale por cima da ordem agrupada/importada
+        # RG-42: heróis abrem a capa — os mais baratos na página 1.
+        # F13/D11 (N-choque-2): o herói vai para a MAIOR célula (área do
+        # slot), não para a 1ª da ordem de leitura — a arte com célula de
+        # destaque gigante recebe o preço agressivo NELA; o resto segue a
+        # ordem visual de sempre (o zip do resíduo).
         if self.chk_herois.isChecked() and por_pagina:
-            fila = servico.ordenar_com_herois(fila, min(4, por_pagina[0]))
+            from app.rendering.grade import area_do_slot
+            n_capa = min(4, por_pagina[0])
+            fila = servico.ordenar_com_herois(fila, n_capa)
+            pagina1 = slots[:por_pagina[0]]
+            grandes = sorted(pagina1, key=area_do_slot,
+                             reverse=True)[:n_capa]
+            herois, resto = fila[:n_capa], fila[n_capa:]
+            mapa = {s.id: it.uid for s, it in zip(grandes, herois)}
+            demais = [s for s in slots if s.id not in mapa]
+            mapa.update({s.id: it.uid for s, it in zip(demais, resto)})
+        else:
+            mapa = {slot.id: it.uid for slot, it in zip(slots, fila)}
         # F8.2: agrupar liga as seções em TODAS as páginas (por página o
         # humano pode desligar depois — B3); desagrupar desliga
         for pag in self._layout.paginas:
             pag.secoes_ligadas = self.chk_agrupar.isChecked()
-        self._mapa = {slot.id: it.uid for slot, it in zip(slots, fila)}
+        self._mapa = mapa
         self._aplicar_mapa()
         extra = len(self._itens) - len(self._mapa)
         aviso = f" ({extra} fora da grade)" if extra > 0 else ""
@@ -2437,18 +2631,31 @@ class MesaTela(QWidget):
                             "“RASCUNHO”) está liberada.", tipo="sucesso")
         return True
 
-    def _exportar(self) -> None:
+    def _exportar(self, *, rascunho: bool = False) -> None:
         from app.qt.telas.prevoo import confirmar_pre_voo
 
+        # F13/D7 (P-02): a validade se autopreenche pela campanha TAMBÉM
+        # aqui — a sugestão só rodava no salvar, e o export era a porta
+        # onde a peça saía sem data (a trava #3 cai: preenche e AVISA)
+        if not self._validade:
+            sugestao = servico.sugerir_validade(getattr(self, "_evento", None))
+            if sugestao:
+                self._validade = sugestao
+                self._validade_lbl.setText(f"Validade: {sugestao}")
+                mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia "
+                                    "da campanha) — edite se precisar.")
         self._layout = self.area.canvas._layout or self._layout
         dados = self._dados_por_slot()
         avisos = (servico.validar_composicao(self._layout, dados)
                   + self._avisos_orfaos())
         if not confirmar_pre_voo(self, avisos, "Exportar"):   # I2: nada em silêncio
             return
-        # R-067: enquanto NÃO aprovado, a peça sai com a marca d'água RASCUNHO
-        # (automática — não depende de o dono lembrar). Some só na aprovação.
-        marca = not self.esta_aprovado()
+        # F13/D8 (a trava #1, decisão do dono 24/07 — manda sobre o R-067):
+        # a peça sai LIMPA por padrão; o RASCUNHO virou opção EXPLÍCITA
+        # (paleta: "Exportar como RASCUNHO"). A aprovação segue viva como
+        # SELO/checklist — não como condição do carimbo (eram 9 portas
+        # carimbando e a aprovação era inalcançável, P-05..P-07).
+        marca = rascunho
         caminho, filtro = QFileDialog.getSaveFileName(
             self, "Exportar tabloide", "tabloide.png",
             "PNG (*.png);;PDF (*.pdf)")

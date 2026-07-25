@@ -185,11 +185,12 @@ def test_c2_arrastar_uma_peca_move_so_ela():
     item_nome = next(i for i in c._itens if i.regiao is nome)
     centro = item_nome.mapToScene(item_nome._w / 2, item_nome._h / 2)
     from PySide6.QtCore import QPointF
-    # para CIMA e para a direita — longe da zona de acerto (±9px) do
-    # preço, que fica abaixo e vence no z (flake visto na ordem invertida)
-    arrastar_na_cena(c, centro, centro + QPointF(60, -25))
+    # COND-6 (selo do C, §6): o alvo ORIGINAL, restaurado — o arrasto DESCE
+    # em direção ao preço de propósito; antes do conserto, a margem de alça
+    # do preço (não selecionado, acima no z) roubava o clique final
+    arrastar_na_cena(c, centro, centro + QPointF(60, 45))
 
-    assert nome.rect.x_mm > 15.0, (
+    assert (nome.rect.x_mm, nome.rect.y_mm) != (10.0, 10.0), (
         "o arrasto nem moveu a peça agarrada — gesto não chegou")
     assert (preco.rect.x_mm, preco.rect.y_mm) == pytest.approx(preco_antes), (
         "arrastar o NOME levou o PREÇO junto — o trio (RG-15) ainda está "
@@ -201,6 +202,28 @@ def test_c2_arrastar_uma_peca_move_so_ela():
     clicar_na_cena(c, item_nome2.mapToScene(item_nome2._w / 2,
                                             item_nome2._h / 2))
     assert c.selecionada() is nome
+
+
+def test_cond6_alca_so_existe_em_regiao_selecionada():
+    """COND-6 (selo do C, §6): as DUAS portas da alça têm de ser iguais —
+    o hover (itens.py:391) já exigia seleção; o press (:417) não exigia
+    NADA, então uma região NÃO selecionada capturava o resize se o clique
+    caísse a ±TAM de um canto dela (sem aviso de cursor antes — o hover
+    negava a alça que o press dava). Gesto: arrastar a partir do CANTO do
+    preço, com ninguém selecionado — tem de virar seleção+movimento
+    (tamanho INTACTO), nunca resize."""
+    c, lay = _canvas_celula_dupla()
+    nome, preco = lay.paginas[0].slots[0].regioes
+    tamanho_antes = (preco.rect.larg_mm, preco.rect.alt_mm)
+    item_preco = next(i for i in c._itens if i.regiao is preco)
+    canto = item_preco.mapToScene(0.0, 0.0)
+    from PySide6.QtCore import QPointF
+    arrastar_na_cena(c, canto, canto + QPointF(40, 30))
+
+    assert (preco.rect.larg_mm, preco.rect.alt_mm) == pytest.approx(
+        tamanho_antes), (
+        "arrastar o canto de uma região NÃO selecionada REDIMENSIONOU — "
+        "o press dá a alça que o hover nega (itens.py:417 vs :391)")
 
 
 def test_c2_selecionar_a_celula_inteira_e_gesto_explicito():

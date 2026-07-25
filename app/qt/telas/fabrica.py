@@ -108,6 +108,20 @@ class FabricaTela(QWidget):
             "Congela os cartazes (dados da época) — reabre idêntico")
         self.btn_salvar_proj.setEnabled(False)
         self.btn_salvar_proj.clicked.connect(self._salvar_projeto)
+        # F13/D8 (P-07): a Fábrica NUNCA teve caminho de aprovar — agora
+        # tem botão real (o mesmo selo/checklist da Mesa, no modo cartaz)
+        self.btn_aprovar = QPushButton(" Aprovar")
+        self.btn_aprovar.setIcon(icone("check_circulo", tamanho=16))
+        self.btn_aprovar.setToolTip(
+            "Passa o checklist final (modo cartaz) e marca a versão como "
+            "APROVADA — o export já sai limpo por padrão")
+        self.btn_aprovar.setEnabled(False)
+        self.btn_aprovar.clicked.connect(self.aprovar_projeto_atual)
+        # F13/D8 (a trava #1): o RASCUNHO virou opção explícita
+        self.chk_rascunho = QCheckBox("RASCUNHO")
+        self.chk_rascunho.setToolTip(
+            "Marque para sair com a marca d'água de rascunho — o padrão "
+            "agora é a peça LIMPA (vale para exportar, imprimir e etiquetas)")
         btn_abrir_proj = QPushButton(" Abrir projeto")
         btn_abrir_proj.setIcon(icone("abrir", tamanho=16))
         btn_abrir_proj.setToolTip("Abrir um projeto de cartazes congelado")
@@ -136,7 +150,8 @@ class FabricaTela(QWidget):
             [importar],
             [lbl_modelo, self.combo_layout],
             [lbl_lote, self.combo_categoria, self.chk_2em1],
-            [self.btn_exportar, self.btn_imprimir, self.btn_etiquetas],
+            [self.btn_aprovar, self.btn_exportar, self.btn_imprimir,
+             self.btn_etiquetas, self.chk_rascunho],
             [self.btn_salvar_proj, btn_abrir_proj],
         ):
             if hb.count() > 0:
@@ -385,8 +400,29 @@ class FabricaTela(QWidget):
     # --- projeto salvo congelado (§3.1/§6.8) --------------------------------------
 
     def _marcar_salvo(self, salvo: bool) -> None:
-        if callable(self.ao_salvo):
-            self.ao_salvo(salvo)
+        self._salvo = salvo              # F13/D8: a Fábrica ganhou o estado
+        if callable(self.ao_salvo):      # real (era só o callback — sem ele
+            self.ao_salvo(salvo)         # não há régua "aprovado E sem edição")
+
+    def aprovar_projeto_atual(self) -> bool:
+        """F13/D8 (P-07): o caminho de aprovar que a Fábrica NUNCA teve.
+        O selo é o mesmo da Mesa (hash da versão salva, R-068); o
+        checklist roda no modo CARTAZ (a validade é POR ITEM — RG-58 —,
+        não da oferta). Salva antes se preciso (aprovação é por id)."""
+        if self._projeto_id is None:
+            self._salvar_projeto()
+            if self._projeto_id is None:      # o dono cancelou o salvar
+                return False
+        ok, faltas = servico.aprovar_projeto(
+            self._projeto_id, self._itens, None, cartaz=True)
+        if not ok:
+            mostrar_toast(self, "Ainda não dá para aprovar — falta: "
+                          + "; ".join(faltas), tipo="erro")
+            return False
+        mostrar_toast(self, "Lote APROVADO — o selo do checklist final "
+                            "está registrado para esta versão.",
+                      tipo="sucesso")
+        return True
 
     def _salvar_projeto(self) -> None:
         from app.core import projetos
@@ -517,6 +553,7 @@ class FabricaTela(QWidget):
         self.btn_exportar.setEnabled(prontos > 0)
         self.btn_imprimir.setEnabled(prontos > 0)
         self.btn_etiquetas.setEnabled(prontos > 0)   # R-144 acompanha o lote
+        self.btn_aprovar.setEnabled(prontos > 0)     # F13/D8
         self._atualizar_categorias()
 
     def _atualizar_categorias(self) -> None:
@@ -682,9 +719,10 @@ class FabricaTela(QWidget):
             mostrar_toast(self, "Nenhum item pronto neste lote.", tipo="info")
             return
 
-        # a 4ª porta de exportação (frota F12): etiqueta com preço só sai
-        # LIMPA com o projeto do lote APROVADO — a mesma régua do _exportar
-        marca = not servico.pode_exportar_limpo(self._projeto_id)
+        # a 4ª porta de exportação (frota F12) — F13/D8 (a trava #1 manda
+        # sobre a régua da F12): sai LIMPA por padrão; o RASCUNHO é o
+        # checkbox explícito, a MESMA régua das outras duas portas daqui
+        marca = self.chk_rascunho.isChecked()
 
         def _trabalho(st, itens=list(prontos), destino=caminho):
             return servico.gerar_etiquetas_lote(itens, destino, st,
@@ -721,7 +759,7 @@ class FabricaTela(QWidget):
             return
         fora = len(self._itens) - len(prontos)
         layout = self._layout
-        marca = not servico.pode_exportar_limpo(self._projeto_id)
+        marca = self.chk_rascunho.isChecked()   # F13/D8: limpo por padrão
         impor = self.chk_2em1.isChecked()
 
         def _trabalho(st):
@@ -755,7 +793,7 @@ class FabricaTela(QWidget):
             mostrar_toast(self, "Nenhum cartaz pronto neste lote.", tipo="info")
             return
         layout = self._layout
-        marca = not servico.pode_exportar_limpo(self._projeto_id)
+        marca = self.chk_rascunho.isChecked()   # F13/D8: limpo por padrão
         impor = self.chk_2em1.isChecked()
 
         def _trabalho(st):

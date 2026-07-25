@@ -99,7 +99,13 @@ class RegiaoItem(QGraphicsItem):
     # --- geometria -------------------------------------------------------------
 
     def boundingRect(self) -> QRectF:
-        m = self.TAM
+        # COND-6 (selo do C, §6): a margem das alças SÓ existe quando as
+        # alças existem — na SELEÇÃO. Como o shape() default é este rect,
+        # a margem também decide QUEM captura o clique: sem a condição,
+        # uma região não selecionada acima no z roubava o clique dado a
+        # ±TAM da borda dela (o "clico no nome e ele pega o preço").
+        # Sem seleção sobra uma folga mínima para o traço da borda.
+        m = self.TAM if self.isSelected() else 2.0
         return QRectF(-m, -m, self._w + 2 * m, self._h + 2 * m)
 
     def _cantos(self):
@@ -284,6 +290,10 @@ class RegiaoItem(QGraphicsItem):
     # --- snapping ao mover -----------------------------------------------------
 
     def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedChange:
+            # COND-6: o boundingRect depende da seleção — avisa a cena
+            # ANTES de o estado virar (senão fica rastro de alça pintada)
+            self.prepareGeometryChange()
         if (
             change == QGraphicsItem.GraphicsItemChange.ItemPositionChange
             and self.scene() is not None
@@ -414,7 +424,10 @@ class RegiaoItem(QGraphicsItem):
         # pelo Qt), então a alça funciona girada. A "alternativa pelo
         # painel" que o comentário antigo prometia também existe (campos
         # X/Y/L/A em mm, VC-004).
-        if not self.regiao.travado:
+        # COND-6: a alça só existe em região SELECIONADA — a mesma
+        # condição do hover (:391); sem ela o press dava a alça que o
+        # cursor negava e uma região não selecionada capturava o resize.
+        if not self.regiao.travado and self.isSelected():
             h = self._handle_em(event.pos())
             if h is not None:
                 self._resize = h

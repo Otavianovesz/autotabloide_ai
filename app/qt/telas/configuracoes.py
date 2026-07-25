@@ -313,6 +313,8 @@ class ConfiguracoesTela(QWidget):
             "é opcional/sob demanda (nada é convertido em silêncio).")
         self.chk_fundo_branco = QCheckBox(
             "Pular o recorte quando o fundo já é branco")
+        # F13/D3 (VC-037): nasce LIGADO — o mesmo tratamento do upscale
+        self.chk_fundo_branco.setChecked(True)
         self.chk_fundo_branco.setToolTip(
             "R-095: quando a foto já tem fundo branco uniforme, o app não roda o "
             "recorte (economiza tempo e não estraga foto boa).")
@@ -1846,7 +1848,7 @@ class ConfiguracoesTela(QWidget):
                 self.chk_webp.setChecked(
                     bool(cfg.get("imagem.webp", False)))
                 self.chk_fundo_branco.setChecked(
-                    bool(cfg.get("imagem.detector_fundo_branco", False)))
+                    cfg.get("imagem.detector_fundo_branco", True) is not False)
                 self.chk_estudio_gerador.setChecked(
                     bool(cfg.get("estudio.gerador", False)))
                 from app.core.paths import SystemRoot

@@ -71,6 +71,15 @@ def _pares_de_calibracao(dados_por_slot):
     return pares
 
 
+def heuristicas_do_pre_voo(layout, dados_por_slot,
+                           fontes_dir=None) -> list[str]:
+    """F13/D10 (VC-050): o piso determinístico EXPOSTO para o pré-voo —
+    a mesma lista do revisar_export, sem precisar compor o PNG. O app
+    sempre soube detectar (nome cortado, preço fora de faixa, de≤por);
+    só contava no botão 'Revisar' — agora pergunta na hora certa."""
+    return _heuristicas(layout, dados_por_slot, fontes_dir)
+
+
 def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
     """As checagens que rodam SEM visão (o piso, decisão travada): nome que não
     cabe na medida da região, preço de ≤ por (PROCON), preço fora da faixa da

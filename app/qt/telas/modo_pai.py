@@ -268,7 +268,6 @@ class ModoPaiTela(QWidget):
         from app.core import projetos as _proj
         from app.qt.telas import servico
         from app.rendering.compositor import compor_pagina
-        from app.rendering.marca_dagua import carimbar_rascunho
         aberto = _proj.abrir_projeto(p["id"])
         if aberto is None:
             return None
@@ -277,8 +276,9 @@ class ModoPaiTela(QWidget):
                                  fundo_path=aberto.layout.arquivo_fundo
                                  if i == 0 else None)
                    for i, pag in enumerate(aberto.layout.paginas)]
-        if not _proj.esta_aprovado(p["id"]):     # a marca vale em TODA porta
-            paginas = [carimbar_rascunho(im) for im in paginas]
+        # F13/D8 (a trava #1): o Modo Pai imprime/envia LIMPO — a marca
+        # RASCUNHO deixou de ser automática em toda porta; o botão
+        # "Aprovar" daqui segue vivo como o SELO do pai
         self._paginas_cache = (paginas, aberto.layout, faltas)
         return self._paginas_cache
 

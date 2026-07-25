@@ -533,3 +533,61 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   4/0/0.** Fora (anotado na resposta): P5/`Regiao.grupo` não construído
   (L8); região nova DENTRO da mestra agora só por colar/mover; toasts e
   tutorial sem teste de pixel; QInputDialog nativo segue no tradutor.
+  **Bloco C SELADO pelo arquiteto (§6 da ordem, 25/07; commit `ee15eb9`)**
+  — com a CORREÇÃO de diagnóstico do builder que virou condição: a "zona
+  de disputa do z" era na verdade **alça em objeto não selecionado** (o
+  hover exigia seleção, o press não) → **COND-6** (igualar as portas +
+  restaurar o teste ao alvo original) e **COND-7** (renomear os 3 vigias).
+  —— **Bloco D (O DIA DE 5 MINUTOS — as travas #1 e #3 CAEM) EXECUTADO
+  (25/07/2026) — PARADO no fim do bloco aguardando o selo (L7).** Os 14
+  itens + COND-6/7, disciplina L1 (stash dance; logs em saida_f13/):
+  **COND-6** cumprida E estendida (a margem do shape também era
+  incondicional — a entrega do clique pelo Qt e o resolver_selecao davam a
+  região de cima com margem; boundingRect condicional + prova: 905×2 E
+  invertida com o teste no alvo ORIGINAL); **COND-7** vigias renomeados.
+  **D1** o véu virou FAIXA DE RODAPÉ (OverlayOcupado; 9 chamadores num
+  ponto; a assimetria CF-05 morta; lote do Estúdio narra item a item);
+  **D2** digitação COALESCE (adiar=True nas rajadas, fecho do gesto em
+  despachar_edicoes com flush em desfazer/seleção/editingFinished/carregar;
+  UM desfazer devolve a palavra) + prévia em 96dpi esticada ao tamanho da
+  cena (compor_pagina ganhou dpi=); **D3** detector de fundo branco LIGADO
+  por padrão (False explícito respeitado; guardião virado); **D4**
+  `Conciliador.categoria_do_vizinho` público em 2 degraus (embeddings/
+  fuzzy local) + `categorizar_acervo` não aborta sem LM (origem "vizinho");
+  **D5** a conciliação conserta o acervo (produto casado sem categoria
+  ganha a do vizinho; humano nunca vencido) + a FRESTA da grade fechada
+  (categoria_origem="humano"); **D6** `remover_inventados` devolve a
+  palavra SUBSTITUÍDA pelo typo da IA (limiar 0,75; acréscimo puro segue
+  caindo) + o aviso chega nos 2 furos (modo rápido abre curadoria; o lote
+  não cadastra perda e NOMEIA); **D7** o canal ESTRUTURAL da validade (o
+  vazio do compositor herda o texto_legal da página — o rodapé fora de
+  célula recebe a validade VIVA; achado do scout fora de todos os dossiês)
+  + self._evento vive (salvar/reabrir/rascunho) + sugerir_validade no
+  EXPORT (trava #3); **D8** exportar LIMPO por padrão nas 9 portas +
+  RASCUNHO opção explícita (paleta na Mesa; checkbox no perfis/Fábrica/
+  Publicar; param nos headless) + botão APROVAR real na Mesa E na Fábrica
+  (checklist modo-cartaz sem a pergunta da validade da oferta; Fábrica
+  ganhou _salvo real) — aprovação segue como SELO por hash (trava #1);
+  **D9** estante↔célula acesos nos 2 sentidos (guarda _sinc_estante) +
+  MINIATURA na linha (cache caminho+mtime); **D10** o pré-voo ganhou o
+  piso da revisora (heuristicas_do_pre_voo público) e a nota da foto
+  (avaliar_foto com cache; só RUIM avisa; dedupe do PROCON no cartaz);
+  **D11** o herói vai para a MAIOR célula (area_do_slot em grade.py);
+  **D12** "Atualizar os preços dos atuais" por chave natural (3º botão;
+  prévia→confirma; mapa/overrides/undo INTACTOS); **D13** a conciliação
+  lembra geometria e colunas (Interactive; done() grava; splitter com
+  memória); **D14** projeto LIMPO não gera rascunho (dirty flag; par
+  anti-exagero verde). **Guardiões do contrato antigo VIRADOS com rastro**
+  (fase8 ×2, fase11 relâmpago, fase12 etiquetas, fase10 detector, onda1
+  modo rápido). **DoD MEDIDO na máquina real com as 30 ofertas REAIS do
+  Quintou** (`saida_f13/bloco_d_medicoes.md`): conciliar 30 = 0,07s
+  (30/30 🟢); compor a frente real 105ms (rajada de 13 teclas = UMA
+  recomposição, antes 13×); arte 300dpi: prévia 2,0×; detector 13ms vs
+  8-26s de rembg; export frente+verso 0,17s; pré-voo 0,02s. **Lei nova da
+  bancada: pytest-timeout em TODA rodada** (2 suítes penduraram para
+  sempre num modal sem resposta; agora o culpado sai nomeado) + saída em
+  log, nunca Out-Null. Achados L6 na resposta (contenção de ~5s por
+  Database().init concorrente → nominal p/ o E; o LM real interfere em
+  bancada fora do pytest; foto chapada = RUIM legítimo → helper
+  foto_de_bancada com miolo puro; undo reconstrói o layout). Placares
+  finais e o que ficou de fora: resposta do builder no fim da ordem.

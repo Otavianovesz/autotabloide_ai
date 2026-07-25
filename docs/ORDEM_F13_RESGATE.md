@@ -201,7 +201,13 @@ independentes**; mais o adversarial I1–I5 atualizado e verde. E, do selo do Bl
 | D14 | **Rascunho automático para de oferecer recuperação de projeto pronto** | `mesa.py:1324-1338`. P-10 |
 
 **Definição de pronto:** refaça o quadro "hoje × ideal" do §2 do caderno de visão com
-medições suas, **na máquina real, com as 30 ofertas reais do Quintou**. Número medido, não estimado.
+medições suas, **na máquina real, com as 30 ofertas reais do Quintou**. Número medido, não
+estimado. E, do selo do Bloco C (§6.6):
+
+1. **COND-6** — `itens.py:417` ganha `and self.isSelected()`, igualando ao `:391`; o teste do C
+   volta ao alvo original (arraste perto da vizinha) e fica verde **pelo conserto**.
+2. **COND-7** — os três vigias invertidos renomeados para dizer o que hoje afirmam.
+3. Junit do bloco em `saida_f13/` (suíte ×2, ordem invertida, janela real).
 
 **PARE.**
 
@@ -483,6 +489,102 @@ no Bloco F. Não pode sumir da lista.
 O C1 inverte o `test_mut2`; o C3 inverte o `test_mut3`; o C5 inverte o `test_mut4`.
 **Inverter, nunca apagar nem marcar `xfail`** — e o `git log` está limpo (`f649732`, `5a4f0d0`)
 para mostrar a linha antiga de cada um.
+
+---
+
+## §6 · SELO DO BLOCO C — reauditoria do arquiteto (25/07/2026)
+
+**BLOCO C SELADO**, com **uma correção de diagnóstico sua** (§6.4) que vira COND-6 no D.
+
+### 6.1 · COND-3 — a inversão dos três vigias, conferida assert por assert
+
+Os três existem, **zero `xfail`, zero `skip`** no arquivo, e as asserções viraram de verdade:
+
+| vigia | antes (fixava o bug) | agora (exige o certo) |
+|---|---|---|
+| `mut2` / E-01 | slot herdado da seleção | `assert slot_img is not slot_nome` — a 2ª criação **não gruda** na 1ª |
+| `mut3` / R-02 | `index(alvo) == 0` | `index(alvo) == 1` **+** `topo is alvo` — "Subir" traz para a frente |
+| `mut4` / E-08 | `larg_mm == approx(larg0)` | `larg_mm > larg0 + 1.0` **+** `abs(ancora_depois − ancora_cena) < 3.0` |
+
+O `mut4` ficou **mais forte do que eu pedi**: além de exigir que redimensione, exige que a
+**âncora oposta fique parada** — isto é, que a conta do resize sob rotação esteja *certa*, não
+só ativa. Era a parte difícil do C5 e você a testou.
+
+### 6.2 · COND-4 e COND-5, cumpridas
+
+**COND-4** — `canvas.py:192-197` (`carregar`) e `:652-653` (`atualizar_dados`) carregam o
+contrato na letra, com a referência ao CD-01 e aos "9 Ctrl+Z mortos da gravação". O próximo
+chamador não tem como errar sem ler o aviso.
+
+**COND-5** — `marca_propria` flui pela cadeia inteira: `ItemMesa:44` → dict `:191` →
+`from_dict:615` → `dados_cartaz_de_produto:697` → export `:721` → fusão de duplicatas `:1406`.
+Não virou dívida órfã.
+
+### 6.3 · O C1 é mais elegante do que o dossiê pedia
+
+Eu diagnostiquei o E-01 como "auto-seleção + slot-da-seleção" e teria aceitado matar a
+auto-seleção. Você fez melhor: **separou as duas intenções.**
+`_slot_para_novas_regioes` continua existindo para **colocação deliberada** (colar, diálogo
+nomeado), onde herdar o slot da seleção é o comportamento certo; a **criação pela barra** passou
+a usar `_slot_novo_avulso`. A auto-seleção — que é útil, você quer estilizar o que acabou de
+criar — sobreviveu sem o efeito colateral.
+
+E você resolveu a **segunda metade** do que eu vi ao vivo sem eu pedir: a `_cascata_criacao`
+(8 degraus cíclicos) faz cada região nova nascer deslocada. No L-07 eu registrei que as duas
+nasciam no *retângulo idêntico*; agora nascem em cascata, como o paste-in-place do Illustrator.
+Slot **e** geometria consertados.
+
+### 6.4 · CORREÇÃO — o "custo de alças pegáveis" não é custo, é bug
+
+Você fechou o último vermelho da ordem invertida movendo o alvo do arraste ("agora arrasta para
+longe da vizinha") e concluiu: *"não é bug do editor (é o custo de alças pegáveis)"*.
+**Fui olhar, e é bug.** Em `itens.py`:
+
+```
+:391  alca = self._handle_em(event.pos()) if self.isSelected() else None   ← hover: com trava
+:417  if not self.regiao.travado:                                          ← press: SEM trava
+:418      h = self._handle_em(event.pos())
+```
+
+O **hover** só oferece alça quando a região está selecionada. O **press** não checa nada. Então
+uma região **não selecionada** captura o resize se o clique cair a ±`TAM` de um canto dela — sem
+nenhum aviso de cursor antes, porque o hover disse que ali não tinha alça. Consequências:
+
+1. **O cursor mente.** A única dica visual está desligada justo no caso que dispara.
+2. **É o roubo de clique que você mediu** — não o custo de alças, e sim alças em objeto não
+   selecionado. Todo editor sério (Illustrator, Figma, Affinity) só materializa alça na seleção.
+3. **O C5 ampliou o alcance:** a condição antiga era `not travado and not rotacao`; ao derrubar a
+   guarda de rotação, sobrou só `not travado` — regiões giradas passaram a roubar clique também.
+4. **É da mesma família do que você acabou de matar.** O dono vai dizer "clico no nome e ele pega
+   o preço" — a versão pequena do "tudo grudado".
+
+O próprio código já sabe a regra e a aplica numa das duas portas. **O conserto é uma condição**,
+igualando `:417` ao `:391`. E aí o seu teste original — o que arrastava perto da vizinha — passa
+sem ser movido.
+
+Nada disso desmerece o bloco: **você achou o fenômeno**, mediu, e só errou a atribuição da causa.
+Foi a ordem invertida entregando o terceiro achado, como você disse.
+
+### 6.5 · Placar e escopo
+
+Junit em `saida_f13/`: `bloco_c_suite_1` e `bloco_c_suite_2` **904/0/0/0**,
+`bloco_c_invertida` **904/0/0/0**, `bloco_c_janela` **4/0/0/0**. Evolução 851 → 862 → 886 → 904.
+
+Escopo: 12 arquivos de produção, todos em território do C. Os toques em `mesa.py` (13 linhas) e
+`servico.py` (9) são o C13 e a COND-5. **Nada de `images/`, `ai/`, rembg, validade ou aprovação**
+— o Bloco D está intacto para o Bloco D.
+
+### 6.6 · COND-6 e COND-7 para o Bloco D
+
+**COND-6 · A alça só existe na seleção.** Iguale `itens.py:417` ao `:391`
+(`and self.isSelected()`), **restaure o teste do C** ao alvo original (arrastando perto da
+vizinha) e deixe-o verde pelo conserto, não pelo desvio. É o fecho honesto do §6.4.
+
+**COND-7 · Renomeie os três vigias invertidos.** As asserções viraram; os **nomes** ainda
+descrevem o bug — `test_mut4_..._nao_redimensiona` hoje afirma que **redimensiona**;
+`test_mut3_..._mexe_o_indice_para_tras_caracterizacao` afirma que vai para a frente e não é mais
+caracterização. Um nome que diz o contrário da asserção é armadilha para o próximo leitor. Minha
+COND-3 falou de asserção e esqueceu o nome — a culpa é minha, o conserto é seu.
 
 ---
 
@@ -845,4 +947,132 @@ Evolução: 851 (§0) → 862 (A) → 886 (B) → **904 (C)**.
   Bloco E (CA-08).
 
 **PARADO no fim do Bloco C (L7). O Bloco D não foi iniciado. Aguardando o
+selo do arquiteto.**
+
+---
+
+## RESPOSTA DO BUILDER — BLOCO D (Fable 5, 25/07/2026)
+
+O Bloco C foi fechado no commit `ee15eb9` e selado no §6 — com a correção
+de diagnóstico do arquiteto que virou a COND-6. Ritual: linha de base da
+raiz conferida ANTES de tocar (904/0/0, `bloco_d_baseline.xml`); 5 scouts
+de LEITURA mapearam o terreno (D1-D3, D4-D5, D6/D13/D14, D7-D8, D9-D12 —
+nenhum escreveu uma linha). Todos os itens na L1: **cada conserto tem a
+rodada VERMELHA registrada nesta bancada** (stash dance onde o conserto
+veio antes; as saídas estão nos logs `saida_f13/_run_*.log`). Testes novos
+em `app/tests/test_bloco_d_f13.py`.
+
+### As duas condições do selo do C, primeiro
+
+| | O que ficou |
+|---|---|
+| **COND-6** ✅ | O press igualou o hover (`itens.py`: alça SÓ em região selecionada) **e fui além onde a sua condição não alcançava**: o `shape()` default é o `boundingRect()` com a margem ±TAM SEMPRE — a entrega do clique pelo Qt e o `resolver_selecao` (via `scene.items`) davam a região de cima COM margem, selecionada ou não. A margem virou condicional à seleção (com `prepareGeometryChange` no `ItemSelectedChange`). O teste original foi RESTAURADO ao alvo (o arrasto desce em direção ao preço) e o novo `test_cond6_alca_so_existe_em_regiao_selecionada` registrou o vermelho: arrasto no canto de região NÃO selecionada a redimensionava de 40×12 para 28,8×3,4 mm. **Prova de que o seu diagnóstico fecha o caso de ponta a ponta: suíte 905/0/0 ×2 E `--ordem-invertida` 905/0/0 com o alvo original** (`_d_cond6_suite.xml`/`_d_cond6_invertida.xml`). |
+| **COND-7** ✅ | Os três vigias RENOMEADOS para o que agora exigem: `test_mut2_e01_criacoes_nascem_selecionadas_e_cada_uma_no_seu_slot`, `test_mut3_r02_botao_subir_traz_a_regiao_para_a_frente`, `test_mut4_e08_alca_de_regiao_rotacionada_redimensiona_com_ancora_parada` — docstrings citam a COND-7 e os nomes antigos (git log `5a4f0d0`/`ee15eb9`). |
+
+### A tabela item × prova (vermelho → conserto → verde)
+
+| # | conserto | vermelho registrado | onde mexi |
+|---|---|---|---|
+| D1 | **o véu virou FAIXA DE RODAPÉ**: `OverlayOcupado` cobria a tela inteira e comia todo clique (e SÓ o mouse — o teclado atravessava, a assimetria CF-05, que morreu por simetria); agora é uma tira no pé, com spinner+texto+decorrido, e a tela fica LIVRE. Um ponto consertou os 9 chamadores (API intacta). De carona: o lote do Estúdio ligou o `item_pronto` que nunca usara (texto estático de ponta a ponta) | `test_d1_veu_virou_rodape...` — hit-test REAL (`childAt`): "o miolo da tela está coberto por OverlayOcupado" | `carregando.py`, `almoxarifado.py` |
+| D2 | **a digitação coalesce**: cada tecla custava `_registrar_hist` (JSON no disco) + `compor_pagina` inteiro + 1 estado de desfazer. `notificar_edicao(adiar=True)` nas fontes de RAJADA; o gesto fecha em ~300ms em `despachar_edicoes()` (flush no desfazer/refazer, troca de seleção, editingFinished, documento novo). E a **prévia compõe a 96 dpi e estica de volta ao tamanho da cena** (alças/réguas/snap intactos — a armadilha do scout) | `test_d2_digitacao_coalesce...` (stash dance): UM desfazer devolvia "Nome Zero"→"Nome"? Não — a rajada era um estado POR TECLA. + guarda `test_d2_previa_rapida_mantem_cena...` | `canvas.py`, `painel_propriedades.py`, `compositor.py` (param `dpi`) |
+| D3 | **o detector de fundo branco NASCE ligado** (estava pronto e testado desde a F10, escondido atrás de default False que o dono nunca achou); False explícito na Config continua respeitado; checkbox nasce marcado | `test_d3_detector_fundo_branco_nasce_ligado` (padrão desligado) + o guardião `test_fase10_imagens` VIRADO (a prova de mutação trocou de lado: o False explícito é que precisa vencer) | `fundo.py`, `configuracoes.py` |
+| D4 | **categoria pelo VIZINHO, sem exigir o LM**: `Conciliador.categoria_do_vizinho()` público (a linha que a conciliação sempre calculou e jogava fora, VC-051) com DOIS degraus — embeddings com o LM vivo, fuzzy 100% local sem ele; `categorizar_acervo` não aborta mais sem LM (vizinho 1º, IA 2º degrau); origem `"vizinho"` | `test_d4_d5_categoria_pelo_vizinho_sem_lm` (stash dance): "o lote ABORTOU sem o LM Studio" | `conciliacao.py`, `enriquecer_banco.py` |
+| D5 | **a categorização vale para o acervo**: na conciliação, produto casado SEM categoria ganha a do vizinho na hora (o índice já está quente; humano nunca é vencido — só escreve onde está VAZIO; PC da loja pula sem drama). E a FRESTA que o scout achou: a grade da Mesa gravava categoria sem `categoria_origem="humano"` — o lote podia vencer o dono | o mesmo teste, partes 2 e 3 | `servico.py` (conciliar_linhas), `planilha.py` |
+| D6 | **a sanitização para de apagar palavra**: `remover_inventados` agora DEVOLVE a palavra do dono quando o inventado a SUBSTITUIU (typo da IA: HUPPERS→Ruppers→**Huppers**; limiar 0,75 — reescrita total como "produto"×"bruto" a 0,67 segue o contrato antigo); acréscimo puro (INMETRO/NBR) segue caindo. E o aviso chega nos 2 furos: o modo rápido abre a CURADORIA quando há perda (`_cadastrar_ou_revisar`); o lote NÃO cadastra nome com perda (política RG-20 do enriquecer_banco) e NOMEIA quem ficou | `test_d6_typo...` (a marca sumia inteira) + `test_d6_modo_rapido...` (nenhum aviso; cadastro silencioso) + `test_d6_lote...` (cadastrou VERDE mutilado — provado por conteúdo no banco) | `enriquecimento.py`, `conciliacao_dialog.py` |
+| D7 | **a validade viva + o evento (trava #3)**: o ACHADO ESTRUTURAL do scout (fora de todos os dossiês) consertado — o `vazio` do compositor herda o `texto_legal` da página, então o rodapé "Validade da oferta" FORA de célula recebe a validade viva (o marco da F12 contornava com texto_fixo); `self._evento` vive (salvar + reabrir + rascunho — as "duas linhas" que ressuscitam meta/pulso/{evento}); `sugerir_validade` roda TAMBÉM no export | `test_d7_validade_viva_chega_ao_rodape...` (rodapé VAZIO por pixel) + `test_d7_evento_vive...` (evento jogado fora; export sem sugestão) | `compositor.py`, `mesa.py` |
+| D8 | **exportar limpo por padrão + Aprovar visível (trava #1)**: as 9 portas viradas — Mesa (`_exportar(rascunho=False)` + paleta "Exportar como RASCUNHO"), perfis/lote (checkbox), Fábrica ×3 (checkbox RASCUNHO na barra), Modo Pai (limpo), Publicar (checkbox), relâmpago/kit/etiquetas (param `rascunho=False`). Botão **Aprovar REAL na barra da Mesa E da Fábrica** (a Fábrica nunca teve caminho — P-07); `checklist_final(cartaz=True)` sem a pergunta da validade da oferta (era o que tornava a aprovação inalcançável lá); a Fábrica ganhou `_salvo` real. A aprovação segue viva como SELO por versão (hash R-068) | `test_d8_etiquetas_saem_limpas_por_padrao...` (o default carimbava) + `test_d8_botao_aprovar_visivel...` (não existia em nenhuma das duas) | `mesa.py`, `fabrica.py`, `servico.py`, `exportar_dialog.py`, `publicar_dialog.py`, `modo_pai.py` |
+| D9 | **item↔célula acesos + miniatura**: estante→canvas (selecionar a linha acende a célula, com troca de página), canvas→estante (clicar a célula destaca a linha), guarda anti-laço `_sinc_estante` (o padrão do painel de camadas); a linha da estante ganhou a MINIATURA da foto (26px, cache por caminho+mtime — `setIcon` não aparece sob `setItemWidget`, o molde é o do painel de camadas) | `test_d9_estante_e_celula_acesos...` (stash dance): nenhum dos dois sentidos existia; linha só texto | `mesa.py` |
+| D10 | **o pré-voo ganhou o piso da revisora e a nota da foto**: `heuristicas_do_pre_voo` público (nome cortado por medida, preço fora da faixa aprendida, de≤por — dedupe do PROCON no cartaz) + `avaliar_foto` com cache (caminho+mtime) no laço de imagens — só nota RUIM avisa | `test_d10_pre_voo_ganha...` (o pré-voo mudo para os dois sinais) | `servico.py`, `revisora.py` |
+| D11 | **o destaque vai para a célula GRANDE**: `area_do_slot` em `grade.py` (a régua mora onde a lei do A7 manda); com heróis ligados, os N mais baratos vão para as N MAIORES células da página 1; o resto segue o zip visual de sempre | `test_d11_heroi_vai_para_a_celula_grande` (o herói caía na 1ª célula da leitura) | `grade.py`, `mesa.py` |
+| D12 | **atualizar preços por chave natural**: o 3º botão na caixa do reimport ("Atualizar os preços dos atuais", só aparece quando HÁ par), motor prévia→confirma (`plano_atualizar_precos`/`aplicar_atualizacao_precos` — o molde da ponte Excel R-118); muda SÓ preço/preço_de/multi_preco dos itens da ESTANTE: uid, mapa, overrides e a pilha de desfazer intactos (I1/CD-01); sem-par e não-citados NOMEADOS (I2) | `test_d12_atualizar_precos...` (o botão não existia; "Substituir tudo" zerava mapa e overrides) | `servico.py`, `mesa.py` |
+| D13 | **a conciliação lembra**: geometria da janela (chaves por modo foto/tabela, validação dura, molde do ui.shell), colunas de nome viraram Interactive (eram Stretch — o dono nem conseguia arrastar), `resizeColumnsToContents` só na 1ª carga, tudo gravado no `done()` (a saída única); o splitter do modo foto virou `splitter_com_memoria` | `test_d13_conciliacao_lembra...` (860×560 fixo; largura zerada a cada recarga) | `conciliacao_dialog.py` |
+| D14 | **o rascunho não ressuscita projeto PRONTO**: o tick de 2 min regravava o estado JÁ salvo (o salvar descartava e o timer recriava — nada olhava a dirty flag); agora projeto LIMPO não gera rascunho; o par anti-exagero prova que sujar DEPOIS do salvar volta a ter rede | `test_d14_projeto_salvo_nao_regrava_rascunho` (regravou) + `test_d14_edicao_depois_do_salvar_volta_a_ter_rede` (o anti-mutação, verde dos dois lados) | `mesa.py` |
+
+### Os guardiões do contrato antigo, VIRADOS (nunca apagados)
+
+`test_fase8_export` (Mesa: aprovação ligava/desligava a marca → limpo por
+padrão + rascunho explícito; Fábrica: o monkeypatch de `pode_exportar_limpo`
+— o P-07 fossilizado — virou o checkbox real), `test_fase11_cartaz`
+(relâmpago "sempre RASCUNHO" → limpo por padrão, opção carimba),
+`test_fase12_marco` (etiquetas "o PADRÃO carimba" → o padrão é LIMPO),
+`test_fase10_imagens` (detector "padrão desligado" → ligado; o False
+explícito vence), `test_onda1_desempenho` (o fake do modo rápido perdia
+palavra — com o D6 abriria curadoria; dado sem perda + a prova do motor
+virou o `mais18`). Todos com docstring "VIRADO na F13/D8|D3|D6" e o rastro
+no git log. O `esta_aprovado`/hash (R-068) segue INTACTO — é o selo.
+
+### O quadro hoje × ideal, MEDIDO (DoD do bloco)
+
+Números na máquina real com as 30 ofertas REAIS do Quintou —
+**`saida_f13/bloco_d_medicoes.md`** (tabela completa + ressalvas). Os
+destaques: conciliar as 30 reais = **0,07s (30/30 verdes)**; compor a
+frente real = **105ms** (e o D2 fez a rajada de 13 teclas custar UMA
+recomposição, não 13 ≈ 1,4s); arte 300dpi: prévia **2,0×** mais rápida;
+detector de fundo branco **13ms** contra 8–26s de rembg; export
+frente+verso **0,17s**; pré-voo com os sinais novos **0,02s**. Ressalva
+honesta no arquivo: a arte real do Quintou é 96dpi de fábrica — nela o
+ganho do D2 é a coalescência; o ganho do dpi vale para arte 300dpi.
+
+### Os placares (junit em `saida_f13/`)
+
+| prova | resultado |
+|---|---|
+| suíte da raiz ×2 | **924 verdes ×2, 0 falhas, 0 skips, exit 0** (`bloco_d_suite_1.xml`, `bloco_d_suite_2.xml`) |
+| ordem invertida (árvore final) | **924/0/0, exit 0** (`bloco_d_invertida.xml`) |
+| janela real | **4/0/0** (`bloco_d_janela.xml`) |
+
+Evolução: 851 (§0) → 862 (A) → 886 (B) → 904 (C) → **924 (D)**. Todas as
+quatro rodadas com o para-quedas (`--timeout=120 --timeout-method=thread`)
+e log em arquivo.
+
+### Achados próprios de bancada (L6)
+
+1. **A bancada ganhou um para-quedas: `pytest-timeout` (novo dev-dep) é
+   LEI das rodadas** (`--timeout=120 --timeout-method=thread`) — duas
+   suítes desta bancada penduraram PARA SEMPRE (o D6 mudou um contrato e
+   um teste antigo ficou esperando um modal que ninguém responde; sem
+   timeout, a fila parava por 40+ min sem diagnóstico). Com o para-quedas,
+   o culpado sai NOMEADO com stack trace em segundos. Junto: as rodadas
+   pararam de esconder a saída (`Out-Null` → log em arquivo).
+2. **Fora do pytest, a bancada fala com o LM Studio REAL da máquina** — o
+   diálogo de conciliação dispara a fila de enriquecer ao abrir; num repro
+   solto, ela foi ao LM de verdade. Testes de diálogo agora desligam o
+   interruptor mestre (`ia.usar=False`) e controlam a corrida da fila
+   (semear a proposta SÓ depois de a fila resolver — senão ela sobrescreve).
+3. **`Database().init()` concorrente custa ~5s POR CHAMADA sob contenção**
+   (medido: 3 threads ≈ 12s; isolado: 0,00s). As filas do diálogo abrem
+   uma conexão por chamada (`_motor_se_disponivel`, enriquecer,
+   finalizar) — é o mesmo mal do "uma conexão por imagem" que o scout
+   apontou no detector. **Anoto nominal para o Bloco E** (é vizinho do
+   D-12: as conexões cruas).
+4. **Foto de cor chapada tem Laplaciano ZERO** — o avaliador (agora no
+   pré-voo, CORRETO) a marca "borrada — RUIM". As fotos sintéticas de 4
+   bancadas antigas (50–400px chapadas) viraram o helper
+   `acervo.foto_de_bancada` (xadrez nas bordas = nitidez; MIOLO de cor
+   pura = os testes de pixel amostram o centro).
+5. **`Set-Content` sem `-Encoding` num pipe PowerShell mastiga UTF-8**
+   (o arquivo virou mojibake; a pegadinha da memória da bancada Windows
+   confirmada da pior forma) — restaurado do git na hora; edições de
+   arquivo SÓ pela ferramenta de edição.
+6. **O undo RECONSTRÓI o layout do snapshot** — referência guardada a uma
+   `Regiao` de antes do desfazer fala com um objeto MORTO; asserts pós-undo
+   repescam a região (a lição do wrapper morto do C, agora no modelo).
+
+### O que ficou de fora (e por quê)
+
+- **A porta 10 do scout (miniatura do projeto)** nunca carimbou — com o
+  padrão limpo ela ficou COERENTE por natureza (nada a fazer); registrada.
+- **O texto do diálogo de recuperação (D14)** não mudou ("fechado sem
+  salvar") — com a guarda, o diálogo só abre quando isso é VERDADE; os
+  rótulos dos 3 botões são contrato de teste do B2d.
+- **O Estúdio (packshot) segue FORA do gate do detector** — o degrau 1
+  corta o objeto mesmo em fundo branco por desenho (sombra sintética
+  precisa do recorte); não é o caso do VC-037. Nominal para o arquiteto.
+- **`disponivel()` tem timeout de 3s** (conferido) — o CA do Bloco E não
+  precisa mexer aí; o chat de 300s é que merece olhar lá.
+- **A validade do reimport no caminho "Atualizar preços"** fica como está
+  (o dono edita pelo rótulo); anotado como refinamento possível.
+- **R-116/119/124/125 seguem VETADOS** — nada aqui os tocou.
+
+**PARADO no fim do Bloco D (L7). O Bloco E não foi iniciado. Aguardando o
 selo do arquiteto.**

@@ -79,13 +79,18 @@ class PainelPropriedades(QWidget):
 
         # --- campos ---
         self.nome = QLineEdit()
-        self.nome.textEdited.connect(lambda v: self._set("nome", v))
+        # F13/D2: digitação é RAJADA — coalesce (um gesto = um estado)
+        self.nome.textEdited.connect(
+            lambda v: self._set("nome", v, adiar=True))
+        self.nome.editingFinished.connect(
+            lambda: self.canvas.despachar_edicoes())
         self.fonte = QComboBox()
         self._popular_fontes()
         self.fonte.currentIndexChanged.connect(self._fonte_mudou)
         self.tam = QDoubleSpinBox()
         self.tam.setRange(4, 400)
-        self.tam.valueChanged.connect(lambda v: self._set("tamanho_max_pt", float(v)))
+        self.tam.valueChanged.connect(
+            lambda v: self._set("tamanho_max_pt", float(v), adiar=True))
         # cor: campo hex + amostra clicável que abre o seletor
         self.cor = QLineEdit()
         self.cor.setPlaceholderText("#000000")
@@ -142,7 +147,7 @@ class PainelPropriedades(QWidget):
         self.mascara_raio.setSuffix(" mm")
         self.mascara_raio.setToolTip("Raio dos cantos arredondados")
         self.mascara_raio.valueChanged.connect(
-            lambda v: self._set("mascara_raio_mm", float(v)))
+            lambda v: self._set("mascara_raio_mm", float(v), adiar=True))
         # R-032: centralizar a foto na caixa prevista pela arte de fundo
         self.btn_centralizar = QPushButton("Centralizar na arte")
         self.btn_centralizar.setToolTip(
@@ -162,7 +167,7 @@ class PainelPropriedades(QWidget):
         self.pill_opac.setToolTip("Opacidade da pílula (0 = transparente, "
                                   "255 = sólida)")
         self.pill_opac.valueChanged.connect(
-            lambda v: self._set("pill_opacidade", int(v)))
+            lambda v: self._set("pill_opacidade", int(v), adiar=True))
         self.pill_cor_btn = self._botao_cor("pill_cor")
         self.sombra = QCheckBox("Sombra no texto")
         self.sombra.toggled.connect(lambda v: self._set("sombra", v))
@@ -224,7 +229,7 @@ class PainelPropriedades(QWidget):
         self.rotacao.setToolTip("Gira o conteúdo em torno do centro da região "
                                 "(sentido horário; 90° = texto deitado)")
         self.rotacao.valueChanged.connect(
-            lambda v: self._set("rotacao_graus", float(v)))
+            lambda v: self._set("rotacao_graus", float(v), adiar=True))
 
         # RG-18: o campo mostra o TETO; o desenho usa o ajustado (só-reduz) —
         # este rótulo conta o efetivo quando difere ("confundiu" na auditoria)
@@ -518,6 +523,10 @@ class PainelPropriedades(QWidget):
         self._popular_pesos()                   # RG-14: a família pode ter mudado
 
     def mostrar(self, reg) -> None:
+        # F13/D2: trocar de região FECHA o gesto de digitação da anterior
+        # (a edição pendente entra na pilha antes de o painel repovoar)
+        if self.reg is not reg:
+            self.canvas.despachar_edicoes()
         self.reg = reg
         self._carregando = True
         self.vazio.setVisible(reg is None)          # estado vazio com craft
@@ -845,7 +854,10 @@ class PainelPropriedades(QWidget):
         self.canvas.notificar_edicao(self.reg, "rect")
         self.canvas._construir_itens()   # a alça acompanha o rect novo
 
-    def _set(self, attr: str, valor) -> None:
+    def _set(self, attr: str, valor, *, adiar: bool = False) -> None:
+        """``adiar=True`` (F13/D2) nas fontes de RAJADA (textEdited e
+        valueChanged de arrasto): o modelo muda já; histórico/recompose
+        fecham no fim do gesto (canvas.despachar_edicoes)."""
         if self._carregando or self.reg is None:
             return
         setattr(self.reg, attr, valor)
@@ -853,7 +865,7 @@ class PainelPropriedades(QWidget):
         if self.reg.estilo and attr in ("fonte", "tamanho_max_pt", "cor"):
             self.reg.overrides_estilo.add(attr)
             self.btn_restaurar_estilo.setVisible(True)
-        self.canvas.notificar_edicao(self.reg, attr)
+        self.canvas.notificar_edicao(self.reg, attr, adiar=adiar)
         self._atualizar_tamanho_efetivo()   # RG-18: reflete a edição na hora
 
     def _set_enum(self, attr: str, enum, valor: str) -> None:

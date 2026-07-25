@@ -836,7 +836,16 @@ class AlmoxarifadoTela(QWidget):
 
         fila = TrabalhadorFila(alvos, _um)
         erros: list[str] = []
+        feitos: list[str] = []
         fila.item_falhou.connect(lambda ch, _m: erros.append(ch))
+        # F13/D1: o rodapé NARRA o progresso item a item — o sinal
+        # item_pronto sempre existiu e este lote era o único que não o
+        # ligava (texto estático do início ao fim, achado do scout)
+        fila.item_pronto.connect(lambda ch, _r: (
+            feitos.append(ch),
+            self._overlay.mostrar(
+                f"Estúdio em lote — {len(feitos) + len(erros)} de "
+                f"{len(alvos)} fotos…")))
         fila.fila_terminou.connect(lambda: (
             self._overlay.esconder(),
             self._rebuscar(),

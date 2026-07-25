@@ -42,6 +42,25 @@ requer_arte_belo_brasil = pytest.mark.skipif(
            "(a arte real do Belo Brasil não viaja no git)")
 
 
+def foto_de_bancada(caminho, cor=(200, 40, 40), lado: int = 600):
+    """F13/D10: a foto sintética de teste tem de ser NÍTIDA e ≥500px —
+    cor chapada tem Laplaciano zero e o avaliador (agora no pré-voo,
+    CORRETO) a marca 'borrada/pequena — RUIM'. Xadrez determinístico nas
+    BORDAS (a nitidez); o MIOLO (terço central) fica de cor PURA — os
+    testes de pixel amostram o centro da célula."""
+    from PIL import Image
+    img = Image.new("RGB", (lado, lado), cor)
+    branco = Image.new("RGB", (16, 16), (255, 255, 255))
+    m0, m1 = lado // 3, 2 * lado // 3
+    for x in range(0, lado, 32):
+        for y in range(0, lado, 32):
+            if m0 <= x < m1 and m0 <= y < m1:
+                continue                     # o miolo puro fica intacto
+            img.paste(branco, (x, y))
+    img.save(caminho)
+    return str(caminho)
+
+
 def copiar_fontes_reais(destino: Path | str) -> int:
     """Copia as fontes reais do acervo para a pasta de fontes da raiz de
     teste. SEM elas o teste NÃO segue: ``text_fit`` cairia na fonte

@@ -129,15 +129,17 @@ def _layout_editor():
     ])])
 
 
-def test_mut2_e01_botao_da_barra_cria_regiao_e_ela_nasce_selecionada(
+def test_mut2_e01_criacoes_nascem_selecionadas_e_cada_uma_no_seu_slot(
         raiz, tmp_path):
     """GESTO (L2): o clique REAL no botão 'Adicionar imagem' da barra cria
     a região — prova a fiação botão→canvas que o T-05 acusou — e a região
     nasce SELECIONADA (o feedback do painel, RG-55; a linha vigiada pela
     mutação nº2).
 
-    INVERTIDO no C1 (COND-3 do selo — o git log guarda a forma antiga em
-    5a4f0d0): a caracterização do E-01 virou a exigência do CERTO —
+    INVERTIDO no C1 e RENOMEADO na COND-7 do selo do C (o nome antigo,
+    `..._botao_da_barra_cria_regiao_e_ela_nasce_selecionada`, e a forma
+    antiga vivem no git log em 5a4f0d0/ee15eb9): a caracterização do E-01
+    virou a exigência do CERTO —
     **duas criações seguidas NÃO nascem grudadas**: cada uma no seu slot
     avulso, em retângulos DIFERENTES (cascata), sem virar irmã da
     anterior. Era exatamente a sequência da gravação do dono
@@ -179,13 +181,15 @@ def test_mut2_e01_botao_da_barra_cria_regiao_e_ela_nasce_selecionada(
 # ---------------------------------------------------------------------------
 
 
-def test_mut3_r02_botao_subir_mexe_o_indice_para_tras_caracterizacao(
+def test_mut3_r02_botao_subir_traz_a_regiao_para_a_frente(
         raiz):
     """GESTO (L2): clique REAL na linha do painel de camadas + clique REAL
     no botão ' Subir'.
 
-    INVERTIDO no C3 (COND-3 do selo; a forma antiga — que FIXAVA o bug
-    R-02 — vive no git log em 5a4f0d0): agora o teste exige o CERTO, por
+    INVERTIDO no C3 e RENOMEADO na COND-7 do selo do C (o nome antigo,
+    `..._mexe_o_indice_para_tras_caracterizacao`, e a forma antiga — que
+    FIXAVA o bug R-02 — vivem no git log em 5a4f0d0/ee15eb9): agora o
+    teste exige o CERTO, por
     CONTEÚDO. Duas regiões SOBREPOSTAS na mesma célula; a de TRÁS é
     selecionada pelo painel e 'Subir' a TRAZ PARA A FRENTE — o pixel do
     miolo passa a ser a cor dela (era por isso que 'a imagem atrás do
@@ -231,13 +235,15 @@ def test_mut3_r02_botao_subir_mexe_o_indice_para_tras_caracterizacao(
 # ---------------------------------------------------------------------------
 
 
-def test_mut4_e08_arrastar_alca_de_regiao_rotacionada_nao_redimensiona(
+def test_mut4_e08_alca_de_regiao_rotacionada_redimensiona_com_ancora_parada(
         raiz):
     """GESTO (L2): arraste REAL na alça inferior-direita de uma região com
     15° de rotação.
 
-    INVERTIDO no C5 (COND-3 do selo; a forma antiga — que FIXAVA a guarda
-    do E-08 — vive no git log em 5a4f0d0): agora o teste exige o CERTO —
+    INVERTIDO no C5 e RENOMEADO na COND-7 do selo do C (o nome antigo,
+    `..._arrastar_alca_de_regiao_rotacionada_nao_redimensiona`, e a forma
+    antiga — que FIXAVA a guarda do E-08 — vivem no git log em
+    5a4f0d0/ee15eb9): agora o teste exige o CERTO —
     a alça REDIMENSIONA a região girada (a conta roda em coordenadas
     LOCAIS do item, não no scenePos cru) e o canto OPOSTO fica parado na
     cena (a âncora não anda). Era o gesto provado ao vivo em L-08:

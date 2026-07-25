@@ -47,7 +47,8 @@ def _itens40(tmp_path) -> list[ItemMesa]:
     itens = []
     for i in range(40):
         foto = tmp_path / f"m{i}.png"
-        Image.new("RGB", (200, 200), _cor(i)).save(foto)
+        from app.tests.acervo import foto_de_bancada
+        foto_de_bancada(foto, _cor(i))      # F13/D10: nítida (nota boa)
         itens.append(ItemMesa(
             descricao=f"MARCO-{i}", preco=f"{i + 1},00", semaforo="VERDE",
             nome=f"MARCO-{i}", imagem=str(foto),

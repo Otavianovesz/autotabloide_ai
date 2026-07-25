@@ -88,7 +88,12 @@ def remover_fundo(imagem: str | Path, modelo: str = "birefnet-general") -> Image
 
 def _pular_rembg_fundo_branco(imagem: str | Path) -> bool:
     """R-095: True se a Config `imagem.detector_fundo_branco` está ligada E a foto
-    já tem fundo branco uniforme (os 4 cantos). Nunca levanta."""
+    já tem fundo branco uniforme (os 4 cantos). Nunca levanta.
+
+    F13/D3 (VC-037): o padrão virou LIGADO — o detector estava pronto e
+    testado desde a F10, mas nascia desligado e o dono pagava 8s de rembg
+    em packshot que já vinha recortado em fundo branco. Quem desligar na
+    Configurações continua respeitado (False explícito vence)."""
     try:
         from app.core.database import Database
         from app.core.repositories import ConfigRepositorio
@@ -96,7 +101,7 @@ def _pular_rembg_fundo_branco(imagem: str | Path) -> bool:
         try:
             with db.Session() as s:
                 ligado = ConfigRepositorio(s).get(
-                    "imagem.detector_fundo_branco", False)
+                    "imagem.detector_fundo_branco", True)
         finally:
             db.engine.dispose()
         if not ligado:
