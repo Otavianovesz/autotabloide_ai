@@ -289,10 +289,13 @@ def test_mapa_de_fontes_usa_cache_em_disco(raiz_tmp, tmp_path, monkeypatch):
 
     pasta = tmp_path / "fontes_sist"
     pasta.mkdir()
-    reais = list(__import__("pathlib").Path(
-        "AutoTabloide_System_Root/fontes").glob("*.ttf"))
+    from app.tests import acervo
+    # F13/A5: ancorado na raiz do repo; ausência é skip EXPLÍCITO e contado
+    # (era pytest.fail — unificado na lei nova do acervo)
+    reais = sorted(acervo.FONTES_REAIS.glob("*.ttf")) \
+        if acervo.FONTES_REAIS.exists() else []
     if not reais:
-        pytest.fail("sem fonte real para o teste (fontes/ vazia)")
+        pytest.skip(f"{acervo.REQUER}: fontes reais em AutoTabloide_System_Root/fontes")
     shutil.copy(reais[0], pasta / reais[0].name)
     monkeypatch.setattr(fontes, "_DIRS_SISTEMA", [pasta])
 

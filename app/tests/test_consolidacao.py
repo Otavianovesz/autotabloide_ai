@@ -19,6 +19,7 @@ from app.rendering.model import (
 )
 from app.rendering.persistencia import carregar_layout, listar_layouts, salvar_layout
 from app.rendering.units import mm_para_px
+from app.tests import acervo
 
 TEXTO = "um dois tres quatro cinco seis sete oito nove dez"
 
@@ -98,11 +99,13 @@ def test_salvar_mesmo_nome_atualiza(session):
     assert len(listar_layouts(session)) == 1  # atualizou, não duplicou
 
 
+@acervo.requer_arte_belo_brasil
 def test_gate_compoe_sobre_arte_real_1080x1300():
     from app.rendering.model import layout_de_arte
-    from app.scripts.gate_fidelidade import ARTE, DPI, celula_superior_esquerda
+    from app.scripts.gate_fidelidade import DPI, celula_superior_esquerda
 
-    layout = layout_de_arte(ARTE, dpi=DPI)
+    # F13/A5: a arte pelo acervo ancorado (o ARTE do script é relativo ao CWD)
+    layout = layout_de_arte(str(acervo.ARTE_BELO_BRASIL), dpi=DPI)
     layout.paginas[0].slots[0].regioes = celula_superior_esquerda(DPI)
     img = compor_pagina(layout, layout.paginas[0], DadosProduto("Teste", preco_por=Decimal("0.19")))
     assert img.size == (1080, 1300)

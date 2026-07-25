@@ -11,6 +11,36 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest  # noqa: E402
 
 
+def pytest_addoption(parser):
+    """F13 · Bloco A · A6: ``--ordem-invertida`` roda os testes coletados
+    em ordem INVERSA — a sonda que caça estado vivo vazando entre testes
+    (foi ela que provou o vazamento do véu em ``animacoes.py``)."""
+    parser.addoption(
+        "--ordem-invertida", action="store_true", default=False,
+        help="roda os testes em ordem inversa (caça estado vivo entre testes)")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--ordem-invertida"):
+        items.reverse()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """F13 · Bloco A · A5: skip por acervo do dono ausente é CONTADO e
+    ESTAMPADO no fim do relatório — skip silencioso não é verde."""
+    do_dono = [r for r in terminalreporter.stats.get("skipped", [])
+               if "REQUER ACERVO DO DONO" in str(getattr(r, "longrepr", ""))]
+    if do_dono:
+        terminalreporter.write_sep(
+            "!", "ACERVO DO DONO AUSENTE", red=True, bold=True)
+        terminalreporter.write_line(
+            f"{len(do_dono)} teste(s) pulados por falta do acervo do dono "
+            "(arte real / fontes reais).")
+        terminalreporter.write_line(
+            "Este placar NÃO cobre a prova da arte real — "
+            "não trate como verde completo.")
+
+
 @pytest.fixture(autouse=True)
 def _encerrar_qt_apos_teste():
     """Rede de segurança do teardown (lei "verde com crash no exit NÃO é

@@ -30,15 +30,12 @@ CORES = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00",
 @pytest.fixture()
 def raiz_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
-    import shutil
     from app.core.database import Database
     from app.core.paths import SystemRoot
+    from app.tests import acervo
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     Database(root).init().engine.dispose()
     return root
 

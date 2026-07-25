@@ -1,7 +1,5 @@
 """Testes do Ateliê (F6.2) — persistência CRUD + fumaça da tela (offscreen)."""
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -24,11 +22,8 @@ def banco_tmp(tmp_path, monkeypatch):
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
     # as miniaturas/preview do Ateliê compõem texto → precisam das fontes
-    import shutil
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    from app.tests import acervo
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     db = Database(root).init()
     yield db
     db.engine.dispose()

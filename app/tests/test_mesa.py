@@ -1,13 +1,14 @@
 """Testes da Mesa (F6.4) — serviço headless + fumaça da tela (offscreen)."""
 
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
 from app.qt.telas import servico
+from app.tests import acervo
 
-FIXTURE = Path("app/tests/fixtures/ofertas_belo_brasil.txt")
+# F13/A5: fixture do repositório ancorada no arquivo (imune ao CWD)
+FIXTURE = acervo.FIXTURES / "ofertas_belo_brasil.txt"
 
 
 @pytest.fixture()

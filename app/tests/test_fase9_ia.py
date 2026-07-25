@@ -9,9 +9,7 @@ marca/sigla; (3) sem IA, tudo degrada com aviso.
 """
 
 import json
-import shutil
 from decimal import Decimal
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -26,10 +24,8 @@ def raiz_tmp(tmp_path, monkeypatch):
     from app.core.database import Database
     from app.core.paths import SystemRoot
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    from app.tests import acervo
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     Database(root).init().engine.dispose()
     return root
 

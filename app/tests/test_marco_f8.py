@@ -11,9 +11,7 @@ trio de CADA célula conferido POR PIXEL nas três páginas.
 
 import colorsys
 from decimal import Decimal
-from pathlib import Path
 
-import pytest
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
@@ -30,12 +28,14 @@ from app.rendering.grade import (
 from app.rendering.model import TipoRegiao
 from app.rendering.units import mm_para_px
 
-ARTE = Path("arte/quintou")
+from app.tests import acervo
+
+# F13/A5: ancorado na raiz do repo (imune ao CWD); ausência é skip
+# EXPLÍCITO e contado no relatório — nunca silencioso.
+ARTE = acervo.ARTE_QUINTOU
 CATEGORIAS = ["Mercearia", "Bebidas", "Limpeza", "Higiene", None]  # None→Outros
 
-pytestmark = pytest.mark.skipif(
-    not (ARTE / "frente_template.png").exists(),
-    reason="arte real do Quintou não está no repositório")
+pytestmark = acervo.requer_arte_quintou
 
 
 def _cor(i: int) -> tuple[int, int, int]:
@@ -58,15 +58,11 @@ def _itens40(tmp_path) -> list[ItemMesa]:
 def test_marco_40_itens_categorizado_ponta_a_ponta(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
     QApplication.instance() or QApplication([])
-    import shutil
     from pypdf import PdfReader
 
     from app.core.paths import SystemRoot
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():                       # a raiz de teste tem as fontes reais
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
 
     # frente + verso reais + a página EXTRA que os 40 pedem (45 células)
     layout, _ = layout_grade_de_arte(str(ARTE / "frente_template.png"))

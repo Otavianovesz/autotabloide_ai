@@ -18,8 +18,11 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-ARTE = "Frente Template.png"
-FIXTURE = Path("app/tests/fixtures/ofertas_belo_brasil.txt")
+# F13/A5: ancorados no próprio pacote, nunca no CWD — rodar o app (ou o
+# pytest) de outra pasta não pode mudar o que o boot encontra.
+_RAIZ = Path(__file__).resolve().parent.parent
+ARTE = str(_RAIZ / "Frente Template.png")
+FIXTURE = Path(__file__).resolve().parent / "tests" / "fixtures" / "ofertas_belo_brasil.txt"
 
 
 def _slug(s: str) -> str:
@@ -65,21 +68,32 @@ def montar_editor():
     from app.rendering.compositor import DadosProduto
     from app.scripts.importar_tabela import parse_tabela
 
-    layout = _grade_real()
+    try:
+        layout, fundo = _grade_real(), ARTE
+    except Exception:
+        # F13/A5 — a MESMA lição da frota F12 escrita logo abaixo em
+        # _layout_padrao_do_banco: sem a arte de bancada o editor não
+        # derruba a montagem — nasce com a grade sintética. §4.2 do selo:
+        # este caminho é SÓ de bancada (montar_janela → 4 scripts de
+        # foto/GIF; o main() do dono não passa aqui) — degradar sem aviso
+        # é tolerável AQUI; se um dia virar caminho de usuário, precisa
+        # de aviso (I2).
+        layout, fundo = _grade_sintetica(), None
     n = len(layout.paginas[0].slots)
     cache = SystemRoot().biblioteca_imagens / "_auto"
 
     produtos = []
-    for desc, preco in parse_tabela(FIXTURE)[:n]:
-        nome = formatar_nome(desc)          # determinístico (offline)
-        img = cache / f"{_slug(nome)}.png"  # foto tratada, se o cache tiver
-        produtos.append(DadosProduto(
-            nome, preco_por=_preco(preco),
-            imagem_path=str(img) if img.exists() else None,
-        ))
+    if FIXTURE.exists():                    # exemplo de bancada; sem ele o
+        for desc, preco in parse_tabela(FIXTURE)[:n]:   # editor abre vazio
+            nome = formatar_nome(desc)          # determinístico (offline)
+            img = cache / f"{_slug(nome)}.png"  # foto tratada, se o cache tiver
+            produtos.append(DadosProduto(
+                nome, preco_por=_preco(preco),
+                imagem_path=str(img) if img.exists() else None,
+            ))
 
     editor = Editor()
-    editor.carregar(layout, produtos, fundo_path=ARTE)
+    editor.carregar(layout, produtos, fundo_path=fundo)
     return editor, layout
 
 

@@ -420,3 +420,29 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   **[MÁQUINA DO DONO] para a sessão de aceitação:** instalador num Windows LIMPO,
   migração com o banco antigo REAL, SDXL degrau 2 (se houver GPU), test-drive +
   ressalvas + **o SELO HUMANO (passos 96–98)**.
+- **FASE 13 — RESGATE (`docs/ORDEM_F13_RESGATE.md`, arquiteto 25/07/2026)**: ▶
+  **Bloco A (a bancada que enxerga gesto) EXECUTADO (25/07/2026) — PARADO no fim
+  do bloco aguardando o selo do arquiteto (L7).** Linha de base do §0 conferida
+  ANTES de tocar: 851/0/0 exit-0. Entregue: **A1** `app/tests/gestos.py`
+  (clicar/teclar/acionar/arrastar por QTest/sendEvent + `vigia_dialogo` — responde
+  o modal por clique REAL dentro do próprio exec, nunca monkeypatch); **A2/A3**
+  `app/tests_janela/` (suíte com janela REAL, sem offscreen, `instalar_vida` +
+  `instalar_polimento` AUTOUSE; 4 verdes na máquina real; rodar antes de cada
+  selo: `pytest app/tests_janela -q`); **A4** `test_dialogos_reais_f13.py`
+  (confirmar_destrutivo/confirmar_pre_voo pelo QMessageBox REAL, 5 testes);
+  **A5** `app/tests/acervo.py` — acervo do dono ancorado na RAIZ do repo, skip
+  explícito "REQUER ACERVO DO DONO" CONTADO e ESTAMPADO no fim do relatório,
+  padrão de fontes unificado nos 13 arquivos (a degradação silenciosa para a
+  fonte do Pillow morreu, §1.5 da varredura); **A6** flag `--ordem-invertida` no
+  conftest. **Definição de pronto CUMPRIDA: as 6 mutações do §1.4, reaplicadas
+  uma a uma, deixaram CADA UMA um vigia vermelho** (`test_bancada_gesto_f13.py`;
+  árvore restaurada e conferida limpa após cada rodada; nº2/3/4 são
+  caracterização deliberada do bug atual — flipam nos consertos C1/C3/C5).
+  Placares (junit): raiz **862 verdes ×2, zero skips, exit-0** (851→862); de
+  OUTRA pasta **862/0/0** (antes: 10 vermelhos + 8 pulados — o placar agora é do
+  repositório, não da pasta); ordem invertida: os MESMOS 2 vermelhos de
+  `animacoes.py`, PRESERVADOS de propósito — são a prova que o B2 deixa verde.
+  Produção tocada e declarada (L6): `editor_app.py` (âncora no pacote +
+  `montar_editor` com o fallback da F12 que faltava — o boot morria de outra
+  pasta/clone antes da janela). NENHUM dos 6 achados 🔴 consertado (proibido no
+  bloco). Resposta completa do builder no fim de `docs/ORDEM_F13_RESGATE.md`.

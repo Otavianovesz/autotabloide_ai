@@ -5,17 +5,14 @@ linha deslocada). Proibido consertar uma face quebrando a outra — as duas vive
 no MESMO teste. Riscos do §11 conferidos por assert, não no olho.
 """
 
-from pathlib import Path
-
-import pytest
-
 from app.rendering.grade import detectar_caixas_preco, layout_grade_de_arte
+from app.tests import acervo
 
-ARTE = Path("arte/quintou")
+# F13/A5: ancorado na raiz do repo (imune ao CWD); ausência é skip
+# EXPLÍCITO e contado no relatório — nunca silencioso.
+ARTE = acervo.ARTE_QUINTOU
 
-pytestmark = pytest.mark.skipif(
-    not (ARTE / "frente_template.png").exists(),
-    reason="arte real do Quintou não está no repositório")
+pytestmark = acervo.requer_arte_quintou
 
 
 def _linhas(caixas, tol=30):

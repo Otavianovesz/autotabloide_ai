@@ -465,23 +465,25 @@ def test_c_modo_pai_lembrado_por_perfil(raiz_env):
 # Bloco D — o MARCO refeito (RG-48/RG-58)
 # ============================================================================
 
-ARTE_QUINTOU = Path("arte/quintou")
+from app.tests import acervo
+
+# F13/A5: ancorado na raiz do repo (imune ao CWD); ausência é skip
+# EXPLÍCITO e contado no relatório — nunca silencioso.
+ARTE_QUINTOU = acervo.ARTE_QUINTOU
 
 
 def _fontes_reais(root):
-    import shutil
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
 
 
+@acervo.requer_arte_quintou
 def test_d_campanhas_descobertas_e_faltantes_nomeadas(tmp_path):
     """Passo 50: o padrão-ouro descobre as campanhas REAIS por pasta; as que
     faltam são NOMEADAS (nunca um skip mudo, I2) — e uma campanha nova é
     absorvida SOZINHA quando a arte cair na pasta."""
     from app.core.marco import campanhas_do_marco, itens_reais_da_campanha
-    disp, falt = campanhas_do_marco()
+    # F13/A5: a raiz "arte" explícita e ancorada (o default é relativo ao CWD)
+    disp, falt = campanhas_do_marco(acervo.RAIZ_REPO / "arte")
     nomes = [c["nome"] for c in disp]
     assert "quintou" in nomes                    # a campanha real do repo
     q = next(c for c in disp if c["nome"] == "quintou")
@@ -500,8 +502,7 @@ def test_d_campanhas_descobertas_e_faltantes_nomeadas(tmp_path):
     assert "sexta_verde" not in falt2
 
 
-@pytest.mark.skipif(not (ARTE_QUINTOU / "frente_template.png").exists(),
-                    reason="arte real do Quintou não está no repositório")
+@acervo.requer_arte_quintou
 def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
         tmp_path, monkeypatch):
     """RG-48 + RG-58 (passos 47-49, 53-54, 61): o marco com os DADOS REAIS
@@ -529,7 +530,9 @@ def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
     _fontes_reais(root)
 
-    q = next(c for c in campanhas_do_marco()[0] if c["nome"] == "quintou")
+    # F13/A5: a raiz "arte" explícita e ancorada (o default é relativo ao CWD)
+    q = next(c for c in campanhas_do_marco(acervo.RAIZ_REPO / "arte")[0]
+             if c["nome"] == "quintou")
     reais = itens_reais_da_campanha(q)
     assert q["validade"]                         # RG-58 no dado: nunca None
 

@@ -367,16 +367,20 @@ def test_variantes_da_familia_bundled(tmp_path, monkeypatch):
     """'quero Black': as irmãs da fonte atual aparecem por ESTILO, e trocar
     o peso é só trocar o arquivo (o compositor nem fica sabendo)."""
     import shutil
-    from pathlib import Path
+
+    import pytest
 
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
     from app.core.paths import SystemRoot
+    from app.tests import acervo
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
+    # F13/A5: fontes do acervo ancoradas; ausentes = skip nominal, nunca
+    # o teste seguir "verde" sem a família que ele afirma testar
     for nome in ("Roboto-Regular.ttf", "Roboto-Bold.ttf"):
-        origem = reais / nome
-        if origem.exists():
-            shutil.copy(origem, root.fontes / nome)
+        origem = acervo.FONTES_REAIS / nome
+        if not origem.exists():
+            pytest.skip(f"{acervo.REQUER}: {nome} em AutoTabloide_System_Root/fontes")
+        shutil.copy(origem, root.fontes / nome)
 
     from app.qt.fontes import familia_estilo, variantes_bundled
     fam, estilo = familia_estilo("Roboto-Regular.ttf")

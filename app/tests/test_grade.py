@@ -16,9 +16,14 @@ from app.rendering.model import (
     TipoRegiao,
 )
 
-ARTE = "Frente Template.png"
+from app.tests import acervo
+
+# F13/A5: ancorado na raiz do repo (imune ao CWD); ausência é skip
+# EXPLÍCITO e contado — só nos 2 testes que usam a arte real.
+ARTE = str(acervo.ARTE_BELO_BRASIL)
 
 
+@acervo.requer_arte_belo_brasil
 def test_detecta_15_caixas():
     # o template tem 4+4+4+3 = 15 células (o canto inferior-esquerdo é o logo da loja)
     caixas = detectar_caixas_preco(ARTE)
@@ -27,6 +32,7 @@ def test_detecta_15_caixas():
     assert len(ys) == 4   # 4 linhas
 
 
+@acervo.requer_arte_belo_brasil
 def test_layout_grade_tem_15_slots():
     layout, caixas = layout_grade_de_arte(ARTE)
     assert len(layout.paginas[0].slots) == 15
