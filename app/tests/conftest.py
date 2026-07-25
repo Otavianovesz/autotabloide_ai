@@ -41,6 +41,36 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             "não trate como verde completo.")
 
 
+@pytest.fixture()
+def vida():
+    """F13: instala a vida visual (véu/hover) SÓ para o teste que a pedir
+    e desinstala no fim — o resto da bancada offscreen segue determinística,
+    como o docstring de instalar_vida promete."""
+    from PySide6.QtWidgets import QApplication
+
+    from app.qt.design import animacoes as anim
+    app = QApplication.instance() or QApplication([])
+    anim._cache_config["valor"] = True     # animações ligadas sem tocar o banco
+    anim._cache_config["transp"] = False   # véu permitido
+    anim.instalar_vida(app)
+    yield anim
+    if anim._animador is not None:
+        app.removeEventFilter(anim._animador)
+        anim._animador = None
+    if anim._hover_global is not None:
+        app.removeEventFilter(anim._hover_global)
+        anim._hover_global = None
+    anim._cache_config.clear()
+    for registro in (anim._veus, anim._hovers, anim._veus_troca):
+        for w in list(registro.values()):
+            try:
+                w.hide()
+                w.deleteLater()
+            except Exception:
+                pass
+        registro.clear()
+
+
 @pytest.fixture(autouse=True)
 def _encerrar_qt_apos_teste():
     """Rede de segurança do teardown (lei "verde com crash no exit NÃO é

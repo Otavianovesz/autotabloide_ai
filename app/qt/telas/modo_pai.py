@@ -287,16 +287,14 @@ class ModoPaiTela(QWidget):
         pai decide com a falta na frente (em linguagem simples)."""
         if not faltas:
             return True
-        from PySide6.QtWidgets import QMessageBox
-        resp = QMessageBox.question(
+        from app.qt.design.componentes import perguntar
+        return perguntar(
             self, f"{acao} mesmo assim?",
             "Atenção — esta oferta tem problema:\n\n"
             + "\n".join(f"• {f}" for f in faltas[:6])
             + f"\n\n{acao} mesmo assim? (o certo é pedir para quem edita "
             "arrumar antes)",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        return resp == QMessageBox.StandardButton.Yes
+            sim=f"{acao} mesmo assim", nao="Voltar")
 
     def _imprimir(self) -> None:
         """Reusa a impressão direta da F11 (R-112): tamanho físico em mm +

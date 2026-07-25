@@ -388,6 +388,8 @@ def main() -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
     aplicar_tema(app)
+    from app.qt.design.componentes import instalar_traducao_qt
+    instalar_traducao_qt(app)   # F13/B2c: nativos do Qt em PT-BR
     # FASE 1 (passo 80): splash IMEDIATO (pixmap pintado, ~ms) — a marca
     # aparece antes de qualquer montagem; some em fade quando o shell abre
     from app.qt.design.splash import (
@@ -445,8 +447,12 @@ def main() -> int:
         purgados = purgar()
         if purgados:                        # I2: nunca em silêncio
             from app.qt.design.toast import mostrar_toast as _toast
-            _toast(shell, f"Lixeira: {len(purgados)} item(ns) com mais de "
-                          "30 dias foram apagados de vez (log no console).")
+            presos = sum(1 for p in purgados if "FICOU na lixeira" in p)
+            texto = (f"Lixeira: {len(purgados) - presos} item(ns) com mais "
+                     "de 30 dias foram apagados de vez")
+            if presos:                      # F13/B9: o preso é NOMEADO
+                texto += f" e {presos} FICARAM (algo vivo aponta para eles)"
+            _toast(shell, texto + " — detalhe no console.")
         shell._editor = _completar_janela(shell, holder)
         # passo 60 (R-023): reabre onde parou — MAS o Modo Pai lembrado
         # (R-150) vence (frota F12: a última tela atropelava o modo e o

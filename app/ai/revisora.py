@@ -22,9 +22,11 @@ from app.core.sentinela import faixas_por_categoria, preco_suspeito
 
 _PROMPT = (
     "Você é um revisor de encarte de supermercado. Olhe a imagem e liste, em "
-    "JSON, os PREÇOS e os NOMES de produto que você consegue LER claramente. "
-    'Responda só o JSON: {"precos": ["5,90", "12,49"], "nomes": ["Arroz 5kg"]}. '
-    "Não invente — se não conseguir ler, deixe a lista vazia."
+    "JSON, os PARES produto+preço que você consegue LER claramente juntos "
+    "(o preço que está NA CÉLULA daquele produto): "
+    '{"itens": [{"nome": "Arroz 5kg", "preco": "5,90"}], '
+    '"precos": ["5,90"], "nomes": ["Arroz 5kg"]}. '
+    "Não invente — se não conseguir ler um par completo, não o liste."
 )
 
 
@@ -111,17 +113,69 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
     return avisos
 
 
+def _norm_nome(txt: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(txt))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return " ".join(t.lower().split())
+
+
+def _casa_nome(lido: str, esperado: str) -> bool:
+    """O nome LIDO na peça é o produto ESPERADO? Tolerante ao OCR: um
+    contém o outro, ou similaridade alta (difflib)."""
+    a, b = _norm_nome(lido), _norm_nome(esperado)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, a, b).ratio() >= 0.75
+
+
 def _revisao_por_visao(png_path, dados_por_slot, motor) -> list[str]:
-    """Compara o que o modelo de visão LÊ na peça com os preços esperados dos
-    dados. Preço visível que não bate com nenhum esperado = provável troca."""
+    """Compara o que o modelo de visão LÊ na peça com o que o projeto
+    espera. F13/B8 (CI-02): o prompt sempre pediu os NOMES e a revisora
+    os jogava fora — preço TROCADO entre dois itens (os dois preços
+    existem no projeto!) passava limpo, a coisa que ela existe para
+    pegar. Agora os PARES nome+preço são conferidos item a item."""
     from app.ai.ocr import _extrair_json_obj
     esperados = {_fmt_preco(d.preco_por) for d in dados_por_slot.values()
                  if d.preco_por is not None}
     esperados.discard(None)
     resp = motor.visao(str(png_path), _PROMPT, max_tokens=1024)
     obj = _extrair_json_obj(resp)
-    lidos = [_norm_preco(p) for p in obj.get("precos", []) if str(p).strip()]
     avisos: list[str] = []
+
+    # 1) os PARES (a prova do preço trocado)
+    itens_do_projeto = [(d.nome, _fmt_preco(d.preco_por))
+                        for d in dados_por_slot.values()
+                        if d.nome and d.preco_por is not None]
+    for par in obj.get("itens", []) or []:
+        nome_lido = str(par.get("nome", "")).strip()
+        preco_lido = _norm_preco(par.get("preco", ""))
+        if not nome_lido or not preco_lido:
+            continue
+        casados = [(n, p) for n, p in itens_do_projeto
+                   if _casa_nome(nome_lido, n)]
+        if not casados:
+            continue                      # nome que não é do projeto: ruído
+        if any(p == preco_lido for _n, p in casados):
+            continue                      # o par confere
+        certo = casados[0][1]
+        dono_do_preco = next((n for n, p in itens_do_projeto
+                              if p == preco_lido), None)
+        if dono_do_preco is not None:
+            avisos.append(
+                f"A peça mostra “{nome_lido}” com R$ {preco_lido}, que é o "
+                f"preço de “{dono_do_preco}” (o esperado era R$ {certo}) — "
+                "parece PREÇO TROCADO entre as células.")
+        else:
+            avisos.append(
+                f"A peça mostra “{nome_lido}” com R$ {preco_lido}, mas o "
+                f"projeto diz R$ {certo} — confira essa célula.")
+
+    # 2) a rede antiga (preço solto que não pertence a ninguém)
+    lidos = [_norm_preco(p) for p in obj.get("precos", []) if str(p).strip()]
     for p in lidos:
         if p and esperados and p not in esperados:
             avisos.append(f"A peça mostra o preço R$ {p}, que não bate com "

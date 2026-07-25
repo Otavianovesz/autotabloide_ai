@@ -176,11 +176,9 @@ class ProdutoRepositorio:
         self.session.flush()
         return produto
 
-    def excluir(self, produto_id: int) -> None:
-        produto = self.get(produto_id)
-        if produto is not None:
-            self.session.delete(produto)
-            self.session.flush()
+    # F13/B10 (D-07): o hard-delete público `excluir` foi REMOVIDO — zero
+    # chamadores (nem produção, nem teste). A exclusão oficial de produto
+    # é a lixeira (`excluir_suave("produto", id)`, 30 dias, reversível).
 
 
 # ==============================================================================

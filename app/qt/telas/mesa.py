@@ -931,7 +931,9 @@ class MesaTela(QWidget):
         self._overrides = dict(p.overrides)                # F7.3: volta junto
         # RG-08: congelado NÃO re-sincroniza com o Ateliê (decisão travada)
         self._congelado = True
-        self._aplicar_mapa()
+        # F13/B1: reabrir projeto é DOCUMENTO novo — aqui o histórico
+        # recomeça de propósito (o resto dos callers preserva a pilha)
+        self._aplicar_mapa(novo_documento=True)
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
         self.btn_salvar_proj.setEnabled(bool(self._itens))
@@ -1343,7 +1345,13 @@ class MesaTela(QWidget):
 
     def _oferecer_recuperacao(self) -> None:
         """Passo 51: ao reabrir após uma queda, oferece recuperar o rascunho —
-        o dono decide (prévia com a hora)."""
+        o dono decide (prévia com a hora).
+
+        F13/B2d (L-05) + B2c (L-03): o diálogo tem TRÊS saídas em PT-BR —
+        Recuperar, Descartar de vez, e Deixar para depois. O X e o Esc
+        caem no "depois" (o rascunho FICA): fechar a janelinha é o gesto
+        universal de "decido depois", nunca uma destruição calada. Só o
+        botão que DIZ "descartar" descarta."""
         from app.core import rascunho
         if not rascunho.ha_rascunho():
             return
@@ -1353,16 +1361,28 @@ class MesaTela(QWidget):
         from PySide6.QtWidgets import QMessageBox
         hora = rascunho.hora_do_rascunho(estado)
         n = len(estado.get("itens", []))
-        r = QMessageBox.question(
-            self, "Recuperar rascunho?",
+        plural = "itens" if n != 1 else "item"
+        caixa = QMessageBox(self)
+        caixa.setWindowTitle("Recuperar rascunho?")
+        caixa.setIcon(QMessageBox.Icon.Question)
+        caixa.setText(
             f"Encontrei um rascunho automático de {hora} "
-            f"({n} itens) — parece que o app foi fechado sem salvar.\n\n"
-            "Quer recuperar esse trabalho?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if r == QMessageBox.StandardButton.Yes:
+            f"({n} {plural}) — parece que o app foi fechado sem salvar.\n\n"
+            "Quer recuperar esse trabalho?")
+        b_rec = caixa.addButton("Recuperar", QMessageBox.ButtonRole.AcceptRole)
+        b_desc = caixa.addButton("Descartar de vez",
+                                 QMessageBox.ButtonRole.DestructiveRole)
+        b_depois = caixa.addButton("Deixar para depois",
+                                   QMessageBox.ButtonRole.RejectRole)
+        caixa.setDefaultButton(b_rec)        # Enter recupera (o caminho bom)
+        caixa.setEscapeButton(b_depois)      # Esc/X = depois, NUNCA destrói
+        caixa.exec()
+        clicado = caixa.clickedButton()
+        if clicado is b_rec:
             self._recuperar_rascunho(estado)
-        else:
+        elif clicado is b_desc:
             rascunho.descartar_rascunhos()
+        # b_depois / Esc / X: não faz NADA — o rascunho continua no disco
 
     def _recuperar_rascunho(self, estado: dict) -> None:
         from app.qt.telas import servico
@@ -1444,18 +1464,16 @@ class MesaTela(QWidget):
             mostrar_toast(self, "Não achei variações da mesma marca para "
                                 "agrupar.")
             return
-        from PySide6.QtWidgets import QMessageBox
+        from app.qt.design.componentes import perguntar
         agrupados = 0
         for grupo in grupos:
             nomes = " · ".join((it.nome or "?") for it in grupo[:4])
-            r = QMessageBox.question(
-                self, "Variações do mesmo produto?",
-                f"Estes parecem sabores/tamanhos do mesmo produto:\n\n"
-                f"{nomes}\n\nAgrupar num slot só (as fotos viram o leque "
-                "multi)?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No)
-            if r == QMessageBox.StandardButton.Yes:
+            if perguntar(
+                    self, "Variações do mesmo produto?",
+                    f"Estes parecem sabores/tamanhos do mesmo produto:\n\n"
+                    f"{nomes}\n\nAgrupar num slot só (as fotos viram o leque "
+                    "multi)?",
+                    sim="Agrupar num slot", nao="Deixar separados"):
                 self._agrupar_variacoes(grupo)
                 agrupados += 1
         if agrupados:
@@ -2341,9 +2359,26 @@ class MesaTela(QWidget):
                       else f"Grade preenchida com {len(self._mapa)} itens.{aviso}")
         self._recarregar_lista()
 
-    def _aplicar_mapa(self) -> None:
-        """Recompõe o canvas a partir do mapa (usado no preencher e no reabrir)."""
-        self.area.carregar(self._layout, self._dados_por_slot(), self._fundo)
+    def _aplicar_mapa(self, *, novo_documento: bool = False) -> None:
+        """Recompõe o canvas a partir do mapa.
+
+        F13/B1 (CD-01 — os 9 Ctrl+Z da gravação): edição de DADOS (nome/
+        preço, foto, promoção, observação, compor/separar, auto-preencher)
+        recompõe SEM recriar o canvas — a lição de _excluir_item (:443)
+        vale aqui: ``carregar()`` zeraria a pilha de desfazer. Só um
+        DOCUMENTO novo (reabrir projeto congelado, layout trocado pelo
+        Ateliê) recomeça o histórico de propósito."""
+        if novo_documento:
+            self.area.carregar(self._layout, self._dados_por_slot(), self._fundo)
+        else:
+            # atualizar_dados preserva o histórico do canvas (carregar o zeraria)
+            self.area.canvas.atualizar_dados(self._dados_por_slot())
+            self.area.canvas.viewport().update()
+            # D5: o undo versiona {layout, mapa, overrides} — mapa novo
+            # (auto-preencher, compor/separar) vira ESTADO na pilha viva;
+            # edição só de item (nome/preço) dá estado idêntico e o dedup
+            # do Historico a engole. Nunca recriar a pilha (CD-01).
+            self.area.canvas._registrar_hist()
         self.btn_exportar.setEnabled(bool(self._mapa))
         self._atualizar_nav()
 

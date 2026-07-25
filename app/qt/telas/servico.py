@@ -700,6 +700,21 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     )
 
 
+def dados_cartaz_de_item(it: "ItemMesa", *,
+                         validade_texto: str | None = None):
+    """F13/B6 (F-01): a receita ÚNICA ItemMesa→DadosProduto de cartaz e
+    etiqueta. Havia TRÊS receitas quase-iguais (a da Fábrica, a das
+    etiquetas em lote e o dict do projeto reaberto) e a divergência era a
+    causa da etiqueta de bebida sair SEM o selo +18 (decisão travada
+    ferida em silêncio) e do projeto CARTAZ reaberto perder mais18 e
+    categoria. Toda porta de cartaz passa por AQUI."""
+    return dados_cartaz_de_produto({
+        "nome": it.nome, "preco": it.preco, "preco_de": it.preco_de,
+        "imagem": it.imagem, "validade": it.validade,
+        "mais18": it.mais18, "categoria": it.categoria,
+    }, validade_texto=validade_texto)
+
+
 def dados_de_projeto_aberto(aberto):
     """slot→DadosProduto de um ``ProjetoAberto``, com a precedência oficial
     (override > item > banco) e as FALTAS visíveis (I2 — foto sumida nunca
@@ -715,11 +730,10 @@ def dados_de_projeto_aberto(aberto):
             if it is None:
                 faltas.append(f"célula {sid}: o item do projeto sumiu")
                 continue
-            dados[sid] = dados_cartaz_de_produto(
-                {"nome": it.nome, "preco": it.preco,
-                 "preco_de": it.preco_de, "imagem": it.imagem,
-                 "validade": it.validade},
-                validade_texto=aberto.validade_oferta)
+            # F13/B6: a receita ÚNICA — o dict incompleto daqui perdia
+            # mais18/categoria no projeto CARTAZ reaberto (Modo Pai incluso)
+            dados[sid] = dados_cartaz_de_item(
+                it, validade_texto=aberto.validade_oferta)
     else:
         abrev = abreviacoes_tabloide()
         registro = selos_disponiveis()
@@ -1857,10 +1871,9 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
     etiquetas = []
     for i, it in enumerate(itens, 1):
         status_cb(f"Etiqueta {i}/{len(itens)}…")
-        d = dados_cartaz_de_produto({
-            "nome": it.nome, "preco": it.preco,
-            "preco_de": it.preco_de, "imagem": it.imagem,
-            "validade": it.validade})
+        # F13/B6 (F-01): a receita ÚNICA — o dict local daqui não passava
+        # mais18 e a etiqueta de bebida saía SEM o selo +18, calada
+        d = dados_cartaz_de_item(it)
         avisos.extend(f"“{it.nome}”: {a}"
                       for a in validar_composicao(lay, {sid: d}, cartaz=True))
         img = compor_pagina(lay, lay.paginas[0], {sid: d})

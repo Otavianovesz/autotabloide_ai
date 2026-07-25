@@ -140,10 +140,14 @@ class _Vigia:
 
     def __init__(self) -> None:
         self.disparou = False
+        self.disparos = 0
         self.titulo: str | None = None
         self.textos_botoes: list[str] = []
         self.botao_com_foco: str | None = None
         self.botao_padrao: str | None = None
+        # o botão pedido NÃO existia no diálogo (o vigia fechou com reject
+        # para o teste não pendurar — a asserção fica para depois do with)
+        self.faltou_botao: str | None = None
 
 
 def _dialogo_modal_visivel() -> QDialog | None:
@@ -158,11 +162,14 @@ def _dialogo_modal_visivel() -> QDialog | None:
 
 @contextmanager
 def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
-                  intervalo_ms: int = 15, timeout_ms: int = 4000):
+                  intervalo_ms: int = 15, timeout_ms: int = 4000,
+                  vezes: int = 1):
     """Arma um vigia que responde o PRÓXIMO diálogo modal pelo GESTO:
     clique REAL no botão com esse texto — ou uma tecla no diálogo, se
     ``tecla`` for dada. O vigia roda DENTRO do laço de eventos do
-    próprio ``exec()``; nada é monkeypatchado.
+    próprio ``exec()``; nada é monkeypatchado. Com ``vezes=N`` ele se
+    rearma e responde N diálogos SEGUIDOS da mesma forma (fluxos que
+    abrem mais de um, como o editar nome+preço da estante).
 
         with vigia_dialogo("Cancelar") as v:
             ...ação que abre o QMessageBox...
@@ -172,6 +179,7 @@ def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
     timer = QTimer()
     timer.setInterval(intervalo_ms)
     restante = {"ms": timeout_ms}
+    respondidos: set[int] = set()
 
     def _tenta() -> None:
         restante["ms"] -= intervalo_ms
@@ -179,9 +187,12 @@ def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
             timer.stop()
             return
         caixa = _dialogo_modal_visivel()
-        if caixa is None:
+        if caixa is None or id(caixa) in respondidos:
             return
-        timer.stop()
+        respondidos.add(id(caixa))
+        visto.disparos += 1
+        if visto.disparos >= vezes:
+            timer.stop()
         visto.disparou = True
         visto.titulo = caixa.windowTitle()
         botoes = (list(caixa.buttons()) if isinstance(caixa, QMessageBox)
@@ -196,8 +207,12 @@ def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
             QTest.keyClick(caixa, tecla)
             return
         alvo = [b for b in botoes if b.text().strip() == texto_botao]
-        assert alvo, (f"o diálogo '{visto.titulo}' não tem botão "
-                      f"'{texto_botao}' — tem {visto.textos_botoes}")
+        if not alvo:
+            # nunca ASSERT aqui dentro: exceção em slot é engolida pelo
+            # laço do Qt e o exec() ficaria aberto para sempre
+            visto.faltou_botao = texto_botao
+            caixa.reject()
+            return
         QTest.mouseClick(alvo[0], Qt.MouseButton.LeftButton)
 
     timer.timeout.connect(_tenta)

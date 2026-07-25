@@ -109,11 +109,41 @@ def _rotacao_configurada(root: SystemRoot) -> int:
         return ROTACAO_PADRAO
 
 
+def _banco_integro(caminho: Path) -> bool:
+    """F13/B5 (CB-01): quick_check ANTES do snapshot do boot."""
+    import sqlite3
+    try:
+        con = sqlite3.connect(f"file:{caminho.as_posix()}?mode=ro", uri=True)
+        try:
+            r = con.execute("PRAGMA quick_check").fetchone()
+        finally:
+            con.close()
+        return bool(r) and str(r[0]).lower() == "ok"
+    except sqlite3.Error:
+        return False
+
+
 def snapshot_automatico(raiz: SystemRoot | Path | str | None = None) -> Path | None:
-    """Snapshot 'auto' na abertura do app + rotação (só dos automáticos)."""
+    """Snapshot 'auto' na abertura do app + rotação (só dos automáticos).
+
+    F13/B5 (CB-01): banco vivo CORROMPIDO não vira snapshot — antes ele
+    entrava como o mais novo e a rotação empurrava os backups BONS para
+    fora (a cada boot, um bom a menos). Pulado = registrado no log da
+    raiz; a tela do boot já acusa o banco pelo R-138 (verificar_ao_abrir)."""
     root = _root(raiz)
     if not root.caminho_banco.exists():
         return None                                # primeira execução, sem banco
+    if not _banco_integro(root.caminho_banco):
+        try:
+            pasta_log = root.raiz / "logs"
+            pasta_log.mkdir(parents=True, exist_ok=True)
+            with open(pasta_log / "cofre.log", "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} snapshot "
+                        "automático PULADO: o banco vivo falhou no "
+                        "quick_check — os backups bons foram preservados.\n")
+        except OSError:
+            pass
+        return None
     caminho = criar_snapshot(root, rotulo="auto")
     manter = _rotacao_configurada(root)
     autos = [s for s in listar_snapshots(root) if s["rotulo"] == "auto"]

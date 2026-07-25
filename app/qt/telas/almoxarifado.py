@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -819,13 +818,12 @@ class AlmoxarifadoTela(QWidget):
         if not alvos:
             mostrar_toast(self, "Nenhuma foto na lista atual para tratar.")
             return
-        from PySide6.QtWidgets import QMessageBox
-        r = QMessageBox.question(
-            self, "Estúdio em lote",
-            f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
-            "vira uma versão (dá para restaurar no Histórico).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if r != QMessageBox.StandardButton.Yes:
+        from app.qt.design.componentes import perguntar
+        if not perguntar(
+                self, "Estúdio em lote",
+                f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
+                "vira uma versão (dá para restaurar no Histórico).",
+                sim=f"Tratar {len(alvos)} foto(s)", nao="Cancelar"):
             return
         com_gerador = servico.estudio_gerador_ligado()
 

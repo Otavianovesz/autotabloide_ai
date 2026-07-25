@@ -138,5 +138,14 @@ class BibliotecaImagens:
 
     def _podar(self, produto_id: int) -> None:
         versoes = self.listar_versoes(produto_id)
-        for v in versoes[: max(0, len(versoes) - self.max_versoes)]:
+        if len(versoes) <= self.max_versoes:
+            return
+        # F13/B4 (CI-05 — trava da F10: "original sempre preservada"): a
+        # poda NUNCA toca a versão mais ANTIGA — é a original (ou, num
+        # acervo que já sofreu a poda velha, a sobrevivente mais antiga:
+        # o melhor resgate possível). O limite vale para as DERIVADAS:
+        # morre o miolo mais velho; ficam a original + as recentes.
+        derivadas = versoes[1:]
+        excesso = len(versoes) - self.max_versoes
+        for v in derivadas[:excesso]:
             v.unlink()

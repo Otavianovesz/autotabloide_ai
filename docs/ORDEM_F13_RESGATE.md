@@ -521,3 +521,110 @@ suíte depende de ordem, mesmo com itens invertidos.
   com foco e o botão padrão — o teste vermelho do B3 nasce dele em 3 linhas.
 
 **PARADO aqui (L7). O Bloco B não foi iniciado. Aguardando o selo do arquiteto.**
+
+---
+
+## RESPOSTA DO BUILDER — BLOCO B (Fable 5, 25/07/2026)
+
+O Bloco A foi fechado no commit `f649732` (pedido do §4). Todos os itens
+abaixo seguiram a L1 na letra: **cada conserto tem a rodada VERMELHA
+registrada nesta bancada antes do conserto** (para os itens cujo conserto
+precisei escrever antes de rodar, o vermelho foi registrado por *stash
+dance* — os arquivos de produção voltam ao estado anterior via
+`git stash`, a rodada vermelha executa, o `git stash pop` devolve o
+conserto; a saída bruta com os 11 vermelhos nominais está no histórico da
+sessão). Todos os testes novos moram em `app/tests/test_bloco_b_f13.py`
+(24 testes) e usam a bancada de gesto do Bloco A.
+
+### A tabela item × prova (vermelho → conserto → verde)
+
+| # | conserto | teste (vermelho antes) | onde mexi |
+|---|---|---|---|
+| B1 | editar nome/preço PRESERVA a pilha de desfazer; `_aplicar_mapa` só recria o histórico com `novo_documento=True` (reabrir congelado); mapa novo vira ESTADO na pilha viva (D5), dedup engole o resto | `test_b1_editar_nome_e_preco_preserva_o_desfazer` (gesto: mover região + 2 diálogos reais respondidos pelo vigia + desfazer pelo botão real) | `mesa.py` `_aplicar_mapa`/`abrir_projeto_congelado` |
+| B2 | o véu do diálogo é um widget de verdade (`_VeuDialogo`): acompanha Resize da mãe, e o `destroyed` o DESTRÓI (não só tira do dict — COND-1) | `test_mut1_v01_*` CRESCEU: `pai.findChild("veuDialogo")` ausente/invisível (nasceu vermelha) | `animacoes.py` `_VeuDialogo`/`_matar_veu` |
+| B2b | foto do crossfade ganhou nome (`veuTrocaTela`) + prazo de morte (ms+400) + `_fim` idempotente e blindado; `varrer_veus_orfaos()` roda na fronteira de TODA troca de tela; a paleta do Ctrl+K fecha no `ir_para` | `test_b2_cond2_modal_no_meio_do_crossfade_janela_volta_ao_brilho` (COND-2: a sequência REAL do §19, filtro INSTALADO; o vermelho registrado foi exatamente "a paleta atravessou a troca", L-10) | `animacoes.py` crossfade, `shell.py` ir_para |
+| B2c | os 8 `QMessageBox.question` Yes/No viraram `perguntar()` (PT-BR, VERBO nos botões, padrão declarado no seguro, Esc no não); tradutor `qtbase` pt-BR nos 2 entrypoints (nativos tipo QInputDialog); varredura por IDENTIFICADOR na bancada | `test_b2c_varredura_nenhum_question_estatico_na_producao` + `test_b2c_perguntar_fala_portugues_pelo_clique_real` | `componentes.py`, `configuracoes.py` ×3, `almoxarifado.py`, `mesa.py`, `modo_pai.py`, `projetos_dialog.py`, entrypoints |
+| B2d | o diálogo de recuperação tem TRÊS saídas: Recuperar (Enter), **Descartar de vez** (só ele destrói) e **Deixar para depois** (Esc/X — o rascunho FICA). De carona: "1 itens" → "1 item" (L-04) | `test_b2d_esc_no_recuperar_rascunho_deixa_para_depois` + `_descartar_explicito` + `_recuperar_recupera_e_fala_portugues` (os 3 pelo diálogo REAL) | `mesa.py` `_oferecer_recuperacao` |
+| B2e | sair do editor sujo PERGUNTA nos DOIS pontos: o "← Biblioteca" (a expectativa) e o `_editar` por cima de edição suja (o ponto da perda real) | `test_b2e_voltar_com_edicao_suja_pergunta_e_ficar_fica` + `test_b2e_sair_sem_salvar_sai_e_reabrir_pergunta_no_ponto_da_perda` (gesto: sujar pela barra real, sair pelo botão real) | `atelie.py` `_voltar`/`_editar` |
+| B3 | `setDefaultButton(Cancelar)` + `setEscapeButton` nos DOIS diálogos de confirmação — Enter nunca mais destrói/exporta | 4 testes `test_b3_*` (Enter/Esc pelo diálogo real; fechado logo após o selo do A) | `componentes.py`, `prevoo.py` |
+| B4 | a poda de versões NUNCA toca a mais antiga — a original (ou a sobrevivente mais antiga em acervo já podado) é eterna; o limite vale para as derivadas | `test_b4_a_original_sobrevive_a_11a_troca_por_conteudo` (7 trocas com cores únicas, limite 3 — a COR original tem de sobrar) | `biblioteca.py` `_podar` |
+| B5 | `quick_check` ANTES do snapshot do boot: corrompido não vira snapshot, não rotaciona os bons, e deixa rastro em `logs/cofre.log` (I2) | `test_b5_snapshot_do_boot_pula_banco_corrompido_e_preserva_os_bons` (o vermelho revelou que o código velho nem chegava a rotacionar: ESTOURAVA `sqlite3.DatabaseError` cru no boot) | `cofre.py` |
+| B6 | receita ÚNICA `dados_cartaz_de_item()` — as 3 receitas divergentes (Fábrica local, etiquetas em lote, dict do projeto reaberto) agora delegam; o +18 chega à etiqueta, e o projeto CARTAZ reaberto (Modo Pai incluso) não perde mais18/categoria | `test_b6_etiqueta_em_lote_diferencia_mais18_por_conteudo` (bytes da imagem embutida no PDF, porta inteira) + `test_b6_projeto_cartaz_reaberto_*` + `test_b6_fabrica_compoe_do_mesmo_dado_*` | `servico.py`, `fabrica.py` |
+| B7 | o juiz COMPARA a confiança: abaixo do piso (`conciliacao.juiz_confianca`, padrão 0,6, C3-são) vira AMARELO com o candidato à vista — nos DOIS ramos (confirmou e "é novo") | `test_b7_juiz_com_confianca_baixa_vira_amarelo` (0,05 pintava VERDE) + regressão `_confiante_segue_verde` | `conciliacao.py` |
+| B8 | a revisora pede e USA os pares nome+preço: preço do item A na célula do item B (os dois preços existem no projeto — o conjunto fechava!) agora vira aviso nominal "parece PREÇO TROCADO" | `test_b8_revisora_pega_preco_trocado_entre_dois_itens` + regressão anti-alarme-falso | `revisora.py` |
+| B9 | purga por ITEM (linha primeiro, commit, ARQUIVOS depois): FK vivo pula SÓ aquele item COM relato nominal ("FICOU na lixeira — algo vivo aponta"); `excluir_agora` com a mesma ordem; o toast do boot separa purgados de presos | `test_b9_purga_com_projeto_vivo_apontando_nao_aborta` (o vermelho: `IntegrityError` do ORM anulando o FK NOT NULL abortava TUDO, com os arquivos já apagados) | `lixeira.py`, `editor_app.py` |
+| B10 | os dois hard-deletes públicos REMOVIDOS (+ o import morto de `atelie.py`; o único teste que usava `excluir_layout` passou à lixeira oficial) | `test_b10_hard_deletes_sem_chamador_foram_removidos` (varredura por identificador — a lei dos vetos) | `persistencia.py`, `repositories.py`, `atelie.py`, `test_atelie.py` |
+
+### A definição de pronto do bloco, ponto a ponto
+
+1. **COND-1** ✅ — `test_mut1_v01` cresceu a asserção do véu FORA da tela;
+   nasceu vermelha ("o véu CONTINUA NA TELA... L-01", registrado) e o B2 a
+   deixou verde.
+2. **COND-2** ✅ — o teste da sequência real existe (Shell de verdade, vida
+   INSTALADA, modal abrindo no `showEvent` DENTRO do crossfade, paleta
+   aberta); nasceu vermelho pelo resíduo nº 2 (a paleta atravessando).
+3. **`--ordem-invertida` VERDE** ✅ (§4.5) — **886/0/0** na árvore final
+   (`saida_f13/bloco_b_invertida.xml`). A caça custou três rodadas e valeu:
+   os 2 presos eternos eram `QVariantAnimation` do zoom de ajuste do canvas
+   em estado `Stopped` DENTRO de `_VIVAS` — porque **`stop()` NÃO emite
+   `finished`** (finished só sai no fim NATURAL). O comentário da casa em
+   `_hover_saiu` ("remove de _VIVAS via finished") era uma LENDA. Conserto
+   na raiz: `_registrar` escuta `stateChanged→Stopped` (cobre os dois
+   desfechos) + prazo de autoencerramento para animação finita congelada +
+   o pulso do Skeleton se desliga no 1º tick invisível (ancestral escondido
+   não manda hideEvent ao filho — CPU a zero também em produção).
+4. **Os três de caracterização intocados** ✅ (COND-3) — `test_mut2/3/4`
+   não foram tocados neste bloco; invertem no C, como manda o contrato.
+
+### Os placares (junit versionado em `saida_f13/`)
+
+| prova | resultado |
+|---|---|
+| suíte da raiz ×2 | **886 verdes ×2, 0 falhas, 0 skips, exit 0** (`bloco_b_suite_1.xml`, `bloco_b_suite_2.xml`) |
+| ordem invertida (árvore final) | **886/0/0, exit 0** (`bloco_b_invertida.xml`) |
+| janela real (antes do selo, como manda o A2) | **4/0/0** (`bloco_b_janela.xml`) |
+
+*(O `.gitignore` ganhou `!saida_f13/` — o junit viaja no repo para a sua
+reauditoria, §4.4.)*
+
+### Achados próprios de bancada (L6)
+
+1. **A lenda do `stop()`/`finished`** (acima) — não estava em nenhum dossiê;
+   a prova de ordem invertida a desenterrou. As duas asserções de
+   `test_fase1_ui` agora imprimem QUEM ficou em voo (`_vivas_nominais`) —
+   fica como instrumento permanente.
+2. **O snapshot do boot com banco corrompido nem chegava à rotação**: a
+   rodada vermelha do B5 mostrou `sqlite3.DatabaseError` CRU subindo do
+   `_backup_sqlite` — o boot real morreria ali (CA-03 vizinho). O
+   quick_check agora barra antes.
+3. **O vigia de diálogo não pode assertar dentro do timer** — exceção em
+   slot é engolida pelo laço do Qt e o `exec()` fica aberto para sempre
+   (uma rodada pendurou a bancada). O vigia ganhou `faltou_botao` +
+   `reject()` e a asserção mora depois do `with`. E ganhou `vezes=N` para
+   fluxos com dois diálogos seguidos.
+4. **Rodar duas suítes pytest em paralelo pendura** (provável trava de
+   instância única/QLocalServer) — desde então, uma suíte por vez nesta
+   bancada; fica o registro para os próximos blocos.
+
+### O que ficou de fora (e por quê)
+
+- **`marca_propria` não existe no `ItemMesa`** — a receita única a passa
+  como False para itens da Mesa/Fábrica (o Almoxarifado, que tem o dado,
+  continua passando). Adicionar o campo ao ItemMesa é mudança de
+  serialização de projeto — não citada no B6; anoto para o arquiteto.
+- **QInputDialog nativo (editar nome/preço) fala inglês** de fábrica; o
+  tradutor qtbase pt-BR instalado nos entrypoints cobre no app real, mas
+  não há teste disso (depende do arquivo de tradução do PySide6 no pacote
+  — o spec do instalador precisa conferir isso no Bloco E, CA-08).
+- **Guarda de "fechar o APP com trabalho não salvo"**: implementei e
+  REVERTI — o `closeAllWindows()` do teardown penduraria a bancada inteira
+  num modal, e o caso citado pela ordem (L-09) é o do editor. Anotada como
+  ideia (com a solução do `event.spontaneous()` a discutir) — L8.
+- **O rascunho recuperado NÃO é consumido** — decisão minha registrada em
+  teste: ele só some no salvar de verdade ou no descarte explícito
+  (consumir na recuperação abriria janela de perda até o 1º auto-save).
+- A purga com item preso conta o preso no toast do boot separado
+  ("N apagados e M FICARAM") — o texto antigo somava tudo como "apagados".
+
+**PARADO no fim do Bloco B (L7). O Bloco C não foi iniciado. Aguardando o
+selo do arquiteto.**

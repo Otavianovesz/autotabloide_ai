@@ -43,7 +43,6 @@ from app.rendering.model import LayoutDef, layout_de_arte
 from app.rendering.persistencia import (
     carregar_layout,
     duplicar_layout,
-    excluir_layout,
     listar_layouts,
     renomear_layout,
     salvar_layout,
@@ -308,6 +307,18 @@ class AtelieTela(QWidget):
         return self._editor
 
     def _editar(self, layout_id: int, nome: str) -> None:
+        # F13/B2e (L-09, I2): ESTE é o ponto onde a edição não salva morre
+        # de verdade — o carregar() abaixo passa por cima. Nunca em silêncio.
+        ed = self._editor
+        if ed is not None and getattr(ed, "_sujo", False):
+            from app.qt.design.componentes import perguntar
+            de = ed.nome_layout_atual or "um layout"
+            if not perguntar(
+                    self, "Descartar a edição não salva?",
+                    f"O editor tem edição NÃO SALVA de “{de}”. "
+                    f"Abrir “{nome}” descarta essas mudanças.",
+                    sim="Descartar e abrir", nao="Voltar"):
+                return
         with self._banco().Session() as s:
             ldef = carregar_layout(s, layout_id)
         if ldef is None:
@@ -320,5 +331,18 @@ class AtelieTela(QWidget):
         editor.area.canvas.ajustar()
 
     def _voltar(self) -> None:
+        # F13/B2e (L-09): título com "•" e um clique em "Biblioteca" NÃO
+        # pode voltar em silêncio — 20 min de layout não somem assim (I2).
+        ed = self._editor
+        if ed is not None and getattr(ed, "_sujo", False):
+            from app.qt.design.componentes import perguntar
+            nome = ed.nome_layout_atual or "sem nome"
+            if not perguntar(
+                    self, "Sair sem salvar?",
+                    f"O layout “{nome}” tem edição NÃO SALVA. Saindo agora, "
+                    "abrir outro layout descarta essas mudanças. "
+                    "(Para salvar: Ctrl+S na barra do editor.)",
+                    sim="Sair sem salvar", nao="Ficar no editor"):
+                return
         self._paginas.setCurrentIndex(0)
         self.recarregar()      # miniaturas refletem o que foi salvo

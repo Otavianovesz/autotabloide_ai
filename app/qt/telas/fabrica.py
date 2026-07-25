@@ -591,14 +591,11 @@ class FabricaTela(QWidget):
         self._recarregar_lista()          # re-seleciona a linha → campos + preview
 
     def _dados(self, it: servico.ItemMesa) -> DadosProduto:
-        return DadosProduto(
-            it.nome,
-            preco_de=servico.preco_decimal(it.preco_de),
-            preco_por=servico.preco_decimal(it.preco),
-            imagem_path=it.imagem,
-            mais18=it.mais18,
-            texto_legal=f"Válido até {it.validade}" if it.validade else None,
-        )
+        # F13/B6 (F-01): a receita ÚNICA do cartaz — preview, pré-voo e
+        # export da Fábrica compõem do MESMO dado que o kit/relâmpago/
+        # etiquetas (a receita local daqui perdia categoria e divergir
+        # ERA a causa do selo +18 sumir na porta das etiquetas)
+        return servico.dados_cartaz_de_item(it)
 
     def _compor_preview(self, it: servico.ItemMesa) -> None:
         img = compor_pagina(self._layout, self._layout.paginas[0], self._dados(it))

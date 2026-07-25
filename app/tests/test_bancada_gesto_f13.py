@@ -62,32 +62,8 @@ def raiz(tmp_path, monkeypatch):
     return root
 
 
-@pytest.fixture()
-def vida():
-    """Instala a vida visual (véu/hover) SÓ para o teste e desinstala no
-    fim — o resto da bancada offscreen segue determinística, como o
-    docstring de instalar_vida promete."""
-    from app.qt.design import animacoes as anim
-    app = _app()
-    anim._cache_config["valor"] = True     # animações ligadas sem tocar o banco
-    anim._cache_config["transp"] = False   # véu permitido
-    anim.instalar_vida(app)
-    yield anim
-    if anim._animador is not None:
-        app.removeEventFilter(anim._animador)
-        anim._animador = None
-    if anim._hover_global is not None:
-        app.removeEventFilter(anim._hover_global)
-        anim._hover_global = None
-    anim._cache_config.clear()
-    for registro in (anim._veus, anim._hovers, anim._veus_troca):
-        for w in list(registro.values()):
-            try:
-                w.hide()
-                w.deleteLater()
-            except Exception:
-                pass
-        registro.clear()
+# fixture `vida` compartilhada: mora no conftest desde o Bloco B (a COND-2
+# também precisa dela)
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +101,15 @@ def test_mut1_v01_destroyed_limpa_o_registro_do_veu(vida):
     assert chave not in anim._veus, (
         "o destroyed do diálogo não limpou _veus — a linha "
         "animacoes.py:287 foi quebrada (mutação nº1) ou removida")
+
+    # COND-1 do selo do Bloco A (§4.3): não basta o REGISTRO limpar — o
+    # VÉU tem de sair da TELA. Era exatamente o que o teste não provava
+    # (tela escura eterna do L-01); nasceu vermelha e o B2 a deixou verde.
+    drenar()
+    veu_na_tela = pai.findChild(QWidget, "veuDialogo")
+    assert veu_na_tela is None or not veu_na_tela.isVisible(), (
+        "o véu CONTINUA NA TELA depois do diálogo morrer — a tela escura "
+        "do L-01 (COND-1)")
 
     pai.deleteLater()
     drenar()

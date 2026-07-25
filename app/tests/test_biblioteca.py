@@ -45,7 +45,9 @@ def test_limite_de_versoes(tmp_path):
     bib = BibliotecaImagens(tmp_path / "lib", max_versoes=2)
     for cor in ["red", "blue", "green", "yellow"]:
         bib.ingerir(7, _bytes_img(cor))
-    assert len(bib.listar_versoes(7)) == 2  # só as 2 mais recentes
+    # F13/B4: o limite vale — mas quem fica é a ORIGINAL + a mais recente
+    # (antes eram "as 2 mais recentes" e a original morria na poda)
+    assert len(bib.listar_versoes(7)) == 2
 
 
 def test_processador_e_aplicado(tmp_path):

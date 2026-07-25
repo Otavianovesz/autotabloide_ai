@@ -24,6 +24,11 @@ def confirmar_pre_voo(parent: QWidget, avisos: list[str],
                              + ("\n…" if len(avisos) > 12 else ""))
     seguir = caixa.addButton(f"{acao} mesmo assim",
                              QMessageBox.ButtonRole.AcceptRole)
-    caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+    cancelar = caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+    # F13/B3 (CF-01): o docstring do módulo sempre prometeu que "seguir
+    # mesmo assim" nunca é o padrão — agora o código DECLARA isso: Enter
+    # e Esc caem no Cancelar (parar e ler é o caminho de menor energia).
+    caixa.setDefaultButton(cancelar)
+    caixa.setEscapeButton(cancelar)
     caixa.exec()
     return caixa.clickedButton() is seguir

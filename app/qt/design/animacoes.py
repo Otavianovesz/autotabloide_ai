@@ -88,6 +88,41 @@ def _registrar(anim: QAbstractAnimation) -> None:
     # nunca emite finished — o destroyed limpa o registro
     anim.destroyed.connect(_fora)
 
+    # F13/B2 (a prova de ordem invertida do A6 desmontou uma LENDA da
+    # casa): stop() NÃO emite finished — finished só sai no fim NATURAL.
+    # Toda animação interrompida por stop() (o zoom de ajuste do canvas
+    # trocado no meio, o hover) ficava em _VIVAS para sempre. O sinal
+    # certo é stateChanged→Stopped, que cobre os dois desfechos.
+    def _mudou_estado(novo, _velho=None) -> None:
+        if novo == QAbstractAnimation.State.Stopped:
+            _fora()
+
+    anim.stateChanged.connect(_mudou_estado)
+    # F13/B2 (a prova de ordem invertida do A6): animação FINITA que
+    # congelar no meio (modal travando o laço, dono do widget sumindo sem
+    # destroyed) se encerra SOZINHA logo depois do prazo dela — nada fica
+    # "em voo" para sempre. Loop infinito (skeleton) fica de fora: morre
+    # com o dono, via destroyed.
+    dur = anim.totalDuration()
+    if dur >= 0:
+        from PySide6.QtCore import QTimer
+
+        def _prazo() -> None:
+            try:
+                if anim not in _VIVAS:
+                    return
+                if anim.state() == QAbstractAnimation.State.Running:
+                    anim.stop()          # emite finished → _fora
+                else:
+                    # parada SEM finished (stop() numa animação que já
+                    # estava Stopped não emite nada — o caso do canvas
+                    # que a prova invertida pegou): sai do registro direto
+                    _fora()
+            except RuntimeError:
+                _fora()                  # C++ já morto: só limpa o registro
+
+        QTimer.singleShot(dur + 500, _prazo)
+
 
 def animacoes_ativas() -> int:
     """Quantas animações estão EM VOO agora (o teste do passo 92 usa)."""
@@ -234,7 +269,8 @@ def _hover_saiu(botao: QWidget) -> None:
         return
     anterior = getattr(veu, "_anim", None)
     if anterior is not None:
-        anterior.stop()              # remove de _VIVAS via finished
+        anterior.stop()              # sai de _VIVAS via stateChanged→Stopped
+                                     # (F13/B2: stop() NÃO emite finished)
     efeito = veu.graphicsEffect()
     anim = QPropertyAnimation(efeito, b"opacity", veu)
     anim.setDuration(DURACAO_HOVER_MS)
@@ -263,6 +299,46 @@ def instalar_vida(app) -> None:
         app.installEventFilter(_hover_global)
 
 
+class _VeuDialogo(QWidget):
+    """F13/B2 (V-01..05, L-01): o véu escurecido atrás de um diálogo.
+
+    - acompanha o RESIZE da janela-mãe (antes ficava do tamanho velho);
+    - morre de verdade em ``morrer()`` (o destroyed do diálogo chama);
+    - carrega o objectName "veuDialogo" para a varredura de órfãos."""
+
+    def __init__(self, pai: QWidget) -> None:
+        super().__init__(pai)
+        self.setObjectName("veuDialogo")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setGeometry(pai.rect())
+        pai.installEventFilter(self)
+
+    def eventFilter(self, obj, ev):  # noqa: N802 (Qt)
+        if obj is self.parentWidget() and ev.type() == QEvent.Type.Resize:
+            self.setGeometry(self.parentWidget().rect())
+        return False
+
+    def morrer(self) -> None:
+        pai = self.parentWidget()
+        if pai is not None:
+            pai.removeEventFilter(self)
+        self.hide()
+        self.deleteLater()
+
+
+def _matar_veu(chave: int) -> None:
+    """Tira do registro E da tela — a linha do V-01 só tirava do dict e o
+    véu ficava PARA SEMPRE na janela quando o Hide não passava pelo filtro
+    (a tela escura permanente do L-01)."""
+    veu = _veus.pop(chave, None)
+    if veu is not None:
+        try:
+            veu.morrer()
+        except RuntimeError:
+            pass                     # C++ já morto (a janela-mãe se foi)
+
+
 def _entrada_dialogo(dlg: QDialog) -> None:
     if dlg.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen):
         return                       # janela que nunca aparece não anima
@@ -275,16 +351,12 @@ def _entrada_dialogo(dlg: QDialog) -> None:
     if (pai is not None and pai.isVisible() and id(dlg) not in _veus
             and not transparencias_reduzidas()):     # F3 passo 29
         from app.qt.design import tokens as t
-        veu = QWidget(pai)
-        veu.setObjectName("veuDialogo")
-        veu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        veu.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        veu = _VeuDialogo(pai)
         veu.setStyleSheet(f"background: {t.VEU_DIALOGO};")
-        veu.setGeometry(pai.rect())
         _veus[id(dlg)] = veu
         fade_in(veu, DURACAO_HOVER_MS)
-        dlg.destroyed.connect(lambda _=None, d=id(dlg): _veus.pop(d, None))
+        # F13/B2: o destroyed DESTRÓI o véu (não só o registro)
+        dlg.destroyed.connect(lambda _=None, d=id(dlg): _matar_veu(d))
 
     # corpo: fade + leve scale-in (0.98 → 1.0) via windowOpacity + geometry
     fim = dlg.geometry()
@@ -309,10 +381,26 @@ def _entrada_dialogo(dlg: QDialog) -> None:
 
 def _remover_veu(dlg: QDialog) -> None:
     dlg.setProperty("_anim_entrou", False)   # reabrir anima de novo
-    veu = _veus.pop(id(dlg), None)
-    if veu is not None:
-        veu.hide()
-        veu.deleteLater()
+    _matar_veu(id(dlg))
+
+
+def varrer_veus_orfaos(janela: QWidget) -> int:
+    """F13/B2/B2b (L-01/L-02): rede de segurança da TROCA DE TELA — véu de
+    diálogo e foto de crossfade que ficaram na janela SEM registro vivo
+    morrem aqui. Devolve quantos morreram (o teste confere o conteúdo)."""
+    vivos = {id(v) for v in _veus.values()}
+    vivos |= {id(v) for v in _veus_troca.values()}
+    n = 0
+    for nome in ("veuDialogo", "veuTrocaTela"):
+        for w in janela.findChildren(QWidget, nome):
+            if id(w) not in vivos:
+                try:
+                    w.hide()
+                    w.deleteLater()
+                except RuntimeError:
+                    continue
+                n += 1
+    return n
 
 
 _veus_troca: dict[int, QWidget] = {}     # container → foto da tela antiga
@@ -345,6 +433,7 @@ def crossfade(container, de: QWidget, para: QWidget,
         antigo.deleteLater()
     foto = de.grab()
     veu = QLabel(container)
+    veu.setObjectName("veuTrocaTela")    # F13/B2b: a varredura o encontra
     veu.setPixmap(foto)
     veu.setGeometry(0, 0, container.width(), container.height())
     veu.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -363,9 +452,19 @@ def crossfade(container, de: QWidget, para: QWidget,
     def _fim(cid=id(container)):
         ov = _veus_troca.pop(cid, None)
         if ov is not None:
-            ov.hide()
-            ov.deleteLater()
+            try:
+                ov.hide()
+                ov.deleteLater()
+            except RuntimeError:
+                pass                 # C++ já morto junto com o container
 
     anim.finished.connect(_fim)
+    # F13/B2b (L-02): a animação pode morrer PELA METADE quando um modal
+    # abre no meio da troca (o rascunho da Mesa abre no showEvent, DENTRO
+    # do setCurrentIndex acima) — a foto da tela velha ficava semitransparente
+    # por cima para sempre. O prazo garante: passado o tempo dela + folga,
+    # a foto morre, animada ou não. _fim é idempotente.
+    from PySide6.QtCore import QTimer
+    QTimer.singleShot(ms + 400, _fim)
     _registrar(anim)
     anim.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)

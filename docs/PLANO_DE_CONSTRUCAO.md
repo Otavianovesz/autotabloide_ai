@@ -446,3 +446,40 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   `montar_editor` com o fallback da F12 que faltava — o boot morria de outra
   pasta/clone antes da janela). NENHUM dos 6 achados 🔴 consertado (proibido no
   bloco). Resposta completa do builder no fim de `docs/ORDEM_F13_RESGATE.md`.
+  **Bloco A SELADO pelo arquiteto (§4 da ordem, 25/07)** com 3 condições
+  (COND-1/2/3) e a correção do §4.2 (quem morria de outra pasta eram os 4
+  scripts de bancada, não o boot do dono); commit `f649732`.
+  —— **Bloco B (AS HEMORRAGIAS) EXECUTADO (25/07/2026) — PARADO no fim do
+  bloco aguardando o selo do arquiteto (L7).** Os 15 itens (B1..B10 +
+  B2b/c/d/e), TODOS na disciplina L1 (rodada vermelha REGISTRADA antes de
+  cada conserto; 24 testes novos em `test_bloco_b_f13.py`, por gesto/conteúdo
+  sobre a bancada do A): B1 editar nome/preço preserva o desfazer
+  (`_aplicar_mapa` só recria histórico em documento novo; mapa novo vira
+  estado D5); B2 véu vive como `_VeuDialogo` (Resize da mãe + destroyed
+  DESTRÓI — COND-1 verde) + `varrer_veus_orfaos` na troca de tela; B2b foto
+  do crossfade nomeada com prazo de morte + paleta Ctrl+K fecha no ir_para
+  (COND-2 verde pela sequência real do §19); B2c os 8 Yes/No viraram
+  `perguntar()` PT-BR com padrão seguro + tradutor qtbase + varredura de
+  identificador; B2d o "Recuperar rascunho?" tem 3 saídas e o X/Esc DEIXA O
+  RASCUNHO (e "1 item" concorda); B2e sair do editor sujo pergunta no
+  "← Biblioteca" E no abrir-por-cima; B3 Enter/Esc caem no Cancelar
+  declarado; B4 a poda NUNCA mata a versão mais antiga (a original é eterna);
+  B5 quick_check antes do snapshot do boot (corrompido não entra nem
+  rotaciona os bons; log em logs/cofre.log); B6 receita ÚNICA
+  `dados_cartaz_de_item` (o +18 voltou à etiqueta em lote POR PIXEL; projeto
+  CARTAZ reaberto não perde mais18/categoria); B7 o juiz respeita a
+  confiança (piso `conciliacao.juiz_confianca` 0,6, ambíguo = AMARELO nos 2
+  ramos); B8 a revisora confere PARES nome+preço (preço TROCADO entre duas
+  células agora acusa nominal); B9 purga por item, linha antes dos arquivos,
+  preso relatado ("FICOU na lixeira") e o boot não cai; B10 os 2 hard-deletes
+  públicos removidos (varredura de ausência). **Achado próprio maior (não
+  estava em dossiê nenhum): `stop()` NÃO emite `finished` no Qt** — toda
+  animação interrompida ficava em `_VIVAS` para sempre (o comentário da casa
+  era lenda); conserto na raiz com `stateChanged→Stopped` + prazo de
+  autoencerramento + pulso do Skeleton se desliga invisível. **Placares
+  (junit VERSIONADO em `saida_f13/`): 886 verdes ×2, zero skips, exit-0;
+  `--ordem-invertida` 886/0/0 (o critério do §4.5, VERDE); janela real
+  4/0/0.** Fora (anotado na resposta): marca_propria no ItemMesa,
+  QInputDialog nativo (tradutor cobre; spec confere no E), guarda de fechar
+  o app (revertida por L8 + risco de pendurar a bancada; ideia anotada com
+  event.spontaneous()).

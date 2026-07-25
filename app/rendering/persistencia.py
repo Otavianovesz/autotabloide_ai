@@ -210,9 +210,8 @@ def duplicar_layout(session: Session, layout_id: int, novo_nome: str) -> Layout 
     session.flush()
     return copia
 
-
-def excluir_layout(session: Session, layout_id: int) -> None:
-    row = session.get(Layout, layout_id)
-    if row is not None:
-        session.delete(row)
-        session.flush()
+# F13/B10 (D-07): o hard-delete público `excluir_layout` foi REMOVIDO —
+# não tinha nenhum chamador de produção (a UI usa a lixeira:
+# `excluir_suave("layout", id)` + purga de 30 dias) e era uma mina
+# latente: com um ProjetoSalvo vivo apontando (FK sem ondelete), o
+# primeiro uso real estouraria IntegrityError.

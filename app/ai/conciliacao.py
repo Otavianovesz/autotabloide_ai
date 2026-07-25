@@ -99,6 +99,9 @@ class LimiaresConciliacao:
     verde: float = 88.0    # score >= verde  -> VERDE
     amarelo: float = 62.0  # amarelo <= score < verde -> AMARELO
     top_k: int = 5
+    # F13/B7 (CI-03): piso de CONFIANÇA do juiz IA — abaixo dele o juiz
+    # nunca pinta VERDE (a trava da F9: "ambíguo vira amarelo")
+    juiz_confianca: float = 0.6
 
 
 def limiares_de_config(session: Session) -> LimiaresConciliacao:
@@ -113,13 +116,21 @@ def limiares_de_config(session: Session) -> LimiaresConciliacao:
     cfg = ConfigRepositorio(session)
     padrao = LimiaresConciliacao()
     try:
+        juiz = float(cfg.get("conciliacao.juiz_confianca",
+                             padrao.juiz_confianca))
+    except (TypeError, ValueError):
+        juiz = padrao.juiz_confianca
+    if not (0 < juiz <= 1):
+        juiz = padrao.juiz_confianca          # C3: inválido cai no padrão
+    try:
         verde = float(cfg.get("conciliacao.verde", padrao.verde))
         amarelo = float(cfg.get("conciliacao.amarelo", padrao.amarelo))
     except (TypeError, ValueError):
-        return padrao
+        return LimiaresConciliacao(juiz_confianca=juiz)
     if not (0 < amarelo < verde <= 100):
-        return padrao
-    return LimiaresConciliacao(verde=verde, amarelo=amarelo)
+        return LimiaresConciliacao(juiz_confianca=juiz)
+    return LimiaresConciliacao(verde=verde, amarelo=amarelo,
+                               juiz_confianca=juiz)
 
 
 @dataclass
@@ -376,11 +387,28 @@ class Conciliador:
 
         indice = dados.get("indice")
         conf = float(dados.get("confianca", 0.0))
+        piso = self.limiares.juiz_confianca
         if indice is None:
+            if conf < piso:
+                # F13/B7: "é novo" com confiança baixa é AMBÍGUO — vira
+                # amarelo com o melhor palpite (a trava da F9), nunca um
+                # vermelho que cria produto novo por chute
+                return Veredito(nome_bruto, Semaforo.AMARELO,
+                                candidatos[0].produto, candidatos, conf,
+                                f"juiz IA inseguro (confiança {conf:.2f}) — "
+                                "confira se é novo mesmo", "juiz")
             return Veredito(nome_bruto, Semaforo.VERMELHO, None, candidatos, conf,
                             "juiz IA: item novo", "juiz")
         if isinstance(indice, int) and 0 <= indice < len(candidatos):
             escolhido = candidatos[indice]
+            if conf < piso:
+                # F13/B7 (CI-03): a confiança era LIDA e nunca comparada —
+                # o juiz pintava VERDE com 0,05. Abaixo do piso, o humano
+                # confirma (amarelo com o candidato escolhido à vista).
+                return Veredito(nome_bruto, Semaforo.AMARELO,
+                                escolhido.produto, candidatos, conf,
+                                f"juiz IA inseguro (confiança {conf:.2f}) — "
+                                "confirme o candidato", "juiz")
             return Veredito(nome_bruto, Semaforo.VERDE, escolhido.produto, candidatos,
                             conf, "juiz IA: confirmou candidato", "juiz")
         return None
