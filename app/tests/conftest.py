@@ -25,6 +25,31 @@ def pytest_collection_modifyitems(config, items):
         items.reverse()
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "lm_real: o teste roda o código REAL de disponibilidade da IA "
+        "(sem o bloqueio de bancada do LM Studio)")
+
+
+@pytest.fixture(autouse=True)
+def _lm_studio_fora_da_bancada(monkeypatch, request):
+    """LEI DA BANCADA (F13/F): o LM Studio REAL da máquina do dono NÃO
+    participa da suíte. Duas baselines do F penduraram porque o app
+    estava aberto no desktop: o probe de 3s por chamada (e respostas
+    REAIS quando ele responde) torna o placar dependente de um programa
+    alheio — o mesmo mal do offscreen antes do conftest. Teste que
+    precise do código real de disponibilidade marca @pytest.mark.lm_real
+    (ele continua sem rede: o interruptor ia.usar decide antes)."""
+    if request.node.get_closest_marker("lm_real"):
+        yield
+        return
+    from app.ai import client
+    monkeypatch.setattr(client.ClienteOpenAICompat, "disponivel",
+                        lambda self: False)
+    yield
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """F13 · Bloco A · A5: skip por acervo do dono ausente é CONTADO e
     ESTAMPADO no fim do relatório — skip silencioso não é verde."""

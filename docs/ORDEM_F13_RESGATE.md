@@ -263,6 +263,8 @@ estimado. E, do selo do Bloco C (§6.6):
 
 **Definição de pronto:** os 7 encartes montados no app com as ofertas reais dele, conferidos
 por pixel contra os PREVIEW, e **inspecionados visualmente** — nada de selo só com a suíte verde.
+Mais, do selo do Bloco E (§8.3): **criar `docs/LEDGER_I2_F13.md`** com os remanescentes do E5
+(ID, `arquivo:linha`, o que se perde, desfecho) — criar no F, zerar no G (COND-9).
 
 **PARE.**
 
@@ -308,6 +310,13 @@ critério muda:
   "quando durarem os estoques", o relatório não pode afirmar "VÁLIDA DE 18/07 ATÉ 24/07".
 - H6. **Todas as campanhas ou nenhuma.** `campanhas_faltantes` não vazio ⇒ marco reprovado.
 - H7. Os 11 defeitos M-01..M-11 conferidos um a um no artefato novo.
+- **H8. COND-10 — a caça ao segfault**, com orçamento de reprodução e as três saídas aceitáveis
+  do §8.4 (reproduzido e consertado · reproduzido e cercado · não reproduzido em N execuções
+  documentadas, com o risco escrito). Virar lenda de novo é inaceitável. Ligar ao §5.5: se a lei
+  do `stop()` explicar as duas batidas, fecham-se duas coisas de uma vez.
+- **H9. A medição refeita com FOTO** (§7.3b) e o **orçamento de ACERTO** de conciliação com item
+  parecido-mas-não-idêntico num acervo grande (§7.3a — o M-03 segue aberto).
+- **H10. A lição de casa do dono:** o `.exe` rodando em Windows limpo, fechando CA-01/02/03.
 
 **Definição de pronto:** o Otaviano olha as páginas e diz "é isso que eu publicaria".
 Esse é o único selo que conta.
@@ -655,6 +664,71 @@ saída limpa.
 **COND-8 (Bloco E):** os dois rótulos passam a descrever a regra viva, e a varredura vira
 teste — nenhuma string de UI pode afirmar carimbo automático ou aprovação obrigatória. Grep
 por `"até você aprovar"` na produção deve voltar vazio.
+
+---
+
+## §8 · SELO DO BLOCO E — reauditoria do arquiteto (25/07/2026)
+
+**BLOCO E SELADO** (parcial no E5, ver §8.3). Pode começar o F.
+
+### 8.1 · Conferido no disco
+
+| | Verificado |
+|---|---|
+| **COND-8** ✅ | `grep "até você aprovar"` na produção: **vazio**. A varredura virou teste permanente (`test_bloco_e_f13.py:59`, com as três variantes de escrita). E a legenda nova conta a regra viva: *"Projeto aprovado (selo do checklist) — a peça sai limpa"* — a aprovação aparece como **selo informativo**, não como condição. |
+| **E1** ✅ | `servico.py:195-201`: três saídas (completo 973 MB / leve ~5 MB / "Agora não"), `setDefaultButton(b_nao)` **e** `setEscapeButton(b_nao)`, com o comentário *"a lei do B3: Enter não baixa 1 GB"*. Você aplicou a lei do B3 a um diálogo novo sem ninguém pedir — é assim que se sabe que uma lei pegou. |
+| **E2** ✅ | `instalar_rede_de_erros()` em `editor_app.py:429-430` — depois da checagem de instância única e do AppUserModelID, e **antes** do `QApplication`, do `SystemRoot` e do `Database.init()`, que eram os caminhos do CA-03. *Resíduo marginal registrado: falha durante o **import** de `editor_app` ainda morre muda; não vale caçar.* |
+| **Placares** ✅ | 935/0/0 ×2, invertida 935/0/0, janela 4/0/0. E você gravou `bloco_e_baseline.xml` (924) — **a linha de base do bloco como artefato**. Boa prática; adote nos blocos seguintes. |
+| **Escopo** ✅ | 21 arquivos, todos em território do E (`erros.py` novo, `paths`, `modo`, `portabilidade`, `models`, `fundo`, `upscale`, `biblioteca`). Nada de `grade.py`, nada de encarte — o **Bloco F está intacto**. |
+
+### 8.2 · Evolução da fase
+
+851 → 862 (A) → 886 (B) → 904 (C) → 924 (D) → **935 (E)**. Zero skips em toda a série.
+
+### 8.3 · DECISÃO 1 — o E5 fica parcial, mas os 26 saem da prosa
+
+**Selo parcial concedido.** Sua triagem está certa: I2 não é uma categoria única. Os que perdem
+**conteúdo do dono** (a lixeira invisível à conciliação, o alfa morto no cartaz ampliado, a
+categoria jogada fora) são hemorragias e você os tratou; os ~26 restantes são "a operação falhou
+e ninguém contou", que é fricção de confiança — território do G.
+
+**Mas não herdam como parágrafo.** A F13 já tem um precedente ruim disso registrado no §18 do
+dossiê: o **K-03** — as recomendações R-116/R-119 foram *aceitas* pelo dono e depois viraram
+"vetadas" num caderno de fase, **sem ninguém avisar**. Débito que vive em texto corrido evapora.
+
+**COND-9 (entra no G, criar agora no F):** os pontos remanescentes viram
+`docs/LEDGER_I2_F13.md` — uma linha por item, com **ID** (`I2-01`…), `arquivo:linha`, o que se
+perde, e uma coluna de desfecho: `CONSERTADO` · `DISPENSADO PELO DONO (motivo)` · `ABERTO`.
+Números exatos, não "~26". A definição de pronto do G exige **zero `ABERTO`** — cada item
+consertado ou dispensado *por decisão registrada do Otaviano*. Um item pode legitimamente ser
+dispensado; o que não pode é desaparecer.
+
+### 8.4 · DECISÃO 2 — o segfault não vai para o G
+
+**Não bloqueia o selo do E** — ele é anterior ao bloco, e esta é a primeira vez em toda a
+história do projeto que ele tem **endereço** em vez de lenda. Isso é progresso, e é seu.
+
+**Mas ele não pode ir para o G.** O G é qualidade de vida; um *crash* é a classe mais severa de
+defeito que existe neste programa e não pode esperar atrás de renomear rótulos. E há um risco de
+calendário: o **H** é a sessão em que o Otaviano dirige o app de ponta a ponta, repetidamente —
+que é exatamente a condição que faz um crash intermitente aparecer. Um segfault no meio da
+sessão de aceitação dele é o pior momento possível.
+
+**COND-10 (vira condição do H, com orçamento):** o segfault entra no **H** como item nomeado,
+com **orçamento de reprodução** — não "olhar se acontece". Registre no `docs/` os frames exatos
+das duas batidas, e a caça tem três saídas aceitáveis:
+1. **reproduzido e consertado** (ideal);
+2. **reproduzido e cercado** (guarda que impede o crash, com o mecanismo explicado);
+3. **não reproduzido em N execuções documentadas** — e aí a decisão é do dono, com o risco
+   escrito na cara dele, não escondido.
+A saída inaceitável é a quarta: virar lenda de novo. E ligue a caça ao §5.5 — se a lei do
+`stop()` explicar as duas batidas, você fecha duas coisas com uma.
+
+### 8.5 · A lição de casa dele segue aberta
+
+O `.exe` **nunca foi executado em Windows limpo**. E1/E2/E3 têm código e teste, mas o CA-01/02/03
+descrevem o que o código *fará*. Isso não é falha sua — é o §3 desta ordem, e é do Otaviano.
+Vai junto com o H.
 
 ---
 
@@ -1273,4 +1347,124 @@ decide se há write).
   vida do engine é cirurgia de arquitetura — nominal para ordem própria).
 
 **PARADO no fim do Bloco E (L7). O Bloco F não foi iniciado. Aguardando o
+selo do arquiteto.**
+
+---
+
+## RESPOSTA DO BUILDER — BLOCO F (Fable 5, 26/07/2026)
+
+Bloco E fechado no `a04c411`, selado no §8. **COND-9 cumprida ANTES de
+tudo**: `docs/LEDGER_I2_F13.md` criado com os números exatos — 48 linhas
+(47 + 1 extra do scout) · 13 CONSERTADOS · 1 COBERTO (R-07, pré-voo) ·
+1 MITIGADO (CD-05) · 1 INVALIDADO · **32 ABERTOS** · 0 DISPENSADOS. O G
+zera. Scout único de leitura (§13 + geradores + o lado do app — as 8
+tabelas célula-a-célula que o dossiê não tinha). Testes em
+`test_bloco_f_f13.py` (16 novos), L1 nos consertos (F1 4/4 vermelhos
+registrados em `_run_f1_vermelho.log`; F2 por ImportError em
+`_run_f2_vermelho.log` e `_run_f2b_vermelho.log`).
+
+### LEI NOVA DA BANCADA (L6 — mudança declarada): o LM Studio REAL fica FORA
+
+A baseline do F falhou 2× ANTES de qualquer edição minha: o LM Studio
+aberto no desktop do dono respondia ao probe de 3 s do
+`ClienteOpenAICompat` DENTRO do pytest — teste pendurado/placar
+dependente de um app alheio (o mesmo mal do offscreen pré-conftest).
+Fixture autouse `_lm_studio_fora_da_bancada` no conftest (patch de
+`disponivel()` → False), com escape explícito `@pytest.mark.lm_real` —
+usado no teste do interruptor (`test_fase3_config`), que exercita o
+código REAL (sem rede: `ia.usar` decide antes). Baseline então travada:
+**935/0/0, zero skips, exit-0** (`bloco_f_baseline.xml` — a prática do
+artefato de baseline adotada, como o arquiteto pediu no §8).
+
+### A tabela item × prova
+
+| # | o que ficou | prova | onde |
+|---|---|---|---|
+| F8 | a tabela EXATA, na letra: SENEPOL intocado (grep CENEPOL segue vazio); "CRIADA E PRODUZIDA"→"CRIADO E PRODUZIDO" nos DOIS (`gen_carne_final.py` + `gen_segunda3.py`); "MARCA PRÓPRIA" só da faixa fixa (os subtítulos de exemplo `:126+` intocados); "fatiados na hora" só no cabeçalho (`:318` fica); o período do Jornal EDITÁVEL (orelha, manchete e título-p2 movidos est→ex — o app escreve; + a linha-fina "até o fim do mês", a MESMA alegação em paráfrase, movida e declarada como extra); logo relativo nos 7 (`_RAIZ` por `__file__`) | grep de conferência limpo + `py_compile` dos 7 = exit 0 | `Templates novos/geradores/` (fora do git) |
+| F8+ (extras N-08, declarados) | os 21 caminhos de SAÍDA absolutos (`/home/claude/encartes/final-*`) também viraram relativos (→ `artes/<encarte>/`) — sem isso "antes de qualquer regeração" era letra morta; e os writes ganharam `encoding='utf-8'` (no Windows o `open('w')` cru sai cp1252 e mastiga os acentos do SVG — a pegadinha do Set-Content que virou lei no D) | idem | idem |
+| F1 | célula FIXA no modelo: `Slot.fixa` (aditivo, molde do `rotacao_graus`; layout antigo carrega False); `ocupaveis` é o PONTO ÚNICO — fixa fora da fila e fora do aviso de vazios/pré-voo (a lei do tipo novo aplicada); gesto RG-56 no menu da célula ("Célula fixa (fora do auto-preencher)" ⇄ "Devolver…"), com undo | 4 vermelhos → 4 verdes: roundtrip+migração, ocupaveis, **adversarial I5 na Mesa real** (a fixa GIGANTE entre 2 livres — sem o filtro, o D11 entregaria o herói JUSTAMENTE a ela; por uid), menu marca-e-desmarca | `model.py`, `grade.py`, `canvas.py`, `itens.py` |
+| F2 | o extrator por DADOS: `app/rendering/encartes.py` — as 8 tabelas do scout transcritas na escala 1× do viewBox (96 dpi), página do BASE.png real a 192 dpi (2160×2880 = ×2 exato ⇒ 285,75×381 mm, composição 1:1); 92 células; fontes do pacote por região (Archivo/Fraunces/Nunito/Anton); `layout_de_encarte` + `chaves_do_pacote` + `importar_pacote` (upsert por NOME, arte internada I3, fontes copiadas) + botão "Importar encartes…" no Ateliê (encarte incompleto NOMEADO no toast, I2) | contagens/fixas/mm/roundtrip por encarte + I3 (grep "Templates novos" no JSON persistido = vazio) + importar 2× não duplica | `encartes.py` (novo), `atelie.py` |
+| F2/Jornal (N-04) | o caminho próprio: 20+22 células das listas `ch`/`linha(y, ids)` num LayoutDef de DUAS páginas (fundo POR página; ids únicos `jp1-*`/`jp2-*`, D8.1 validado no roundtrip); validade/nº da edição/Fica-a-Dica desenhados pelo app (o BASE zera o exemplo INTEIRO) | teste próprio (42 ocupáveis + DICA e VALIDADE nas duas + seções ligadas) | `encartes.py` |
+| F3 | destaque por área VALIDADO no encarte real: na Quarta, o herói cai no BANNER (celula-var-5, a maior LIVRE — o que o gerador reservava ao destaque) e nunca nas 3 fixas da Coluna do Dia | teste na Mesa real com o layout extraído (por uid) | teste |
+| F4 | Fica-a-Dica: região TEXTO_LEGAL papel DICA nas duas páginas do Jornal (slot decorativo, não-ocupável por A7); a propagação da mestra é o C12 (já selado) | dentro do teste do Jornal | `encartes.py` |
+| F5 | seções: o Jornal nasce com `secoes_ligadas=True` nas 2 páginas (N-05 — a arte não traz seção; quem desenha é `secoes.py`, F8.2) | idem | idem |
+| F6 | validade ROTACIONADA por encarte: papel VALIDADE na posição/rotação do selo de cada arte (Terça 8°, Segunda 10°, Quarta −2°, Peixe −7°, Sexta −6°, Sábado 9°, Jornal 0°) — o compositor já gira pelo RG-12; **prova por PIXEL no DoD** (com/sem texto → tinta na área do selo, nas 8 páginas) | teste das 7 rotações + a prova de tinta do DoD | `encartes.py`, compositor (intocado) |
+| F7 | oclusão da Terça (N-01): o 1º slot de foto do combo nasce ENCOLHIDO (210→194 px) — nenhum canto de caixa de foto dentro do círculo do selo de 25% gravado no BASE (centro 964,392, R54) | teste geométrico (distância canto→centro ≥ raio, com os 4 cantos de TODAS as fotos) | `encartes.py` |
+| F9 | o "20%" vira PARÂMETRO no gerador (`pctpod(..., pct='20%')`, chamador explícito) **e a ponta do app**: a 3ª fixa da Quarta declara papel DESCONTO — o % é CALCULADO de (de−por)/de (R-109), nunca digitado; na galeria aparece o **−34% real** dos dados de teste | teste da fixa-3 + inspeção visual | `gen_final.py`, `encartes.py` |
+| F10 | o "ã" do Baloo: no gerador, os minis saem do Baloo 2 → Nunito 800 (o ÚNICO ã/Ã em Baloo do pacote era "Pão de Queijo"); no app, NENHUMA região da Quarta usa a instância defeituosa (produto variável pode ter "ã") | teste (varredura de fonte no layout) | `gen_final.py`, `encartes.py` |
+
+### O DoD — os 7 montados, por pixel, e a inspeção visual que MORDEU
+
+`test_f_dod_os_sete_montados_por_pixel_vs_preview`: os 7 encartes (8
+páginas) compostos com as **30 ofertas REAIS do Quintou** (o padrão-ouro
+do marco: `campanhas_do_marco` + `itens_reais_da_campanha`; fotos de
+bancada nítidas do D10), a 2160×2880, comparados ao PREVIEW do pacote:
+
+- **régua rigorosa (app)**: nenhum slot de foto sai vazio — diff>3% vs o
+  BASE na caixa da foto, nos 100% dos slots das 8 páginas;
+- **régua cruzada (PREVIEW)**: onde o exemplo põe conteúdo no bbox da
+  célula (diff>2%, limiar 16), o app também põe. *Achado honesto da 1ª
+  rodada:* o miolo da foto NÃO serve de régua no PREVIEW — o exemplo usa
+  placeholder semitransparente, invisível por pixel sobre célula clara;
+  a régua foi movida ao bbox da célula (onde vive o carimbo/bandeira) e
+  o desvio ficou NOMEADO no próprio teste (teto de 3 exceções);
+- **galeria lado-a-lado** (app | PREVIEW) em
+  `saida_f13/galeria_bloco_f/` — 8 imagens, TODAS inspecionadas
+  visualmente por mim, uma a uma.
+
+**A inspeção visual pegou 3 defeitos que a suíte verde não pegou** (a
+lei do dono funcionando) — consertados e re-inspecionados:
+
+1. **Sábado**: as caixas de UNIDADE e PREÇO dividiam faixa ("100 g"
+   espremido sobre o "R$") nas células curtas E altas — retabelado;
+2. **Segunda**: o nome centrado na banda alcançava a área do selo de
+   cera — as etiquetas ganharam coluna do lado do selo (`'d'/'e'`) e o
+   texto DESVIA, como o exemplo faz;
+3. **Jornal**: o BASE.png atual é o PRÉ-regeração — manchete/orelha/
+   título-p2 que o F8 moveu para o app ainda estão GRAVADOS no fundo, e
+   escrever ali duplicava o texto (sopa de letras). As caixas ficam
+   PRONTAS e SEM tinta até a regeração (comentadas no código); a
+   validade oficial fica na faixa/linha que o BASE já zera — limpa nas
+   duas páginas.
+
+### Os placares (junit em `saida_f13/`)
+
+| prova | resultado |
+|---|---|
+| baseline (pré-bloco) | **935/0/0, zero skips, exit 0** (`bloco_f_baseline.xml`) |
+| suíte da raiz ×2 | **946 verdes ×2, 0 falhas, 0 skips, exit 0** (`bloco_f_suite_1/2.xml`) |
+| ordem invertida | **946/0/0, exit 0** (`bloco_f_invertida.xml`) |
+| janela real | **4/0/0** (`bloco_f_janela.xml`) |
+
+Evolução: 935 (baseline) → **946 (F)** — os 11 testes do bloco. Nota
+honesta: as 4 rodadas do fecho passaram de primeira, sem segfault e sem
+flake — a primeira bancada de bloco SEM incidente desde o C; a fixture
+do LM real tirou a variável de fora.
+
+### O que ficou de fora (e por quê)
+
+- **A regeração dos BASE/MASTER/PREVIEW**: o pipeline do pacote é
+  Playwright+Chromium (README §"Como regenerar") e as fontes precisam
+  estar instaladas no sistema — não roda nesta máquina sem instalação
+  que não fiz por conta. As FONTES `.py` estão corrigidas e portáteis;
+  os PNGs atuais seguem com as strings velhas (a faixa do Sábado, a fita
+  da Segunda, o "mês inteiro" do Jornal) até o dono/arquiteto regenerar.
+  Por isso as 3 caixas do período do Jornal nascem sem tinta.
+- **Estilo fino da composição** (cores/pesos por região, preço em disco
+  vs texto reto, quebra "R$"/valor em caixa estreita): as regiões nascem
+  com as FAMÍLIAS do pacote e caixas fiéis, mas o acabamento visual
+  (pill, contorno, cor por papel) é trabalho de estilo no editor — G.
+- **O pivô das cestas da Terça**: o gerador rotaciona em (cx, 1000); o
+  modelo rotaciona por região no CENTRO — em ≤0,7° a diferença é <2 px
+  (declarado no cabeçalho de `encartes.py`).
+- **O combo da célula-2 da Terça** tem 2 caixas de IMAGEM no MESMO slot
+  fixo (Sonho + Croissant) — a mesma foto sai nas duas até o dono trocar
+  no editor (DIY); separar em 2 slots quebraria "1 célula fixa = 1
+  conteúdo do dono". Decisão declarada.
+- **A moldura de seção do Jornal na galeria** é o estilo padrão
+  (CONTORNO) com dado uniforme do teste (categoria única ⇒ UMA seção
+  gigante azul). Com categorias reais o app desenha grupos menores; o
+  estilo/títulos são configuráveis (F8.2). Não mexi no desenho de seções.
+
+**PARADO no fim do Bloco F (L7). O Bloco G não foi iniciado. Aguardando o
 selo do arquiteto.**

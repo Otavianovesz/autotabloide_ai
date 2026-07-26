@@ -302,6 +302,10 @@ class Slot:
     mestre: bool = False
     origem_mm: tuple | None = None
     ref_grupo: str | None = None
+    # F13/F1: célula FIXA carrega produto da PRÓPRIA ARTE (Terça 2,
+    # Segunda 1, Quarta 3) — fica fora do auto-preencher e não conta
+    # como vaga (grade.ocupaveis é o ponto único da regra).
+    fixa: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -310,6 +314,7 @@ class Slot:
             "mestre": self.mestre,
             "origem_mm": list(self.origem_mm) if self.origem_mm else None,
             "ref_grupo": self.ref_grupo,
+            "fixa": self.fixa,
         }
 
     @classmethod
@@ -321,6 +326,7 @@ class Slot:
             mestre=d.get("mestre", False),
             origem_mm=tuple(origem) if origem else None,
             ref_grupo=d.get("ref_grupo"),
+            fixa=d.get("fixa", False),      # layout antigo: nunca fixa
         )
 
 

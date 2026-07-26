@@ -628,3 +628,37 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   necessária; limites honestos na resposta. Placares e o resto: resposta
   do builder no fim da ordem. Execução real em Windows limpo = lição de
   casa do Otaviano (§3).
+  —— **E SELADO (§8, `a04c411`): E5 parcial virou COND-9 (LEDGER — o G
+  zera); o segfault virou COND-10 (H8); medições+M-03 = H9; o exe = H10.**
+  —— **Bloco F (OS 7 ENCARTES NOVOS) EXECUTADO (26/07/2026) — PARADO
+  aguardando o selo (L7).** COND-9 ✓: `docs/LEDGER_I2_F13.md` (48 linhas ·
+  13 CONSERTADOS · 32 ABERTOS · 0 DISPENSADOS). **Lei nova da bancada**:
+  o LM Studio REAL fica FORA do pytest (fixture autouse no conftest;
+  escape `@pytest.mark.lm_real`) — 2 baselines penduraram no probe de 3s.
+  **F8**: a tabela exata nos geradores do pacote ("CRIADO E PRODUZIDO"
+  ×2; a faixa sem "MARCA PRÓPRIA"; "fatiados na hora" só no cabeçalho;
+  o período do Jornal virou camada do app; logo relativo nos 7) + extras
+  declarados (21 saídas absolutas → relativas; `encoding='utf-8'` nos
+  writes; a linha-fina "até o fim do mês" — a mesma alegação em
+  paráfrase). **F1**: célula FIXA (`Slot.fixa` aditivo; `ocupaveis` é o
+  ponto único — fora da fila E do aviso de vazios; menu RG-56 com
+  inverso; adversarial I5: a fixa GIGANTE não rouba o herói). **F2**:
+  `app/rendering/encartes.py` — a geometria dos 7 por DADOS (as 8
+  tabelas do scout; viewBox 96dpi, página 192dpi = 285,75×381mm; 92
+  células), `layout_de_encarte`/`importar_pacote` (upsert por nome, arte
+  internada I3, fontes do pacote copiadas) + botão "Importar encartes…"
+  no Ateliê; o Jornal com caminho próprio (N-04: zero `celula-N`; 2
+  páginas num LayoutDef, ids únicos). **F3** validado no encarte real
+  (herói→banner da Quarta, nunca nas fixas). **F4** Fica-a-Dica (papel
+  DICA) nas 2 páginas. **F5** seções ligadas no Jornal (N-05). **F6**
+  validade ROTACIONADA por encarte (as 7 rotações; prova de TINTA por
+  pixel nas 8 páginas). **F7** o slot do combo da Terça encolhido
+  210→194 (fora do círculo do selo de 25%). **F9** pct parâmetro no
+  gerador + papel DESCONTO na fixa-3 (o % calculado de verdade). **F10**
+  zero Baloo 2 (o "ã" defeituoso) no gerador e no app. **DoD**: as 8
+  páginas compostas com as 30 ofertas REAIS por pixel vs PREVIEW +
+  galeria lado-a-lado (`saida_f13/galeria_bloco_f/`) INSPECIONADA — a
+  inspeção visual pegou 3 defeitos que a suíte verde não pegou
+  (retabelados e re-inspecionados). A regeração dos PNGs do pacote
+  (Playwright+Chromium) fica para o dono/arquiteto — as fontes `.py`
+  estão corrigidas e portáteis.

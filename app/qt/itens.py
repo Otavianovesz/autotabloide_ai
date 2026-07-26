@@ -540,6 +540,22 @@ class RegiaoItem(QGraphicsItem):
             a_trav = menu.addAction(icone("cadeado", tamanho=16), "Travar")
         acoes[a_trav] = lambda: self.canvas.set_travado(
             self.regiao, not self.regiao.travado)
+        # F13/F1: célula FIXA (produto da própria arte) — fora do
+        # auto-preencher; RG-56: marcar e desmarcar no MESMO lugar
+        if slot is not None:
+            if slot.fixa:
+                a_fx = menu.addAction(
+                    icone("cadeado_aberto", tamanho=16),
+                    "Devolver a célula ao auto-preencher")
+                a_fx.setToolTip("A célula volta a receber produto da fila")
+            else:
+                a_fx = menu.addAction(
+                    icone("cadeado", tamanho=16),
+                    "Célula fixa (fora do auto-preencher)")
+                a_fx.setToolTip("O produto desta célula é da própria arte — "
+                                "a fila do auto-preencher não a usa")
+            acoes[a_fx] = lambda: self.canvas.set_celula_fixa(
+                slot, not slot.fixa)
 
         # Modo de isolamento (estilo Illustrator) — RG-56: todo estado tem o
         # inverso a UM clique; o menu ensina o gesto do duplo clique. A

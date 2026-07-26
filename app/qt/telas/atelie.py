@@ -76,10 +76,20 @@ class AtelieTela(QWidget):
         novo.setProperty("tipo", "primario")
         novo.setToolTip("Importar a arte de fundo e marcar a grade de células")
         novo.clicked.connect(self._novo)
+        # F13/F2: os 7 encartes do pacote Belo Brasil entram por DADOS
+        # (geometria dos geradores) — o detector por cor não os enxerga
+        enc = QPushButton(" Importar encartes…")
+        enc.setIcon(icone("camadas", tamanho=16))
+        enc.setProperty("tipo", "fantasma")
+        enc.setToolTip("Semeia os encartes do pacote Belo Brasil "
+                       "(Segunda dos Frios, Terça do Pão… Jornal do Mês) "
+                       "com células, validade e fontes prontas")
+        enc.clicked.connect(self._importar_encartes)
         dica = QLabel("Duplo-clique abre na Mesa (tabloide) ou na Fábrica (cartaz) "
                       "· botão direito para editar/duplicar/renomear/excluir")
         dica.setProperty("papel", "legenda")
         hb.addWidget(novo)
+        hb.addWidget(enc)
         hb.addStretch(1)
         hb.addWidget(dica)
 
@@ -258,6 +268,36 @@ class AtelieTela(QWidget):
         self.recarregar()
         mostrar_toast(self, f"“{nome.strip()}” criado. {aviso}")
         self._editar(lid, nome.strip())
+
+    def _importar_encartes(self) -> None:
+        """F13/F2: semeia os encartes do pacote Belo Brasil por DADOS.
+
+        Pede a pasta do pacote (a que contém ``artes/``), importa os
+        encartes COMPLETOS e nomeia o que ficou de fora (I2 — encarte
+        incompleto nunca some em silêncio)."""
+        from app.rendering.encartes import (
+            NOMES_EXIBICAO, chaves_do_pacote, importar_pacote)
+        pasta = QFileDialog.getExistingDirectory(
+            self, "Pasta do pacote de encartes (a que contém “artes”)")
+        if not pasta:
+            return
+        chaves = chaves_do_pacote(pasta)
+        if not chaves:
+            mostrar_toast(self, "Nenhum encarte nessa pasta — aponte a "
+                                "RAIZ do pacote (a que contém “artes/"
+                                "<encarte>/…-BASE.png”).")
+            return
+        with self._banco().Session() as s:
+            importadas = importar_pacote(s, pasta)
+            s.commit()
+        self.recarregar()
+        fora = [NOMES_EXIBICAO[c] for c in NOMES_EXIBICAO
+                if c not in importadas]
+        msg = f"{len(importadas)} encarte(s) importados com células, " \
+              "validade e fontes."
+        if fora:
+            msg += " Ficaram de fora (arte incompleta): " + ", ".join(fora)
+        mostrar_toast(self, msg)
 
     # --- ações da lista ------------------------------------------------------------------
 

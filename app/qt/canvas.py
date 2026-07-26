@@ -1236,6 +1236,15 @@ class CanvasView(QGraphicsView):
                 it.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not travado)
         self.editou.emit(reg)
 
+    def set_celula_fixa(self, slot, fixa: bool) -> None:
+        """F13/F1: célula FIXA carrega o produto da PRÓPRIA ARTE — sai da
+        fila do auto-preencher e não conta como vaga (a regra única mora
+        em ``grade.ocupaveis``). RG-56: o inverso fica no mesmo menu."""
+        slot.fixa = bool(fixa)
+        self._registrar_hist()
+        if slot.regioes:
+            self.editou.emit(slot.regioes[0])
+
     def mover_regiao(self, reg, delta: int) -> None:
         """Reordena a região no slot (z-order na composição)."""
         for slot in self._pagina().slots:

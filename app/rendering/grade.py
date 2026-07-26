@@ -382,9 +382,15 @@ def ocupaveis(slots: list) -> list:
     recebe produto: com 16+ itens, o 16º seria consumido pelo slot decorativo
     e sumiria do tabloide em silêncio (I2). Lição registrada pelo arquiteto:
     todo TIPO NOVO de slot/região reavalia "ocupável" e o pré-voo.
+
+    F13/F1: célula FIXA (``Slot.fixa``) tem foto/nome/preço — mas o
+    produto é DA ARTE (Terça 2, Segunda 1, Quarta 3). Sem este filtro o
+    auto-preencher despejaria a fila por cima do produto fixo, e o aviso
+    de vazios/pré-voo a cobraria como vaga.
     """
     return [s for s in slots
-            if any(r.tipo in TIPOS_CONTEUDO for r in s.regioes)]
+            if not s.fixa
+            and any(r.tipo in TIPOS_CONTEUDO for r in s.regioes)]
 
 
 def adicionar_pagina_de_arte(layout: LayoutDef, caminho_arte: str) -> Pagina:
