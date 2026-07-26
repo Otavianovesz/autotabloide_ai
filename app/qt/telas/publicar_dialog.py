@@ -265,11 +265,15 @@ class PublicarDialog(QDialog):
                                    "“ffmpeg”, que não está instalado. Os outros "
                                    "formatos funcionam normalmente.")
                 return
-        if not self.mesa.esta_aprovado():
-            self._nota.setText("A peça sai com a marca “RASCUNHO” até você "
-                               "aprovar o projeto (na Mesa).")
+        # F13/E10 (COND-8): a regra viva — limpo por padrão desde o D8;
+        # o carimbo é o checkbox; a aprovação é selo, não condição
+        if self.mesa.esta_aprovado():
+            self._nota.setText("Projeto aprovado (selo do checklist) — "
+                               "a publicação sai limpa.")
         else:
-            self._nota.setText("Projeto aprovado — sai limpo.")
+            self._nota.setText("A publicação sai LIMPA por padrão — marque "
+                               "“Carimbar RASCUNHO” se quiser a marca "
+                               "d'água.")
 
     # --- geração (em worker; done() encerra) --------------------------------
 

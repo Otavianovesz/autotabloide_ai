@@ -582,6 +582,9 @@ class ConciliacaoDialog(QDialog):
         if tipo == "nenhuma":
             self._cadastrar(linha, proposta, None)
             return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            self._cadastrar(linha, proposta, None)      # cadastra SEM foto
+            return
         trab = Trabalhador(lambda st, v=valor: servico.tratar_imagem(v, st))
         trab.status.connect(self._overlay.mostrar)
         trab.ok.connect(lambda tratada, li=linha, p=proposta:

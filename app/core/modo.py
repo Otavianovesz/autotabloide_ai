@@ -13,12 +13,23 @@ renomear/duplicar/abrir-versão-como-novo), foto (BibliotecaImagens.ingerir
 — o funil do DISCO: Estúdio, Ajustar, Refinar, Restaurar do histórico),
 Excel (aplicar_importacao_planilha), IA em lote (enriquecer_banco/
 categorizar_acervo), trazer .atproj (importar_atproj), calendário
-(criar_evento_comemorativo) e a migração antiga.
+(criar_evento_comemorativo), a migração antiga e — F13/E4 (CB-02) — o
+COFRE (criar/restaurar/excluir snapshot; o automático do boot PULA sem
+drama) e o .atpkg (aplicar_importacao, a porta que sobrescreve banco E
+disco).
 
 LIVRES DE PROPÓSITO (decisão, não esquecimento): aprovar, exportar,
 imprimir, compartilhar — e os marcadores de fluxo que eles usam
 (`marcar_status("exportado")`, favorito), que não alteram conteúdo.
 Sair do modo é gesto consciente (confirmação na tela de Configurações).
+
+HONESTIDADE DO MAPA (F13/E4 — este mapa se declarava COMPLETO e não era):
+portas de escrita CONHECIDAS e ainda FORA da guarda, anotadas para a
+ordem que as pegar — lixeira (restaurar/excluir_agora/purgar), layouts
+(salvar/renomear/duplicar em persistencia.py), eventos (criar/renomear/
+excluir/capa na tela de Eventos), selos (criar/editar/excluir) e
+manutenção (compactar_banco/quarentenar_orfas). O mapa é o melhor
+esforço; a lei é a varredura do teste de cada bloco.
 """
 
 from __future__ import annotations

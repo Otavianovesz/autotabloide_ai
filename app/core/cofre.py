@@ -42,8 +42,13 @@ def _backup_sqlite(origem: Path, destino: Path) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
     src = sqlite3.connect(str(origem))
     try:
+        # F13/E8 (D-12): a lei do PRAGMA vale também nas conexões cruas
+        # (a API de backup copia páginas e dispensaria o FK — mas a
+        # varredura do D-12 quer TODA conexão de produção uniforme)
+        src.execute("PRAGMA foreign_keys=ON")
         dst = sqlite3.connect(str(destino))
         try:
+            dst.execute("PRAGMA foreign_keys=ON")
             with dst:
                 src.backup(dst)
         finally:
@@ -54,7 +59,12 @@ def _backup_sqlite(origem: Path, destino: Path) -> None:
 
 def criar_snapshot(raiz: SystemRoot | Path | str | None = None,
                    rotulo: str = "manual") -> Path:
-    """Cria um snapshot datado do banco vivo e devolve o caminho dele."""
+    """Cria um snapshot datado do banco vivo e devolve o caminho dele.
+
+    F13/E4 (CB-02): no PC da loja (somente leitura) o Cofre NÃO escreve —
+    esta porta nunca passou por exigir_escrita()."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
     root = _root(raiz)
     if not root.caminho_banco.exists():
         raise FileNotFoundError(
@@ -131,6 +141,14 @@ def snapshot_automatico(raiz: SystemRoot | Path | str | None = None) -> Path | N
     fora (a cada boot, um bom a menos). Pulado = registrado no log da
     raiz; a tela do boot já acusa o banco pelo R-138 (verificar_ao_abrir)."""
     root = _root(raiz)
+    # F13/E4 (CB-02): o boot do PC da loja não pode escrever NEM morrer —
+    # o snapshot automático simplesmente pula em somente-leitura
+    try:
+        from app.core.modo import somente_leitura
+        if somente_leitura():
+            return None
+    except Exception:
+        pass
     if not root.caminho_banco.exists():
         return None                                # primeira execução, sem banco
     if not _banco_integro(root.caminho_banco):
@@ -153,6 +171,8 @@ def snapshot_automatico(raiz: SystemRoot | Path | str | None = None) -> Path | N
 
 
 def excluir_snapshot(caminho: str | Path) -> None:
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # F13/E4 (CB-02)
     Path(caminho).unlink(missing_ok=True)
 
 
@@ -191,6 +211,8 @@ def restaurar_snapshot(caminho: str | Path,
 
     Devolve o caminho do snapshot 'pre_restauracao' criado.
     """
+    from app.core.modo import exigir_escrita
+    exigir_escrita()                     # F13/E4 (CB-02): sobrescreve o VIVO
     caminho = Path(caminho)
     inspecionar_snapshot(caminho)                  # valida que é um banco legível
     root = _root(raiz)

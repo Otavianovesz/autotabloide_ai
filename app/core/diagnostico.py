@@ -52,11 +52,13 @@ def _texto_acervo() -> str:
     return "\n".join(corpo)
 
 
-def _fim_do_log() -> str:
+def _fim_do_log(nome: str = "travamentos.log",
+                vazio: str = "(sem registros de travamento — bom sinal)"
+                ) -> str:
     from app.core.paths import SystemRoot
-    log = SystemRoot().raiz / "logs" / "travamentos.log"
+    log = SystemRoot().raiz / "logs" / nome
     if not log.exists():
-        return "(sem registros de travamento — bom sinal)"
+        return vazio
     try:
         linhas = log.read_text(encoding="utf-8", errors="replace").splitlines()
         return "\n".join(linhas[-400:])
@@ -76,4 +78,12 @@ def gerar_diagnostico(destino_zip: str | Path) -> Path:
         except Exception as exc:
             z.writestr("acervo.txt", f"(falhou: {exc})")
         z.writestr("travamentos.log", _fim_do_log())
+        # F13/E2 (CA-02): o zip ia SEM nenhum traceback — o suporte
+        # recebia um diagnóstico cego. Agora os quatro logs viajam.
+        z.writestr("erros.log", _fim_do_log(
+            "erros.log", "(sem erros registrados — bom sinal)"))
+        z.writestr("cofre.log", _fim_do_log(
+            "cofre.log", "(sem registros do cofre)"))
+        z.writestr("recuperacoes.log", _fim_do_log(
+            "recuperacoes.log", "(sem recuperações)"))
     return destino

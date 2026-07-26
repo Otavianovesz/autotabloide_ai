@@ -2367,6 +2367,9 @@ class MesaTela(QWidget):
         if tipo == "nenhuma" or not valor:
             self._proximo_foto_lote()
             return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            self._proximo_foto_lote()
+            return
 
         def _tratar_e_definir(st, v=valor, pid=it.produto_id):
             tratada = servico.tratar_imagem(v, st)

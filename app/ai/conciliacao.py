@@ -199,8 +199,11 @@ class Conciliador:
         custava ~0,3 s × N itens no acervo grande."""
         if self._corpus_cache is None:
             corpus: dict[str, int] = {}
+            # F13/E5 (CI-01): a conciliação não enxergava a LIXEIRA —
+            # produto excluído (soft-delete) voltava VERDE, calado
             for pid, nome in self.session.execute(
                 select(Produto.id, Produto.nome_sanitizado)
+                .where(Produto.excluido_em.is_(None))
             ).all():
                 corpus.setdefault(self._chave(nome), pid)
             for pid, alias in self.session.execute(

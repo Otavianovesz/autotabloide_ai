@@ -226,6 +226,7 @@ estimado. E, do selo do Bloco C (§6.6):
 | E7 | **Versão de schema** e backup antes de migrar (alembic está morto) | D-11, P7 do parecer |
 | E8 | **As 3 conexões `sqlite3` cruas** que não passam pelo hook do `PRAGMA foreign_keys` — justamente as de backup/migração | D-12 |
 | E9 | **Índices** em `excluido_em` das 3 tabelas e em `Layout.nome` | D-10 |
+| **E10** | **COND-8** — `exportar_dialog.py:57-59` e `publicar_dialog.py:268-271` ainda ensinam a lei morta ("sai com RASCUNHO até você aprovar"). Corrigir os dois **e** virar teste: grep por `"até você aprovar"` na produção volta vazio; nenhuma string de UI afirma carimbo automático ou aprovação obrigatória. | §7.4 do selo |
 
 **PARE.**
 
@@ -585,6 +586,75 @@ descrevem o bug — `test_mut4_..._nao_redimensiona` hoje afirma que **redimensi
 `test_mut3_..._mexe_o_indice_para_tras_caracterizacao` afirma que vai para a frente e não é mais
 caracterização. Um nome que diz o contrário da asserção é armadilha para o próximo leitor. Minha
 COND-3 falou de asserção e esqueceu o nome — a culpa é minha, o conserto é seu.
+
+---
+
+## §7 · SELO DO BLOCO D — reauditoria do arquiteto (25/07/2026)
+
+**BLOCO D SELADO.** Uma pendência (§7.4) e duas leituras de medição (§7.3) entram no E.
+
+### 7.1 · COND-6 e COND-7, cumpridas — e a 6 melhor do que eu pedi
+
+**COND-6** — `itens.py:430`: `if not self.regiao.travado and self.isSelected():`, com o
+comentário dizendo a razão certa (*"sem ela o press dava a alça que o cursor negava"*).
+E o teste do C não foi só restaurado: ficou **mais hostil**. O arraste agora é
+`centro + QPointF(60, 45)` — **desce em direção ao preço de propósito**, com o comentário
+"o alvo ORIGINAL, restaurado". Você podia ter voltado ao alvo antigo e parado; preferiu
+apontar o teste para o bug. É o fecho honesto do §6.4.
+
+**COND-7** — os três nomes agora dizem o que as asserções afirmam:
+`..._criacoes_nascem_selecionadas_e_cada_uma_no_seu_slot`,
+`..._botao_subir_traz_a_regiao_para_a_frente`,
+`..._alca_de_regiao_rotacionada_redimensiona_com_ancora_parada`.
+
+### 7.2 · As travas #1 e #3 caíram de verdade
+
+Varri as 9 portas: **nenhuma decide mais por "não aprovado"**. As chamadas de
+`carimbar_rascunho` que sobraram estão todas sob a opção explícita —
+`exportar_dialog.py:122` (`if self.chk_rascunho.isChecked():`), `publicar_dialog.py:65`,
+`fabrica.py:697`, `mesa.py:2675`, `servico.py:1938` — e as assinaturas nasceram
+`rascunho=False` com o docstring declarando *"sai LIMPA por padrão"*. A #3 idem: a validade
+se autopreenche no salvar **e** no export, e o canal estrutural leva a validade viva ao rodapé
+fora de célula (o furo que o marco da F12 contornava na mão).
+
+Escopo: 21 arquivos, todos em território do D. Nada de instalador, Cofre, `.atproj`,
+somente-leitura ou encartes — **os Blocos E e F seguem intactos**.
+
+### 7.3 · Duas leituras da medição (a sua ressalva está certa; faltam duas)
+
+O `bloco_d_medicoes.md` é honesto — a ressalva final sobre o 96 dpi da arte real e sobre o
+rembg de foto não-branca é o tipo de coisa que auditor normalmente tem que arrancar. Duas
+leituras a acrescentar, para ninguém ler o quadro errado depois:
+
+**(a) "0,07 s · 30/30 verdes" NÃO retira o M-03.** Você escreveu "o acervo da semana já casa",
+e está certo — mas o número mede o **caminho recorrente** (itens já cadastrados casando com
+eles mesmos). O M-03 do dossiê é outro caso: 30 itens contra **5.007** produtos, dando
+**0 verdes**. Nenhuma das duas medições testa o que importa de verdade — item que **deveria**
+casar com um cadastro **parecido, não idêntico** (abreviação, erro de OCR, ordem trocada), num
+acervo grande. Esse é o orçamento de acerto do **H1**, e continua em aberto.
+
+**(b) O 105 ms de composição é sem foto.** Você registrou no item 5 que "as células da medição
+não têm foto" — o que valida o pré-voo — mas o mesmo vale para o item 2. Compor 15 células
+**com** as fotos tratadas é mais caro. O número não está errado; está incompleto. Refaça-o no H
+com as fotos reais, junto com o H1.
+
+### 7.4 · PENDÊNCIA — duas telas ainda ensinam a lei morta
+
+O motor caiu, a **legenda não**. Dois rótulos continuam afirmando a regra revogada:
+
+- `exportar_dialog.py:57-59` — *"A peça sai com "RASCUNHO" até você aprovar o projeto."*
+- `publicar_dialog.py:268-271` — a mesma frase.
+
+Hoje isso é **falso**, e no `exportar_dialog` a contradição está **dentro do mesmo diálogo**:
+o rótulo diz que sai carimbado, e o checkbox logo abaixo diz que o carimbo é opcional. É a
+mesma família de defeito que abriu esta auditoria — o programa contando ao dono algo que não é
+verdade (M-06: o relatório do marco afirmando uma validade que o PNG não tinha). O dono lê,
+acredita que o arquivo saiu marcado, e ou caça um botão que já não precisa, ou desconfia da
+saída limpa.
+
+**COND-8 (Bloco E):** os dois rótulos passam a descrever a regra viva, e a varredura vira
+teste — nenhuma string de UI pode afirmar carimbo automático ou aprovação obrigatória. Grep
+por `"até você aprovar"` na produção deve voltar vazio.
 
 ---
 
@@ -1075,4 +1145,132 @@ e log em arquivo.
 - **R-116/119/124/125 seguem VETADOS** — nada aqui os tocou.
 
 **PARADO no fim do Bloco D (L7). O Bloco E não foi iniciado. Aguardando o
+selo do arquiteto.**
+
+---
+
+## RESPOSTA DO BUILDER — BLOCO E (Fable 5, 25-26/07/2026)
+
+Bloco D fechado no `d7bb6b9`, selado no §7. Baseline conferida antes de
+tocar (924/0/0). 3 scouts de LEITURA (boot/exe/log; os 47 I2 + I3;
+modo/schema/PRAGMA/índices + §5.5). L1 em tudo — **rodada vermelha em
+LOTE registrada** (9 vermelhos de uma vez, produção intocada; logs em
+`saida_f13/_run_e_red.log`) + stash dance no E6. Testes em
+`test_bloco_e_f13.py`.
+
+### A tabela item × prova
+
+| # | conserto | vermelho | onde |
+|---|---|---|---|
+| E10/COND-8 | as 2 legendas da lei morta caíram — os rótulos contam a regra viva ("sai LIMPA por padrão; o RASCUNHO é o checkbox"; aprovação = selo); a varredura virou teste PERMANENTE (nenhuma string de UI pode afirmar carimbo automático) | `test_e10_cond8...` (a varredura pegou as duas) | `exportar_dialog.py`, `publicar_dialog.py` |
+| E1 | o boot NUNCA baixa: `modelo_baixado()` (o molde do ESRGAN) + `aquecer` no-op sem o .onnx; a PERGUNTA no 1º recorte (`garantir_modelo_recorte`: completo 973 MB / leve ~5 MB gravando na MESMA chave do combo / agora não — Enter no "não", lei do B3) ligada nos 6 chamadores de UI; GUIA_RAPIDO corrigido (as 4 frases: quem baixava era o BOOT, não o recorte — agora o texto é verdade) | `test_e1_aquecer_nao_baixa...` (spy no rembg: o boot carregava sem o arquivo) + `test_e1_primeiro_recorte_pergunta...` | `fundo.py`, `servico.py`, `editor_app.py`, 4 telas, `GUIA_RAPIDO.md` |
+| E2 | a rede de erro do exe: `app/core/erros.py` (excepthook encadeado → `logs/erros.log`, append tolerante — molde do vigia) instalada nos entrypoints; o zip de diagnóstico leva os 4 logs (ia SÓ travamentos — o suporte recebia um zip cego) | `test_e2_rede...` + `test_e2_diagnostico...` | `erros.py` (novo), `diagnostico.py`, `editor_app.py` |
+| E3 | pasta sem escrita morre CONTANDO: prova de escrita no `criar_estrutura` (mkdir passava; o SQLite morria depois, sem janela) + a fase 1 do boot embrulhada (`_montar_shell_seguro`: caixa crítica legível + traceback no log; `sqlite3.OperationalError` não herda de OSError — o except do launcher nunca pegava) | `test_e3_criar_estrutura_prova...` + `test_e3_fase_nua...` | `paths.py`, `editor_app.py` |
+| E4 | Cofre (criar/restaurar/excluir) e `.atpkg` (`aplicar_importacao` — a porta que sobrescreve banco E disco) ganharam `exigir_escrita()`; o snapshot do boot PULA sem drama em somente-leitura; o mapa de `modo.py` parou de se declarar completo (lista o que guardou + nomeia o que segue FORA: lixeira, layouts, eventos, selos, manutenção) | `test_e4_cofre_e_atpkg...` | `cofre.py`, `portabilidade.py`, `modo.py` |
+| E6 | `migrar_produtos_absolutos` (o gêmeo do migrar_artes): dentro→relativo, fora-mas-viva→copia para a biblioteca, sumida→aviso com rastro; gancho no boot ao lado do irmão | `test_e6_fotos_com_caminho_absoluto...` (stash dance) | `biblioteca.py`, `editor_app.py` |
+| E7 | versão de schema (`PRAGMA user_version`, `VERSAO_SCHEMA=2`) + **backup ANTES de migrar DENTRO do init** — a ordem fica certa por construção (no entrypoint real o ALTER rodava ANTES do snapshot do boot, achado do scout; e com banco machucado a migração rodava SEM backup nenhum); banco do FUTURO não é rebaixado (aviso no log, nunca veto) | `test_e7_migracao...` (banco antigo CRIADO NA MÃO: sem versão, sem backup, backup pós-ALTER) | `database.py` |
+| E8 | o PRAGMA chega às conexões fora do hook: as cruas do cofre (×2) e da portabilidade (UPDATE layouts) + **o 8º caminho que o D-12 não citava** — `_sessao_pacote` criava engine SQLAlchemy DIRETO, sem listener (a mesclagem corria sem FK) | `test_e8_sessao_do_pacote...` | `cofre.py`, `portabilidade.py`, `database.py` |
+| E9 | índices em `excluido_em` ×3 + `Layout.nome` nos MODELOS **e no migrador** (`_INDICES_NOVOS` + CREATE INDEX IF NOT EXISTS — create_all pula tabela existente: índice novo nunca chegava a banco antigo) | dentro do `test_e7...` (banco antigo ganha os 4 índices) | `models.py`, `database.py` |
+| E5 | **PARCIAL — declarado abaixo** | — | — |
+
+### E5 — os 47 I2: o placar honesto (L6)
+
+O scout rastreou os 47 um a um (a tabela completa com arquivo:linha de
+HOJE está no relatório; resumo): **6 já consertados** por blocos
+anteriores da F13 (CB-01/B5, CD-01/B1, CH-06-hard-deletes/B10, CI-03/B7,
+CI-05/B4, L-09/B2e); **2 mitigados com decisão documentada** (CD-05,
+CB-t1); **1 invalidado** pelo D8 (o carimbo do selfcheck). Neste bloco
+consertei os de PERDA REAL mais graves + toda a frente CA/CB estrutural:
+
+- **CI-01**: a conciliação não enxergava a LIXEIRA — produto excluído
+  voltava VERDE calado (o corpus agora filtra `excluido_em`);
+- **CI-06**: o upscale do cartaz MATAVA o alfa (`convert("RGB")`) —
+  recorte transparente virava retângulo preto; o alfa viaja à parte e
+  volta redimensionado;
+- **CC-01**: a categoria calculada era jogada fora quando o nome já
+  estava certo (o `if` do nome governava o dict inteiro);
+- e os estruturais acima (CA-01/02/03 = E1/E2/E3; CB-02 = E4; R-07 fica
+  **coberto pelo pré-voo** — a imagem sumida é acusada ANTES, em toda
+  porta, pelo validar_composicao; o `continue` do desenho é a degradação
+  correta com o aviso já dado).
+
+**Os ~26 restantes ficam NOMINAIS** — cada um com arquivo:linha de hoje
+na tabela do scout (CB-03/04/05/08/09/t2, CC-02/06a-f, CD-02/08/t1/t2,
+CE-01/04, CF-04/t1, CI-02, R-06, D-03/04/05, A-04, CA-04/05/08/t1 + o
+achado novo do scout em `servico.py:457`). Não os escondi: o critério
+foi perda de conteúdo real primeiro, e o bloco tem um teto de sessão.
+**Peço ao arquiteto: selo parcial do E5 com a lista herdada pelo G, ou a
+extensão do E** — os consertos são mecânicos (relatar em vez de engolir)
+e o mapa está pronto.
+
+### §5.5 — a lenda do stop() × o segfault do DeferredDelete (a resposta)
+
+Com os fatos do código: **é a mesma FAMÍLIA, não necessariamente a mesma
+raiz única.** Os dois lados do mesmo defeito — "objeto agendado para
+morrer cujo dono morre primeiro, em registros globais que ninguém zera":
+(1) toda animação `DeleteWhenStopped` (4 pontos) e todo véu com
+`deleteLater` (6 pontos) têm PAI widget que pode destruí-los antes de o
+evento pendente ser entregue — exatamente a condição que o conftest da
+F12 descreve ("a entrega É o access violation"); (2) a lenda do stop()
+mantinha animações presas em `_VIVAS` — referências Python vivas para
+C++ possivelmente morto (o `except RuntimeError` do `_prazo` documenta
+que esse estado OCORRE na bancada). **Limites honestos:** o conserto do
+B2 mexeu só em `_VIVAS` — não desagenda deleteLater nem muda a
+DeletionPolicy; se a lenda fosse a raiz única, a regra do conftest teria
+ficado desnecessária, e nada indica isso. E não há dump que nomeie o
+objeto do EXIT=139. Conclusão: a regra do conftest (descartar, nunca
+entregar) CONTINUA necessária; `animacoes.py` é o maior produtor
+conhecido dos dois lados. Recomendação anotada: a fixture `vida` chama
+`deleteLater` direto em vez de `morrer()` (o eventFilter do pai fica
+instalado) — candidato a arrumação na próxima ordem de bancada.
+
+**E o segfault REAPARECEU nesta própria bancada — pela primeira vez
+NOMEADO**: a 2ª passada da suíte do E morreu com 0xC0000005 (access
+violation) e o faulthandler do pytest apontou o frame:
+`test_ctrl_k_abre_em_duas_telas` (test_fase2_busca.py:74), dentro de
+`gestos.drenar()` — o laço de eventos entregando a um objeto Qt já
+destruído, no teste que abre o shell INTEIRO (duas telas = crossfade +
+véus + animações, o maior produtor). É a assinatura exata da família:
+evento pendente × dono morto. Intermitente (a 1ª passada e a invertida,
+com os MESMOS testes, passaram; a recadeia também). O dump completo
+ficou no histórico da sessão; o alvo agora tem nome e endereço para a
+ordem que o caçar.
+
+### Os placares (junit em `saida_f13/`)
+
+| prova | resultado |
+|---|---|
+| suíte da raiz ×2 | **935 verdes ×2, 0 falhas, 0 skips, exit 0** (`bloco_e_suite_1/2.xml`) |
+| ordem invertida | **935/0/0, exit 0** (`bloco_e_invertida.xml`) |
+| janela real | **4/0/0** (`bloco_e_janela.xml`) |
+
+Evolução: 924 (D) → **935 (E)**. **Nota honesta das rodadas:** até os
+placares fecharem, a bancada do E sofreu (a) o segfault intermitente
+0xC0000005 da família §5.5 **duas vezes** — os frames estão nomeados
+acima — com a rodada seguinte do MESMO código passando; (b) flakes de
+contenção (a poda de versões e as filas da onda1) que passam isolados e
+caíram sob carga — a raiz é a contenção do `Database().init()`
+concorrente (o achado do D, nominal); e (c) UMA regressão minha real,
+pega pela própria bancada: o primeiro fast-path do E7 confiava só na
+versão e pulava um banco fabricado com colunas faltando — consertado
+(a conferência é sempre pelas colunas/índices DE VERDADE; a versão só
+decide se há write).
+
+### O que ficou de fora (e por quê)
+
+- **Os ~26 I2 nominais do E5** (acima — pedido de decisão ao arquiteto).
+- **A execução real em Windows limpo** é lição de casa do Otaviano (§3 da
+  ordem) — CA-01/02/03 agora têm código e teste, mas nunca foram VISTOS
+  rodando no exe.
+- **O % numérico do download do modelo**: o pooch manda o progresso ao
+  stderr morto; o rodapé do D1 narra com tempo decorrido, mas sem
+  percentual (precisaria de downloader custom — nominal).
+- **CB-07/CD-t/CB-10** (I3 extras do scout): os leitores toleram legado
+  por desenho; o congelado com arte sumida ainda grava o rastro absoluto
+  — mexer no formato congelado pede adversarial próprio (nominal).
+- **A contenção de ~5s do Database().init concorrente** (achado do D):
+  confirmada como vizinha do D-12, NÃO consertada aqui (mudar o ciclo de
+  vida do engine é cirurgia de arquitetura — nominal para ordem própria).
+
+**PARADO no fim do Bloco E (L7). O Bloco F não foi iniciado. Aguardando o
 selo do arquiteto.**

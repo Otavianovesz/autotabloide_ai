@@ -32,6 +32,23 @@ _sessoes: dict[str, object] = {}
 _trava_sessao = threading.Lock()
 
 
+def pasta_dos_modelos() -> Path:
+    """A pasta onde o rembg guarda os .onnx (U2NET_HOME ou ~/.u2net)."""
+    import os
+    return Path(os.environ.get("U2NET_HOME")
+                or Path.home() / ".u2net").expanduser()
+
+
+def modelo_baixado(modelo: str = MODELO_PADRAO) -> bool:
+    """F13/E1 (CA-01): o rembg BAIXA dentro do construtor da sessão — a
+    API não separa carregar de baixar. Esta é a pergunta 'o arquivo já
+    está no disco?' que faltava (o molde do ESRGAN, que sempre teve)."""
+    try:
+        return (pasta_dos_modelos() / f"{modelo}.onnx").is_file()
+    except OSError:
+        return False
+
+
 def _sessao(modelo: str):
     """Cacheia a sessão do rembg (carregar o modelo custa ~7 s, medido).
 
@@ -49,7 +66,14 @@ def _sessao(modelo: str):
 def aquecer(modelo: str = MODELO_PADRAO) -> None:
     """Pré-carrega o modelo em segundo plano (RG-02): a 1ª foto da sessão
     deixa de pagar os ~7 s de carga. Falha em silêncio ABENÇOADO aqui —
-    é só aquecimento; o uso real reporta o erro de verdade."""
+    é só aquecimento; o uso real reporta o erro de verdade.
+
+    F13/E1 (CA-01): aquecer NUNCA baixa — sem o .onnx no disco é no-op
+    (o boot disparava um download de 973 MB sem pedir, com o progresso
+    indo para o stderr morto do exe). Baixar é decisão do dono, no 1º
+    recorte (servico.garantir_modelo_recorte)."""
+    if not modelo_baixado(modelo):
+        return
     try:
         _sessao(modelo)
     except Exception:

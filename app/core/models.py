@@ -112,7 +112,8 @@ class Produto(Base):
     # Último preço conhecido (ponto de partida). Pode estar vazio.
     preco_atual: Mapped[Decimal | None] = mapped_column(Numeric(10, 2, asdecimal=True))
     # FASE 2 (passo 81): lixeira de 30 dias — soft-delete
-    excluido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    excluido_em: Mapped[datetime | None] = mapped_column(
+        DateTime, index=True)   # F13/E9 (D-10)
 
     # Validade do item — usada SÓ no cartaz (item perto de vencer).
     validade_item: Mapped[date | None] = mapped_column(Date)
@@ -198,11 +199,13 @@ class Layout(Base):
     __tablename__ = "layouts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    nome: Mapped[str] = mapped_column(String(150), nullable=False)
+    nome: Mapped[str] = mapped_column(String(150), nullable=False,
+                                      index=True)   # F13/E9 (D-10)
     arquivo_fundo: Mapped[str | None] = mapped_column(String(500))
     tipo_midia: Mapped[str] = mapped_column(String(20), default=TipoMidia.TABLOIDE.value)
     # FASE 2 (passo 81): lixeira de 30 dias — soft-delete
-    excluido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    excluido_em: Mapped[datetime | None] = mapped_column(
+        DateTime, index=True)   # F13/E9 (D-10)
     estrutura_json: Mapped[str] = mapped_column(Text, default="{}")
     criado_em: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, server_default=func.now()
@@ -297,7 +300,8 @@ class ProjetoSalvo(Base):
     # FASE 2 (passo 50): favorito sobe no topo do evento (só exibição)
     favorito: Mapped[bool | None] = mapped_column(default=False)
     # FASE 2 (passo 81): lixeira de 30 dias — soft-delete
-    excluido_em: Mapped[datetime | None] = mapped_column(DateTime)
+    excluido_em: Mapped[datetime | None] = mapped_column(
+        DateTime, index=True)   # F13/E9 (D-10)
 
     estado_slots: Mapped[str] = mapped_column(Text, default="{}")   # snapshot congelado
     overrides_json: Mapped[str] = mapped_column(Text, default="{}")  # edições manuais

@@ -591,3 +591,40 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   bancada fora do pytest; foto chapada = RUIM legítimo → helper
   foto_de_bancada com miolo puro; undo reconstrói o layout). Placares
   finais e o que ficou de fora: resposta do builder no fim da ordem.
+  **Bloco D SELADO pelo arquiteto (§7, 25/07; commit `d7bb6b9`)** — as 9
+  portas varridas ("nenhuma decide mais por não-aprovado"); COND-6 "melhor
+  do que pedi" (o teste ficou mais hostil); o furo achado virou **COND-8**
+  (duas legendas ensinavam a lei morta) e 2 leituras da medição foram para
+  o **H** (M-03 continua aberto: falta o caso parecido-não-idêntico em
+  acervo grande; o 105ms é sem foto).
+  —— **Bloco E (CONFIABILIDADE E PRIMEIRA EXECUÇÃO) EXECUTADO
+  (25-26/07/2026) — PARADO aguardando o selo (L7).** Rodada VERMELHA em
+  LOTE (9 de uma vez) + stash dance; testes em `test_bloco_e_f13.py`.
+  **E10/COND-8**: as 2 legendas contam a regra viva + varredura virou
+  teste permanente. **E1**: o boot NUNCA baixa (`modelo_baixado` +
+  `aquecer` no-op; molde do ESRGAN); a PERGUNTA no 1º recorte
+  (`garantir_modelo_recorte`: completo/leve ~5MB/agora não — Enter no
+  não) nos 6 chamadores; GUIA_RAPIDO corrigido (quem baixava era o BOOT).
+  **E2**: `app/core/erros.py` (excepthook encadeado → logs/erros.log,
+  molde do vigia) nos entrypoints; o zip de diagnóstico leva os 4 logs.
+  **E3**: prova de ESCRITA no criar_estrutura + `_montar_shell_seguro`
+  (a fase nua morria sem janela: OperationalError não herda de OSError).
+  **E4**: Cofre ×3 + `aplicar_importacao` com `exigir_escrita`; snapshot
+  do boot PULA em somente-leitura; o mapa do modo.py parou de se declarar
+  completo (nomeia o que segue fora). **E6**: `migrar_produtos_absolutos`
+  (o gêmeo do migrar_artes) no boot. **E7**: `PRAGMA user_version` +
+  backup pré-migração DENTRO do init (a ordem certa por construção — no
+  entrypoint real o ALTER rodava antes do snapshot); banco do futuro não
+  é rebaixado. **E8**: PRAGMA nas cruas + o 8º caminho (o engine do
+  pacote sem listener). **E9**: índices (modelos + migrador — create_all
+  pula tabela existente). **E5 PARCIAL declarado**: 47 rastreados pelo
+  scout (6 já caíram em B/C/D); consertados os de perda real (CI-01
+  lixeira invisível à conciliação, CI-06 alfa morto no upscale do cartaz,
+  CC-01 categoria jogada fora) + os estruturais (=E1..E4); ~26 NOMINAIS
+  com linha de hoje — pedido de decisão ao arquiteto (selo parcial com
+  herança pro G, ou extensão do E). **§5.5 respondido**: mesma FAMÍLIA
+  (objeto agendado para morrer cujo dono morre primeiro), não
+  necessariamente a mesma raiz única — a regra do conftest continua
+  necessária; limites honestos na resposta. Placares e o resto: resposta
+  do builder no fim da ordem. Execução real em Windows limpo = lição de
+  casa do Otaviano (§3).

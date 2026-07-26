@@ -54,9 +54,14 @@ class ExportarDialog(QDialog):
                              else Qt.CheckState.Unchecked)
             self.lista.addItem(li)
 
+        # F13/E10 (COND-8): a legenda conta a REGRA VIVA — a trava #1 caiu
+        # no D8 (sai limpo por padrão; o carimbo é o checkbox); a aprovação
+        # aparece como o SELO informativo que é, nunca como condição
         self._nota = QLabel(
-            "A peça sai com “RASCUNHO” até você aprovar o projeto."
-            if not mesa.esta_aprovado() else "Projeto aprovado — sai limpo.")
+            "Projeto aprovado (selo do checklist) — a peça sai limpa."
+            if mesa.esta_aprovado() else
+            "A peça sai LIMPA por padrão — marque “Carimbar RASCUNHO” "
+            "abaixo se quiser a marca d'água.")
         self._nota.setProperty("papel", "legenda")
         self._nota.setWordWrap(True)
 

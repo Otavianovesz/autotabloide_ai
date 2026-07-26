@@ -172,6 +172,37 @@ def _grade_sintetica():
     return LayoutDef(210, 297, dpi=150, paginas=[Pagina(slots)])
 
 
+def _montar_shell_seguro(holder: dict):
+    """F13/E3 (CA-03): a fase 1 do boot era NUA — pasta sem escrita ou
+    banco inacessível estourava AQUI, antes do show(), e o processo
+    morria sem caixa e sem log (o `except OSError` do launcher não pega
+    `sqlite3.OperationalError`). Falhou: o traceback vai a logs/erros.log
+    e o dono recebe uma caixa LEGÍVEL (pai None — janela ainda não
+    existe). Devolve None; o main encerra limpo."""
+    try:
+        return _montar_shell(holder)
+    except Exception:
+        import traceback as _tb
+
+        from app.core.erros import registrar_erro_bruto
+        registrar_erro_bruto(_tb.format_exc())
+        try:
+            from PySide6.QtWidgets import QMessageBox
+
+            from app.core.paths import SystemRoot
+            QMessageBox.critical(
+                None, "O AutoTabloide não conseguiu abrir",
+                "Não deu para preparar a área de trabalho.\n\n"
+                f"Pasta dos dados: {SystemRoot().raiz}\n"
+                "Causas comuns: pasta sem permissão de escrita, disco "
+                "cheio ou antivírus segurando o banco.\n\n"
+                "O detalhe técnico ficou em logs\\erros.log "
+                "(Configurações › Gerar diagnóstico para suporte).")
+        except Exception:
+            pass
+        return None
+
+
 def _montar_shell(holder: dict):
     """RG-01: o MÍNIMO para a janela nascer — Shell + Dashboard (tela de
     chegada). O resto monta depois do show(), em ``_completar_janela``."""
@@ -348,14 +379,20 @@ def montar_janela():
 
 
 def _migrar_artes() -> list[str]:
-    """E-A3: arte de layout com caminho de máquina migra p/ a pasta da raiz."""
+    """E-A3: arte de layout com caminho de máquina migra p/ a pasta da raiz.
+
+    F13/E6 (D-02): as FOTOS ganham o mesmo tratamento — o gêmeo
+    migrar_produtos_absolutos roda junto (I3 curado na raiz, com aviso
+    nominal; nunca em silêncio)."""
     from app.core.database import Database
+    from app.images.biblioteca import BibliotecaImagens
     from app.rendering.persistencia import migrar_artes_absolutas
 
     db = Database().init()
     try:
         with db.Session() as s:
             avisos = migrar_artes_absolutas(s)
+            avisos += BibliotecaImagens.migrar_produtos_absolutos(s)
             s.commit()
     finally:
         db.engine.dispose()
@@ -387,6 +424,10 @@ def main() -> int:
             pass
 
     app = QApplication.instance() or QApplication(sys.argv)
+    # F13/E2 (CA-02): o exe roda com console=False — sem esta rede, um
+    # erro fatal morre MUDO. O rastro inteiro vive em logs/erros.log.
+    from app.core.erros import instalar_rede_de_erros
+    instalar_rede_de_erros()
     aplicar_tema(app)
     from app.qt.design.componentes import instalar_traducao_qt
     instalar_traducao_qt(app)   # F13/B2c: nativos do Qt em PT-BR
@@ -405,7 +446,9 @@ def main() -> int:
     # RG-01: a JANELA nasce primeiro; snapshot, migração e as telas pesadas
     # montam logo depois do show() (a percepção de abertura é a janela)
     holder: dict = {}
-    shell = _montar_shell(holder)
+    shell = _montar_shell_seguro(holder)
+    if shell is None:               # F13/E3: falhou CONTANDO, nunca mudo
+        return 1
 
     def _ativar() -> None:
         shell.showNormal()
@@ -468,13 +511,19 @@ def main() -> int:
             mostrar_toast(shell, f"{len(avisos_migracao)} layout(s) com arte "
                                  "migrada/pendente — detalhes no console.")
         # RG-02: pré-aquece o modelo de recorte em segundo plano — a 1ª foto
-        # da sessão deixa de pagar os ~7 s de carga (medido)
-        from app.images.fundo import aquecer, modelo_configurado
+        # da sessão deixa de pagar os ~7 s de carga (medido).
+        # F13/E1 (CA-01): SÓ se o .onnx JÁ está no disco (o molde do
+        # ESRGAN logo abaixo) — o boot baixava 973 MB sem pedir, com o
+        # progresso indo para o stderr morto do exe. O download agora é
+        # decisão do dono, no 1º recorte (garantir_modelo_recorte).
+        from app.images.fundo import aquecer, modelo_baixado, modelo_configurado
         from app.qt.workers import GerenciadorTrabalhos, Trabalhador
         shell._trabalhos_globais = GerenciadorTrabalhos()
-        aquecedor = Trabalhador(
-            lambda _st, m=modelo_configurado(): aquecer(m))
-        shell._trabalhos_globais.rodar(aquecedor)
+        modelo_boot = modelo_configurado()
+        if modelo_baixado(modelo_boot):
+            aquecedor = Trabalhador(
+                lambda _st, m=modelo_boot: aquecer(m))
+            shell._trabalhos_globais.rodar(aquecedor)
         # OS F11.5 #80: o Real-ESRGAN também aquece (o 1º cartaz da sessão
         # deixava de responder enquanto o .pth carregava)
         def _aquecer_esrgan(_st):

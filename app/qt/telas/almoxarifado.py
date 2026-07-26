@@ -680,6 +680,8 @@ class AlmoxarifadoTela(QWidget):
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            return
 
         def _fluxo(st, v=valor, pid=d["id"]):
             tratada = servico.tratar_imagem(v, st)
@@ -752,6 +754,8 @@ class AlmoxarifadoTela(QWidget):
         # OS F11.5 #20: a flag da Config liga o degrau 2 (sem GPU degrada com
         # aviso); #8: o packshot passa por PRÉVIA antes/depois — só aplica se
         # o dono aprovar (nada muda sozinho)
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            return
         com_gerador = servico.estudio_gerador_ligado()
 
         def _fluxo(st, fonte=d["imagem"]):
@@ -824,6 +828,8 @@ class AlmoxarifadoTela(QWidget):
                 f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
                 "vira uma versão (dá para restaurar no Histórico).",
                 sim=f"Tratar {len(alvos)} foto(s)", nao="Cancelar"):
+            return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
             return
         com_gerador = servico.estudio_gerador_ligado()
 

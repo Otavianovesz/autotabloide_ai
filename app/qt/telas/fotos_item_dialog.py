@@ -259,6 +259,9 @@ class FotosItemDialog(QDialog):
             self._tratar_e_adicionar(cam)
 
     def _tratar_e_adicionar(self, fonte: str) -> None:
+        from app.qt.telas import servico as _svc
+        if not _svc.garantir_modelo_recorte(self):      # F13/E1 (CA-01)
+            return
         pid = self._item.produto_id
 
         def _trabalho(st, f=fonte, p=pid):

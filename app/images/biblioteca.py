@@ -61,6 +61,49 @@ class BibliotecaImagens:
     def pasta(self, produto_id: int) -> Path:
         return self.raiz / str(produto_id)
 
+    @staticmethod
+    def migrar_produtos_absolutos(session, raiz=None) -> list[str]:
+        """F13/E6 (D-02): o gêmeo de ``migrar_artes_absolutas`` para
+        ``Produto.caminho_imagem`` — linha legada com caminho ABSOLUTO
+        ficava assim para sempre: funciona na máquina de origem e quebra
+        em qualquer outra, sem uma palavra (os leitores toleram absoluto
+        e mascaram). Foto DENTRO da biblioteca → regrava relativo; fora
+        mas viva → COPIA para a biblioteca e regrava; sumida → aviso
+        nominal com o rastro mantido. Idempotente; avisos por produto."""
+        import shutil
+
+        from app.core.models import Produto
+        from app.core.paths import SystemRoot
+        root = raiz or SystemRoot()
+        bib_raiz = Path(root.biblioteca_imagens)
+        avisos: list[str] = []
+        for p in session.query(Produto).all():
+            c = p.caminho_imagem
+            if not c or not Path(c).is_absolute():
+                continue
+            origem = Path(c)
+            try:
+                rel = origem.relative_to(bib_raiz)
+                p.caminho_imagem = rel.as_posix()
+                avisos.append(f"“{p.nome_sanitizado}”: foto regravada "
+                              "relativa à biblioteca")
+                continue
+            except ValueError:
+                pass                      # está FORA da biblioteca
+            if origem.is_file():
+                destino = bib_raiz / str(p.id) / f"atual{origem.suffix}"
+                destino.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(origem, destino)
+                p.caminho_imagem = f"{p.id}/{destino.name}"
+                avisos.append(f"“{p.nome_sanitizado}”: foto copiada para "
+                              "a biblioteca (o caminho antigo era da "
+                              "máquina)")
+            else:
+                avisos.append(f"“{p.nome_sanitizado}”: a foto do caminho "
+                              "antigo não está no disco — mantive o "
+                              "rastro para você resolver")
+        return avisos
+
     def caminho_atual(self, produto_id: int) -> Path:
         """A foto 'atual' que EXISTE (png ou webp); sem nenhuma, o caminho do
         formato configurado (onde a próxima será gravada)."""

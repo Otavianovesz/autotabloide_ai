@@ -171,6 +171,50 @@ def _motor_se_disponivel():
     return motor if motor.disponivel() else None
 
 
+def garantir_modelo_recorte(pai) -> bool:
+    """F13/E1 (CA-01): a PERGUNTA do 1º recorte — o download de ~973 MB
+    era disparado pelo BOOT, sem pedir, com o progresso indo para o
+    stderr morto do exe. Três saídas: baixar o completo, usar o LEVE
+    (~5 MB — grava na MESMA chave do combo das Configurações) ou agora
+    não. True = pode seguir (o download em si acontece no worker do
+    tratamento, narrado pela faixa de rodapé do D1)."""
+    from app.images.fundo import modelo_baixado, modelo_configurado
+    modelo = modelo_configurado()
+    if modelo_baixado(modelo):
+        return True
+    from PySide6.QtWidgets import QMessageBox
+    caixa = QMessageBox(pai)
+    caixa.setWindowTitle("Modelo de recorte")
+    caixa.setIcon(QMessageBox.Icon.Question)
+    caixa.setText(
+        "Para recortar o fundo das fotos, o app precisa baixar um modelo "
+        "(uma vez só — precisa de internet).\n\n"
+        "• Completo: qualidade máxima (~973 MB, demora)\n"
+        "• Leve: ~5 MB, qualidade menor — dá para trocar depois nas "
+        "Configurações › Imagens.")
+    b_full = caixa.addButton("Baixar o completo (973 MB)",
+                             QMessageBox.ButtonRole.AcceptRole)
+    caixa.addButton("Usar o leve (~5 MB)",
+                    QMessageBox.ButtonRole.ActionRole)
+    b_nao = caixa.addButton("Agora não", QMessageBox.ButtonRole.RejectRole)
+    caixa.setDefaultButton(b_nao)      # a lei do B3: Enter não baixa 1 GB
+    caixa.setEscapeButton(b_nao)
+    caixa.exec()
+    clicado = caixa.clickedButton()
+    if clicado is b_nao:
+        return False
+    if clicado is not b_full:          # o leve: grava a escolha na Config
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                ConfigRepositorio(s).set("imagem.modelo_rembg", "u2netp")
+                s.commit()
+        finally:
+            db.engine.dispose()
+    return True
+
+
 # --- catálogo (Almoxarifado) -----------------------------------------------------
 
 def _produto_plano(p) -> dict:

@@ -90,7 +90,8 @@ def _relativizar_layouts_no_pacote(banco: Path, staging: Path,
     avisos: list[str] = []
     destino_artes = staging / "layouts_arte"
     conn = sqlite3.connect(str(banco))
-    try:
+    conn.execute("PRAGMA foreign_keys=ON")   # F13/E8 (D-12): a conexão
+    try:                                     # crua também segue a lei
         rows = conn.execute(
             "SELECT id, nome, arquivo_fundo, estrutura_json FROM layouts").fetchall()
         for lid, nome, fundo_col, estrutura_json in rows:
@@ -277,7 +278,18 @@ class AnalisePacote:
 
 
 def _sessao_pacote(banco: Path):
+    """F13/E8 (D-12): este engine nascia por create_engine DIRETO, fora
+    do hook do PRAGMA — a análise/mesclagem do pacote corria sem
+    foreign_keys=ON. O listener espelha o do banco vivo."""
+    from sqlalchemy import event as _event
     eng = create_engine(f"sqlite:///{banco}", future=True)
+
+    @_event.listens_for(eng, "connect")
+    def _pragmas(dbapi, _registro):
+        cur = dbapi.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
     return eng, sessionmaker(bind=eng, class_=Session, expire_on_commit=False)
 
 
@@ -547,7 +559,13 @@ def aplicar_importacao(analise: AnalisePacote,
                        progresso: Callable[[str], None] = _SEM_PROGRESSO,
                        ) -> RelatorioImportacao:
     """Fase 2: grava a mesclagem. Todo conflito EXIGE decisão (nada em silêncio);
-    toda foto importada é verificada BYTE A BYTE antes do commit."""
+    toda foto importada é verificada BYTE A BYTE antes do commit.
+
+    F13/E4 (CB-02): esta é a porta GRAVE — grava no banco vivo e no disco
+    da raiz; no PC da loja (somente leitura) ela nunca passou pela
+    guarda."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
     from app.core.database import Database
     from app.core.models import (
         Categoria,
