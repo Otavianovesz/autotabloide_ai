@@ -300,3 +300,12 @@ Página: `saida_f13/galeria_f13_bis/segunda-2707-caminho-do-dono.png`.
 **Suíte 1016 ×2 zero skips exit-0** (1003 + os 13 da NONUS; runs 1 e 2);
 **invertida 1016/0/0**; **janela real 4/0/0** — as quatro DE PRIMEIRA, sem incidente.
 
+
+> **ADENDO — a palavra do DONO (27/07/2026, pós-DECIMUS):** a tabela do §2 desta ordem
+> descartava o TP e o dono corrigiu: *"Não se pode omitir o tipo de embalagem assim não"*.
+> A cadeia foi consertada NO MESMO DIA: a sigla de embalagem (TP, BB…) agora DESCE ao
+> descritor junto com o peso ("Suco de Uva Aurora Tinto TP 1,5L" → nome "Suco de Uva Aurora
+> Tinto", descritor com "TP · 1,5 L") — vale a anotação original da SEPTIMUS §3, e o teste
+> `test_n1_a_cadeia_encurta_pelo_descritor_e_nunca_elipsa` foi VIRADO com rastro (a igualdade
+> de tokens agora exige o nome INTEIRO, sem exceção nenhuma). Informação nunca se perde (I2)
+> — nem quando um exemplo de ordem diz o contrário; o selo do dono manda.

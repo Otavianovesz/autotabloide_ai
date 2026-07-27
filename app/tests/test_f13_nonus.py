@@ -84,12 +84,16 @@ def test_n1_a_cadeia_encurta_pelo_descritor_e_nunca_elipsa(tmp_path):
         assert not aj.elipsa, f"{nome!r}: a cadeia declarou elipse"
         assert nome.startswith(aj.nome), \
             f"{nome!r}: o nome final {aj.nome!r} não é prefixo (reordenou?)"
-        # nada se perde: nome final + descritor = o nome inteiro (menos
-        # a sigla TP descartada pela tabela da ordem e a formatação do peso)
+        # nada se perde: nome final + descritor = o nome INTEIRO (só a
+        # formatação do peso muda). CONTRATO CORRIGIDO PELO DONO
+        # (27/07, pós-DECIMUS): a tabela da NONUS §2 descartava o TP e
+        # ele mandou de volta — "não se pode omitir o tipo de
+        # embalagem"; a sigla DESCE ao descritor (a anotação original
+        # da SEPTIMUS §3: "tinto TP · 1,5 L"), nunca some.
         def _tokens(s):
             return [t.lower().replace(",", ".") for t in (s or "").replace(
                 " · ", " ").split() if t]
-        sobra = [t for t in _tokens(nome) if t not in ("tp",)]
+        sobra = _tokens(nome)
         junto = _tokens(aj.nome) + [t for t in _tokens(aj.descritor)]
         # o peso "395g" vira "395 g" — normaliza colando número+unidade
         def _cola_peso(ts):
@@ -110,6 +114,13 @@ def test_n1_a_cadeia_encurta_pelo_descritor_e_nunca_elipsa(tmp_path):
                              flanco.regioes, lay.dpi, fontes)
     assert aj.nome == "Leite Condensado"
     assert aj.descritor == "Triangulo · 395 g"
+
+    # e o caso do dono (27/07): o TP É a embalagem — cravado no descritor
+    aj = precedencia_do_nome("Suco de Uva Aurora Tinto TP 1,5L", None, None,
+                             flanco.regioes, lay.dpi, fontes)
+    assert "TP" in (aj.descritor or "") or "TP" in aj.nome, (
+        f"o TP sumiu — nome {aj.nome!r}, descritor {aj.descritor!r}")
+    assert aj.descritor and aj.descritor.endswith("1,5 L")
 
 
 def test_n1_adversarial_nome_gigante_degrada_sem_elipsar(tmp_path):

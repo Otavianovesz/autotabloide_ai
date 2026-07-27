@@ -15,10 +15,12 @@ O encurtamento do passo 5 é MECÂNICO, nunca heurístico: como a ordem
 travada do nome é Tipo+Marca+Sabor+Peso, o fim do nome é o que pode
 descer — o peso primeiro (``separar_peso`` do sanitize, L9), depois os
 tokens do fim, um a um, SEMPRE inteiros e SEMPRE preservados no
-descritor (nada se perde — I2). Única exceção, mandada pela tabela da
-NONUS §2: sigla de embalagem (TP, BB…) no fim do nome é DESCARTADA.
-Sem região SUBTITULO na célula não há passos 4/5 — mover excedente para
-lugar nenhum seria perda silenciosa.
+descritor (nada se perde — I2). A sigla de embalagem (TP, BB…) DESCE
+junto — a tabela da NONUS §2 a descartava e o DONO corrigiu (27/07):
+"não se pode omitir o tipo de embalagem"; vale a anotação original da
+SEPTIMUS §3 ("tinto TP · 1,5 L"). Sem região SUBTITULO na célula não
+há passos 4/5 — mover excedente para lugar nenhum seria perda
+silenciosa.
 """
 
 from __future__ import annotations
@@ -147,15 +149,20 @@ def precedencia_do_nome(
         return NomeAjustado(nome, descritor, elipsa=True)
 
     # C2 no motor: com linha de descritor, o peso do fim do nome DESCE
-    # (e some a duplicação "Italac 200g" + "200g" do caminho real)
+    # (e some a duplicação "Italac 200g" + "200g" do caminho real) — e
+    # a sigla de embalagem que o acompanha desce JUNTO, na ordem do
+    # nome ("Tinto TP 1,5L" → "TP · 1,5 L"): o dono mandou (27/07),
+    # embalagem nunca se omite
     partes_desc: list[str] = []
     nome_atual, peso = separar_peso(nome)
+    tokens = nome_atual.split()
+    siglas: list[str] = []
+    if peso:
+        while len(tokens) > 1 and tokens[-1].upper() in REGRAS_PADRAO.siglas:
+            siglas.insert(0, tokens.pop())
+    partes_desc.extend(siglas)
     if peso:
         partes_desc.append(peso)
-    # sigla de embalagem no fim descartada (a tabela da NONUS §2)
-    tokens = nome_atual.split()
-    while len(tokens) > 1 and tokens[-1].upper() in REGRAS_PADRAO.siglas:
-        tokens.pop()
     nome_atual = " ".join(tokens)
     desc_atual = _juntar_descritor(partes_desc, descritor0)
 
@@ -195,9 +202,7 @@ def precedencia_do_nome(
     excedente: list[str] = []
     while len(tokens) > 1:
         tk = tokens.pop()
-        if tk.upper() in REGRAS_PADRAO.siglas:
-            continue                       # embalagem: descarta (§2)
-        excedente.insert(0, tk)
+        excedente.insert(0, tk)            # a sigla desce COM o resto
         candidato = " ".join(tokens)
         if _cabe(candidato, reg_nome, rect_nome, dpi, fontes_dir):
             return NomeAjustado(
