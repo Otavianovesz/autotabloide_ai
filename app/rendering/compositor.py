@@ -20,6 +20,8 @@ from app.rendering.selos import Canto, Selo, desenhar_selos
 from app.rendering.model import (
     Ajuste,
     Alinhamento,
+    AlinhamentoV,
+    FormaPreco,
     LayoutDef,
     Mascara,
     Pagina,
@@ -61,6 +63,10 @@ class DadosProduto:
     imagens: list[ImagemSlot] = field(default_factory=list)  # 1..N imagens
     modo_arranjo: ModoArranjo = ModoArranjo.LEQUE
     unidade: str | None = None
+    # F13-BIS/T2: o DESCRITOR do item ("senepol · m. própria · 100 g") —
+    # a 2ª linha que todo encarte do pacote tem; regiões SUBTITULO o
+    # desenham (sem ele, caem na unidade).
+    descritor: str | None = None
     # selos
     mais18: bool = False               # +18 automático (bebida alcoólica)
     marca_propria: bool = False        # selo "Qualidade Belo Brasil"
@@ -330,7 +336,8 @@ def _desenhar_texto(
         return
     x, y, rw, rh = _rect_px(reg.rect, dpi)
     aj = ajustar_texto(
-        texto, fontes_dir / reg.fonte, rw, rh, reg.tamanho_max_pt, dpi, reg.tamanho_min_pt
+        texto, fontes_dir / reg.fonte, rw, rh, reg.tamanho_max_pt, dpi,
+        reg.tamanho_min_pt, sem_hifen=reg.sem_hifen   # F13-BIS/T5
     )
     total_h = aj.altura_linha_px * len(aj.linhas)
     oy = _y_alinhado(y, rh, total_h, reg)     # F13/C4: TOPO/CENTRO/BASE
@@ -362,6 +369,165 @@ def _desenhar_texto(
             _texto_com_efeito(draw, (lx, py), linha, aj.fonte, reg)
 
 
+def _desenhar_forma_preco(base: Image.Image, reg: Regiao, dpi: int) -> None:
+    """F13-BIS/T1: pinta a FORMA da identidade do encarte atrás do preço.
+
+    A caixa da região É a forma (o tamanho vem da tabela do gerador);
+    o texto é desenhado por cima pelo caminho de sempre. Todas levam a
+    sombra deslocada dos geradores (rgba escura a ~30%). O giro vem do
+    ``rotacao_graus`` (a região inteira gira — RG-12)."""
+    if reg.forma_preco == FormaPreco.TEXTO:
+        return
+    x, y, w, h = _rect_px(reg.rect, dpi)
+    if w <= 2 or h <= 2:
+        return
+    m = max(6, h // 4)                    # margem p/ sombra e pétalas
+    tile = Image.new("RGBA", (w + 2 * m, h + 2 * m), (0, 0, 0, 0))
+    d = ImageDraw.Draw(tile)
+    caixa = (m, m, m + w - 1, m + h - 1)
+    sombra = tuple(c + 3 for c in caixa[:2]) + \
+        tuple(c + 3 for c in caixa[2:])
+    cor_sombra = (36, 29, 20, 76)         # o rgba(36,29,20,0.3) do pacote
+    borda = reg.forma_cor_borda
+    esp = max(2, h // 18)
+
+    if reg.forma_preco == FormaPreco.TAG_ARREDONDADA:
+        r = max(3, round(h * 0.28))
+        d.rounded_rectangle(sombra, radius=r, fill=cor_sombra)
+        d.rounded_rectangle(caixa, radius=r, fill=reg.forma_cor,
+                            outline=borda, width=esp if borda else 0)
+    elif reg.forma_preco == FormaPreco.PILULA:
+        r = h // 2
+        d.rounded_rectangle(sombra, radius=r, fill=cor_sombra)
+        d.rounded_rectangle(caixa, radius=r, fill=reg.forma_cor,
+                            outline=borda, width=esp if borda else 0)
+    elif reg.forma_preco == FormaPreco.OVAL:
+        d.ellipse(sombra, fill=cor_sombra)
+        d.ellipse(caixa, fill=reg.forma_cor,
+                  outline=borda, width=esp if borda else 0)
+    elif reg.forma_preco == FormaPreco.MEDALHAO_ESTRELA:
+        # o selo de cera da Segunda: 18 pétalas em raio R-1 + disco +
+        # anel interno (espec do gerador: selo_cera, gen_segunda3:24)
+        import math
+        cx, cy = m + w / 2, m + h / 2
+        R = min(w, h) / 2
+        rp = max(3.0, R * 0.175)
+        for dx, dy_, cor in ((2, 4, cor_sombra), (0, 0, reg.forma_cor)):
+            for k in range(18):
+                a = k * math.tau / 18
+                px_ = cx + dx + (R - 1) * math.cos(a) * 0.92
+                py_ = cy + dy_ + (R - 1) * math.sin(a) * 0.92
+                d.ellipse((px_ - rp, py_ - rp, px_ + rp, py_ + rp),
+                          fill=cor)
+            d.ellipse((cx + dx - R, cy + dy_ - R,
+                       cx + dx + R, cy + dy_ + R), fill=cor)
+        if borda:
+            ri = R - rp
+            d.ellipse((cx - ri, cy - ri, cx + ri, cy + ri),
+                      outline=borda, width=max(1, round(R * 0.035)))
+    elif reg.forma_preco == FormaPreco.ETIQUETA_GIRADA:
+        # a bandeirola do açougue: corpo + ponta em seta à DIREITA,
+        # sem contorno (espec: bandeira, gen_carne_final:150)
+        p = round(h * 0.30)
+        pts = [(m, m), (m + w - 1 - p, m),
+               (m + w - 1, m + h // 2),
+               (m + w - 1 - p, m + h - 1), (m, m + h - 1)]
+        d.polygon([(px_ + 3, py_ + 4) for px_, py_ in pts],
+                  fill=(33, 26, 18, 64))
+        d.polygon(pts, fill=reg.forma_cor,
+                  outline=borda, width=esp if borda else 0)
+    elif reg.forma_preco == FormaPreco.ETIQUETA_PENDURADA:
+        # o disco escalopado da Terça, pendurado por um cordão em "Λ"
+        # (espec: disco, gen_terca_final:127) — 18 dentes, anel
+        # tracejado interno; o cordão sobe pela margem do tile
+        import math
+        cx, cy = m + w / 2, m + h / 2
+        R = min(w, h) / 2
+        rp = max(2.5, R * 0.17)
+        fio = "#B99B6B"
+        d.line((cx - R * 0.28, cy - R * 0.85, cx, cy - R * 1.18),
+               fill=fio, width=2)
+        d.line((cx, cy - R * 1.18, cx + R * 0.28, cy - R * 0.85),
+               fill=fio, width=2)
+        for dx, dy_, cor in ((2, 4, cor_sombra), (0, 0, reg.forma_cor)):
+            for k in range(18):
+                a = k * math.tau / 18
+                px_ = cx + dx + (R - 1) * math.cos(a) * 0.94
+                py_ = cy + dy_ + (R - 1) * math.sin(a) * 0.94
+                d.ellipse((px_ - rp, py_ - rp, px_ + rp, py_ + rp),
+                          fill=cor)
+            d.ellipse((cx + dx - R, cy + dy_ - R,
+                       cx + dx + R, cy + dy_ + R), fill=cor)
+        if borda:
+            d.ellipse((cx - R, cy - R, cx + R, cy + R),
+                      outline=borda, width=1)
+        ri = R * 0.8
+        for k in range(24):                # o anel tracejado claro
+            a0 = k * 360 / 24
+            d.arc((cx - ri, cy - ri, cx + ri, cy + ri),
+                  start=a0, end=a0 + 7, fill=reg.cor, width=1)
+    elif reg.forma_preco == FormaPreco.CARIMBO:
+        # o carimbo do Jornal: borda perfurada + moldura interna, SEM
+        # fundo (espec: carimbo, gen_jornal_final:30)
+        cor_c = reg.forma_cor
+        sw = max(2, round(h * 0.055))
+        passo, traco = max(10, w // 9), max(7, w // 14)
+        xx = m
+        while xx < m + w - 1:              # tracejado em cima e embaixo
+            fim = min(xx + traco, m + w - 1)
+            d.line((xx, m, fim, m), fill=cor_c, width=sw)
+            d.line((xx, m + h - 1, fim, m + h - 1), fill=cor_c, width=sw)
+            xx += passo
+        yy = m
+        while yy < m + h - 1:              # e nas laterais
+            fim = min(yy + traco, m + h - 1)
+            d.line((m, yy, m, fim), fill=cor_c, width=sw)
+            d.line((m + w - 1, yy, m + w - 1, fim), fill=cor_c, width=sw)
+            yy += passo
+        ins = max(4, round(h * 0.12))
+        d.rounded_rectangle((m + ins, m + ins,
+                             m + w - 1 - ins, m + h - 1 - ins),
+                            radius=max(2, round(h * 0.08)),
+                            outline=cor_c, width=1)
+    base.paste(tile, (x - m, y - m), tile)
+
+
+def _regiao_palco_da_forma(reg: Regiao) -> Regiao:
+    """F13-BIS/T1: a sub-caixa ÚTIL da forma, onde o texto do preço vive.
+
+    Numa forma, o texto centraliza NELA (não na caixa da região — o
+    medalhão numa caixa larga deixava o texto fora do disco) e tem de
+    caber na tinta: cada forma tem seu palco (o disco do medalhão é
+    menor que a caixa; a plaquinha pendurada começa abaixo do fio)."""
+    import dataclasses
+
+    from app.rendering.model import Retangulo
+
+    x, y, w, h = (reg.rect.x_mm, reg.rect.y_mm,
+                  reg.rect.larg_mm, reg.rect.alt_mm)
+    f = reg.forma_preco
+    if f in (FormaPreco.MEDALHAO_ESTRELA, FormaPreco.ETIQUETA_PENDURADA):
+        lado = min(w, h)                     # o texto vive no DISCO
+        pw, ph = lado * 0.80, lado * 0.52
+        px_, py_ = x + (w - pw) / 2, y + (h - ph) / 2
+    elif f == FormaPreco.OVAL:
+        pw, ph = w * 0.72, h * 0.70
+        px_, py_ = x + (w - pw) / 2, y + (h - ph) / 2
+    elif f == FormaPreco.ETIQUETA_GIRADA:
+        pw, ph = w * 0.76, h * 0.80          # a ponta come a direita
+        px_, py_ = x + w * 0.05, y + (h - ph) / 2
+    elif f == FormaPreco.CARIMBO:
+        pw, ph = w * 0.80, h * 0.66
+        px_, py_ = x + (w - pw) / 2, y + (h - ph) / 2
+    else:                                    # TAG/PILULA
+        pw, ph = w * 0.84, h * 0.80
+        px_, py_ = x + (w - pw) / 2, y + (h - ph) / 2
+    return dataclasses.replace(
+        reg, rect=Retangulo(px_, py_, pw, ph),
+        alinhamento=Alinhamento.CENTRO,
+        alinhamento_v=AlinhamentoV.CENTRO)
+
+
 def _desenhar_preco(
     base: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -379,6 +545,13 @@ def _desenhar_preco(
     valor = dados.preco_de if reg.papel_preco == PapelPreco.DE else dados.preco_por
     if valor is None:
         return
+
+    # F13-BIS/T1: a forma da identidade do encarte ANTES do texto — e o
+    # texto passa a viver no PALCO da forma (centrado nela e coubível
+    # na tinta, nunca na caixa larga da região).
+    if reg.forma_preco != FormaPreco.TEXTO:
+        _desenhar_forma_preco(base, reg, dpi)
+        reg = _regiao_palco_da_forma(reg)
 
     if reg.subtipo_preco == SubtipoPreco.COMPLETO:
         reais, centavos = _reais_centavos(valor)
@@ -447,8 +620,10 @@ def _desenhar_preco(
     cursor += w_prefixo
     draw.text((cursor, baseline), reais, font=f_g, fill=reg.cor, anchor="ls")
     cursor += w_reais
-    # centavos alinhados ao topo do número grande (sobrescrito)
-    baseline_cent = baseline - (asc_g - asc_p)
+    # centavos: sobrescritos (o padrão de sempre) ou na MESMA baseline
+    # (F13-BIS/T1 — os selos/discos/bandeiras do pacote)
+    baseline_cent = baseline if reg.centavos_na_base \
+        else baseline - (asc_g - asc_p)
     draw.text((cursor, baseline_cent), "," + centavos, font=f_p, fill=reg.cor, anchor="ls")
 
     if reg.riscado:   # traço sobre o preço inteiro (o "de" do cartaz)
@@ -483,14 +658,25 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         _desenhar_texto(base, draw, reg, texto, dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.UNIDADE:
         _desenhar_texto(base, draw, reg, dados.unidade or "", dpi, fontes_dir)
+    elif reg.tipo == TipoRegiao.SUBTITULO:
+        # F13-BIS/T2: a linha de descritor do modelo (fallback: unidade)
+        _desenhar_texto(base, draw, reg,
+                        dados.descritor or dados.unidade or "",
+                        dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.PRECO:
         _desenhar_preco(base, draw, reg, dados, dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.TEXTO_LEGAL:
         # RG-57: o PAPEL da região decide o texto (validade viva, dica da IA,
         # aviso do preset, ou o livre) — fonte única com a prévia do editor.
-        _desenhar_texto(base, draw, reg,
-                        texto_composto_legal(reg, dados),
-                        dpi, fontes_dir)
+        texto = texto_composto_legal(reg, dados)
+        # F13-BIS/T1: texto legal também pode vestir FORMA — o "-20%"
+        # calculado da Quarta mora numa pílula laranja (pctpod); a
+        # forma só pinta quando HÁ texto (papel condicional vazio não
+        # deixa uma pílula oca na página)
+        if texto and reg.forma_preco != FormaPreco.TEXTO:
+            _desenhar_forma_preco(base, reg, dpi)
+            reg = _regiao_palco_da_forma(reg)
+        _desenhar_texto(base, draw, reg, texto, dpi, fontes_dir)
     # SELO é desenhado num passe final (âncora), não aqui.
 
 

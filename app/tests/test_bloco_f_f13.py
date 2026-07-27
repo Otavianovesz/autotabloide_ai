@@ -250,9 +250,12 @@ def test_f2_jornal_tem_caminho_proprio_com_42_celulas():
     assert len(ocupaveis(p1.slots)) == 20, "p1: 20 células de oferta"
     assert len(ocupaveis(p2.slots)) == 22, "p2: 22 células de oferta"
     for n, pag in ((1, p1), (2, p2)):
-        assert pag.secoes_ligadas, (
-            f"p{n}: seções DESLIGADAS — N-05: a arte não traz seção; "
-            "quem desenha é o app")
+        # F13-BIS §3.7.2 (contrato INVERTIDO pela reprovação do dono):
+        # as seções ficam DESLIGADAS no Jornal — o contorno padrão é
+        # alienígena sobre o papel creme/laranja; as divisórias da
+        # própria arte cumprem o N-05, e estilo por encarte é do G
+        assert not pag.secoes_ligadas, (
+            f"p{n}: seções LIGADAS no Jornal — a BIS §3.7.2 as desligou")
         legais = [r for s in pag.slots for r in s.regioes
                   if r.tipo == TipoRegiao.TEXTO_LEGAL]
         papeis = {r.papel_texto for r in legais}

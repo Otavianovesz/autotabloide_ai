@@ -29,6 +29,34 @@ class TipoRegiao(str, Enum):
     PRECO = "PRECO"
     SELO = "SELO"
     TEXTO_LEGAL = "TEXTO_LEGAL"   # data/validade da oferta, "beba com moderação", etc.
+    # F13-BIS/T2: a linha de DESCRITOR do item ("senepol · m. própria ·
+    # 100 g") — todo encarte do pacote tem duas linhas por produto e o
+    # app tinha uma. NÃO é conteúdo ocupável (lei do tipo novo: um slot
+    # só com subtítulo não engole produto — grade.TIPOS_CONTEUDO).
+    SUBTITULO = "SUBTITULO"
+
+
+class FormaPreco(str, Enum):
+    """F13-BIS/T1: a FORMA do preço é conceito de 1ª classe.
+
+    O diagnóstico-raiz da reprovação do dono: sete encartes com sete
+    formas de preço no desenho (medalhão, etiqueta pendurada, tag,
+    oval, bandeira girada, carimbo) e o app desenhava UMA — texto preto
+    corrido. A forma leva fundo/borda (``forma_cor``/``forma_cor_borda``),
+    o texto usa ``cor``/fontes/subtipo da região, e o giro é o
+    ``rotacao_graus`` de sempre. Os VALORES saem dos geradores do
+    pacote, nunca de defaults."""
+
+    TEXTO = "TEXTO"                        # o comportamento antigo (padrão)
+    TAG_ARREDONDADA = "TAG_ARREDONDADA"    # Quarta (pricepod), Sexta (patches)
+    PILULA = "PILULA"                      # cápsula cheia (nenhum gerador usa)
+    OVAL = "OVAL"                          # elipse (bancas da Sexta)
+    MEDALHAO_ESTRELA = "MEDALHAO_ESTRELA"  # Segunda (selo de cera, 18 pétalas)
+    ETIQUETA_GIRADA = "ETIQUETA_GIRADA"    # Sábado (bandeirola c/ ponta à dir.)
+    ETIQUETA_PENDURADA = "ETIQUETA_PENDURADA"  # Terça (disco escalopado + cordão)
+    # (extensão declarada ao T1: o scout provou que o Jornal usa uma 8ª
+    # forma — o carimbo de borda perfurada — que a lista da ordem não tinha)
+    CARIMBO = "CARIMBO"                    # Jornal (borda tracejada, sem fundo)
 
 
 class SubtipoPreco(str, Enum):
@@ -166,6 +194,16 @@ class Regiao:
     fonte_centavos: str | None = None
     mostrar_moeda: bool = True   # se a arte já tem "R$", desligue: desenha só o número
     riscado: bool = False        # preço "de" riscado (cartaz de gôndola)
+    # F13-BIS/T1: a FORMA desenhada atrás do preço (medalhão/tag/oval…).
+    # TEXTO = o comportamento antigo (layout velho carrega TEXTO). O giro
+    # da forma é o rotacao_graus; o texto usa cor/fontes/subtipo daqui.
+    forma_preco: FormaPreco = FormaPreco.TEXTO
+    forma_cor: str = "#C0392B"           # fundo da forma
+    forma_cor_borda: str | None = None   # contorno (None = sem contorno)
+    # F13-BIS/T1: no pacote, SÓ a Quarta sobrescreve os centavos (dy<0);
+    # os selos/discos/bandeiras usam UMA baseline com centavos menores.
+    # False = sobrescrito (o comportamento de sempre do SEPARADO).
+    centavos_na_base: bool = False
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -205,6 +243,10 @@ class Regiao:
     # F13/C4 (R-01): vertical do texto — CENTRO = o comportamento de sempre
     alinhamento_v: AlinhamentoV = AlinhamentoV.CENTRO
 
+    # F13-BIS/T5: hifenizar é o ÚLTIMO recurso — nas células estreitas
+    # dos encartes o hífen destruía os nomes; com sem_hifen o corpo cede.
+    sem_hifen: bool = False
+
     def to_dict(self) -> dict:
         return {
             "tipo": self.tipo.value,
@@ -243,6 +285,11 @@ class Regiao:
             "papel_texto": self.papel_texto.value,
             "rotacao_graus": self.rotacao_graus,
             "alinhamento_v": self.alinhamento_v.value,   # F13/C4
+            "forma_preco": self.forma_preco.value,       # F13-BIS/T1
+            "forma_cor": self.forma_cor,
+            "forma_cor_borda": self.forma_cor_borda,
+            "centavos_na_base": self.centavos_na_base,
+            "sem_hifen": self.sem_hifen,                 # F13-BIS/T5
         }
 
     @classmethod
@@ -285,6 +332,12 @@ class Regiao:
             rotacao_graus=d.get("rotacao_graus", 0.0),   # layout antigo: 0
             # F13/C4: layout antigo sem a chave = CENTRO (byte-idêntico)
             alinhamento_v=AlinhamentoV(d.get("alinhamento_v", "CENTRO")),
+            # F13-BIS/T1+T5: região antiga = TEXTO/hifeniza (como sempre)
+            forma_preco=FormaPreco(d.get("forma_preco", "TEXTO")),
+            forma_cor=d.get("forma_cor", "#C0392B"),
+            forma_cor_borda=d.get("forma_cor_borda"),
+            centavos_na_base=d.get("centavos_na_base", False),
+            sem_hifen=d.get("sem_hifen", False),
         )
 
 

@@ -304,6 +304,10 @@ critério muda:
   Hoje ele devolveu `"avisos_pre_voo": []` para uma peça com todos esses defeitos.
 - H3. **Inspeção visual página por página**, com as imagens no relatório e uma frase por
   página dizendo o que foi conferido. Sem isso, não há selo.
+  **COND-11 (§9.4):** ao menos **uma** página com **tudo real** — fotos do acervo, nomes pelo
+  caminho real de sanitização (sem `.upper()`), "de"/"por" reais, as células fixas segurando
+  Pão Francês e Sonho + Croissant, validade da semana. A galeria de geometria do F prova que a
+  arte bate; **esta** prova que o dono publicaria.
 - H4. **Uma pasta por run, com data no nome.** `saida_marco/` hoje mistura 18/07 e 21/07 e
   carrega um `quintou_p3.png` órfão de um run de 3 páginas — apresentado como uma galeria só.
 - H5. **Relatório gerado a partir do artefato**, nunca escrito à parte: se o rodapé diz
@@ -729,6 +733,101 @@ A saída inaceitável é a quarta: virar lenda de novo. E ligue a caça ao §5.5
 O `.exe` **nunca foi executado em Windows limpo**. E1/E2/E3 têm código e teste, mas o CA-01/02/03
 descrevem o que o código *fará*. Isso não é falha sua — é o §3 desta ordem, e é do Otaviano.
 Vai junto com o H.
+
+---
+
+## §9 · SELO DO BLOCO F — **REVOGADO** em 26/07/2026
+
+> ### ⛔ SELO REVOGADO PELO DONO
+> Otaviano olhou a galeria e reprovou: *"está completamente tosco… não correspondeu em nada ao
+> modelo… amador e horrível."* **Ele está certo.** Eu selei olhando **uma** imagem e aceitando a
+> explicação de que a galeria era "aparato de geometria" — explicação verdadeira e irrelevante,
+> porque a lei da inspeção visual existe desde o §17 para responder *"o dono publicaria isto?"*,
+> e o artefato não respondia.
+>
+> **A ordem vigente para os encartes passa a ser `docs/ORDEM_F13_BIS_ENCARTES_FIEIS.md`** —
+> diagnóstico-raiz (a extração pegou a caixa e jogou fora o desenho da célula), 6 defeitos
+> transversais, lista por encarte, e um **laço de inspeção** com o olho do dono como portão.
+> A COND-11 do §9.4 fica absorvida lá.
+>
+> **Regra nova, tirada do meu erro:** quando a definição de pronto disser "inspeção visual", o
+> artefato inspecionado tem de ser **o que o dono publicaria** — dados reais, caminho real, sem
+> fixture no meio. Aparato de geometria é teste; não é inspeção.
+>
+> O que **permanece válido** do §9: a COND-9 (o ledger existe e está certo), os placares
+> (946/0/0), o escopo (`Templates novos/` fora do git), as duas armadilhas do F8 respeitadas,
+> e o mérito do critério PREVIEW≠BASE ⟹ APP≠BASE como *teste de geometria*.
+
+### 9.0 · O texto original do selo, mantido para histórico
+
+**BLOCO F SELADO**, com uma condição (§9.4) e uma correção de placar (§9.3).
+Eu **olhei a galeria**, imagem por imagem — era a minha obrigação neste bloco em particular,
+já que a lei da inspeção visual nasceu do §17.
+
+### 9.1 · Conferido
+
+| | Verificado |
+|---|---|
+| **COND-9** ✅ | `docs/LEDGER_I2_F13.md` existe, com o preâmbulo citando a lição do K-03 e a coluna de desfecho. **13 CONSERTADO**, **0 DISPENSADO** — conferidos linha a linha na tabela, não no resumo. |
+| **Placares** ✅ | 946/0/0 ×2, invertida 946/0/0, janela 4/0/0, baseline 935 como artefato. Zero skips. |
+| **F8 · as duas armadilhas** ✅ | `CENEPOL` continua sem nenhuma ocorrência (você não "consertou" o que estava certo) e o `CRIADO E PRODUZIDO` foi aos **dois** geradores. |
+| **Escopo** ✅ | `Templates novos/` confirmado fora do git — o acervo do dono não foi versionado. |
+
+### 9.2 · O que eu achei bom de arquitetura
+
+O critério do teste de pixel é o melhor deste bloco: **onde o PREVIEW difere do BASE, a
+composição do app também tem de diferir do BASE**. Você derivou a ocupação esperada da *arte de
+referência* em vez de cravar coordenadas no teste — o teste sobrevive a um encarte redesenhado.
+E a sua inspeção visual pegou **3 defeitos que a suíte verde não pegou** (colisão sub×preço no
+Sábado, nome sob o selo na Segunda, a manchete duplicada do Jornal). Era exatamente para isso
+que a lei existe. Funcionou.
+
+### 9.3 · Correção de placar — 34 ABERTO, não 32
+
+A tabela do ledger tem **34** linhas `ABERTO`; a sua resposta e a mensagem de commit dizem 32.
+Diferença pequena, mas a COND-9 pediu *"números exatos"* — e a família do erro é a mesma do
+**M-06** (o `RELATORIO.txt` do marco afirmando uma validade que o PNG não continha): o resumo
+divergindo do artefato. **Faça o placar ser calculado da tabela, nunca digitado** — no G, o
+número no cabeçalho do ledger sai de uma contagem, e um teste confere cabeçalho × linhas.
+
+### 9.4 · A galeria prova a GEOMETRIA — não prova o PRODUTO
+
+Isto é o achado do selo, e não é demérito seu: é uma imprecisão da **minha** definição de pronto.
+
+Li o gerador da galeria (`test_bloco_f_f13.py:465-494`) e as escolhas de fixture são
+deliberadas e declaradas no código:
+
+- `nome.upper()` (`:491`) — os nomes saem em CAIXA ALTA de propósito;
+- `unidade="100 g"` fixo em todos (`:494`) — daí "ACHOC 3 CORACOES **700G** · **100 g**";
+- `preco_de = por + 1,00` (`:492`) — "de" sintético;
+- `acervo.foto_de_bancada(...)` (`:472`) — as fotos são padrões de cor gerados;
+- `slots_prod += [s for s in pag.slots if s.fixa]` (`:485`) — as células FIXAS entram no
+  preenchimento rotativo, para exercitar a geometria delas.
+
+Tudo correto **para o que o teste é**: um aparato de geometria e presença de tinta. Mas repare no
+que a fixture substitui: **exatamente as quatro coisas que o §17 pegou** — foto real, nome
+sanitizado, preço "de" real e célula fixa segurando o conteúdo fixo. Olhando a Terça do Pão da
+galeria, o que aparece é um encarte de padaria preenchido com Cerveja Itapava, Esponja Multi Uso
+e Achocolatado, em caixa alta, com quadrados xadrez no lugar das fotos, peso dobrado, e
+**"OFERTA VÁLIDA 25/05"** — maio, de novo (o M-02 ainda visível, porque o dado da campanha
+carrega a data velha e o H2 é que vai pegar isso).
+
+Nada disso é bug do seu bloco. Mas significa que **a pergunta que a inspeção visual existe para
+responder — "o Otaviano publicaria isto?" — a galeria não consegue responder.** Ela responde
+"a geometria bate com a arte", que é outra coisa, e valiosa.
+
+**COND-11 (Bloco H, dentro do H3):** **uma** página, **uma** vez, com **tudo real** — fotos do
+acervo dele, nomes pelo caminho real de sanitização, preços "de"/"por" reais, as células fixas
+segurando **Pão Francês** e **Sonho + Croissant**, e a validade da semana. É essa que vai para a
+inspeção, e é dela que sai o "é isso que eu publicaria". A galeria de geometria continua — as
+duas provam coisas diferentes e as duas ficam.
+
+### 9.5 · A lei nova da bancada, aprovada com ressalva
+
+Tirar o LM Studio real do pytest é certo: suíte que depende de serviço externo não é suíte. E
+você manteve o escape (`@pytest.mark.lm_real`), o que preserva o caminho real testável.
+**Ressalva:** esse marker precisa **rodar em algum lugar**, ou vira o T-09 de novo (o caminho com
+GPU que ninguém testa). Registre no ledger ou no H quem o roda e quando.
 
 ---
 

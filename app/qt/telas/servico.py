@@ -728,6 +728,12 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     if it.validade:
         from app.rendering.selos import Canto, Selo
         extras = extras + [Selo("VALIDADE", Canto.INFERIOR_ESQUERDO)]
+    # F13-BIS/T2: o DESCRITOR da 2ª linha dos encartes ("marca própria ·
+    # 100 g") — composto do que o item carrega hoje; a observação NÃO
+    # entra (tem região própria, R-071)
+    descritor = " · ".join(p for p in (
+        "marca própria" if it.marca_propria else None,
+        it.unidade) if p) or None
     return DadosProduto(
         nome,
         selos_extra=extras,
@@ -740,6 +746,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         mais18=it.mais18,
         marca_propria=it.marca_propria,                     # F13/COND-5
         unidade=it.unidade,
+        descritor=descritor,                 # F13-BIS/T2
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
         # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo

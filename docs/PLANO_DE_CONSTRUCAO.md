@@ -662,3 +662,24 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   (retabelados e re-inspecionados). A regeração dos PNGs do pacote
   (Playwright+Chromium) fica para o dono/arquiteto — as fontes `.py`
   estão corrigidas e portáteis.
+  —— **SELO DO F REVOGADO pelo dono (26/07: "amador") — a extração
+  pegou a CAIXA e jogou fora o DESENHO. `docs/ORDEM_F13_BIS_ENCARTES_
+  FIEIS.md` emitida e EXECUTADA (26/07): laço de inspeção por encarte.**
+  Motor: `FormaPreco` de 1ª classe (8 formas: medalhão de cera 18
+  pétalas, disco escalopado pendurado, tag, oval, bandeirola com ponta,
+  carimbo perfurado, pílula, texto) com o texto no PALCO da forma;
+  `TipoRegiao.SUBTITULO` + `DadosProduto.descritor` (montagem oficial);
+  `sem_hifen` (o corpo cede, nunca o hífen); `centavos_na_base`;
+  TEXTO_LEGAL veste forma (o "-XX%" calculado na pílula laranja).
+  **T6 RODOU**: Playwright+Chromium instalados,
+  `app/scripts/regenerar_encartes.py` (fontes por @font-face base64 —
+  sistema do dono intocado; calibração na Terça: 0,24% de pixels), os
+  16 PNGs regenerados — "CRIADA E PRODUZIDA"/"SENEPOL MARCA PRÓPRIA"/
+  "O MÊS INTEIRO" SAÍRAM do produto. Laço completo nos 7 com DADOS
+  REAIS (`app/scripts/inspecao_encartes.py`: 58 fotos reais da
+  biblioteca, preços do banco, fixas com conteúdo fixo, +18 provado);
+  galeria em `saida_f13/galeria_f13_bis/` + `LEITURA_DO_LACO.md` (a
+  frase honesta por página). 3 correções factuais contra a ordem BIS
+  declaradas (Sexta foto-à-esquerda; Sábado texto dourado sem fita;
+  Peixe TEXTO legítimo). **PARADO: a galeria aguarda o OLHO do
+  Otaviano — o selo é dele.**

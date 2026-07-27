@@ -56,7 +56,11 @@ def _quebrar_palavra(palavra: str, fonte, max_w: float) -> list[str]:
     return pedacos
 
 
-def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
+def _quebrar_linhas(texto: str, fonte, max_w: float,
+                    sem_hifen: bool = False) -> list[str]:
+    """F13-BIS/T5: com ``sem_hifen`` a palavra NUNCA é partida — a linha
+    estoura a largura e o chamador (``ajustar_texto``) REDUZ O CORPO até
+    caber ("CERVEJA ITAPA-VA" na arte real virou prova de artefato)."""
     linhas: list[str] = []
     atual = ""
     for palavra in texto.split():
@@ -68,7 +72,7 @@ def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
         # de empurrar a palavra inteira para a próxima linha, tenta encher a
         # atual com um prefixo hifenizado (≥2 letras de cada lado; só em
         # palavras de verdade — "500g"/"R$" nunca ganham hífen).
-        if atual and palavra.isalpha() and len(palavra) >= 5:
+        if not sem_hifen and atual and palavra.isalpha() and len(palavra) >= 5:
             melhor = None
             for p in _DIC.positions(palavra):
                 if p < 2 or len(palavra) - p < 2:
@@ -84,8 +88,8 @@ def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
         if atual:
             linhas.append(atual)
             atual = ""
-        if fonte.getlength(palavra) <= max_w:
-            atual = palavra
+        if fonte.getlength(palavra) <= max_w or sem_hifen:
+            atual = palavra          # sem_hifen: inteira, mesmo estourando
         else:
             pedacos = _quebrar_palavra(palavra, fonte, max_w)
             linhas.extend(pedacos[:-1])
@@ -126,8 +130,13 @@ def ajustar_texto(
     dpi: int,
     tamanho_min_pt: float = 6.0,
     entrelinha: float = 1.12,
+    sem_hifen: bool = False,
 ) -> TextoAjustado:
-    """Maior tamanho <= teto que faz o texto caber (largura E altura)."""
+    """Maior tamanho <= teto que faz o texto caber (largura E altura).
+
+    F13-BIS/T5: ``sem_hifen`` faz da hifenização coisa proibida — a
+    palavra fica inteira e quem cede é o CORPO (busca binária); se nem
+    no mínimo couber, as reticências do R-045 seguram (nunca o hífen)."""
     fonte_path = str(fonte_path)
 
     def _fonte(px: int):
@@ -144,7 +153,7 @@ def ajustar_texto(
     def tentar(pt: float) -> TextoAjustado | None:
         px = max(1, round(pt_para_px(pt, dpi)))
         fonte = _fonte(px)
-        linhas = _quebrar_linhas(texto, fonte, larg_px)
+        linhas = _quebrar_linhas(texto, fonte, larg_px, sem_hifen)
         if any(fonte.getlength(ln) > larg_px + 0.5 for ln in linhas):
             return None
         asc, desc = fonte.getmetrics()
@@ -176,7 +185,7 @@ def ajustar_texto(
     # linhas que cabem na altura e nunca transborda p/ a região vizinha.
     px = max(1, round(pt_para_px(tamanho_min_pt, dpi)))
     fonte = _fonte(px)
-    linhas = _quebrar_linhas(texto, fonte, larg_px)
+    linhas = _quebrar_linhas(texto, fonte, larg_px, sem_hifen)
     asc, desc = fonte.getmetrics()
     alt_linha = round((asc + desc) * entrelinha)
     linhas = _truncar_com_reticencias(linhas, fonte, larg_px, alt_linha, alt_px)
