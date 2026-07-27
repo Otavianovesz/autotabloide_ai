@@ -138,6 +138,9 @@ def ajustar_texto(
     palavra fica inteira e quem cede é o CORPO (busca binária); se nem
     no mínimo couber, as reticências do R-045 seguram (nunca o hífen)."""
     fonte_path = str(fonte_path)
+    # F13-NONUS: piso acima do teto seria desenhar ACIMA do teto no
+    # ramo do truncamento — o teto manda
+    tamanho_min_pt = min(tamanho_min_pt, tamanho_max_pt)
 
     def _fonte(px: int):
         """Fonte com fallback (I2): pedida → Roboto ao lado → embutida do Pillow."""

@@ -109,24 +109,30 @@ def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
           tam=48.0, tam_min=None, cor="#000000") -> Regiao:
     # F13-BIS/T5: nas células estreitas dos encartes, hifenizar é
     # PROIBIDO — o corpo cede ("CERVEJA ITAPA-VA" virou prova).
-    # F13-OCTAVUS/C1: o corpo tem PISO (o teste do celular) — abaixo
-    # dele o texto trunca com reticências e o pré-voo acusa, nunca
-    # encolhe até ilegível
+    # F13-OCTAVUS/C1 + NONUS/N2: o corpo tem PISO com FAIXA — por
+    # padrão o corpo cede no máximo UM degrau (tam−3); abaixo disso a
+    # precedência do N1 encurta o nome pelo descritor (nunca encolhe a
+    # ilegível, nunca elipsa sem avisar). O 6.0 inerte morreu aqui.
     return Regiao(TipoRegiao.NOME, _r(x, y, w, h), nome="Nome",
                   fonte=fonte, alinhamento=alin, cor=cor,
                   tamanho_max_pt=tam,
                   tamanho_min_pt=(tam_min if tam_min is not None
-                                  else 6.0),
+                                  else min(tam, max(tam - 3.0, 6.5))),
                   sem_hifen=True,
                   alinhamento_v=AlinhamentoV.BASE, rotacao_graus=rot)
 
 
 def _sub(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
-         tam=48.0, cor="#000000") -> Regiao:
-    # F13-BIS/T2: a linha de DESCRITOR do modelo (região SUBTITULO)
+         tam=48.0, tam_min=None, cor="#000000") -> Regiao:
+    # F13-BIS/T2: a linha de DESCRITOR do modelo (região SUBTITULO).
+    # F13-NONUS/N2: com piso — o descritor é 1 linha curta; melhor
+    # manter o corpo e ceder meio degrau (tam−1,5) do que virar poeira
     return Regiao(TipoRegiao.SUBTITULO, _r(x, y, w, h), nome="Descritor",
                   fonte=fonte, alinhamento=alin, cor=cor,
-                  tamanho_max_pt=tam, sem_hifen=True,
+                  tamanho_max_pt=tam,
+                  tamanho_min_pt=(tam_min if tam_min is not None
+                                  else min(tam, max(tam - 1.5, 6.5))),
+                  sem_hifen=True,
                   alinhamento_v=AlinhamentoV.BASE, rotacao_graus=rot)
 
 

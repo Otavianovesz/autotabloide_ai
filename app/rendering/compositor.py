@@ -1066,8 +1066,25 @@ def compor_pagina(
         tem_unidade = any(r.tipo in (TipoRegiao.UNIDADE,
                                      TipoRegiao.SUBTITULO)
                           and r.visivel for r in slot.regioes)
+        # F13-NONUS/N1: a precedência do nome é CÓDIGO — a cadeia roda
+        # para toda célula, aqui, no único ponto que conhece o dado E
+        # todas as regiões antes do desenho. O dado da célula é uma
+        # CÓPIA (o mesmo DadosProduto pode servir a vários slots).
+        from dataclasses import replace as _replace
+        from app.rendering.nome_fit import precedencia_do_nome
+        aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
+                                      slot.regioes, dpi_ef, fontes_dir)
+        rects_subst: dict = {}
+        if aj_nome is not None:
+            d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,
+                         unidade=None if aj_nome.descritor_saiu
+                         else d.unidade)
+            rects_subst = aj_nome.rects
         for reg in slot.regioes:
-            _desenhar_regiao(base, draw, reg, d, dpi_ef, fontes_dir, tem_unidade)
+            novo_rect = rects_subst.get(reg.uid)
+            reg_f = _replace(reg, rect=novo_rect) if novo_rect else reg
+            _desenhar_regiao(base, draw, reg_f, d, dpi_ef, fontes_dir,
+                             tem_unidade)
         # selos (+18, Qualidade) por slot, ancorados na célula
         selos = _selos_do_produto(d)
         if selos:

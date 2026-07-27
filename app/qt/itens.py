@@ -142,6 +142,10 @@ class RegiaoItem(QGraphicsItem):
         from app.rendering.model import TipoRegiao as _TR
         if self.regiao.tipo != _TR.TEXTO_LEGAL:
             return
+        # F13-NONUS/N3: o badge é do EDITOR de layout — a Mesa desliga
+        # (o dono viu "¶ Livre" no lugar do chip e achou que era a peça)
+        if not getattr(self.canvas, "badges_de_papel", True):
+            return
         from PySide6.QtCore import QSize
         from app.qt.design.icones import icone
         from app.qt.design.papel_texto_ui import badge_de_papel
@@ -635,6 +639,19 @@ class RegiaoItem(QGraphicsItem):
                                      "seguir o item da estante")
                 acoes[a_ov_rest] = lambda sid=slot.id: \
                     self.canvas.set_override(sid, None)
+
+        # F13-NONUS/F1: a célula FIXA abre o diálogo dos itens fixos AQUI —
+        # o gesto natural (clicar no que quer mudar); antes só existia na
+        # paleta invisível (o mesmo defeito do P-06/U-01)
+        if slot is not None and getattr(slot, "fixa", False) \
+                and callable(getattr(self.canvas, "ao_itens_fixos", None)):
+            menu.addSeparator()
+            a_fx = menu.addAction(icone("caixa", tamanho=16),
+                                  "Conteúdo fixo desta célula…")
+            a_fx.setToolTip("O produto, a foto e o preço desta célula "
+                            "vivem no TEMPLATE — sobrevivem à tabela da "
+                            "semana")
+            acoes[a_fx] = lambda sid=slot.id: self.canvas.ao_itens_fixos(sid)
 
         # --- RG-56 (Fase 4): agrupar/desagrupar VISÍVEL e reversível ---
         # SEMPRE a ação pertinente ao estado (passo 15); todo estado tem o

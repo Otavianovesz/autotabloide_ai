@@ -101,20 +101,21 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
         susp = preco_suspeito(d.preco_por, d.categoria, faixas)
         if susp:
             avisos.append(f"{rot}: {susp}")
-        # nome cortado por medida (reusa o text_fit do compositor)
+        # nome cortado por medida — a MESMA cadeia do compositor
+        # (F13-NONUS/N1): a precedência encurta pelo descritor antes de
+        # qualquer elipse; o aviso só sai quando NEM a cadeia salvou
+        # (o que a composição de verdade vai truncar)
         slot = slots.get(sid)
         reg = _regiao_nome(slot) if slot is not None else None
         if reg is not None and (d.nome or "").strip() and fontes_dir is not None:
             try:
-                from app.rendering.text_fit import ajustar_texto
-                from app.rendering.units import mm_para_px
+                from app.rendering.nome_fit import precedencia_do_nome
                 dpi = getattr(layout, "dpi", 300)
-                aj = ajustar_texto(
-                    d.nome, str(Path(fontes_dir) / reg.fonte),
-                    round(mm_para_px(reg.rect.larg_mm, dpi)),
-                    round(mm_para_px(reg.rect.alt_mm, dpi)),
-                    reg.tamanho_max_pt, dpi, reg.tamanho_min_pt)
-                if any("…" in ln for ln in aj.linhas):
+                aj = precedencia_do_nome(
+                    d.nome, getattr(d, "descritor", None),
+                    getattr(d, "unidade", None), slot.regioes, dpi,
+                    Path(fontes_dir))
+                if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
             except Exception:

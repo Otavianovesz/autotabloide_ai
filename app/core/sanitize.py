@@ -284,6 +284,41 @@ def formatar_nome(texto: str, regras: RegrasSanitizacao = REGRAS_PADRAO) -> str:
     return _aplicar_caixa(expandido, regras)
 
 
+def separar_peso(
+    texto: str, regras: RegrasSanitizacao = REGRAS_PADRAO
+) -> tuple[str, str | None]:
+    """F13-NONUS/N1: separa a expressão de peso/volume do FIM do nome.
+
+    "Leite Condensado Triangulo 395g" → ("Leite Condensado Triangulo",
+    "395 g") — o peso volta FORMATADO para leitura (espaço entre número
+    e unidade, decimal com vírgula), do jeito que o descritor dos
+    encartes escreve. Aceita a forma crua ("395 GR", "1,5 LT") porque o
+    caminho real do dono traz item novo sem sanitizar. O multiplicador
+    vai junto ("Kit 4x120g" → peso "4x120 g" — nunca sobra um "4x"
+    órfão no nome). Peso no MEIO do texto não é tocado: a ordem dos
+    tokens nunca muda (a lei desta camada)."""
+    base = texto.rstrip()
+    ultimo = None
+    for m in _regex_unidades(regras).finditer(base):
+        ultimo = m
+    if ultimo is None or ultimo.end() != len(base):
+        return texto, None
+    numero = ultimo.group(1).replace(".", ",")
+    unidade_bruta = ultimo.group(0)[len(ultimo.group(1)):].strip()
+    unidade = _canonizar_unidade(unidade_bruta, regras)
+    inicio = ultimo.start()
+    resto = base[:inicio]
+    mult = re.search(r"(\d+\s*[xX×]\s*)$", resto)
+    prefixo = ""
+    if mult:
+        prefixo = mult.group(1).replace(" ", "").replace("X", "x")
+        resto = resto[:mult.start()]
+    nome = resto.rstrip(" -–·")
+    if not nome:
+        return texto, None          # o "nome" era só o peso: não separa
+    return nome, f"{prefixo}{numero} {unidade}"
+
+
 def sanitizar(
     nome_bruto: str, regras: RegrasSanitizacao = REGRAS_PADRAO
 ) -> ResultadoSanitizacao:

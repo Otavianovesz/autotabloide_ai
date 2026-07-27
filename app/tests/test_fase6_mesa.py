@@ -97,13 +97,19 @@ def test_barra_mesa_720p_essenciais_e_estouro(raiz_tmp):
         ultimos = nW
 
     # alargando em passos, existe uma largura em que TUDO cabe de verdade —
-    # 0 colapsados, "···" some e (régua independente) ninguém espremido.
+    # 0 colapsados e (régua independente) ninguém espremido.
+    # CONTRATO INVERTIDO (F13-NONUS/F1, com rastro): o "···" agora é
+    # PERMANENTE — carrega as ações de projeto sem botão próprio (os
+    # itens fixos moravam só na paleta invisível e o dono nunca achou);
+    # antes: `assert not m._mais_mesa.isVisibleTo(m)` quando tudo cabia.
     W = 2000
     while _colapsados(m) > 0 and W <= 4200:
         _reflow_em(m, W)
         W += 400
     assert _colapsados(m) == 0
-    assert not m._mais_mesa.isVisibleTo(m)
+    assert m._mais_mesa.isVisibleTo(m)
+    textos = [a.text() for a in m._mais_mesa.menu().actions()]
+    assert any("Itens fixos" in t for t in textos)
     _ninguem_espremido(m)
 
 

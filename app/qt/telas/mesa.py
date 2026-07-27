@@ -117,6 +117,15 @@ class MesaTela(QWidget):
             "Exportar o tabloide em PNG ou PDF  ·  Ctrl+E")
         self.btn_exportar.setEnabled(False)
         self.btn_exportar.clicked.connect(self._exportar)
+        # F13-NONUS/N3: "Ver como vai sair" — a COMPOSIÇÃO REAL (a mesma
+        # receita do Exportar), porque o canvas é mesa de trabalho com
+        # marcas de edição e o dono precisava exportar para ver a peça
+        self.btn_ver = QPushButton(" Ver como vai sair")
+        self.btn_ver.setIcon(icone("olho", tamanho=16))
+        self.btn_ver.setToolTip(
+            "A página COMPOSTA, exatamente como o Exportar produz — sem "
+            "contornos nem marcas de edição")
+        self.btn_ver.clicked.connect(self._ver_como_vai_sair)
         # F13/D8 (P-05): o "Aprovar" saiu da paleta invisível — botão REAL
         # na barra, antes do Exportar (a ordem do fluxo do RG-53)
         self.btn_aprovar = QPushButton(" Aprovar")
@@ -191,8 +200,8 @@ class MesaTela(QWidget):
             [self.btn_importar, btn_banco],
             [self.btn_preencher, self.btn_fotos_lote,
              self.chk_agrupar, self.chk_herois],
-            [self.btn_aprovar, self.btn_exportar, self.btn_salvar_proj,
-             btn_abrir_proj],
+            [self.btn_ver, self.btn_aprovar, self.btn_exportar,
+             self.btn_salvar_proj, btn_abrir_proj],
             [self._btn_pag_ant, self._pag_lbl, self._btn_pag_prox,
              self.chk_secoes_pag, self.btn_titulos],
         ):
@@ -206,7 +215,7 @@ class MesaTela(QWidget):
         from PySide6.QtWidgets import QMenu, QToolButton
         self._mais_mesa = QToolButton()
         self._mais_mesa.setText("···")
-        self._mais_mesa.setToolTip("Mais ações (janela estreita)")
+        self._mais_mesa.setToolTip("Mais ações do projeto")
         self._mais_mesa.setPopupMode(
             QToolButton.ToolButtonPopupMode.InstantPopup)
         self._mais_mesa.setMenu(QMenu(self._mais_mesa))
@@ -251,6 +260,8 @@ class MesaTela(QWidget):
             (self.chk_agrupar, "Agrupar por categoria", "check"),
             (btn_abrir_proj, "Abrir projeto", "botao"),
             (self.btn_fotos_lote, "Buscar fotos em lote", "botao"),
+            # o mais protegido dos sacrificáveis (entra primeiro no reflow)
+            (self.btn_ver, "Ver como vai sair", "botao"),
         ]
 
         # --- corpo: canvas + itens ----------------------------------------------
@@ -374,6 +385,13 @@ class MesaTela(QWidget):
         self.area.canvas.ao_restaurar = self._pos_undo
         # F7.3: botão direito numa célula → modal de override (só na Mesa)
         self.area.canvas.ao_override = self._abrir_override
+        # F13-NONUS/N3: a Mesa NÃO pinta os badges de papel (RG-57) — eles
+        # são ajuda de edição do LAYOUT; aqui o dono monta a PÁGINA e o
+        # que ele vê por baixo dos contornos é a composição real
+        self.area.canvas.badges_de_papel = False
+        # F13-NONUS/F1: botão direito na célula FIXA → o diálogo dos fixos
+        self.area.canvas.ao_itens_fixos = \
+            lambda _sid: self._editar_itens_fixos()
         # R-038: arrastar um PNG/JPG sobre a célula troca a foto do item (uid)
         self.area.canvas.ao_soltar_imagem = self._soltar_imagem
         # F13/D9 (VC-024): canvas → estante — clicar a célula destaca a
@@ -812,6 +830,13 @@ class MesaTela(QWidget):
             w.setVisible(id(w) in ficam)
         menu = self._mais_mesa.menu()
         menu.clear()
+        # F13-NONUS/F1: o "···" deixou de ser só o transbordo da janela
+        # estreita — as ações de projeto SEM botão próprio moram aqui,
+        # SEMPRE visíveis (o esconderijo da paleta matou os itens fixos)
+        menu.addAction(icone("caixa", tamanho=14),
+                       "Itens fixos deste encarte…", self._editar_itens_fixos)
+        if colapsados:
+            menu.addSeparator()
         for w, rotulo, tipo in colapsados:
             if tipo == "check":
                 acao = menu.addAction(rotulo)
@@ -822,7 +847,7 @@ class MesaTela(QWidget):
                 # FASE 1 (passo 79): a ação herda o ícone do botão
                 acao = menu.addAction(w.icon(), rotulo, w.click)
                 acao.setEnabled(w.isEnabled())
-        self._mais_mesa.setVisible(bool(colapsados))
+        self._mais_mesa.setVisible(True)
         # RG-53 estágio 2 (GATE 2.2): se nem assim coube, os botões fixos
         # ficam SÓ-ÍCONE (texto → tooltip) até a largura voltar
         from app.qt.design.componentes import modo_compacto_botoes
@@ -1560,6 +1585,8 @@ class MesaTela(QWidget):
              self._exportar_perfis),
             ("check_circulo", "Aprovar (o selo do checklist final)", "",
              self.aprovar_projeto_atual),
+            ("olho", "Ver como vai sair (a página composta)", "",
+             self._ver_como_vai_sair),
             ("lampada", "Revisar a peça com a IA (avisa, não trava)…", "",
              self._revisar),
             ("texto", "Montar pelo texto (chat da oferta)…", "",
@@ -1599,6 +1626,52 @@ class MesaTela(QWidget):
     def _abrir_paleta(self) -> None:
         from app.qt.design.paleta_comandos import PaletaComandos
         PaletaComandos(self.window(), self._acoes_da_mesa()).abrir()
+
+    # --- F13-NONUS/N3: a página composta, sem sair da Mesa --------------------
+
+    def _ver_como_vai_sair(self) -> None:
+        """A COMPOSIÇÃO REAL — o que o Exportar produz — numa janela de
+        conferência. O canvas da Mesa é mesa de trabalho (contornos,
+        alças, marcas de edição); esta é a peça. Mesma receita de TODAS
+        as portas: ``paginas_compostas()`` (dados_para_desenho →
+        compor_pagina) — nenhuma captura de canvas, nenhuma 4ª receita."""
+        lay = self.area.canvas._layout or self._layout
+        if lay is None:
+            mostrar_toast(self, "Abra um encarte primeiro.")
+            return
+        try:
+            imgs = self.paginas_compostas()
+        except Exception as e:              # I2: nunca falha em silêncio
+            mostrar_toast(self, f"Não deu para compor a prévia: {e}")
+            return
+        from PySide6.QtWidgets import (
+            QDialog, QLabel, QScrollArea, QVBoxLayout, QWidget,
+        )
+        from app.qt.canvas import pil_para_qpixmap
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Ver como vai sair — a página composta")
+        corpo = QWidget()
+        vb = QVBoxLayout(corpo)
+        for i, im in enumerate(imgs, start=1):
+            if len(imgs) > 1:
+                rot = QLabel(f"Página {i}")
+                rot.setProperty("papel", "legenda")
+                vb.addWidget(rot)
+            pm = pil_para_qpixmap(im)
+            if pm.width() > 880:
+                pm = pm.scaledToWidth(
+                    880, Qt.TransformationMode.SmoothTransformation)
+            lbl = QLabel()
+            lbl.setPixmap(pm)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            vb.addWidget(lbl)
+        area = QScrollArea(dlg)
+        area.setWidgetResizable(True)
+        area.setWidget(corpo)
+        raiz = QVBoxLayout(dlg)
+        raiz.addWidget(area)
+        dlg.resize(940, 880)
+        dlg.exec()
 
     # --- F13-TER/N1: itens fixos do encarte -----------------------------------
 

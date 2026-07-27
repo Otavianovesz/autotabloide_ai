@@ -91,6 +91,13 @@ class CanvasView(QGraphicsView):
         self.overrides: dict[str, dict] = {}
         self.ao_restaurar = None         # callback pós-undo (a Mesa realimenta dados)
         self.ao_override = None          # callable(slot_id) → a Mesa abre o modal
+        # F13-NONUS/F1: botão direito na célula FIXA → o diálogo dos itens
+        # fixos (só a Mesa liga — no Ateliê fica None, como o override)
+        self.ao_itens_fixos = None       # callable(slot_id)
+        # F13-NONUS/N3: os badges de papel (RG-57, "¶ Livre"/"📅 Validade")
+        # são ajuda de EDIÇÃO DO LAYOUT — a Mesa os desliga (o dono viu
+        # os badges e achou que eram a página)
+        self.badges_de_papel = True
         self.ao_soltar_imagem = None     # R-038: callable(slot_id, caminho) → Mesa
         self.setAcceptDrops(True)        # R-038: arrastar PNG/JPG sobre a célula
         self._pagina_atual = 0           # D8.4: UMA página por vez, navegável

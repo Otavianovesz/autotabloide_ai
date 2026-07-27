@@ -798,3 +798,31 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   vence a régua; registrado na SEPTIMUS §O1 + teste). Projeto id=7
   recomposto e enviado ao dono — **a Segunda 27/07 é a candidata a 1ª
   página publicada**. Suíte ×2 + invertida + janela (bloco_foctavus_*).
+  —— **9ª RODADA — `docs/ORDEM_F13_NONUS_A_REGRA_TEM_QUE_SER_CODIGO.md`
+  EXECUTADA (27/07): o dono montou a Segunda SOZINHO e truncou 4 de 7
+  nomes — os passos 4/5 da precedência eram PROCEDIMENTO do builder,
+  não código (a 3ª encarnação do §17/QUINQUE). LEI L11: toda regra em
+  prosa termina numa função nomeada, no caminho de produção, testada
+  com dado NOVO.** N1: `app/rendering/nome_fit.py::precedencia_do_nome`
+  — os 6 passos em runtime, chamados pelo compositor para TODA célula
+  em TODA porta (banda cresce/foto cede em runtime dentro do O1; o
+  nome encurta pelo FIM com `sanitize.separar_peso`; elipse só como
+  último recurso COM aviso — a revisora usa a MESMA cadeia); C2 no
+  motor (peso migra ao descritor com dedupe); prova-mestra: dado CRU
+  compõe BYTE-IDÊNTICO ao alfaiatado. N3: badges de papel só no Ateliê
+  (a Mesa desliga — era o que o dono viu); nenhuma porta exporta do
+  canvas (as 8 auditadas usam compor_pagina); botão **" Ver como vai
+  sair"** na Mesa (a receita do export num diálogo). N2: pisos com
+  FAIXA por default nos helpers (`tam−3`/`tam−1,5`) — ~83 regiões em
+  6.0 inerte mortas, as 6 fixas incluídas; varredura das 8 por teste.
+  F1: itens fixos com 3 portas (menu da célula fixa, "···" permanente,
+  paleta) + correção factual: Ctrl+K é busca global, a paleta de ações
+  é Ctrl+Shift+P (ROTEIRO anotado); 9 ações só-paleta nomeadas. F2:
+  teste de gesto do CAMINHO INTEIRO (Ateliê→Mesa→importar→auto→salvar→
+  reabrir). §6.4: `segunda_pelo_caminho_do_dono.py` na raiz REAL — os
+  7 produtos JÁ EXISTIAM no banco e casaram VERDE COM FOTO; projeto
+  id=8 novo (id=7 intacto); a página saiu SEM UMA RETICÊNCIA com os
+  nomes selvagens do acervo ("Italac TP", "Parmalat L.V."). Abertos:
+  preço-da-semana do fixo exige item na estante; duplicação fixo×
+  estante; vigia que retenta; os 8 sem-porta. Suíte ×2 + invertida +
+  janela (bloco_fnonus_*).
