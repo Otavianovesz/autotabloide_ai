@@ -251,6 +251,10 @@ class Regiao:
     # texto_fixo: conteúdo do LAYOUT (ex.: "Fica a Dica"), não do produto.
     # Tem precedência sobre dados.texto_legal e desenha mesmo em slot vazio.
     texto_fixo: str | None = None
+    # F13-OCTAVUS/C3: região VALIDADE que escreve SÓ A DATA ("27/07")
+    # — o selo da Segunda tem texto curvo GRAVADO na arte e o app
+    # escrevia a frase inteira por cima; aditivo (padrão False)
+    so_data: bool = False
 
     # --- papel do texto (RG-57/R-153, Fase 5) ---
     # papel_texto: para regiões TEXTO_LEGAL, DIZ o que a região é (aviso legal,
@@ -307,6 +311,7 @@ class Regiao:
             "contorno": self.contorno,
             "cor_efeito": self.cor_efeito,
             "texto_fixo": self.texto_fixo,
+            "so_data": self.so_data,                     # OCTAVUS/C3
             "papel_texto": self.papel_texto.value,
             "rotacao_graus": self.rotacao_graus,
             "alinhamento_v": self.alinhamento_v.value,   # F13/C4
@@ -353,6 +358,7 @@ class Regiao:
             contorno=d.get("contorno", False),
             cor_efeito=d.get("cor_efeito", "#000000"),
             texto_fixo=d.get("texto_fixo"),
+            so_data=d.get("so_data", False),             # C3 aditivo
             papel_texto=PapelTexto(d.get("papel_texto", "LIVRE")),  # antigo: LIVRE
             rotacao_graus=d.get("rotacao_graus", 0.0),   # layout antigo: 0
             # F13/C4: layout antigo sem a chave = CENTRO (byte-idêntico)

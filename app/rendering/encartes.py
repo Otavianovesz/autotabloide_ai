@@ -106,12 +106,18 @@ def _img(x, y, w, h, rot=0.0) -> Regiao:
 
 
 def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
-          tam=48.0, cor="#000000") -> Regiao:
+          tam=48.0, tam_min=None, cor="#000000") -> Regiao:
     # F13-BIS/T5: nas células estreitas dos encartes, hifenizar é
-    # PROIBIDO — o corpo cede ("CERVEJA ITAPA-VA" virou prova)
+    # PROIBIDO — o corpo cede ("CERVEJA ITAPA-VA" virou prova).
+    # F13-OCTAVUS/C1: o corpo tem PISO (o teste do celular) — abaixo
+    # dele o texto trunca com reticências e o pré-voo acusa, nunca
+    # encolhe até ilegível
     return Regiao(TipoRegiao.NOME, _r(x, y, w, h), nome="Nome",
                   fonte=fonte, alinhamento=alin, cor=cor,
-                  tamanho_max_pt=tam, sem_hifen=True,
+                  tamanho_max_pt=tam,
+                  tamanho_min_pt=(tam_min if tam_min is not None
+                                  else 6.0),
+                  sem_hifen=True,
                   alinhamento_v=AlinhamentoV.BASE, rotacao_graus=rot)
 
 
@@ -288,16 +294,17 @@ def _segunda() -> list[Slot]:
     # flancos: texto na BANDA de baixo, selo SOBRE A FOTO; etiquetas:
     # selo morde a banda e o texto DESVIA (tcx do gerador)
     flancos = (
-        # SEPTIMUS/O1 (o orçamento com FAIXA — a foto era 87% da
-        # altura útil, "imensa chega ao bizarro"): foto 68%, e o TIPO
-        # cresce na banda (a regra que manda: o texto nunca cede)
-        (2, (64, 288), -0.6, (78, 302, 182, 190), (68, 522, 202, 60),
+        # OCTAVUS/C1: as BANDAS da arte cresceram 60→88 (regeneradas)
+        # — o tipo sobe ao PISO DO CELULAR (linha ≥30px em 1080; corpo
+        # 20pt com piso 18) e cabe em 2 linhas + descritor
+        (2, (64, 288), -0.6, (78, 302, 182, 188), (68, 494, 202, 88),
          (76, 302), (236, 328, 32), 169, 548),
-        (3, (806, 294), 0.5, (820, 308, 182, 190), (810, 528, 202, 60),
+        (3, (806, 294), 0.5, (820, 308, 182, 188), (810, 500, 202, 88),
          (818, 308), (978, 334, 32), 911, 554),
     )
-    for i, origem, rot, foto, banda, (chx, chy), (sx, sy, sr), tcx, ty \
+    for i, origem, rot, foto, banda, (chx, chy), (sx, sy, sr), tcx, _ty \
             in flancos:
+        by = banda[1]
         slots.append(_slot(f"celula-{i}", [
             _img(*foto, rot=rot),
             Regiao(TipoRegiao.ADORNO, _r(*banda), nome="Banda"),
@@ -306,35 +313,40 @@ def _segunda() -> list[Slot]:
                    rot=rot, forma=FormaPreco.MEDALHAO_ESTRELA,
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
                    tam=18.0, tam_cent=11.4, centavos_na_base=True),
-            _nome(tcx - 93, ty - 26, 186, 28, fonte=_F_FRAUNCES,
-                  tam=14.5, cor="#FFFFFF", rot=rot),
-            _sub(tcx - 93, ty + 4, 186, 20, fonte=_F_FRA_IT,
-                 tam=9.0, cor="#BCD2E4", rot=rot),
+            # (2 linhas a 19pt = 2×~30px×1,12 ≈ 64px — a caixa de 60
+            # truncava "Creme de…" em vez de quebrar; pego no OLHAR)
+            _nome(tcx - 93, by + 4, 186, 64, fonte=_F_FRAUNCES,
+                  tam=19.0, tam_min=17.0, cor="#FFFFFF", rot=rot),
+            _sub(tcx - 93, by + 68, 186, 18, fonte=_F_FRA_IT,
+                 tam=11.0, cor="#BCD2E4", rot=rot),
         ], origem=origem))
     # (id, origem, rot, foto ESTENDIDA, adornos [(x,y,w,h)...], chip,
     #  selo(cx,cy,R), tcx, y_nome, tam_nome, tam_sub, tam_preco)
     # SEPTIMUS/O1: fotos das etiquetas 245→186 e 209→160 (o orçamento
     # 55–68% da altura útil) e o TIPO sobe 1 degrau — nem raquítica,
     # nem gulosa; o texto nunca cede
+    # OCTAVUS/C1: as BANDAS das etiquetas cresceram (arte regenerada:
+    # 56→84 e 53,5→80) — o tipo no piso do celular (20pt/18 e 19pt/17),
+    # até 2 linhas + descritor DENTRO da banda
     etiquetas = (
         (4, (64, 652), -0.5, (76, 662, 280, 186),
-         ((66, 654, 26, 26), (340, 654, 26, 26), (65, 879, 302, 64)),
-         (76, 664), (328, 886, 38), 180, 906, 16.0, 9.4, 21.4),
+         ((66, 654, 26, 26), (340, 654, 26, 26), (65, 851, 302, 92)),
+         (76, 664), (328, 886, 38), 180, 851, 20.0, 11.0, 21.4),
         (5, (388, 644), 0.4, (400, 654, 280, 186),
-         ((390, 646, 26, 26), (664, 646, 26, 26), (389, 871, 302, 64)),
-         (398, 656), (428, 878, 38), 568, 898, 16.0, 9.4, 21.4),
+         ((390, 646, 26, 26), (664, 646, 26, 26), (389, 843, 302, 92)),
+         (398, 656), (428, 878, 38), 568, 843, 20.0, 11.0, 21.4),
         (6, (712, 654), -0.5, (724, 664, 280, 186),
-         ((714, 656, 26, 26), (988, 656, 26, 26), (713, 881, 302, 64)),
-         (722, 666), (976, 888, 38), 828, 908, 16.0, 9.4, 21.4),
-        (7, (240, 955), -0.45, (252, 964, 272, 160),
-         ((240, 1145, 296, 62),),
-         (250, 965), (496, 1152, 35), 352, 1171, 15.0, 8.8, 19.8),
-        (8, (552, 948), 0.4, (564, 957, 272, 160),
-         ((552, 1138, 296, 62),),
-         (562, 958), (592, 1145, 35), 728, 1164, 15.0, 8.8, 19.8),
+         ((714, 656, 26, 26), (988, 656, 26, 26), (713, 853, 302, 92)),
+         (722, 666), (976, 888, 38), 828, 853, 20.0, 11.0, 21.4),
+        (7, (240, 955), -0.45, (252, 964, 272, 152),
+         ((240, 1119, 296, 88),),
+         (250, 965), (496, 1152, 35), 352, 1119, 20.0, 10.5, 19.8),
+        (8, (552, 948), 0.4, (564, 957, 272, 152),
+         ((552, 1112, 296, 88),),
+         (562, 958), (592, 1145, 35), 728, 1112, 20.0, 10.5, 19.8),
     )
     for i, origem, rot, foto, adornos, (chx, chy), (sx, sy, sr), tcx, \
-            ny, tn, ts, tp in etiquetas:
+            by, tn, ts, tp in etiquetas:
         regs = [_img(*foto, rot=rot)]
         regs += [Regiao(TipoRegiao.ADORNO, _r(*a), nome="Adorno")
                  for a in adornos]
@@ -345,20 +357,21 @@ def _segunda() -> list[Slot]:
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
                    tam=tp, tam_cent=round(tp * 0.63, 1),
                    centavos_na_base=True),
-            # SEPTIMUS/O1: as caixas de texto crescem (2 linhas
-            # legíveis DENTRO da banda da arte — a 1ª linha escapava
-            # por cima na recomposição real)
-            _nome(tcx - 100, ny - 26, 200, 34, fonte=_F_FRAUNCES,
-                  tam=tn, cor="#FFFFFF", rot=rot),
-            _sub(tcx - 100, ny + 10, 200, 20, fonte=_F_FRA_IT,
+            _nome(tcx - 100, by + 6, 200, 64, fonte=_F_FRAUNCES,
+                  tam=tn - 1.0, tam_min=tn - 3.0, cor="#FFFFFF",
+                  rot=rot),
+            _sub(tcx - 100, by + 70, 200, 18, fonte=_F_FRA_IT,
                  tam=ts, cor="#BCD2E4", rot=rot),
         ]
         slots.append(_slot(f"celula-{i}", regs, origem=origem))
-    slots.append(_slot("selo-validade", [
-        _legal(885, 74, 100, 44, papel=PapelTexto.VALIDADE,
-               fonte=_F_FRAUNCES, nome="Validade", rot=10.0,
-               tam=16.5, cor="#1F4E79"),
-    ], origem=(865, 74)))
+    # OCTAVUS/C3: o selo tem "TODA SEGUNDA"/"LEITERIA" GRAVADOS em
+    # curva — o app escreve SÓ A DATA no miolo limpo, MEDIDO por pixel
+    # no BASE (a faixa sem tinta: y 82–106, x 890–970)
+    selo_data = _legal(884, 78, 92, 30, papel=PapelTexto.VALIDADE,
+                       fonte=_F_FRAUNCES, nome="Validade (data)",
+                       rot=10.0, tam=16.0, cor="#1F4E79")
+    selo_data.so_data = True
+    slots.append(_slot("selo-validade", [selo_data], origem=(865, 74)))
     return slots
 
 

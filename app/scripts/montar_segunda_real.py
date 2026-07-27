@@ -27,17 +27,23 @@ RAIZ_REPO = Path(__file__).resolve().parents[2]
 
 # a tabela REAL, transcrita e conferida na imagem (S1 já provou o
 # parser com as linhas cruas; aqui vão nome sanitizado + preço)
+# OCTAVUS/C1 passo 5 + C2: nome CURTO no piso do celular; o resto vai
+# ao DESCRITOR (a 2ª linha do modelo, que tinha sumido) — (nome,
+# descritor, preço, foto)
 ITENS_2707 = [
-    ("Kit Burguer Senepol BBX", "39,00", None),
-    ("Creme de Leite Italac 200g", "2,44", "_auto/queijo_mussarela_latopar_1kg.png"),
-    ("Leite Condensado Triangulo 395g", "7,44", "38/atual.png"),
-    ("Batata Palha Bulnez Crocante 100g", "6,66",
+    ("Kit Burguer Senepol BBX", None, "39,00", None),
+    ("Creme de Leite Italac", "200 g", "2,44",
+     "_auto/queijo_mussarela_latopar_1kg.png"),
+    ("Leite Condensado", "Triangulo · 395 g", "7,44", "38/atual.png"),
+    ("Batata Palha Bulnez", "crocante · 100 g", "6,66",
      "_auto/batata_palha_bulnez_100g.png"),
-    ("Azeite Gallo Extra Virgem Clássico 500ml", "38,80", "30/atual.png"),
-    ("Suco de Uva Aurora Tinto TP 1,5L", "19,99", "22/atual.png"),
-    ("Leite Integral Parmalat 1L", "5,95",
+    ("Azeite Gallo", "extra virgem clássico · 500 ml", "38,80",
+     "30/atual.png"),
+    ("Suco de Uva Aurora", "tinto TP · 1,5 L", "19,99", "22/atual.png"),
+    ("Leite Integral Parmalat", "1 L", "5,95",
      "_auto/leite_parmalat_integral_1l.png"),
-    ("Óleo de Soja Concordia 900ml", "7,70", "_auto/leo_de_soja_liza_900ml.png"),
+    ("Óleo de Soja Concordia", "900 ml", "7,70",
+     "_auto/leo_de_soja_liza_900ml.png"),
 ]
 # substitutos DECLARADOS (não há foto destes no acervo): Italac→miolo
 # de laticínio; Azeite Gallo→Andorinha; Suco Aurora→Sofruta; Óleo
@@ -82,9 +88,12 @@ def montar() -> None:
                 "preco_da_semana": True,
                 "imagem": rel,
             }
-            # 2) S3: a tabela real puxa o preço pela CHAVE NATURAL
+            # 2) S3: a tabela real puxa o preço pela CHAVE NATURAL.
+            # C2: a UNIDADE leva o descritor — a região SUBTITULO da
+            # Segunda volta a ter a 2ª linha do modelo
             itens = [ItemMesa(nome=n, descricao="", semaforo="verde",
-                              preco=p) for n, p, _f in ITENS_2707]
+                              preco=p, unidade=u)
+                     for n, u, p, _f in ITENS_2707]
             avisos = atualizar_fixos_pela_tabela(lay, itens)
             for a in avisos:
                 print("fixo:", a)
@@ -109,7 +118,7 @@ def montar() -> None:
                 mapa[sid] = it.uid
             # foto do acervo em cada item (substitutos declarados)
             bib = root.biblioteca_imagens
-            for it, (_n, _p, foto) in zip(itens, ITENS_2707):
+            for it, (_n, _u, _p, foto) in zip(itens, ITENS_2707):
                 if foto:
                     it.imagem = str(bib / foto)
             from app.core import projetos

@@ -129,7 +129,17 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
     validade = ((dados.texto_legal if dados is not None else None) or "")
     fixo = (reg.texto_fixo or "")
     if papel == PapelTexto.VALIDADE:
-        return validade or fixo
+        texto = validade or fixo
+        # F13-OCTAVUS/C3: a região SÓ-DATA escreve "27/07" — o selo
+        # tem o resto GRAVADO na arte ("Ofertas válidas" era
+        # redundante três vezes e cobria o texto curvo do selo). Sem
+        # data no texto, cai no completo (guarda: nunca em silêncio).
+        if getattr(reg, "so_data", False) and texto:
+            import re as _re
+            m = _re.search(r"\d{1,2}/\d{1,2}", texto)
+            if m:
+                return m.group(0)
+        return texto
     if papel == PapelTexto.OBSERVACAO:
         # R-071: a observação do item; condicional — vazia devolve "" (a região
         # não desenha nada). Cai no texto_fixo só se o item não tiver observação

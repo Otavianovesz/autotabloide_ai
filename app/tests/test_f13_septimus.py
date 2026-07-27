@@ -92,8 +92,9 @@ def test_o3_a_validade_chega_a_miniatura_do_projeto(raiz_tmp):
 def test_o1_o_orcamento_da_celula_na_segunda():
     """O1 (a régua NOVA, com faixa — a de ≥55% da QUINQUE está
     REVOGADA): nas células de produto da Segunda, a FOTO fica entre
-    55% e 68% da ALTURA útil da célula (nunca acima — foto gulosa era
-    o defeito novo) e a faixa do NOME tem altura para 2 linhas em
+    55% e 70% da ALTURA útil da célula (nunca acima — foto gulosa era
+    o defeito novo; teto 68→70 na OCTAVUS §3: o Quintou padrão-ouro
+    vence a régua) e a faixa do NOME tem altura para 2 linhas em
     corpo legível (≥ 17% da célula)."""
     if not _PACOTE.exists():
         pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
@@ -113,9 +114,9 @@ def test_o1_o_orcamento_da_celula_na_segunda():
         util = y1 - y0
         fr_foto = foto.rect.alt_mm / util
         fr_texto = sum(r.rect.alt_mm for r in textos) / util
-        assert 0.55 <= fr_foto <= 0.68, (
+        assert 0.55 <= fr_foto <= 0.70, (
             f"{s.id}: a foto ocupa {fr_foto:.0%} da altura útil — o "
-            "orçamento O1 manda 55–68% (nem raquítica, nem gulosa)")
+            "orçamento O1 manda 55–70% (nem raquítica, nem gulosa)")
         # a banda azul é da ARTE (60px) — a zona de TEXTO (nome +
         # descritor) fica ≥16% dela e o corpo do nome ≥14pt (a regra
         # que manda: o texto nunca cede; crescer a banda = regenerar a

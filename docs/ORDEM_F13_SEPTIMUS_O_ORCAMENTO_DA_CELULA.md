@@ -29,7 +29,7 @@ Toda célula de produto passa a ter um orçamento **declarado e verificado**, em
 
 | Zona | Faixa | Regra dura |
 |---|---|---|
-| **Foto** | **55 % – 68 %** | nunca abaixo de 55, **nunca acima de 68** |
+| **Foto** | **55 % – 70 %** (OCTAVUS §3: o Quintou manda) | nunca abaixo de 55, **nunca acima de 70** |
 | **Nome** | 20 % – 28 % | **mínimo 2 linhas** no corpo legível |
 | **Descritor** | 8 % – 12 % | pode ser omitido se o nome precisar das 2 linhas |
 | **Preço** | sobreposto | a forma vive por cima da foto, não rouba altura |
@@ -152,6 +152,11 @@ cede. Teste `test_o1_o_orcamento_da_celula_na_segunda`: faixa 55–68% de foto +
 orçamento nominal pleno (nome 20–28%) na Segunda exigiria regenerar a banda (nominal); dentro
 dela, 2 linhas legíveis cabem e estão medidas.
 
+> **Adendo (OCTAVUS §3, 27/07/2026):** o conflito do §4 foi decidido pelo arquiteto — **a faixa
+> cede, não o Quintou**. O teto passa de 68% para **70%** (tabela acima e
+> `test_o1_o_orcamento_da_celula_na_segunda` atualizados). Na OCTAVUS a banda da Segunda
+> cresceu (52/56/53,5 → 80/84/80 px) e as fotos cederam — a página segue dentro da faixa nova.
+
 ## O2 — o Kit respirou (a causa exata)
 
 A zona de foto da fixa era um **banner largo e baixo (312×90)** — herdada do placeholder
@@ -178,6 +183,7 @@ A densidade do Jornal 0,95–1,15 anotada como a régua vigente; a Quinta (1,52)
 conferência. **Conflito a decidir (L6):** o QUINTOU APROVADO mede **foto ≈69% da área / ~74% da
 altura útil** — fora da faixa 55–68 do O1. Ou a faixa ganha teto 70% para acomodar o
 padrão-ouro, ou o Quintou é exceção declarada (é o publicado dele). Não mexi no Quintou.
+*(DECIDIDO na OCTAVUS §3: teto 70% — ver o adendo no §O1 da resposta.)*
 
 ## O que fica aberto, com nome
 
@@ -192,5 +198,6 @@ padrão-ouro, ou o Quintou é exceção declarada (é o publicado dele). Não me
 - Suíte inteira ×2: **999 verdes / 0 falhas / 0 skips, exit 0** nas duas (995 + 4 da SEPTIMUS).
 - Ordem invertida: **999/0/0**. Janela real: **4/0/0**.
 - Quarta bancada seguida sem incidente.
+
 
 

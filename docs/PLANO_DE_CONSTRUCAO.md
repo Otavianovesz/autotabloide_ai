@@ -773,3 +773,28 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   995 ×2 zero skips + invertida + janela DE PRIMEIRA (bloco_fsextus_*).
   **PARADO: o dono abre a Mesa (projeto id=7), confere e exporta; as
   decisões (painel/período/dica na célula 13) seguem dele.**
+  —— **7ª RODADA — `docs/ORDEM_F13_SEPTIMUS_O_ORCAMENTO_DA_CELULA.md`
+  EXECUTADA (27/07): o dono viu a Segunda ("imagens imensas… texto
+  minúsculo… Kit pequeneninho… data estranha"); a lição do arquiteto:
+  RÉGUA NUMÉRICA TEM FAIXA, NUNCA PISO (o ≥55% sem teto virou teto).**
+  O1 orçamento da célula (foto 55–68% da altura útil, texto nunca
+  cede — celula-2 estava a 87%); O2 a zona do Kit era banner 312×90
+  herdado do placeholder → 192×112; O3 a MINIATURA era a 3ª receita à
+  mão (a doença do Modo Pai) → `_gerar_miniatura` compõe pela
+  montagem oficial, teste por pixel; ACHADO: o upsert do import
+  APAGAVA o `conteudo_fixo` → preserva por slot.id (teste). Suíte 999
+  ×2 + invertida + janela (bloco_fseptimus_*).
+  —— **8ª RODADA — ORDEM F13-OCTAVUS, O TESTE DO CELULAR (27/07; o
+  dono: "quase… as escritas quase não dá pra ler… a data continua
+  estranha").** C1 o PISO DO TIPO (WhatsApp reduz a 37%: nome ≥17pt de
+  piso/19pt de corpo = linha ≥30px em 1080; uniformidade ≤1,3× — estava
+  2,2×; precedência dura: a FAIXA cresce e a foto cede — bandas da arte
+  regeneradas 52/56/53,5→80/84/80 px; nome que não coube encurta PELO
+  DESCRITOR, nunca encolhe); C2 o descritor de volta (a causa: os
+  ItemMesa do caso real nasciam sem `unidade`); C3 `Regiao.so_data` — o
+  selo escreve SÓ "27/07" no miolo LIMPO medido por pixel no BASE
+  (y 82–106, x 890–970), com guarda (sem data → texto completo). §3
+  decidido: a faixa da foto passa a **55–70%** (o Quintou padrão-ouro
+  vence a régua; registrado na SEPTIMUS §O1 + teste). Projeto id=7
+  recomposto e enviado ao dono — **a Segunda 27/07 é a candidata a 1ª
+  página publicada**. Suíte ×2 + invertida + janela (bloco_foctavus_*).
