@@ -425,6 +425,11 @@ class Pagina:
     # D8.2 (ORDEM_F5_8): frente e verso têm ARTES diferentes — fundo POR
     # página; None = herda o arquivo_fundo do layout (compat total).
     arquivo_fundo: str | None = None
+    # F13-QUATER/L9: a CAMADA do dono — arte de overlay (RGBA) colada
+    # sobre o fundo, escalada à página, com alfa (a camada de etiquetas
+    # de preço do Quintou: o asset É a fonte da verdade e é CONSUMIDO,
+    # nunca imitado em código). None = página sem camada (compat total).
+    arquivo_camada: str | None = None
     # F8.2: seções visuais (contorno + título por categoria). São camada
     # DERIVADA — a página só guarda o liga/desliga e os títulos editados;
     # os retângulos são recalculados do mapa a cada composição. A seção
@@ -432,6 +437,9 @@ class Pagina:
     # por construção (a 3ª aplicação da lei do tipo novo).
     secoes_ligadas: bool = False
     titulos_secoes: dict = field(default_factory=dict)   # categoria → título
+    # F13-QUATER/A4: o ESTILO de seção POR PÁGINA (None = o global da
+    # Config) — o Jornal em fluxo liga "JORNAL" aqui; aditivo
+    estilo_secoes: str | None = None
     # FASE 4 (Bloco E, R-027/028): guias arrastáveis e grade magnética.
     # `guias`: lista de (orientacao 'x'|'y', coord_mm) — coordenadas em mm
     # RELATIVAS à página (I3: portável, nunca px absoluto). `grade_*`: o
@@ -443,8 +451,10 @@ class Pagina:
     def to_dict(self) -> dict:
         return {"slots": [s.to_dict() for s in self.slots],
                 "arquivo_fundo": self.arquivo_fundo,
+                "arquivo_camada": self.arquivo_camada,     # QUATER/L9
                 "secoes_ligadas": self.secoes_ligadas,
                 "titulos_secoes": dict(self.titulos_secoes),
+                "estilo_secoes": self.estilo_secoes,       # A4 aditivo
                 "guias": [list(g) for g in self.guias],
                 "grade_magnetica": self.grade_magnetica,
                 "grade_passo_mm": self.grade_passo_mm}
@@ -453,8 +463,10 @@ class Pagina:
     def from_dict(cls, d: dict) -> "Pagina":
         return cls(slots=[Slot.from_dict(s) for s in d["slots"]],
                    arquivo_fundo=d.get("arquivo_fundo"),
+                   arquivo_camada=d.get("arquivo_camada"),  # L9 aditivo
                    secoes_ligadas=d.get("secoes_ligadas", False),
                    titulos_secoes=dict(d.get("titulos_secoes") or {}),
+                   estilo_secoes=d.get("estilo_secoes"),   # A4 aditivo
                    guias=[tuple(g) for g in (d.get("guias") or [])],
                    grade_magnetica=d.get("grade_magnetica", False),
                    grade_passo_mm=float(d.get("grade_passo_mm", 5.0)))

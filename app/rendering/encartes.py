@@ -67,6 +67,14 @@ _BASES: dict[str, tuple[str, tuple[str, ...]]] = {
                               "Quintou Verso fundo.png")),
 }
 
+# QUATER/L9: a CAMADA de preço do dono por página — o asset é a fonte
+# da verdade (etiquetas listradas + divisórias vermelhas, RGBA 4500×
+# 5418 alinhado 1:1 à página; o número NUNCA esteve na arte)
+_CAMADAS: dict[str, tuple[str, ...]] = {
+    "quintou": ("Quintou do Real Frente Preço.png",
+                "Quintou do Real Verso Preço.png"),
+}
+
 NOMES_EXIBICAO = {
     "quintou": "Quintou do Real",
     "segunda-frios": "Segunda dos Frios",
@@ -119,7 +127,7 @@ def _sub(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
 def _preco(x, y, w, h, *, fonte, rot=0.0, forma=None, forma_cor=None,
            borda=None, cor="#000000", tam=48.0, tam_cent=None,
            centavos_na_base=False, alin=Alinhamento.CENTRO,
-           separado=None) -> Regiao:
+           separado=None, moeda=True) -> Regiao:
     from app.rendering.model import SubtipoPreco
     if separado is None:
         separado = forma is not None or tam_cent is not None
@@ -132,6 +140,7 @@ def _preco(x, y, w, h, *, fonte, rot=0.0, forma=None, forma_cor=None,
                   forma_cor=forma_cor or "#C0392B",
                   forma_cor_borda=borda,
                   centavos_na_base=centavos_na_base,
+                  mostrar_moeda=moeda,
                   rotacao_graus=rot)
 
 
@@ -164,6 +173,10 @@ FONTES_DO_PACOTE = (
     "Fraunces-Italic.ttf", "Fraunces-Regular.ttf",
     "Fraunces-SemiBold.ttf", "Nunito-Black.ttf", "Nunito-Bold.ttf",
     "UnifrakturMaguntia.ttf",
+    # QUATER/Q2: a fonte REAL do Quintou (estava na raiz do dono e o
+    # app usava Archivo — L9). O PIL carrega .otf; não há filtro.
+    "Quicksand-Bold.ttf", "Quicksand-Medium.ttf",
+    "Quicksand-Regular.otf", "Quicksand-Light.ttf",
 )
 
 
@@ -666,16 +679,19 @@ def _jornal_p1() -> list[Slot]:
     edição, manchete e o período editável (F8) são desenhados pelo app."""
     slots = [
         _slot("jp1-hero", [
-            _img(74, 308, 384, 266),
+            # QUATER/J6: a foto do hero ENCOLHEU (384→330) e o splash
+            # foi para a direita dela — cavalga a borda, nunca corta o
+            # produto (o "SUPER OFERTA" cortava o pacote de arroz)
+            _img(74, 308, 330, 266),
             Regiao(TipoRegiao.ADORNO, _r(236, 308, 226, 3),
                    nome="Fio"),
             # a estrela SUPER OFERTA (24 pontas no modelo) sai como
             # medalhão de pétalas VERDE — a aproximação declarada.
             # D2: etiqueta OPCIONAL — nasce VAZIA (vazia = a forma nem
             # desenha); o dono escolhe o rótulo (a inspeção põe o real)
-            _legal(347, 299, 114, 114, papel=PapelTexto.LIVRE,
+            _legal(384, 296, 106, 106, papel=PapelTexto.LIVRE,
                    fonte=_F_ARCHIVO, texto="",
-                   nome="Splash", rot=-8.0, tam=12.0, cor="#F7F3E9"),
+                   nome="Splash", rot=-8.0, tam=11.5, cor="#F7F3E9"),
             # a legenda da capa = nome + descritor do produto do hero
             _nome(78, 574, 376, 24, fonte=_F_FRA_IT,
                   tam=9.4, cor=_J_GRAY),
@@ -726,11 +742,12 @@ def _jornal_p1() -> list[Slot]:
                    fonte=_F_FRAUNCES, nome="Manchete",
                    texto="PREÇO BAIXO DO DIA 1º AO 27",
                    tam=35.0, cor=_J_INK),
+            # QUATER/J7: a linha-fina NÃO repete o período da manchete
+            # ("do dia 1º ao 27" duas vezes em duas linhas era eco)
             _legal(190, 270, 700, 26, papel=PapelTexto.LIVRE,
                    fonte=_F_FRA_IT, nome="Linha-fina",
                    texto="a redação conferiu preço por preço: do "
-                         "pacotão de arroz ao café passado, tudo em "
-                         "oferta do dia 1º ao 27",
+                         "pacotão de arroz ao café passado",
                    tam=10.9, cor=_J_GRAY),
         ], origem=(188, 218)),
         # F13-TER/N3: a tarja "FICA A DICA" da capa SAIU da arte — a
@@ -778,43 +795,57 @@ def _quintou() -> list[Slot]:
     app. Foto GRANDE assentada direto no tijolo; nome branco à
     esquerda; a etiqueta LISTRADA vermelha (a forma do publicado) no
     canto inferior direito; validade "Até dd/mm" a 90° junto ao B."""
-    vermelho, branco = "#CE2418", "#FFFFFF"
     slots = []
     for pos in range(1, 17):
         if pos == 13:                      # o B laranja da estrutura
             continue
         lin, col = divmod(pos - 1, 4)
         x, y = col * 270, 270 + lin * 258
-        slots.append(_slot(f"pos-{pos:02d}", [
-            _img(x + 10, y + 6, 250, 152),
-            _nome(x + 8, y + 162, 152, 88, fonte=_F_ARCHIVO,
-                  tam=12.0, cor=branco),
-            _preco(x + 158, y + 180, 108, 64, fonte=_F_ARCHIVO,
-                   forma=FormaPreco.ETIQUETA_LISTRADA,
-                   forma_cor=vermelho, cor=branco, tam=24.0,
-                   tam_cent=13.5, centavos_na_base=True),
-        ], origem=(x, y)))
+        slots.append(_slot(f"pos-{pos:02d}", _celula_quintou(x, y),
+                           origem=(x, y)))
     slots.append(_slot("selo-validade", [
-        _legal(213, 1078, 54, 196, papel=PapelTexto.VALIDADE,
-               fonte=_F_ARCHIVO, nome="Validade", rot=90.0,
-               tam=15.0, cor="#E01A1A"),
-    ], origem=(213, 1078)))
-    # o painel do topo-direito é VAZIO no fundo limpo (a logo do
-    # publicado é conteúdo) — as DUAS opções do dono nascem aqui:
-    # logo (célula FIXA, foto escolhida) + Fica a Dica ao lado; a
-    # inspeção também compõe a variante só-dica (decisão é dele)
+        # QUATER/Q6 (medido no Real): alvo VISUAL (221,1080,36,192),
+        # cap ~34px, #E04444 — sobre o TIJOLO, nunca o logo. O RG-12
+        # gira o conteúdo em torno do CENTRO do rect, então o rect é o
+        # RETO pré-rotação (196×40 centrado em 238,1176) — a caixa
+        # pós-rotação esmagava o texto (o bug das 3 rodadas).
+        _legal(138, 1146, 200, 60, papel=PapelTexto.VALIDADE,
+               fonte=_F_QUICK, nome="Validade", rot=90.0,
+               tam=34.0, cor="#E04444"),
+    ], origem=(138, 1146)))
+    # o painel do topo-direito é VAZIO no fundo limpo. QUATER/Q5: meio
+    # a meio arruinava os DOIS — aqui o builder entrega a opção B FIEL
+    # ao publicado (o logo ocupa o painel INTEIRO, 468×226 medidos);
+    # a variante A (painel inteiro para o Fica a Dica, sem logo) é
+    # composta pela inspeção — a decisão A/B segue do dono
     slots.append(_slot("painel-logo", [
-        _img(604, 30, 200, 200),
+        # o bbox EXATO do painel medido no publicado (588,18,468,226) —
+        # a foto da logo entra 1:1, sem reescala nem deslocamento
+        _img(588, 18, 468, 226),
     ], origem=(588, 18), fixa=True))
-    slots.append(_slot("painel-dica", [
-        _legal(816, 40, 236, 30, papel=PapelTexto.LIVRE,
-               fonte=_F_ARCHIVO, texto="FICA A DICA", nome="Título",
-               tam=12.0, cor="#1B2A4A", alin=Alinhamento.ESQUERDA),
-        _legal(816, 74, 236, 152, papel=PapelTexto.DICA,
-               fonte=_F_FRA_IT, nome="Fica a Dica",
-               tam=10.0, cor="#33384A", alin=Alinhamento.ESQUERDA),
-    ], origem=(810, 18)))
     return slots
+
+
+_F_QUICK = "Quicksand-Bold.ttf"            # QUATER/Q2: a fonte REAL
+
+
+def _celula_quintou(x: float, y: float) -> list:
+    """A célula do Quintou MEDIDA no publicado (QUATER §2): foto usa a
+    zona inteira acima do rodapé (y rel 2–195, 92–97% da altura); nome
+    em até 3 linhas Quicksand branco CENTRADO na metade esquerda (cap
+    ~14px, linhas y rel 198/222/246); etiqueta = a CAMADA do dono em
+    (rel 153,189,112,64) — a região só posiciona o NÚMERO (cap ~34px,
+    sem "R$" do app: o R$ é gravado na arte)."""
+    branco = "#FFFFFF"
+    return [
+        _img(x + 8, y + 2, 254, 190),
+        _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
+              tam=14.5, cor=branco),
+        _preco(x + 153, y + 189, 112, 64, fonte=_F_QUICK,
+               forma=FormaPreco.ETIQUETA_LISTRADA, forma_cor="#FF0000",
+               cor=branco, tam=40.0, tam_cent=40.0,
+               centavos_na_base=True, moeda=False),
+    ]
 
 
 def _quintou_verso() -> list[Slot]:
@@ -824,24 +855,16 @@ def _quintou_verso() -> list[Slot]:
     painel — a marca neon "Quintou do Real" e o "Só Hoje" são ARTE).
     A validade vive no DISCLAIMER do topo direito (bbox do diff:
     y 7–41, x ~640–1076), em branco, sem rotação."""
-    vermelho, branco = "#CE2418", "#FFFFFF"
     slots = []
     for pos in range(1, 17):
         lin, col = divmod(pos - 1, 4)
         x, y = col * 270, 270 + lin * 258
-        slots.append(_slot(f"vpos-{pos:02d}", [
-            _img(x + 10, y + 6, 250, 152),
-            _nome(x + 8, y + 162, 152, 88, fonte=_F_ARCHIVO,
-                  tam=12.0, cor=branco),
-            _preco(x + 158, y + 180, 108, 64, fonte=_F_ARCHIVO,
-                   forma=FormaPreco.ETIQUETA_LISTRADA,
-                   forma_cor=vermelho, cor=branco, tam=24.0,
-                   tam_cent=13.5, centavos_na_base=True),
-        ], origem=(x, y)))
+        slots.append(_slot(f"vpos-{pos:02d}", _celula_quintou(x, y),
+                           origem=(x, y)))
     slots.append(_slot("v-validade", [
         _legal(640, 8, 434, 36, papel=PapelTexto.VALIDADE,
-               fonte=_F_ARCHIVO, nome="Validade", tam=9.5,
-               cor=branco, alin=Alinhamento.ESQUERDA),
+               fonte=_F_QUICK, nome="Validade", tam=9.5,
+               cor="#FFFFFF", alin=Alinhamento.ESQUERDA),
     ], origem=(640, 8)))
     return slots
 
@@ -879,7 +902,9 @@ def _jornal_celula_fluxo(n: int, x: float, y: float, w: float,
     CARIMBO), parametrizada pela geometria que o fluxo decidiu. A foto
     encolhe com o degrau de altura (o custo declarado do degrau)."""
     foto_h = max(40.0, alt - 108)
-    rot = -6.0 if (n % 2 == 0) else 5.0
+    # QUATER/J8: o giro do carimbo encolheu (±6/5 → ±3) — os preços da
+    # mesma linha ALINHAM visualmente; o charme do carimbo fica
+    rot = -3.0 if (n % 2 == 0) else 3.0
     return _slot(f"jf-{n:02d}", [
         _img(x + 6, y + 2, w - 16, foto_h),
         _nome(x + 6, y + foto_h + 4, w - 16, 24, fonte=_F_FRAUNCES,
@@ -893,27 +918,24 @@ def _jornal_celula_fluxo(n: int, x: float, y: float, w: float,
     ], origem=(x, y))
 
 
-def _jornal_cabecalho_secao(n: int, titulo: str, caixa: tuple) -> Slot:
-    """F13-TER/N2: o cabeçalho de seção do jornal — VERSALETE + FILETE
-    (nunca retângulo colorido; o estilo é DO encarte)."""
-    x, y, w, h = caixa
-    return _slot(f"jsec-{n:02d}", [
-        _legal(x + 2, y + 4, min(w - 4, 420), 20, papel=PapelTexto.LIVRE,
-               fonte=_F_ARCHIVO, texto=titulo.upper(),
-               nome=f"Seção: {titulo}", tam=9.5, cor=_J_INK,
-               alin=Alinhamento.ESQUERDA),
-        Regiao(TipoRegiao.FILETE, _r(x, y + h - 7, w, 1.6),
-               nome="Fio da seção", cor=_J_INK),
-    ], origem=(x, y))
+# QUATER/A4: o cabeçalho de seção do Jornal saiu daqui — quem o desenha
+# é o MOTOR ÚNICO (secoes.py, estilo "JORNAL", ligado por página). O
+# TipoRegiao.FILETE não é mais GERADO por nenhum layout (legado
+# tolerado no compositor por desserialização — LEDGER_I2).
 
 
-# as FAIXAS de fluxo do Jornal (px 1×, medidas da arte regenerada:
-# réguas de coluna contínuas em x=64+198c−6; p1 y 656–1296, p2 y
-# 128–980). Colunas cravadas em 5 PELA ARTE (degrau (a) não existe
-# aqui — declarado); degraus de altura tabelados.
+# as FAIXAS de fluxo do Jornal (px 1×). QUATER/J3: as réguas contínuas
+# SAÍRAM da arte — a coluna é implícita (goteira branca). QUATER/J5: a
+# 3ª faixa é o rodapé À ESQUERDA do bloco de pagamentos (2 colunas) —
+# a página enche até o fim, como o estático fazia. O par é
+# (índice_da_página, geometria); colunas tabeladas por faixa.
 _FAIXAS_JORNAL = (
-    dict(x=64.0, y=648.0, largura=990.0, altura=648.0),
-    dict(x=64.0, y=116.0, largura=990.0, altura=864.0),
+    (0, dict(x=64.0, y=648.0, largura=990.0, altura=648.0,
+             colunas=(5,))),
+    (1, dict(x=64.0, y=116.0, largura=990.0, altura=864.0,
+             colunas=(5,))),
+    (1, dict(x=64.0, y=1000.0, largura=396.0, altura=196.0,
+             colunas=(2,))),
 )
 
 
@@ -940,10 +962,17 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path,
             raise FileNotFoundError(
                 f"O encarte “{NOMES_EXIBICAO[chave]}” não está completo no "
                 f"pacote: falta {c.name} (procurei em {c.parent})")
+    # QUATER/L9: as CAMADAS do dono por página (a arte das etiquetas de
+    # preço do Quintou — consumida, nunca imitada); ausente = sem camada
+    camadas = [_pasta_do_encarte(raiz, sub) / n
+               for n in _CAMADAS.get(chave, ())]
     paginas = []
-    for caminho, builder in zip(caminhos, _BUILDERS[chave]):
+    for i, (caminho, builder) in enumerate(zip(caminhos, _BUILDERS[chave])):
+        camada = (str(camadas[i]) if i < len(camadas)
+                  and camadas[i].exists() else None)
         paginas.append(Pagina(
             slots=builder(),
+            arquivo_camada=camada,
             arquivo_fundo=str(caminho),
             # F13-BIS §3.7.2: as seções ficam DESLIGADAS no Jornal — o
             # contorno padrão é alienígena sobre o papel creme/laranja
@@ -954,20 +983,23 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path,
     avisos_fluxo: list[str] = []
     if secoes and chave == "jornal-do-mes":
         from app.rendering.fluxo_jornal import FaixaFluxo, montar_fluxo
-        faixas = [FaixaFluxo(colunas=(5,), alturas_celula=(202, 178, 156),
+        faixas = [FaixaFluxo(alturas_celula=(202, 178, 156),
                              altura_cabecalho=34, **f)
-                  for f in _FAIXAS_JORNAL]
+                  for _pg, f in _FAIXAS_JORNAL]
+        paginas_das_faixas = [pg for pg, _f in _FAIXAS_JORNAL]
         fluxo = montar_fluxo(secoes, faixas)
         avisos_fluxo = fluxo.avisos
         for pag in paginas:                # a grade fixa do miolo sai
             pag.slots = [s for s in pag.slots
                          if not s.id.split("-")[1].startswith("l")]
-        n_cel = n_sec = 0
+            # QUATER/A4: quem desenha o cabeçalho de seção é o MOTOR
+            # ÚNICO (desenhar_secoes, estilo JORNAL, por página) — o
+            # fluxo só gera células; nenhum slot jsec/FILETE nasce
+            pag.secoes_ligadas = True
+            pag.estilo_secoes = "JORNAL"
+        n_cel = 0
         for bloco in fluxo.blocos:
-            pag = paginas[bloco.faixa]
-            n_sec += 1
-            pag.slots.append(_jornal_cabecalho_secao(
-                n_sec, bloco.secao, bloco.cabecalho))
+            pag = paginas[paginas_das_faixas[bloco.faixa]]
             for cx, cy, cw, calt in bloco.celulas:
                 n_cel += 1
                 pag.slots.append(

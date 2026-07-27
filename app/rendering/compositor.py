@@ -554,6 +554,18 @@ def _regiao_palco_da_forma(reg: Regiao) -> Regiao:
     x, y, w, h = (reg.rect.x_mm, reg.rect.y_mm,
                   reg.rect.larg_mm, reg.rect.alt_mm)
     f = reg.forma_preco
+    if f == FormaPreco.ETIQUETA_LISTRADA:
+        # QUATER/L9 (medido no publicado do Quintou): o "R$" pequeno é
+        # GRAVADO na arte no topo-centro; o NÚMERO domina a etiqueta
+        # (cap ≈ 53% da altura, baseline ≈ 88%). O palco é quase a
+        # etiqueta inteira ancorado na BASE — o só-reduz do SEPARADO
+        # dita o corpo final pelo palco, então o palco é a régua.
+        pw, ph = w * 0.96, h * 0.90
+        px_, py_ = x + (w - pw) / 2, y + h * 0.06
+        return dataclasses.replace(
+            reg, rect=Retangulo(px_, py_, pw, ph),
+            alinhamento=Alinhamento.CENTRO,
+            alinhamento_v=AlinhamentoV.BASE)
     if f in (FormaPreco.MEDALHAO_ESTRELA, FormaPreco.ETIQUETA_PENDURADA):
         lado = min(w, h)                     # o texto vive no DISCO
         pw, ph = lado * 0.80, lado * 0.52
@@ -598,7 +610,12 @@ def _desenhar_preco(
     # texto passa a viver no PALCO da forma (centrado nela e coubível
     # na tinta, nunca na caixa larga da região).
     if reg.forma_preco != FormaPreco.TEXTO:
-        _desenhar_forma_preco(base, reg, dpi)
+        # QUATER/L9: com a CAMADA do dono na página, a etiqueta
+        # verdadeira JÁ ESTÁ pintada — o sintético não desenha (seria
+        # a imitação por cima do original); só o palco do número vale
+        if not (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
+                and getattr(base, "_tem_camada", False)):
+            _desenhar_forma_preco(base, reg, dpi)
         reg = _regiao_palco_da_forma(reg)
 
     if reg.subtipo_preco == SubtipoPreco.COMPLETO:
@@ -962,6 +979,23 @@ def compor_pagina(
     # nenhuma assinatura interna muda)
     base._arquivo_fundo = str(fundo) if fundo else None
 
+    # F13-QUATER/L9: a CAMADA do dono (a arte das etiquetas de preço do
+    # Quintou) é COLADA sobre o fundo, escalada à página, com o alfa —
+    # o asset é consumido, nunca imitado. Com a camada presente, a
+    # forma ETIQUETA_LISTRADA para de desenhar o sintético (a etiqueta
+    # verdadeira já está na página) e vira só o PALCO do número.
+    base._tem_camada = False
+    camada = getattr(pagina, "arquivo_camada", None)
+    if camada and Path(camada).exists():
+        try:
+            sobre = Image.open(camada).convert("RGBA")
+            if sobre.size != (w, h):
+                sobre = sobre.resize((w, h), Image.LANCZOS)
+            base.paste(sobre, (0, 0), sobre)
+            base._tem_camada = True
+        except OSError:
+            pass                      # arte ilegível: compõe sem camada
+
     lista = dados if isinstance(dados, (list, tuple)) else None
 
     # F8.2: seções visuais — camada DERIVADA, desenhada DEPOIS do fundo e
@@ -976,6 +1010,9 @@ def compor_pagina(
         if secoes:
             cor, esp = config_secoes()
             estilo, por_cat = estilo_secoes()   # RG-31: o modo escolhido
+            # F13-QUATER/A4: o estilo DA PÁGINA vence o global (o
+            # Jornal em fluxo compõe JORNAL sem tocar a Config)
+            estilo = getattr(pagina, "estilo_secoes", None) or estilo
             desenhar_secoes(base, secoes, dpi_ef, cor=cor,
                             espessura_mm=esp, fontes_dir=fontes_dir,
                             estilo=estilo, cores_por_categoria=por_cat)

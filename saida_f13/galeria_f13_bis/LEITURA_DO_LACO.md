@@ -109,8 +109,41 @@ Opção 2: PREÇO BAIXO O MÊS INTEIRO* (com o asterisco honesto) ·
 Opção 3: AGOSTO DE PREÇO BAIXO · ATÉ DIA 27.** O dono aponta (o campo
 é editável — F8).
 
-## jornal-secoes-p1.png · jornal-secoes-p2.png (N2 — SEM par: não há
-publicado deste formato)
+---
+
+# A 4ª rodada (F13-QUATER) — "USE O QUE EXISTE"
+
+*(O Quintou e o Jornal por seções abaixo foram REFEITOS consumindo os
+assets do dono — a L9. O medidor de fidelidade A6 existe e o número
+está em `saida_f13/medidor_quintou.md`: frente 27,6% global / **10,2%
+fora das fotos** (meta <12% ✓); verso 34,1% / 13,5% com 8 substitutos
+declarados. O mapa de calor diz onde cada pixel difere.)*
+
+## quintou-p1/p2 (refeitos): a CAMADA do dono é a etiqueta
+A arte `Quintou do Real Frente/Verso Preço.png` é colada como camada
+da página (etiquetas + divisórias vermelhas 1:1); o app só escreve o
+NÚMERO (Quicksand-Bold, cap ~34px como o publicado, sem "R$" — ele é
+gravado na arte). Nomes copiam o publicado (Title Case, peso colado,
+3 linhas na metade esquerda). A validade girada DOBROU (o bug da caixa
+pós-rotação, vivo por 3 rodadas, morreu pelo mapa de calor). O painel
+é o recorte do publicado (0,0% de diferença). O que sobra é foto ≠
+foto — declarado e medido.
+
+## quintou-opcoes-painel.png (DECISÃO DO DONO — execução consertada)
+B (esq) = o logo COMPLETO ocupando o painel inteiro, como o publicado.
+A (dir) = o painel INTEIRO para o Fica a Dica com corpo legível.
+Nenhum meio-a-meio (o Q5 morreu).
+
+## jornal-secoes-p1.png · jornal-secoes-p2.png (REFEITOS — motor único)
+Cabeçalhos de seção FORTES do `secoes.py` (estilo JORNAL: fio grosso +
+versalete + fio fino, por página); as réguas de planilha SAÍRAM da
+arte (coluna implícita); última linha ESTICA (nunca buracos); altura
+única por página; a 3ª faixa preenche o rodapé ao lado dos pagamentos;
+o hero remontado (splash sem cortar o arroz; o item do sabão trocado —
+a foto no acervo era um clipart errado, declarado no LEDGER); linha-
+fina sem eco; carimbos alinhados (±3°).
+
+## (histórico da 3ª rodada, superado pela QUATER)
 O miolo do Jornal em FLUXO por seções: cabeçalho fio + versalete (o
 estilo DO jornal, nunca caixa colorida), réguas de coluna contínuas na
 arte regenerada, última linha de cada seção CENTRALIZADA, a seção Pet

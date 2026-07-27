@@ -718,4 +718,26 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   Suíte 982×2 zero skips exit-0 + invertida + janela (junit
   `bloco_fter_*` em `saida_f13/`). Resposta do builder no fim da ordem
   TER com as 4 PERGUNTAS ao dono (painel A×B, período 1/2/3, seções,
-  dica fora da capa). **PARADO: galeria aguarda o OLHO do Otaviano.**
+  dica fora da capa).
+  —— **4ª RODADA (dono reprovou; arquiteto confirmou as 3 acusações —
+  "você está IMITANDO em vez de USAR"): `docs/ORDEM_F13_QUATER_USE_O_
+  QUE_EXISTE.md` EXECUTADA (27/07).** LEI L9 (asset do dono é fonte da
+  verdade e é CONSUMIDO): a arte do preço é a CAMADA da página inteira
+  → `Pagina.arquivo_camada` no motor (etiquetas + divisórias 1:1, o
+  app só escreve o número); Quicksand no pacote (Quintou inteiro);
+  nomes copiam o publicado; painel = recorte do publicado. **A6 — o
+  MEDIDOR de fidelidade** (`app/scripts/medidor_quintou.py`: % global
+  + por célula + "fora das fotos" + mapa de calor): frente 27,6%
+  global / **10,2% fora das fotos (meta <12% ✓)**, painel 0,0%; verso
+  13,5% fora das fotos com 8 substitutos declarados. O mapa pagou: a
+  validade girada estava ESMAGADA há 3 rodadas (caixa pós-rotação —
+  RG-12 espera o rect PRÉ-rotação). **A4 — um motor de seção só**:
+  estilo JORNAL no `secoes.py` + `Pagina.estilo_secoes`; o fluxo não
+  gera mais jsec/FILETE (legado tolerado, LEDGER QU-01). **J1–J8**:
+  última linha ESTICA (flip com rastro), altura única testada, réguas
+  fora da arte, cabeçalho forte, 3ª faixa do rodapé, hero remontado
+  (a foto do sabão era um CLIPART de balões — QU-02), linha-fina sem
+  eco, carimbos ±3°. Tabela de rastreio A5 item-a-item na resposta.
+  Suíte 987 ×2 zero skips + invertida + janela DE PRIMEIRA (junit
+  bloco_fquater_*). **PARADO: a 4ª apresentação vai ao dono COM o
+  número na mão.**

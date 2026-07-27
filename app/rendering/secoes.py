@@ -29,8 +29,11 @@ MARGEM_MM = 1.0                 # folga do contorno (RG-31: 1.6 invadia a
 RAIO_MM = 2.5
 TITULO_PT = 11.0
 
-# RG-31: os ESTILOS de seção ("a borda atual: feia") — modo global na Config
-ESTILOS_SECAO = ("CONTORNO", "SO_TITULO", "PILL", "SEM_DESENHO")
+# RG-31: os ESTILOS de seção ("a borda atual: feia") — modo global na Config.
+# F13-QUATER/A4: + JORNAL (versalete + fio grosso acima/fino abaixo, SEM
+# retângulo colorido — o estilo do broadsheet; o fluxo do Jornal o liga
+# POR PÁGINA via Pagina.estilo_secoes, matando o 2º motor de cabeçalho)
+ESTILOS_SECAO = ("CONTORNO", "SO_TITULO", "PILL", "SEM_DESENHO", "JORNAL")
 ESTILO_PADRAO = "CONTORNO"
 
 # paleta fixa p/ "cor por categoria" (determinística por nome — a MESMA
@@ -276,6 +279,38 @@ def desenhar_secoes(base, secoes: list[Secao], dpi: int, *,
             rects_px.append((x0, y0, x1, y1))
         if not rects_px:
             continue
+        if estilo == "JORNAL":
+            # F13-QUATER/A4+J4: o cabeçalho FORTE do broadsheet — fio
+            # GROSSO + versalete grande + fio fino, ACIMA do bloco (o
+            # fluxo reserva a faixa do cabeçalho). Sem retângulo nem
+            # etiqueta preenchida. RG-49 NÃO se aplica: seção de 1 item
+            # (a Pet inline) PRECISA do cabeçalho — ele é o organizador
+            # da leitura, não uma moldura.
+            # O fallback "Outros" (F8.2) NÃO desenha neste estilo: a
+            # capa (hero/chamadas sem categoria) não é seção — um
+            # "OUTROS" sobre a manchete era mentira de leitura. Nos
+            # demais estilos o Outros segue valendo.
+            if secao.categoria == "Outros":
+                continue
+            x0, y0, x1, _y1 = rects_px[0]
+            titulo = (secao.titulo or secao.categoria).upper()
+            cor_secao = "#262019"          # TINTA de jornal — o estilo
+            # é completo (nunca o azul da Config, alienígena no papel)
+            f_cab = fonte_segura(fontes_dir, "Archivo-Medium.ttf",
+                                 round(pt_para_px(12.0, dpi)))
+            cx_t = draw.textbbox((0, 0), titulo, font=f_cab)
+            alt_t = cx_t[3] - cx_t[1]
+            grosso = max(3, esp_px * 3)
+            y_fio = y0 - alt_t - grosso - round(mm_para_px(2.2, dpi))
+            draw.rectangle((x0, y_fio, x1, y_fio + grosso),
+                           fill=cor_secao)
+            y_txt = y_fio + grosso + round(mm_para_px(0.8, dpi))
+            draw.text((x0, y_txt - cx_t[1]), titulo, font=f_cab,
+                      fill=cor_secao)
+            y_fino = y_txt + alt_t + round(mm_para_px(0.8, dpi))
+            draw.rectangle((x0, y_fino, x1, y_fino + max(1, esp_px)),
+                           fill=cor_secao)
+            continue                       # sem retângulo, sem etiqueta
         if estilo == "CONTORNO":
             # RG-49: UM contorno de união (sem divisória entre linhas
             # irmãs). Run de EXATAMENTE 1 célula NÃO ganha caixa — só o

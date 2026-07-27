@@ -64,3 +64,11 @@ Desfechos: **CONSERTADO (bloco)** · **DISPENSADO PELO DONO (motivo)** ·
 **Placar em 26/07/2026: 47 rastreados + 1 extra do scout = 48 linhas ·
 13 CONSERTADOS · 1 COBERTO (pré-voo) · 1 MITIGADO (decisão no G) ·
 1 INVALIDADO · 32 ABERTOS · 0 DISPENSADOS.**
+
+## Entradas da F13-QUATER (27/07/2026)
+
+| ID | O que se perde em silêncio | Onde (hoje) | Desfecho |
+|---|---|---|---|
+| QU-01 | `TipoRegiao.FILETE` virou LEGADO: nenhum layout novo o cria (o cabeçalho de seção é do motor único, estilo JORNAL), mas o enum + o ramo do compositor ficam — removê-los quebraria a desserialização de layout já importado com slots `jsec-*`. Morte plena = migração na abertura + 3 flips. | model.py (enum), compositor.py (2 ramos), test_f13_ter (guardião do legado) | ABERTO (G) |
+| QU-02 | A foto do "Sabão em Pó Maciez" no acervo `_auto/` é um CLIPART de balões de fala (o crawler antigo baixou lixo) — qualquer composição com ela publica lixo em silêncio; o avaliador D10 daria nota RUIM, mas a curadoria não foi disparada. Varredura de qualidade do `_auto/` inteiro pendente. | biblioteca_imagens/_auto/sab_o_em_p_maciez_primavera.png | ABERTO (curadoria) |
+| QU-03 | A faixa "INTEGRAL INSTANTÂNEO 380g" na foto do Ninho é PARTE da imagem do acervo (não é camada do app) — em célula estreita ela parece elemento solto. Troca de foto = curadoria do dono. | biblioteca_imagens (foto do Ninho) | ABERTO (curadoria) |

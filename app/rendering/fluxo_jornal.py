@@ -173,13 +173,16 @@ def montar_fluxo(secoes, faixas) -> ResultadoFluxo:
                       if colocadas == 0 else faixa.x)
                 nesta = min(cols_linha, n_restante)
                 ultima = nesta == n_restante
+                larg_linha = larg
                 if ultima and nesta < cols_linha:
-                    # última linha NUNCA quebrada: centraliza na banda
-                    banda_w = cols_linha * larg
-                    x0 = x0 + (banda_w - nesta * larg) / 2
+                    # QUATER/J1 (contrato invertido): a última linha
+                    # NUNCA fica quebrada — as células ESTICAM e
+                    # preenchem a banda inteira (centralizar deixava
+                    # as colunas das pontas vazias = "esburacado")
+                    larg_linha = cols_linha * larg / nesta
                 for c in range(nesta):
                     bloco.celulas.append(
-                        (x0 + c * larg, y_itens, larg, alt))
+                        (x0 + c * larg_linha, y_itens, larg_linha, alt))
                 colocadas += nesta
                 n_restante -= nesta
                 y_itens += alt

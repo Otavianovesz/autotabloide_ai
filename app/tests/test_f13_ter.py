@@ -499,6 +499,143 @@ def test_n1_dialogo_edita_o_template_e_interna_a_foto(raiz_tmp, tmp_path):
     dlg.deleteLater()
 
 
+# --- QUATER L9: a CAMADA do dono é consumida, nunca imitada ------------------
+
+
+def test_l9_camada_da_pagina_compoe_por_pixel(raiz_tmp, tmp_path):
+    """L9/Q1: ``Pagina.arquivo_camada`` — a arte de overlay do DONO
+    (a camada das etiquetas de preço do Quintou) é COLADA sobre o fundo,
+    escalada à página, com o alfa respeitado. Por pixel: onde a camada
+    tem tinta, vence a camada; onde é transparente, fica o fundo. E o
+    campo é aditivo (layout antigo carrega None)."""
+    import numpy as np
+
+    from app.rendering.units import mm_para_px
+
+    fundo = tmp_path / "fundo.png"
+    Image.new("RGB", (200, 200), "#001040").save(fundo)
+    camada = tmp_path / "camada.png"
+    cam = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
+    for px in range(100, 300):
+        for py in range(180, 220):
+            cam.putpixel((px, py), (255, 0, 0, 255))
+    cam.save(camada)
+
+    pag = Pagina([Slot("c", [Regiao(TipoRegiao.NOME,
+                                    Retangulo(10, 80, 80, 10))])],
+                 arquivo_fundo=str(fundo), arquivo_camada=str(camada))
+    lay = LayoutDef(100, 100, dpi=100, paginas=[pag])
+    img = compor_pagina(lay, pag, {})
+    meio = round(mm_para_px(50, 100))
+    alto = round(mm_para_px(20, 100))
+    assert img.getpixel((meio, meio))[:3] == (255, 0, 0), (
+        "a tinta da CAMADA do dono não venceu no miolo — o asset não "
+        "foi consumido (L9)")
+    assert img.getpixel((meio, alto))[:3] == (0, 16, 64), (
+        "o alfa da camada não foi respeitado — o fundo sumiu")
+    antigo = {"slots": [], "arquivo_fundo": None}
+    assert Pagina.from_dict(antigo).arquivo_camada is None
+
+
+def test_l9_quintou_declara_camada_e_quicksand():
+    """L9/Q1+Q2: o layout do Quintou CONSOME os assets do dono — a
+    camada de preço declarada nas DUAS páginas (frente e verso) e a
+    Quicksand nas regiões de nome/preço/validade (a fonte certa estava
+    na raiz dele e não era usada)."""
+    raiz = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not raiz.exists():
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    from app.rendering.encartes import layout_de_encarte
+    lay = layout_de_encarte("quintou", raiz)
+    assert len(lay.paginas) == 2
+    for n, pag in enumerate(lay.paginas, start=1):
+        assert pag.arquivo_camada and "Preço" in pag.arquivo_camada, (
+            f"p{n}: a camada de preço do dono não está declarada")
+        assert Path(pag.arquivo_camada).exists()
+        fontes = {r.fonte for s in pag.slots for r in s.regioes
+                  if r.tipo in (TipoRegiao.NOME, TipoRegiao.PRECO,
+                                TipoRegiao.TEXTO_LEGAL) and r.fonte}
+        assert any("Quicksand" in f for f in fontes), (
+            f"p{n}: nenhuma região usa a Quicksand ({fontes})")
+        assert not any("Archivo" in f for f in fontes), (
+            f"p{n}: o Quintou ainda usa Archivo ({fontes}) — Q2")
+
+
+def test_l9_quicksand_entra_no_pacote(raiz_tmp):
+    """Q2: ``importar_pacote`` copia a Quicksand para a pasta de fontes
+    do app (os 4 pesos entraram em FONTES_DO_PACOTE; o .otf carrega no
+    PIL — não há filtro de extensão)."""
+    raiz = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not raiz.exists():
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    from app.rendering.encartes import FONTES_DO_PACOTE
+    quick = [f for f in FONTES_DO_PACOTE if "Quicksand" in f]
+    assert quick, "a Quicksand não entrou em FONTES_DO_PACOTE"
+    for f in quick:
+        assert (raiz / "fontes" / f).exists(), (
+            f"{f} não está no pacote do dono (fontes/)")
+
+
+# --- QUATER A4: UM motor de seção só (estilo JORNAL no secoes.py) ------------
+
+
+def test_a4_estilo_jornal_vive_no_motor_de_secoes(raiz_tmp):
+    """A4: o cabeçalho de seção do jornal é um ESTILO de ``secoes.py``
+    (versalete + fio, sem retângulo colorido) — não um mecanismo
+    paralelo. E o estilo é POR PÁGINA (``Pagina.estilo_secoes``), com
+    o global da Config como fallback. Por pixel: com JORNAL há fio de
+    tinta escura acima do bloco e NENHUM azul saturado do CONTORNO."""
+    import numpy as np
+
+    from app.rendering.units import mm_para_px
+
+    def celula(i, x):
+        return Slot(f"c{i}", [
+            Regiao(TipoRegiao.IMAGEM, Retangulo(x, 30, 30, 30)),
+            Regiao(TipoRegiao.NOME, Retangulo(x, 62, 30, 8)),
+        ])
+
+    pag = Pagina([celula(1, 10), celula(2, 45)],
+                 secoes_ligadas=True, estilo_secoes="JORNAL")
+    lay = LayoutDef(100, 100, dpi=100, paginas=[pag])
+    dados = {"c1": DadosProduto("A", categoria="Mercearia"),
+             "c2": DadosProduto("B", categoria="Mercearia")}
+    img = compor_pagina(lay, pag, dados)
+    a = np.asarray(img.convert("RGB"), dtype=int)
+
+    azul = ((a[:, :, 2] > 150) & (a[:, :, 0] < 100)).sum()
+    assert azul == 0, ("o estilo JORNAL não pode desenhar o retângulo/"
+                       "etiqueta azul do CONTORNO (é alienígena no papel)")
+    topo = round(mm_para_px(30, 100))
+    faixa = a[topo - round(mm_para_px(14, 100)):topo, :]
+    escuro = (faixa.max(axis=2) < 120).any(axis=1)
+    assert escuro.any(), ("o fio/versalete do cabeçalho JORNAL não "
+                          "apareceu acima do bloco da seção")
+
+
+def test_a4_fluxo_do_jornal_usa_o_motor_unico():
+    """A4: com ``secoes=``, o Jornal NÃO gera mais slots de cabeçalho
+    (jsec-*/FILETE) — quem desenha a seção é ``desenhar_secoes`` com o
+    estilo JORNAL, ligado por página. O FILETE vira legado tolerado
+    (nenhum layout novo o cria)."""
+    raiz = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not raiz.exists():
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    from app.rendering.encartes import layout_de_encarte
+    lay = layout_de_encarte("jornal-do-mes", raiz,
+                            secoes=[("Mercearia", 6), ("Bebidas", 3)])
+    for n, pag in enumerate(lay.paginas, start=1):
+        assert not [s for s in pag.slots if s.id.startswith("jsec")], (
+            f"p{n}: o cabeçalho de seção ainda nasce como SLOT — o 2º "
+            "motor segue vivo (A4)")
+        assert not [r for s in pag.slots for r in s.regioes
+                    if r.tipo == TipoRegiao.FILETE], (
+            f"p{n}: layout novo ainda cria FILETE")
+        assert pag.secoes_ligadas, f"p{n}: seções desligadas no fluxo"
+        assert pag.estilo_secoes == "JORNAL", (
+            f"p{n}: o estilo da página não é JORNAL")
+
+
 # --- N2 (§5): o Jornal por SEÇÕES em fluxo -----------------------------------
 
 
@@ -531,8 +668,11 @@ def test_n2_filete_desenha_e_nao_e_ocupavel(raiz_tmp):
 
 def test_n2_fluxo_degraus_declarados_e_ultima_linha_inteira():
     """N2: o motor de fluxo cumpre a letra do §5 — os degraus são
-    TABELADOS e na ordem declarada; a última linha de cada seção nunca
-    fica quebrada (centraliza); tudo cabendo, nenhum degrau é usado."""
+    TABELADOS e na ordem declarada; tudo cabendo, nenhum degrau é usado.
+    QUATER/J1 (contrato INVERTIDO): a última linha de cada seção agora
+    ESTICA — as células alargam e preenchem a banda INTEIRA (a versão
+    centralizada deixava colunas 1 e 5 vazias e leu como "esburacada").
+    E J2: TODAS as células da faixa têm a MESMA altura."""
     from app.rendering.fluxo_jornal import FaixaFluxo, montar_fluxo
 
     faixa = FaixaFluxo(x=64, y=132, largura=990, altura=850,
@@ -546,16 +686,14 @@ def test_n2_fluxo_degraus_declarados_e_ultima_linha_inteira():
     assert len(m.celulas) == 7
     linha2 = [c for c in m.celulas if c[1] > m.celulas[0][1]]
     assert len(linha2) == 2, "7 itens em 5 colunas = 5 + 2"
-    larg = m.celulas[0][2]
     esq = min(c[0] for c in linha2)
     dir_ = max(c[0] + c[2] for c in linha2)
-    centro_linha = (esq + dir_) / 2
-    centro_faixa = 64 + 990 / 2
-    assert abs(centro_linha - centro_faixa) < larg, (
-        "a última linha quebrada tinha de CENTRALIZAR (nunca 2 células "
-        "soltas à esquerda)")
-    assert all(c[3] == 202 for c in m.celulas), (
-        "cabendo tudo, a célula fica no 1º degrau de altura")
+    assert abs(esq - 64) < 1 and abs(dir_ - (64 + 990)) < 1, (
+        "a última linha quebrada tinha de ESTICAR até as bordas da "
+        f"banda (J1) — saiu {esq}..{dir_}")
+    alturas = {c[3] for b in blocos for c in b.celulas}
+    assert alturas == {202}, (
+        f"J2: TODAS as células da faixa na MESMA altura ({alturas})")
 
 
 def test_n2_fluxo_degrada_em_ordem_e_transborda_com_aviso():

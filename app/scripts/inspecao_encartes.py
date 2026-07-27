@@ -46,78 +46,85 @@ DADOS: dict[str, dict] = {
                     "Quintou/Quintou Verso Real.png"],
         "dica": "Fica a dica: o Quintou muda toda quinta — chegou "
                 "cedo, levou o melhor preço da semana.",
+        # QUATER/Q4: os NOMES copiam o PUBLICADO — Title Case, peso
+        # COLADO ("400g"), sem o separador "·" (descritor None: nada é
+        # anexado ao nome pelo canal da unidade)
         "itens": {
-            "pos-01": ("Doce de Leite Frimesa", "original · 400 g",
+            "pos-01": ("Doce de Leite Frimesa Original 400g", None,
                        "13,90", _foto("1/atual.png")),
-            "pos-02": ("Goma Dori Minhocas", "frutas ácidas · 100 g",
+            "pos-02": ("Goma Dori Minhocas Frutas Ácidas 100g", None,
                        "4,90", _foto("14/atual.png")),
-            "pos-03": ("Fígado Bovino BBX", "100 g", "0,99",
+            "pos-03": ("Fígado Bovino BBX 100g", None, "0,99",
                        _foto("4/atual.png")),
-            "pos-04": ("Coração e Língua Bov.", "BBX · 100 g", "0,77",
+            "pos-04": ("Coração e Língua Bov. BBX 100g", None, "0,77",
                        _foto("7/atual.png")),
-            "pos-05": ("Geleia Ritter", "cebola caram. · 290 g",
+            "pos-05": ("Geléia Ritter Cebola Caram. 290g", None,
                        "19,90", _foto("17/atual.png")),
-            "pos-06": ("Snacks La Violetera", "40 g", "4,91",
+            "pos-06": ("Snacks La violetera Aperit. 40g", None, "4,91",
                        _foto("20/atual.png")),
-            "pos-07": ("Bife à Milanesa BBX", "100 g", "4,90",
+            "pos-07": ("Bife a Milanesa BBX 100g", None, "4,90",
                        _foto("13/atual.png")),
-            "pos-08": ("Extrato Tomate Só Fruta", "300 g", "4,44",
+            "pos-08": ("Extrato Tomate Só Fruta 300g", None, "4,44",
                        _foto("22/atual.png")),
-            "pos-09": ("Ração Kit e Kat", "carne ao molho · 70 g",
+            "pos-09": ("Ração Kit e Kat Carne ao Molho 70g", None,
                        "1,91", _foto("8/atual.png")),
-            "pos-10": ("Tortilhas Queijo Nacho", "Bebela · 84 g",
+            "pos-10": ("Tortilhas Queijo Nacho Bebela 84g", None,
                        "5,90", _foto("9/atual.png")),
-            "pos-11": ("Choc. M&M's", "amendoim · 40 g", "4,94",
+            "pos-11": ("Choc. M&M's Amendoim 40g", None, "4,94",
                        _foto("23/atual.png")),
-            "pos-12": ("Amido Milho Quero", "200 g", "1,91",
+            "pos-12": ("Amido Milho Quero 200g", None, "1,91",
                        _foto("10/atual.png")),
-            "pos-14": ("Marrom Glacê Val", "250 g", "6,66",
+            "pos-14": ("Marrom Glace Val 250g", None, "6,66",
                        _foto("6/atual.png")),
-            "pos-15": ("Rosquinha Mabel Choc.", "300 g", "6,61",
+            "pos-15": ("Rosquinha Mabel Choc. 300g", None, "6,61",
                        _foto("11/atual.png")),
-            "pos-16": ("Creme Dental Oral-B", "Detox · 102 g", "19,90",
+            "pos-16": ("Creme Dental Oral-B Detox 102g", None, "19,90",
                        _foto("25/atual.png")),
-            # a logo no painel (célula FIXA com foto escolhida — N1)
+            # a logo no painel (célula FIXA com foto escolhida — N1).
+            # QUATER/L9: a foto escolhida é a ARTE DO PAINEL do próprio
+            # publicado (recorte de Quintou Frente Real.png) — é a que
+            # o dono escolheria; a genérica deixava 20,6% de diferença
             "painel-logo": ("", None, None, str(
                 RAIZ_REPO / "Templates novos" / "brand"
-                / "logo_semfundo.png")),
+                / "painel_logo_quintou.png")),
             # ---- VERSO (§9.4: frente + verso) — os produtos do
             # "Quintou Verso Real.png"; 8 saem EXATOS do publicado e 8
             # são os REAIS MAIS PRÓXIMOS do acervo (buracos declarados:
             # sem foto de Pastilhas Dori, Frango Marombi, Sandella,
             # Paçoca Rolha, Pesto Mastroiani, Linguiça Perdigão,
             # Italac, Agnesi — nunca inventados)
-            "vpos-01": ("Pé de Moleque Pinduca", "150 g", "8,88",
+            "vpos-01": ("Pé de Moleque Pinduca 150g", None, "8,88",
                         _foto("26/atual.png")),
-            "vpos-02": ("Coxa Sobrecoxa", "frango · 100 g", "0,77",
+            "vpos-02": ("Coxa Sobrecoxa 100g", None, "0,77",
                         _foto("21/atual.png")),
-            "vpos-03": ("Granola Happy Life", "banana e canela · 250 g",
-                        "9,90", _foto("24/atual.png")),
-            "vpos-04": ("Goma Dori Minhocas", "frutas ácidas · 100 g",
+            "vpos-03": ("Granola Happy Life Banana e Canela 250g",
+                        None, "9,90", _foto("24/atual.png")),
+            "vpos-04": ("Goma Dori Minhocas Frutas Ácidas 100g", None,
                         "4,90", _foto("14/atual.png")),
-            "vpos-05": ("Doce de Banana Val", "250 g", "6,66",
+            "vpos-05": ("Doce de Banana Val 250g", None, "6,66",
                         _foto("6/atual.png")),
-            "vpos-06": ("Bife à Milanesa BBX", "bovino · 100 g", "4,90",
+            "vpos-06": ("Bife a Milanesa BBX 100g", None, "4,90",
                         _foto("13/atual.png")),
-            "vpos-07": ("Macarrão Nissin", "canja de galinha · 70 g",
+            "vpos-07": ("Macarrão Nissin Canja de Galinha 70g", None,
                         "2,66", _foto("19/atual.png")),
-            "vpos-08": ("Kit Natu Hair", "shampoo + cond. · 300 mL",
+            "vpos-08": ("Kit NatuHair Shampoo & Cond. 300mL", None,
                         "19,90", _foto("31/atual.png")),
-            "vpos-09": ("Salgadinho Ruppers", "galinha · 50 g", "1,90",
+            "vpos-09": ("Salgadinho Ruppers Galinha 50g", None, "1,90",
                         _foto("2/atual.png")),
-            "vpos-10": ("Geleia Ritter", "alho caramelizado · 290 g",
+            "vpos-10": ("Geléia Ritter Alho Caram. 290g", None,
                         "18,81", _foto("17/atual.png")),
-            "vpos-11": ("Queijo Mussarela", "Lactopar · quilo", "55,05",
+            "vpos-11": ("Queijo Mussarela Lactopar Quilo", None,
+                        "55,05",
                         _foto("_auto/queijo_mussarela_latopar_1kg.png")),
-            "vpos-12": ("Leite Parmalat", "integral · 1 L", "5,95",
+            "vpos-12": ("Leite Parmalat Integral 1L", None, "5,95",
                         _foto("_auto/leite_parmalat_integral_1l.png")),
-            "vpos-13": ("Sab. Líquido Dove", "antibact. · 250 mL",
+            "vpos-13": ("Sab. Líquido Dove Antib. 250mL", None,
                         "11,91", _foto("33/atual.png")),
-            "vpos-14": ("Café Brasileiro", "extra forte · 500 g",
+            "vpos-14": ("Café Brasileiro Extra Forte 500g", None,
                         "23,99", _foto("12/atual.png")),
-            "vpos-15": ("Batata Palha Bulnez", "crocante · 100 g",
+            "vpos-15": ("Batata Palha Bulnez Crocante 100g", None,
                         "6,66", _foto("_auto/batata_palha_bulnez_100g.png")),
-            "vpos-16": ("Coco Ralado Menina", "100 g", "2,92",
+            "vpos-16": ("Coco Ralado Adoçado Menina 100g", None, "2,92",
                         _foto("5/atual.png")),
         },
     },
@@ -232,9 +239,12 @@ DADOS: dict[str, dict] = {
                         _foto("_auto/molho_tomate_fujini_e_cajamar_300g_original.png")),
             "jp1-ch3": ("Açúcar Cristal", "Doce Dia · 2 kg", "5,95",
                         _foto("_auto/a_car_cristal_doce_dia_2kg.png")),
-            "jp1-ch4": ("Sabão em Pó Maciez", "Primavera · 1,6 kg",
-                        "23,90",
-                        _foto("_auto/sab_o_em_p_maciez_primavera.png")),
+            # QUATER/J6: o "Sabão em Pó Maciez" saiu — a foto dele no
+            # acervo é um CLIPART errado (balões de fala; o crawler
+            # antigo baixou lixo — achado de curadoria, LEDGER). Entra
+            # o Moça, com foto real conferida.
+            "jp1-ch4": ("Leite Condensado Moça", "TP 395 g", "8,88",
+                        _foto("38/atual.png")),
             "jp1-l1": ("Salgadinho Ruppers", "galinha · 50 g", "1,90",
                        _foto("2/atual.png")),
             "jp1-l2": ("Tortilha Queijo Nacho", "Bebela · 84 g", "5,90",
@@ -486,15 +496,33 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
         lado.save(destino)
         saidas.append(destino)
         # as DUAS opções do painel do Quintou (decisão do dono): a
-        # variante A tira a logo e dá o painel inteiro ao Fica a Dica
-        # (o painel é da FRENTE — o verso não o tem)
+        # variante A tira a logo e dá o painel INTEIRO ao Fica a Dica,
+        # com corpo LEGÍVEL (Q5: meio a meio arruinava os dois — o
+        # builder entrega a B fiel ao publicado; a A nasce aqui)
         if chave == "quintou" and n_pag == 1:
+            from app.rendering.model import (
+                Alinhamento,
+                PapelTexto,
+                Regiao,
+                Slot as _Slot,
+                TipoRegiao,
+            )
             for s in pag.slots:
                 if s.id == "painel-logo":
                     s.regioes[0].visivel = False
-                if s.id == "painel-dica":
-                    s.regioes[0].rect = _r_px(604, 34, 448, 30)
-                    s.regioes[1].rect = _r_px(604, 68, 448, 158)
+            pag.slots.append(_Slot("painel-dica-A", [
+                Regiao(TipoRegiao.TEXTO_LEGAL, _r_px(612, 40, 432, 40),
+                       nome="Título", fonte="Quicksand-Bold.ttf",
+                       papel_texto=PapelTexto.LIVRE,
+                       texto_fixo="FICA A DICA", tamanho_max_pt=17.0,
+                       cor="#1B2A4A", alinhamento=Alinhamento.ESQUERDA),
+                Regiao(TipoRegiao.TEXTO_LEGAL, _r_px(612, 88, 432, 140),
+                       nome="Fica a Dica", fonte="Quicksand-Medium.ttf",
+                       papel_texto=PapelTexto.DICA,
+                       texto_fixo=spec.get("dica") or "",
+                       tamanho_max_pt=12.5, cor="#33384A",
+                       alinhamento=Alinhamento.ESQUERDA),
+            ]))
             opcao_a = compor_pagina(lay, pag, dados) \
                 .resize((1080, alt_1x), Image.LANCZOS)
             par = Image.new("RGB", (1080 * 2 + 8, alt_1x), "#666666")
@@ -549,7 +577,7 @@ def _compor_jornal_secoes(pasta_pacote: Path) -> list[Path]:
             preco_por=preco_decimal(preco) if preco else None,
             imagem_path=foto, edicao=spec.get("edicao"))
     n = 0
-    for _titulo, ids in SECOES_JORNAL:
+    for titulo, ids in SECOES_JORNAL:
         for src in ids:
             n += 1
             nome, descr, preco, foto = spec["itens"][src][:4]
@@ -557,6 +585,9 @@ def _compor_jornal_secoes(pasta_pacote: Path) -> list[Path]:
                 nome, descritor=descr, unidade=descr,
                 preco_por=preco_decimal(preco) if preco else None,
                 imagem_path=foto, mais18=src in spec.get("mais18", ()),
+                # A4: a CATEGORIA é a seção — o motor único de seções
+                # (estilo JORNAL) agrupa e desenha o cabeçalho por ela
+                categoria=titulo,
                 edicao=spec.get("edicao"))
 
     saidas = []
