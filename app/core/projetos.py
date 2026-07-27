@@ -58,36 +58,36 @@ def _pasta(uuid: str) -> Path:
 
 def _gerar_miniatura(pasta: Path, layout: LayoutDef, itens: list[dict],
                      mapa: dict | None = None,
-                     overrides: dict | None = None) -> None:
+                     overrides: dict | None = None,
+                     validade_oferta: str | None = None,
+                     edicao: str | None = None) -> None:
     """Compõe a 1ª página em miniatura (cache do Dashboard). Nunca quebra o salvar.
 
     Com ``mapa`` (I1), compõe pelo casamento exato slot→uid; sem, por posição
     (legado). ``overrides`` (F7.3) entram por slot — a miniatura mostra o que
     o export mostraria. Caminhos são relativos à pasta (I3) — resolve aqui.
+
+    F13-SEPTIMUS/O3 (M-02 pela 4ª vez): a miniatura montava uma
+    TERCEIRA receita à mão — sem texto_legal (a validade!), descritor
+    e edição — a MESMA doença do Modo Pai que a frota F12 matou. Agora
+    compõe pela MONTAGEM OFICIAL (``dados_para_desenho``): a data
+    "SOMENTE 27/07" chega ao selo da página que o dono abre.
     """
     try:
-        from app.qt.telas.servico import ItemMesa, aplicar_override, preco_decimal
-        from app.rendering.compositor import DadosProduto, compor_pagina
+        from app.qt.telas.servico import (
+            ItemMesa,
+            aplicar_override,
+            dados_para_desenho,
+        )
+        from app.rendering.compositor import compor_pagina
 
-        def _dp(d: dict) -> DadosProduto:
-            from app.rendering.arranjo import ModoArranjo
-            from app.rendering.compositor import ImagemSlot
+        def _dp(d: dict):
             it = ItemMesa.from_dict(d)
-            try:
-                arranjo = ModoArranjo(it.arranjo) if it.arranjo \
-                    else ModoArranjo.LEQUE
-            except ValueError:
-                arranjo = ModoArranjo.LEQUE
-            return DadosProduto(
-                it.nome, preco_por=preco_decimal(it.preco),
-                preco_de=preco_decimal(it.preco_de),
-                imagem_path=_resolver(pasta, it.imagem),
-                imagens=[ImagemSlot(_resolver(pasta, c))
-                         for c in (it.imagens or [])],       # F7.1
-                modo_arranjo=arranjo,
-                mais18=it.mais18,
-                unidade=it.unidade,
-                categoria=it.categoria)                      # F8.2 (seções)
+            it.imagem = _resolver(pasta, it.imagem)
+            it.imagens = [_resolver(pasta, c)
+                          for c in (it.imagens or [])]       # F7.1
+            return dados_para_desenho(it, validade=validade_oferta,
+                                      edicao=edicao)
 
         if mapa:
             por_uid = {d.get("uid"): d for d in itens}
@@ -317,7 +317,9 @@ def salvar_projeto(
             elif versao_nova is not None:
                 _podar_versoes(pasta)            # FASE 2 (passo 59)
             _gerar_miniatura(pasta, lay, itens_frios, dict(mapa or {}),
-                             overrides_frios)
+                             overrides_frios,
+                             validade_oferta=validade_oferta,
+                             edicao=edicao)                # O3: a data
             s.commit()
             return row.id
     finally:

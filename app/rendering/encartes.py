@@ -266,8 +266,10 @@ def _segunda() -> list[Slot]:
         # celula-1 FIXA (Kit Burger) — F13-TER: a foto ocupa a oval
         # inteira e a FITA da marca volta por cima; nome +1 degrau
         _slot("celula-1", [
-            # (laço TER: a foto até 476 cobria o nome — para em 446)
-            _img(384, 356, 312, 90),
+            # SEPTIMUS/O2: a zona era um banner LARGO e BAIXO (312×90)
+            # — o saco kraft ALTO saía um selo minúsculo (o ASSENTAR
+            # limita pela altura). A zona virou alta: o Kit respira.
+            _img(444, 336, 192, 112),
             Regiao(TipoRegiao.ADORNO, _r(314, 496, 452, 38),
                    nome="Fita da marca"),
             _nome(380, 452, 320, 40, fonte=_F_FRAUNCES,
@@ -286,10 +288,12 @@ def _segunda() -> list[Slot]:
     # flancos: texto na BANDA de baixo, selo SOBRE A FOTO; etiquetas:
     # selo morde a banda e o texto DESVIA (tcx do gerador)
     flancos = (
-        # F13-TER: foto estendida ATRÁS da banda azul, banda recolada
-        (2, (64, 288), -0.6, (78, 302, 182, 248), (68, 522, 202, 60),
+        # SEPTIMUS/O1 (o orçamento com FAIXA — a foto era 87% da
+        # altura útil, "imensa chega ao bizarro"): foto 68%, e o TIPO
+        # cresce na banda (a regra que manda: o texto nunca cede)
+        (2, (64, 288), -0.6, (78, 302, 182, 190), (68, 522, 202, 60),
          (76, 302), (236, 328, 32), 169, 548),
-        (3, (806, 294), 0.5, (820, 308, 182, 248), (810, 528, 202, 60),
+        (3, (806, 294), 0.5, (820, 308, 182, 190), (810, 528, 202, 60),
          (818, 308), (978, 334, 32), 911, 554),
     )
     for i, origem, rot, foto, banda, (chx, chy), (sx, sy, sr), tcx, ty \
@@ -302,29 +306,32 @@ def _segunda() -> list[Slot]:
                    rot=rot, forma=FormaPreco.MEDALHAO_ESTRELA,
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
                    tam=18.0, tam_cent=11.4, centavos_na_base=True),
-            _nome(tcx - 93, ty - 24, 186, 26, fonte=_F_FRAUNCES,
-                  tam=12.75, cor="#FFFFFF", rot=rot),
-            _sub(tcx - 93, ty + 2, 186, 18, fonte=_F_FRA_IT,
-                 tam=7.9, cor="#BCD2E4", rot=rot),
+            _nome(tcx - 93, ty - 26, 186, 28, fonte=_F_FRAUNCES,
+                  tam=14.5, cor="#FFFFFF", rot=rot),
+            _sub(tcx - 93, ty + 4, 186, 20, fonte=_F_FRA_IT,
+                 tam=9.0, cor="#BCD2E4", rot=rot),
         ], origem=origem))
     # (id, origem, rot, foto ESTENDIDA, adornos [(x,y,w,h)...], chip,
     #  selo(cx,cy,R), tcx, y_nome, tam_nome, tam_sub, tam_preco)
+    # SEPTIMUS/O1: fotos das etiquetas 245→186 e 209→160 (o orçamento
+    # 55–68% da altura útil) e o TIPO sobe 1 degrau — nem raquítica,
+    # nem gulosa; o texto nunca cede
     etiquetas = (
-        (4, (64, 652), -0.5, (76, 662, 280, 245),
+        (4, (64, 652), -0.5, (76, 662, 280, 186),
          ((66, 654, 26, 26), (340, 654, 26, 26), (65, 879, 302, 64)),
-         (76, 664), (328, 886, 38), 180, 906, 15.0, 8.6, 21.4),
-        (5, (388, 644), 0.4, (400, 654, 280, 245),
+         (76, 664), (328, 886, 38), 180, 906, 16.0, 9.4, 21.4),
+        (5, (388, 644), 0.4, (400, 654, 280, 186),
          ((390, 646, 26, 26), (664, 646, 26, 26), (389, 871, 302, 64)),
-         (398, 656), (428, 878, 38), 568, 898, 15.0, 8.6, 21.4),
-        (6, (712, 654), -0.5, (724, 664, 280, 245),
+         (398, 656), (428, 878, 38), 568, 898, 16.0, 9.4, 21.4),
+        (6, (712, 654), -0.5, (724, 664, 280, 186),
          ((714, 656, 26, 26), (988, 656, 26, 26), (713, 881, 302, 64)),
-         (722, 666), (976, 888, 38), 828, 908, 15.0, 8.6, 21.4),
-        (7, (240, 955), -0.45, (252, 964, 272, 209),
+         (722, 666), (976, 888, 38), 828, 908, 16.0, 9.4, 21.4),
+        (7, (240, 955), -0.45, (252, 964, 272, 160),
          ((240, 1145, 296, 62),),
-         (250, 965), (496, 1152, 35), 352, 1171, 13.9, 8.2, 19.8),
-        (8, (552, 948), 0.4, (564, 957, 272, 209),
+         (250, 965), (496, 1152, 35), 352, 1171, 15.0, 8.8, 19.8),
+        (8, (552, 948), 0.4, (564, 957, 272, 160),
          ((552, 1138, 296, 62),),
-         (562, 958), (592, 1145, 35), 728, 1164, 13.9, 8.2, 19.8),
+         (562, 958), (592, 1145, 35), 728, 1164, 15.0, 8.8, 19.8),
     )
     for i, origem, rot, foto, adornos, (chx, chy), (sx, sy, sr), tcx, \
             ny, tn, ts, tp in etiquetas:
@@ -338,9 +345,12 @@ def _segunda() -> list[Slot]:
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
                    tam=tp, tam_cent=round(tp * 0.63, 1),
                    centavos_na_base=True),
-            _nome(tcx - 100, ny - 24, 200, 26, fonte=_F_FRAUNCES,
+            # SEPTIMUS/O1: as caixas de texto crescem (2 linhas
+            # legíveis DENTRO da banda da arte — a 1ª linha escapava
+            # por cima na recomposição real)
+            _nome(tcx - 100, ny - 26, 200, 34, fonte=_F_FRAUNCES,
                   tam=tn, cor="#FFFFFF", rot=rot),
-            _sub(tcx - 100, ny + 2, 200, 18, fonte=_F_FRA_IT,
+            _sub(tcx - 100, ny + 10, 200, 20, fonte=_F_FRA_IT,
                  tam=ts, cor="#BCD2E4", rot=rot),
         ]
         slots.append(_slot(f"celula-{i}", regs, origem=origem))
@@ -1036,8 +1046,26 @@ def importar_pacote(session, pasta_pacote: str | Path,
     pasta = Path(pasta_pacote)
     chaves = chaves_do_pacote(pasta)
     for chave in chaves:
-        salvar_layout(session, NOMES_EXIBICAO[chave],
-                      layout_de_encarte(chave, pasta),
+        lay = layout_de_encarte(chave, pasta)
+        # SEPTIMUS: o upsert NÃO apaga a configuração do dono — o
+        # conteudo_fixo (N1: o Kit com a foto escolhida) do layout já
+        # existente é PRESERVADO por slot.id na atualização do encarte
+        from app.rendering.persistencia import (
+            carregar_layout as _carregar,
+            listar_layouts as _listar,
+        )
+        antigo = next((r for r in _listar(session)
+                       if r.nome == NOMES_EXIBICAO[chave]), None)
+        if antigo is not None:
+            velho = _carregar(session, antigo.id, raiz=raiz)
+            fixos = {s.id: s.conteudo_fixo
+                     for p in (velho.paginas if velho else [])
+                     for s in p.slots if s.conteudo_fixo}
+            for p in lay.paginas:
+                for s in p.slots:
+                    if s.id in fixos:
+                        s.conteudo_fixo = fixos[s.id]
+        salvar_layout(session, NOMES_EXIBICAO[chave], lay,
                       tipo_midia="TABLOIDE", raiz=raiz)
     if chaves:
         raiz.fontes.mkdir(parents=True, exist_ok=True)

@@ -113,10 +113,14 @@ def montar() -> None:
                 if foto:
                     it.imagem = str(bib / foto)
             from app.core import projetos
+            existente = next(
+                (p["id"] for p in projetos.listar_projetos()
+                 if p["nome"] == "Segunda dos Frios 27/07"), None)
             pid = projetos.salvar_projeto(
                 "Segunda dos Frios 27/07", "Segunda dos Frios",
                 "TABLOIDE", lay, [it.to_dict() for it in itens],
-                validade_oferta="SOMENTE 27/07", mapa=mapa)
+                validade_oferta="SOMENTE 27/07", mapa=mapa,
+                projeto_id=existente)
             print(f"projeto salvo: id={pid} — abra na Mesa e exporte")
             n_vazias = len(livres) - len(resto)
             print(f"células livres: {len(livres)} · itens: {len(resto)}"
