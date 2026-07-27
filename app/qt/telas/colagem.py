@@ -133,6 +133,7 @@ def parse_colagem(texto: str) -> list[LinhaColada]:
                     "(ex.: 5,00; ou use “2 por 5,00” se for promoção)."))
             continue
         nome, preco = _nome_preco(raw)
+        nome = _limpar_nome_de_tabela(nome)
         if not nome:
             continue
         valido = bool(preco) and preco_decimal(preco) is not None
@@ -143,6 +144,27 @@ def parse_colagem(texto: str) -> list[LinhaColada]:
             aviso = "sem preço — vira amarelo na conciliação"
         linhas.append(LinhaColada(nome, preco, valido, aviso))
     return linhas
+
+
+_RE_SUFIXO_PRECO = re.compile(
+    r"[\s_.·–-]*\b(por|s[óo])\b[\s_.·–-]*$", re.IGNORECASE)
+
+
+def _limpar_nome_de_tabela(nome: str | None) -> str:
+    """F13-SEXTUS/S1: a tabela real do dono é um documento de impressão
+    com ``______`` entre o nome e o preço e um prefixo "por"/"SÓ" que
+    varia de caixa — NADA disso é nome de produto. Come as sequências
+    de underscore/pontilhado e a palavra de prefixo no RABO do nome
+    (só isolada, nunca dentro de palavra)."""
+    if not nome:
+        return ""
+    limpo = re.sub(r"[_]{2,}", " ", nome)
+    limpo = re.sub(r"\s{2,}", " ", limpo).strip(" _.·–-\t")
+    while True:
+        novo = _RE_SUFIXO_PRECO.sub("", limpo).strip(" _.·–-\t")
+        if novo == limpo:
+            return limpo
+        limpo = novo
 
 
 def linhas_para_tuplas(linhas: list[LinhaColada]):

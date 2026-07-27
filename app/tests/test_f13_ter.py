@@ -686,14 +686,22 @@ def test_n2_fluxo_degraus_declarados_e_ultima_linha_inteira():
     assert len(m.celulas) == 7
     linha2 = [c for c in m.celulas if c[1] > m.celulas[0][1]]
     assert len(linha2) == 2, "7 itens em 5 colunas = 5 + 2"
+    # SEXTUS (o caso do Oral-B): o esticamento tem TETO de 1,6× — acima
+    # disso a célula vira deserto; o conjunto centraliza na banda
+    larg_base = 990 / 5
+    for c in linha2:
+        assert abs(c[2] - larg_base * 1.6) < 1, (
+            f"a última linha estica até o teto de 1,6× ({c[2]:.0f})")
     esq = min(c[0] for c in linha2)
     dir_ = max(c[0] + c[2] for c in linha2)
-    assert abs(esq - 64) < 1 and abs(dir_ - (64 + 990)) < 1, (
-        "a última linha quebrada tinha de ESTICAR até as bordas da "
-        f"banda (J1) — saiu {esq}..{dir_}")
-    alturas = {c[3] for b in blocos for c in b.celulas}
-    assert alturas == {202}, (
-        f"J2: TODAS as células da faixa na MESMA altura ({alturas})")
+    centro = (esq + dir_) / 2
+    assert abs(centro - (64 + 990 / 2)) < 1, (
+        f"o conjunto da última linha centraliza na banda ({centro:.0f})")
+    # SEXTUS/J16 (contrato ESTENDIDO): a sobra da faixa é distribuída —
+    # a altura final é ÚNICA (J2) e ≥ o degrau escolhido; a faixa enche
+    alturas = {round(c[3], 1) for b in blocos for c in b.celulas}
+    assert len(alturas) == 1 and min(alturas) >= 202, (
+        f"J2+J16: altura única ≥ degrau ({alturas})")
 
 
 def test_n2_fluxo_degrada_em_ordem_e_transborda_com_aviso():
@@ -706,8 +714,10 @@ def test_n2_fluxo_degrada_em_ordem_e_transborda_com_aviso():
                           colunas=(5,), alturas_celula=(202, 178, 156),
                           altura_cabecalho=34)
     r = montar_fluxo([("MERCEARIA", 10)], [apertada])
-    alturas = {c[3] for b in r.blocos for c in b.celulas}
-    assert alturas == {178}, (
+    # SEXTUS/J16: o DEGRAU escolhido é o 178 (o aviso o nomeia); a
+    # altura final pode crescer pela distribuição da sobra (uniforme)
+    alturas = {round(c[3], 1) for b in r.blocos for c in b.celulas}
+    assert len(alturas) == 1 and 178 <= min(alturas) < 202, (
         f"2 linhas + cabeçalho em 430px exigem o degrau 178 ({alturas})")
     assert any("degrau" in a for a in r.avisos)
 

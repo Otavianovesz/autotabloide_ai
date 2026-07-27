@@ -756,5 +756,20 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   foto POR TESTE — 64/61/57% nos degraus). Rótulos PESCA DO DIA/
   COLHEITA: DECIDIDO NÃO CRAVAR, registrado (D2). Rastreio A5 de
   TODAS as ordens. Suíte 991 ×2 + invertida + janela DE PRIMEIRA
-  (bloco_fquinque_*). **PARADO: aguarda o olho do dono no APP e a
-  reauditoria do arquiteto nas OITO páginas.**
+  (bloco_fquinque_*).
+  —— **6ª RODADA — `docs/ORDEM_F13_SEXTUS_A_SEGUNDA_REAL.md`
+  EXECUTADA (27/07): o 1º teste ponta a ponta com DADO REAL.** A
+  reauditoria das 8 (arquiteto): Quintou PUBLICÁVEL (1,02 vs o
+  publicado); Jornal reprovado por número → J16 (2 passes no fluxo,
+  sobra distribuída, teto 1,6× no esticar — o caso do Oral-B) e
+  J17/J18 (guarda de foto com 2+ OBJETOS no avaliador — pega o
+  fantasma do Ninho e o clipart do Sabão). §3: **a Segunda de 27/07
+  está NO BANCO DO DONO** (`montar_segunda_real.py`): a foto do Kit
+  (Ativo 2.png) internada na fixa com preço DA SEMANA, S3 provado ao
+  vivo (39,00 pela chave natural), **projeto id=7 exportável pela
+  Mesa**; S1 parser come por/SÓ/pontilhados (linhas reais); S5
+  TP/1,5LT→TP 1,5L (2 bugs reais do sanitize); S2 correção factual:
+  7 livres + 1 fixa — a tabela de 8 fecha EXATA (vazias: 0). Suíte
+  995 ×2 zero skips + invertida + janela DE PRIMEIRA (bloco_fsextus_*).
+  **PARADO: o dono abre a Mesa (projeto id=7), confere e exporta; as
+  decisões (painel/período/dica na célula 13) seguem dele.**

@@ -81,12 +81,61 @@ def avaliar_foto(caminho: str | Path) -> AvaliacaoFoto:
     elif nit < NITIDEZ_ATENCAO:
         motivos.append("nitidez mediana — confira no zoom")
         pontos_ruins += 1
+    # F13-SEXTUS/J18: a guarda de foto com DOIS OBJETOS — mais de um
+    # blob desconexo relevante no alfa = produto + rótulo solto (o
+    # fantasma do Ninho), dois produtos, ou clipart (o Sabão em Pó de
+    # balões de fala). O app renderizava lixo com fidelidade.
+    if tem_alfa:
+        n_blobs = _blobs_relevantes(img)
+        if n_blobs > 1:
+            motivos.append(
+                f"a foto parece ter {n_blobs} OBJETOS separados "
+                "(produto + rótulo solto, ou clipart) — confira e "
+                "recorte no Estúdio")
+            pontos_ruins += 2
     if tem_alfa and pontos_ruins == 0:
         motivos.append("packshot recortado, pronto para a arte")
 
     nota = ("ruim" if pontos_ruins >= 2 else
             "atencao" if pontos_ruins == 1 else "boa")
     return AvaliacaoFoto(nota, motivos, nit, (w, h), tem_alfa, sugere_upscale)
+
+
+def _blobs_relevantes(img, limiar_alfa: int = 128,
+                      fracao_min: float = 0.05) -> int:
+    """J18: componentes conexos (4-conn) do canal alfa com área ≥ 5%
+    da tinta total cada. Downsample a 96 px — a contagem de OBJETOS
+    não precisa de resolução, e fica barata no pré-voo."""
+    import numpy as np
+
+    peq = img.convert("RGBA").copy()
+    peq.thumbnail((96, 96))
+    a = np.asarray(peq)[..., 3] > limiar_alfa
+    total = int(a.sum())
+    if total == 0:
+        return 0
+    visit = np.zeros(a.shape, dtype=bool)
+    alt, larg = a.shape
+    n = 0
+    for y0 in range(alt):
+        for x0 in range(larg):
+            if not a[y0, x0] or visit[y0, x0]:
+                continue
+            pilha = [(y0, x0)]
+            visit[y0, x0] = True
+            area = 0
+            while pilha:
+                y, x = pilha.pop()
+                area += 1
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ny, nx = y + dy, x + dx
+                    if (0 <= ny < alt and 0 <= nx < larg
+                            and a[ny, nx] and not visit[ny, nx]):
+                        visit[ny, nx] = True
+                        pilha.append((ny, nx))
+            if area >= total * fracao_min:
+                n += 1
+    return n
 
 
 ROTULO_NOTA = {"boa": "Foto boa", "atencao": "Foto: atenção",

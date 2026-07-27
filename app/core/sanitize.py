@@ -127,6 +127,10 @@ def _limpar(texto: str, regras: RegrasSanitizacao) -> str:
     """Remove caracteres-lixo, runs de sublinhado e espaços sobrando."""
     for ch in regras.lixo_chars:
         texto = texto.replace(ch, "")
+    # F13-SEXTUS/S5: "TP/1,5LT" — a barra entre SIGLA e NÚMERO cola o
+    # token e ele atravessa inteiro a caixa (saía "Tp/1,5l"); separada,
+    # a sigla vira TP e o volume vira 1,5L pelos caminhos de sempre
+    texto = re.sub(r"(?<=[A-Za-zÀ-ÿ])/(?=\d)", " ", texto)
     texto = _RUNS_LIXO.sub(" ", texto)
     return _MULTI_ESPACO.sub(" ", texto).strip()
 

@@ -128,75 +128,106 @@ def montar_fluxo(secoes, faixas) -> ResultadoFluxo:
                 f"faixa {idx_faixa + 1}: usado o degrau "
                 f"{cols} coluna(s) × {alt}px para caber tudo")
         larg = faixa.largura / cols
-        y = faixa.y
-        pendente_1item = None              # (titulo,) aguardando linha
-        proximos: list = []
-        for i, (titulo, n) in enumerate(restantes):
-            if y >= faixa.y + faixa.altura:
-                proximos.append((titulo, n))
-                continue
-            if n == 1 and i + 1 < len(restantes):
-                pendente_1item = titulo    # entra na linha da próxima
-                continue
-            if y + faixa.altura_cabecalho + alt > faixa.y + faixa.altura:
-                if pendente_1item is not None:
-                    proximos.append((pendente_1item, 1))
-                    pendente_1item = None
-                proximos.append((titulo, n))
-                continue
-            reservadas = 1 if pendente_1item is not None else 0
-            bloco = BlocoSecao(
-                secao=titulo, faixa=idx_faixa,
-                cabecalho=(faixa.x + reservadas * larg, y,
-                           faixa.largura - reservadas * larg,
-                           faixa.altura_cabecalho),
-                cabecalho_inline=False)
-            if pendente_1item is not None:
-                # decisão registrada: a seção de 1 item compartilha a
-                # linha — célula na coluna 1, cabeçalho INLINE sobre ela
-                r.blocos.append(BlocoSecao(
-                    secao=pendente_1item, faixa=idx_faixa,
-                    cabecalho=(faixa.x, y, larg, faixa.altura_cabecalho),
-                    cabecalho_inline=True,
-                    celulas=[(faixa.x, y + faixa.altura_cabecalho,
-                              larg, alt)]))
-                pendente_1item = None
-            y_itens = y + faixa.altura_cabecalho
-            colocadas = 0
-            n_restante = n
-            primeira_linha_cols = cols - reservadas
-            while n_restante > 0:
-                if y_itens + alt > faixa.y + faixa.altura:
-                    break                   # transbordou no meio
-                cols_linha = primeira_linha_cols if colocadas == 0 else cols
-                x0 = (faixa.x + reservadas * larg
-                      if colocadas == 0 else faixa.x)
-                nesta = min(cols_linha, n_restante)
-                ultima = nesta == n_restante
-                larg_linha = larg
-                if ultima and nesta < cols_linha:
-                    # QUATER/J1 (contrato invertido): a última linha
-                    # NUNCA fica quebrada — as células ESTICAM e
-                    # preenchem a banda inteira (centralizar deixava
-                    # as colunas das pontas vazias = "esburacado")
-                    larg_linha = cols_linha * larg / nesta
-                for c in range(nesta):
-                    bloco.celulas.append(
-                        (x0 + c * larg_linha, y_itens, larg_linha, alt))
-                colocadas += nesta
-                n_restante -= nesta
-                y_itens += alt
-                reservadas = 0
-                primeira_linha_cols = cols
-            r.blocos.append(bloco)
-            y = y_itens
-            if n_restante > 0:
-                proximos.append((f"{titulo} (continuação)", n_restante))
-                r.avisos.append(
-                    f"a seção “{titulo}” transbordou: {n_restante} "
-                    f"item(ns) seguem na faixa {idx_faixa + 2}")
-        if pendente_1item is not None:
-            proximos.append((pendente_1item, 1))
+
+        def _colocar(alt_uso: float):
+            """Um passe de colocação com a altura dada — o J16 roda
+            dois: o 1º descobre as linhas; se sobrar altura na faixa,
+            o 2º recoloca com a altura ESTICADA (uniforme, J2)."""
+            blocos: list = []
+            avisos: list = []
+            y = faixa.y
+            pendente = None
+            prox: list = []
+            n_linhas = 0
+            for i, (titulo, n) in enumerate(restantes):
+                if y >= faixa.y + faixa.altura:
+                    prox.append((titulo, n))
+                    continue
+                if n == 1 and i + 1 < len(restantes):
+                    pendente = titulo      # entra na linha da próxima
+                    continue
+                if y + faixa.altura_cabecalho + alt_uso > \
+                        faixa.y + faixa.altura:
+                    if pendente is not None:
+                        prox.append((pendente, 1))
+                        pendente = None
+                    prox.append((titulo, n))
+                    continue
+                reservadas = 1 if pendente is not None else 0
+                bloco = BlocoSecao(
+                    secao=titulo, faixa=idx_faixa,
+                    cabecalho=(faixa.x + reservadas * larg, y,
+                               faixa.largura - reservadas * larg,
+                               faixa.altura_cabecalho),
+                    cabecalho_inline=False)
+                if pendente is not None:
+                    # decisão registrada: a seção de 1 item compartilha
+                    # a linha — cabeçalho INLINE sobre a própria célula
+                    blocos.append(BlocoSecao(
+                        secao=pendente, faixa=idx_faixa,
+                        cabecalho=(faixa.x, y, larg,
+                                   faixa.altura_cabecalho),
+                        cabecalho_inline=True,
+                        celulas=[(faixa.x, y + faixa.altura_cabecalho,
+                                  larg, alt_uso)]))
+                    pendente = None
+                y_itens = y + faixa.altura_cabecalho
+                colocadas = 0
+                n_restante = n
+                primeira_linha_cols = cols - reservadas
+                while n_restante > 0:
+                    if y_itens + alt_uso > faixa.y + faixa.altura:
+                        break               # transbordou no meio
+                    cols_linha = (primeira_linha_cols if colocadas == 0
+                                  else cols)
+                    x0 = (faixa.x + reservadas * larg
+                          if colocadas == 0 else faixa.x)
+                    nesta = min(cols_linha, n_restante)
+                    ultima = nesta == n_restante
+                    larg_linha = larg
+                    if ultima and nesta < cols_linha:
+                        # QUATER/J1 + SEXTUS (o caso do Oral-B): a
+                        # última linha ESTICA até 1,6× — acima disso a
+                        # célula vira um deserto com o carimbo órfão;
+                        # o resto centraliza (equilíbrio, não buraco)
+                        larg_linha = min(cols_linha * larg / nesta,
+                                         larg * 1.6)
+                        x0 = x0 + (cols_linha * larg
+                                   - nesta * larg_linha) / 2
+                    for c in range(nesta):
+                        bloco.celulas.append(
+                            (x0 + c * larg_linha, y_itens,
+                             larg_linha, alt_uso))
+                    colocadas += nesta
+                    n_restante -= nesta
+                    y_itens += alt_uso
+                    n_linhas += 1
+                    reservadas = 0
+                    primeira_linha_cols = cols
+                blocos.append(bloco)
+                y = y_itens
+                if n_restante > 0:
+                    prox.append((f"{titulo} (continuação)", n_restante))
+                    avisos.append(
+                        f"a seção “{titulo}” transbordou: {n_restante} "
+                        f"item(ns) seguem na faixa {idx_faixa + 2}")
+            if pendente is not None:
+                prox.append((pendente, 1))
+            return blocos, prox, avisos, y, n_linhas
+
+        blocos, proximos, avisos_f, y_fim, n_linhas = _colocar(float(alt))
+        # SEXTUS/J16 (a 3ª vida do defeito J5/J13, agora por número):
+        # sobrou altura na faixa? A sobra é DISTRIBUÍDA nas linhas —
+        # células mais ALTAS (fotos maiores, a página enche), altura
+        # UNIFORME (J2 preservado). Teto de 45% do degrau para não
+        # deformar a célula.
+        sobra = (faixa.y + faixa.altura) - y_fim
+        if not proximos and n_linhas and sobra > n_linhas:
+            delta = min(sobra / n_linhas, alt * 0.65)
+            blocos, proximos, avisos_f, y_fim, n_linhas = _colocar(
+                alt + delta)
+        r.blocos.extend(blocos)
+        r.avisos.extend(avisos_f)
         restantes = proximos
         if restantes and idx_faixa + 1 < len(faixas):
             nomes = ", ".join(t for t, _ in restantes)
