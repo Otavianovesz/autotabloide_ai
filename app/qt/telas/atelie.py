@@ -291,12 +291,17 @@ class AtelieTela(QWidget):
             importadas = importar_pacote(s, pasta)
             s.commit()
         self.recarregar()
+        # F13-QUINQUE/A3: o import FALA — quantos, QUAIS pelo nome, e o
+        # que ficou de fora com o MOTIVO (I2); o dono vê a lista que
+        # acabou de ganhar, nunca um número mudo
+        nomes = [NOMES_EXIBICAO[c] for c in importadas]
         fora = [NOMES_EXIBICAO[c] for c in NOMES_EXIBICAO
                 if c not in importadas]
-        msg = f"{len(importadas)} encarte(s) importados com células, " \
-              "validade e fontes."
+        msg = (f"{len(importadas)} encarte(s) na biblioteca: "
+               + ", ".join(nomes) + ".")
         if fora:
-            msg += " Ficaram de fora (arte incompleta): " + ", ".join(fora)
+            msg += (" Ficaram de FORA (arte incompleta na pasta): "
+                    + ", ".join(fora) + " — confira os BASE.png do pacote.")
         mostrar_toast(self, msg)
 
     # --- ações da lista ------------------------------------------------------------------

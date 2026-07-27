@@ -48,23 +48,15 @@ _ZONAS_P2 = dict(_CELULAS_P2)
 def _compor_paginas(pacote: Path):
     """Compõe frente e verso com os dados EXATOS do publicado (a spec
     da inspeção é a fonte única — Q4 já a alinhou ao publicado)."""
-    from app.core.paths import SystemRoot
     from app.qt.telas.servico import preco_decimal
     from app.rendering.compositor import DadosProduto, compor_pagina
-    from app.rendering.encartes import layout_de_encarte
     from app.rendering.model import PapelTexto, TipoRegiao
-    from app.scripts.inspecao_encartes import DADOS
-
-    os.environ.setdefault("AUTOTABLOIDE_ROOT",
-                          tempfile.mkdtemp() + os.sep + "raiz")
-    root = SystemRoot().criar_estrutura()
-    for f in (pacote / "fontes").glob("*"):
-        destino = root.fontes / f.name
-        if not destino.exists():
-            shutil.copy(f, destino)
+    from app.scripts.inspecao_encartes import DADOS, layout_do_banco
 
     spec = DADOS["quintou"]
-    lay = layout_de_encarte("quintou", pacote)
+    # QUINQUE/A1 (L10): o medidor também mede o que vem do BANCO pela
+    # porta do botão — a fidelidade medida é a do PRODUTO
+    lay, _lid = layout_do_banco("quintou", pacote)
     dados = {}
     for sid, item in spec["itens"].items():
         nome, descr, preco, foto = item[:4]

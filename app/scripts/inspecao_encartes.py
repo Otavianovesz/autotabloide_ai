@@ -409,22 +409,12 @@ def _r_px(x, y, w, h):
     return Retangulo.de_px(x, y, w, h, DPI_VIEWBOX)
 
 
-def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
-    from PIL import Image
-
+def _raiz_de_bancada(pasta_pacote: Path):
+    """Raiz DESCARTÁVEL com as fontes do pacote (o root real do dono
+    não é tocado pela galeria — o import REAL é o A2, à parte)."""
     from app.core.paths import SystemRoot
-    from app.qt.telas.servico import preco_decimal
-    from app.rendering.compositor import DadosProduto, compor_pagina
-    from app.rendering.encartes import (
-        FONTES_DO_PACOTE, layout_de_encarte)
-    from app.rendering.grade import ocupaveis
-    from app.rendering.model import PapelTexto, TipoRegiao
+    from app.rendering.encartes import FONTES_DO_PACOTE
 
-    spec = DADOS[chave]
-    lay = layout_de_encarte(chave, pasta_pacote)
-
-    # raiz de trabalho DESCARTÁVEL com as fontes do pacote (o root real
-    # do dono não é tocado)
     tmp = Path(tempfile.mkdtemp(prefix="inspecao_"))
     os.environ["AUTOTABLOIDE_ROOT"] = str(tmp / "raiz")
     root = SystemRoot(tmp / "raiz").criar_estrutura()
@@ -434,6 +424,49 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
             shutil.copy(origem, root.fontes / nome)
     from app.tests import acervo as acervo_bancada
     acervo_bancada.copiar_fontes_reais(root.fontes)   # Roboto (fallback)
+    return root
+
+
+def layout_do_banco(chave: str, pasta_pacote: Path, raiz=None):
+    """F13-QUINQUE/A1 — a GALERIA e o PRODUTO compartilham a porta:
+    ``importar_pacote`` (a mesma do botão do Ateliê) → ``carregar_
+    layout`` (lê do BANCO, como a Mesa lê). Devolve (LayoutDef, id).
+    Se o import falhar, a galeria falha — e é isso que se quer (L10:
+    um PNG bonito de um layout que não está no app não prova nada)."""
+    from app.core.database import Database
+    from app.rendering.encartes import NOMES_EXIBICAO, importar_pacote
+    from app.rendering.persistencia import carregar_layout, listar_layouts
+
+    raiz = raiz or _raiz_de_bancada(Path(pasta_pacote))
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            criadas = importar_pacote(s, pasta_pacote, raiz=raiz)
+            s.commit()
+            if chave not in criadas:
+                raise RuntimeError(
+                    f"o encarte “{chave}” NÃO entrou pelo import — a "
+                    "galeria não compõe o que o app não tem (L10)")
+            alvo = next(r for r in listar_layouts(s)
+                        if r.nome == NOMES_EXIBICAO[chave])
+            lay = carregar_layout(s, alvo.id, raiz=raiz)
+            return lay, alvo.id
+    finally:
+        db.engine.dispose()
+
+
+def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
+    from PIL import Image
+
+    from app.qt.telas.servico import preco_decimal
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.grade import ocupaveis
+    from app.rendering.model import PapelTexto, TipoRegiao
+
+    spec = DADOS[chave]
+    # A1/L10: o layout vem do BANCO pela porta do botão — nunca mais
+    # da memória (seis rodadas validaram RAM e o app ficou vazio)
+    lay, _layout_id = layout_do_banco(chave, pasta_pacote)
 
     saidas = []
     for n_pag, pag in enumerate(lay.paginas, start=1):
@@ -481,11 +514,16 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
                 prev = prev[n_pag - 1]
             preview = Image.open(pasta_pacote / prev)
         else:
+            # A1: o fundo do layout DO BANCO mora internado em
+            # layouts/ — o PREVIEW (a régua) segue sendo arte do
+            # PACOTE, resolvida pela pasta dele
+            from app.rendering.encartes import _BASES, _pasta_do_encarte
+            sub = _BASES[chave][0]
             nome_prev = Path(pag.arquivo_fundo).name \
                 .replace("-BASE-2160x2880.png", "-PREVIEW.png") \
                 .replace("-BASE.png", "-PREVIEW.png")
-            preview = Image.open(Path(pag.arquivo_fundo).parent
-                                 / nome_prev)
+            preview = Image.open(
+                _pasta_do_encarte(Path(pasta_pacote), sub) / nome_prev)
         lado = Image.new("RGB", (1080 * 2 + 8, alt_1x), "#666666")
         lado.paste(app_1x.convert("RGB"), (0, 0))
         lado.paste(preview.convert("RGB").resize((1080, alt_1x)),
@@ -568,6 +606,22 @@ def _compor_jornal_secoes(pasta_pacote: Path) -> list[Path]:
         secoes=[(t, len(ids)) for t, ids in SECOES_JORNAL])
     for a in lay.avisos_fluxo:
         print(f"[jornal-secoes] aviso do fluxo: {a}")
+    # A1/L10: até a DEMO passa pelo banco — salva pela porta oficial e
+    # relê (prova o roundtrip do fluxo: células, estilo JORNAL por
+    # página, camadas). Um formato que não sobrevive ao banco não é
+    # formato do app.
+    from app.core.database import Database
+    from app.rendering.persistencia import carregar_layout, salvar_layout
+    raiz = _raiz_de_bancada(pasta_pacote)
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            row = salvar_layout(s, "Jornal do Mês — seções (demo)",
+                                lay, raiz=raiz)
+            s.commit()
+            lay = carregar_layout(s, row.id, raiz=raiz)
+    finally:
+        db.engine.dispose()
 
     dados = {}
     for sid in ("jp1-hero", "jp1-ch1", "jp1-ch2", "jp1-ch3", "jp1-ch4"):

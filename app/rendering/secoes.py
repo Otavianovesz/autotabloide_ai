@@ -296,18 +296,20 @@ def desenhar_secoes(base, secoes: list[Secao], dpi: int, *,
             titulo = (secao.titulo or secao.categoria).upper()
             cor_secao = "#262019"          # TINTA de jornal — o estilo
             # é completo (nunca o azul da Config, alienígena no papel)
+            # QUINQUE/J12: o cabeçalho inteiro cabe em ≤28px — 5 seções
+            # a 60px comiam 27% da faixa
             f_cab = fonte_segura(fontes_dir, "Archivo-Medium.ttf",
-                                 round(pt_para_px(12.0, dpi)))
+                                 round(pt_para_px(11.0, dpi)))
             cx_t = draw.textbbox((0, 0), titulo, font=f_cab)
             alt_t = cx_t[3] - cx_t[1]
             grosso = max(3, esp_px * 3)
-            y_fio = y0 - alt_t - grosso - round(mm_para_px(2.2, dpi))
+            y_fio = y0 - alt_t - grosso - round(mm_para_px(1.2, dpi))
             draw.rectangle((x0, y_fio, x1, y_fio + grosso),
                            fill=cor_secao)
-            y_txt = y_fio + grosso + round(mm_para_px(0.8, dpi))
+            y_txt = y_fio + grosso + round(mm_para_px(0.4, dpi))
             draw.text((x0, y_txt - cx_t[1]), titulo, font=f_cab,
                       fill=cor_secao)
-            y_fino = y_txt + alt_t + round(mm_para_px(0.8, dpi))
+            y_fino = y_txt + alt_t + round(mm_para_px(0.4, dpi))
             draw.rectangle((x0, y_fino, x1, y_fino + max(1, esp_px)),
                            fill=cor_secao)
             continue                       # sem retângulo, sem etiqueta

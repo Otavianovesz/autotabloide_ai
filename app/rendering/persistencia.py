@@ -91,6 +91,12 @@ def _internar_estrutura(layout_def: LayoutDef, raiz=None) -> tuple[str | None, s
     for pag in estrutura.get("paginas", []):
         if isinstance(pag, dict) and pag.get("arquivo_fundo"):
             pag["arquivo_fundo"] = internar_arte(pag["arquivo_fundo"], raiz)
+        # F13-QUINQUE/A1: a CAMADA do dono (L9) interna como toda arte —
+        # sem isso o layout importado apontaria para a pasta do pacote
+        # e quebraria em outra máquina (I3)
+        if isinstance(pag, dict) and pag.get("arquivo_camada"):
+            pag["arquivo_camada"] = internar_arte(
+                pag["arquivo_camada"], raiz)
     return (internar_arte(layout_def.arquivo_fundo, raiz),
             json.dumps(estrutura, ensure_ascii=False))
 
@@ -137,6 +143,7 @@ def carregar_layout(session: Session, layout_id: int,
     ldef.arquivo_fundo = resolver_arte(ldef.arquivo_fundo, raiz)
     for pag in ldef.paginas:
         pag.arquivo_fundo = resolver_arte(pag.arquivo_fundo, raiz)
+        pag.arquivo_camada = resolver_arte(pag.arquivo_camada, raiz)
     return ldef
 
 

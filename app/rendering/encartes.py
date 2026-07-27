@@ -897,23 +897,22 @@ def chaves_do_pacote(pasta_pacote: str | Path) -> list[str]:
 
 def _jornal_celula_fluxo(n: int, x: float, y: float, w: float,
                          alt: float) -> Slot:
-    """F13-TER/N2: a célula do MIOLO em fluxo — a mesma receita da
-    ``_jornal_linha`` (foto + nome Fraunces + descritor itálico +
-    CARIMBO), parametrizada pela geometria que o fluxo decidiu. A foto
-    encolhe com o degrau de altura (o custo declarado do degrau)."""
-    foto_h = max(40.0, alt - 108)
-    # QUATER/J8: o giro do carimbo encolheu (±6/5 → ±3) — os preços da
-    # mesma linha ALINHAM visualmente; o charme do carimbo fica
+    """A célula DENSA do fluxo (QUINQUE §5, régua ≥55% de foto POR
+    NÚMERO): padding zero (J10 — a foto encosta na goteira), nome em
+    ATÉ 2 LINHAS com o peso na mesma linha (J11 — sem região de
+    descritor; o canal da unidade anexa), carimbo COMPACTO ancorado no
+    canto inferior-direito (J14). Foto = (w−6)×(alt−86): a 4 colunas
+    (w≈247) e degrau 216, são 58% da célula."""
+    # QUATER/J8: giro ±3 — os preços da mesma linha alinham
     rot = -3.0 if (n % 2 == 0) else 3.0
+    foto_h = max(40.0, alt - 80)
     return _slot(f"jf-{n:02d}", [
-        _img(x + 6, y + 2, w - 16, foto_h),
-        _nome(x + 6, y + foto_h + 4, w - 16, 24, fonte=_F_FRAUNCES,
-              tam=11.0, cor=_J_INK),
-        _sub(x + 6, y + foto_h + 28, w - 16, 16, fonte=_F_FRA_IT,
-             tam=8.5, cor=_J_GRAY),
-        _preco(x + (w - 96) / 2, y + alt - 50, 96, 42, fonte=_F_FRAUNCES,
+        _img(x + 3, y + 1, w - 6, foto_h),
+        _nome(x + 4, y + foto_h + 2, w - 8, 34, fonte=_F_FRAUNCES,
+              tam=10.0, cor=_J_INK),
+        _preco(x + w - 100, y + alt - 42, 96, 38, fonte=_F_FRAUNCES,
                rot=rot, forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
-               cor=_J_LARD, tam=20.0, tam_cent=12.6,
+               cor=_J_LARD, tam=18.0, tam_cent=11.5,
                centavos_na_base=True),
     ], origem=(x, y))
 
@@ -929,13 +928,19 @@ def _jornal_celula_fluxo(n: int, x: float, y: float, w: float,
 # 3ª faixa é o rodapé À ESQUERDA do bloco de pagamentos (2 colunas) —
 # a página enche até o fim, como o estático fazia. O par é
 # (índice_da_página, geometria); colunas tabeladas por faixa.
+# QUINQUE/§5: 4 COLUNAS (célula 25% mais larga — produto de mercado é
+# mais largo que alto), cabeçalho ≤28px (J12), degraus de altura
+# maiores (J13: usar a altura toda).
 _FAIXAS_JORNAL = (
     (0, dict(x=64.0, y=648.0, largura=990.0, altura=648.0,
-             colunas=(5,))),
+             colunas=(4,), alturas_celula=(216, 196, 178),
+             altura_cabecalho=28)),
     (1, dict(x=64.0, y=116.0, largura=990.0, altura=864.0,
-             colunas=(5,))),
+             colunas=(4,), alturas_celula=(216, 196, 178),
+             altura_cabecalho=28)),
     (1, dict(x=64.0, y=1000.0, largura=396.0, altura=196.0,
-             colunas=(2,))),
+             colunas=(2,), alturas_celula=(164, 156),
+             altura_cabecalho=28)),
 )
 
 
@@ -983,9 +988,7 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path,
     avisos_fluxo: list[str] = []
     if secoes and chave == "jornal-do-mes":
         from app.rendering.fluxo_jornal import FaixaFluxo, montar_fluxo
-        faixas = [FaixaFluxo(alturas_celula=(202, 178, 156),
-                             altura_cabecalho=34, **f)
-                  for _pg, f in _FAIXAS_JORNAL]
+        faixas = [FaixaFluxo(**f) for _pg, f in _FAIXAS_JORNAL]
         paginas_das_faixas = [pg for pg, _f in _FAIXAS_JORNAL]
         fluxo = montar_fluxo(secoes, faixas)
         avisos_fluxo = fluxo.avisos

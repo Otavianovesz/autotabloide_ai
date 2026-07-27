@@ -739,5 +739,22 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   (a foto do sabão era um CLIPART de balões — QU-02), linha-fina sem
   eco, carimbos ±3°. Tabela de rastreio A5 item-a-item na resposta.
   Suíte 987 ×2 zero skips + invertida + janela DE PRIMEIRA (junit
-  bloco_fquater_*). **PARADO: a 4ª apresentação vai ao dono COM o
-  número na mão.**
+  bloco_fquater_*).
+  —— **5ª RODADA — O ACHADO MAIS GRAVE (dono: "simplesmente nada está
+  lá"; o banco real tinha os 9 layouts ANTIGOS — seis rodadas
+  validaram RAM): `docs/ORDEM_F13_QUINQUE_ENTREGUE_NO_APP.md`
+  EXECUTADA (27/07).** LEI L10: encarte só é feito quando ALCANÇÁVEL
+  pelo dono na interface. A1: galeria e produto compartilham a PORTA
+  (`layout_do_banco` = importar_pacote → carregar_layout → compor; o
+  medidor idem) — e expôs que `arquivo_camada` não era internado
+  (consertado, I3). **A2: o import RODOU NA RAIZ REAL** (backup
+  `core_pre_quinque_20260727.db`; SELECT de prova na resposta: ids
+  10–15 novos + Sexta/Terça atualizados por upsert — **o Ateliê do
+  dono agora TEM os 8 encartes**). A3: o toast nomeia. A4: teste de
+  GESTO do botão real. J10–J14: Jornal denso (4 colunas, cabeçalho
+  ≤28px, padding zero, nome 2 linhas, carimbo no canto; RÉGUA ≥55% de
+  foto POR TESTE — 64/61/57% nos degraus). Rótulos PESCA DO DIA/
+  COLHEITA: DECIDIDO NÃO CRAVAR, registrado (D2). Rastreio A5 de
+  TODAS as ordens. Suíte 991 ×2 + invertida + janela DE PRIMEIRA
+  (bloco_fquinque_*). **PARADO: aguarda o olho do dono no APP e a
+  reauditoria do arquiteto nas OITO páginas.**
