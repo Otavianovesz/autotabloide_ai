@@ -1274,13 +1274,57 @@ def abreviacoes_tabloide() -> dict[str, str]:
 # quinta; "Sexta Verde" é sexta). FASE 2: o dia mora no Evento (entidade);
 # a tabela de nomes→número vive em eventos._DIAS.
 
+# F13-DECIMUS/D1: o período do mês (o Jornal) — sentinela devolvida no
+# lugar do dia da semana quando o nome fala de mês, não de dia
+PERIODO_MES = "mes"
 
-def dia_do_evento(evento: str | None) -> int | None:
-    """O dia da semana (0=seg…6=dom) do evento, ou None.
+# os radicais do dia no NOME do layout — casados por PALAVRA INTEIRA,
+# sem acento e sem caixa (a disciplina do extrair_marca: ambíguo = None)
+_RADICAIS_DIA = (
+    (0, ("segunda", "seg")),
+    (1, ("terca", "ter")),
+    (2, ("quarta", "qua")),
+    (3, ("quinta", "quintou", "qui")),
+    (4, ("sexta", "sex")),
+    (5, ("sabado", "sab")),
+    (6, ("domingo", "dom")),
+)
+_RADICAIS_PERIODO = ("jornal", "mes", "mensal")
 
-    FASE 2 (passo 7): a verdade agora é o ENTIDADE Evento (dia_semana);
-    a Config antiga `eventos.dias` continua como fallback (bancos legados
-    e nomes ainda não migrados)."""
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in t if not unicodedata.combining(c))
+
+
+def dia_pelo_nome(nome: str | None):
+    """F13-DECIMUS/D1: o dia da semana escrito no NOME do layout.
+
+    "Segunda dos Frios" É segunda-feira — a resposta estava no nome do
+    arquivo o tempo todo (P-01). Casa por PALAVRA INTEIRA, nunca por
+    pedaço ("Promoção Relâmpago" nunca vira segunda por conter "ão").
+    Devolve 0..6, ``PERIODO_MES`` (jornal/mensal) ou None."""
+    if not nome:
+        return None
+    tokens = set(_sem_acento(nome).lower().split())
+    if tokens & set(_RADICAIS_PERIODO):
+        return PERIODO_MES
+    for dia, radicais in _RADICAIS_DIA:
+        if tokens & set(radicais):
+            return dia
+    return None
+
+
+def dia_do_evento(evento: str | None):
+    """O dia da semana (0=seg…6=dom) do evento, ``PERIODO_MES`` ou None.
+
+    F13-DECIMUS/D1 — a CASCATA de fontes, nesta ordem:
+    1. a entidade Evento (``dia_semana``) — continua mandando;
+    2. a Config antiga ``eventos.dias`` (fallback legado);
+    3. o NOME em si (``dia_pelo_nome``) — o dono abre "Segunda dos
+       Frios" e o app SABE que é segunda, zero configuração;
+    4. nada casou → None, e aí sim o app pergunta."""
     if not evento:
         return None
     try:
@@ -1288,11 +1332,14 @@ def dia_do_evento(evento: str | None) -> int | None:
         db = Database().init()
         try:
             with db.Session() as s:
-                return dia_do_evento_v2(s, evento)
+                dia = dia_do_evento_v2(s, evento)
         finally:
             db.engine.dispose()
     except Exception:
-        return None
+        dia = None
+    if dia is not None:
+        return dia
+    return dia_pelo_nome(evento)
 
 
 def proxima_ocorrencia(dia_semana: int, hoje=None):
@@ -1332,8 +1379,59 @@ def sugerir_validade(evento: str | None, hoje=None) -> str | None:
     dia = dia_do_evento(evento)
     if dia is None:
         return None
+    if dia == PERIODO_MES:
+        # F13-DECIMUS/D1: o Jornal vale do dia 1º ao 27 — o período
+        # corrente enquanto o 27 não passou; depois, o do mês seguinte
+        # (a mesma semântica do "hoje conta" da próxima ocorrência)
+        h = hoje or date.today()
+        if h.day > 27:
+            h = (h.replace(day=1) + timedelta(days=32)).replace(day=1)
+        return f"DE 01/{h.month:02d} A 27/{h.month:02d}"
     data = proxima_ocorrencia(dia, hoje)
     return f"SOMENTE {data.strftime('%d/%m')}"
+
+
+def avisos_da_validade(validade: str | None, nome_layout: str | None = None,
+                       evento: str | None = None, hoje=None) -> list[str]:
+    """F13-DECIMUS/D4: as guardas de sanidade da data — AVISAM, nunca
+    vetam (a trava #3 caiu e continua caída), e toda frase diz ONDE
+    clicar. Com a data preenchendo sozinha, o risco novo é data errada
+    passar despercebida (o M-02: o marco publicado com validade de maio
+    em julho).
+
+    Validade sem data nenhuma ("enquanto durarem os estoques") passa em
+    silêncio — as guardas são DE DATA."""
+    import re as _re
+    from datetime import date as _date
+    if not (validade or "").strip():
+        return []
+    m = _re.search(r"(\d{1,2})/(\d{1,2})", validade)
+    if not m:
+        return []                       # escolha legítima sem data
+    hoje = hoje or _date.today()
+    try:
+        data = _date(hoje.year, int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return [f"a validade “{validade}” tem uma data que não existe — "
+                "clique no 📅 na barra da Mesa"]
+    # a virada do ano: dezembro→janeiro conta como futuro, não passado
+    if data.month == 1 and hoje.month == 12:
+        data = data.replace(year=hoje.year + 1)
+    avisos: list[str] = []
+    if data < hoje:
+        avisos.append(f"a validade “{validade}” já passou — clique no 📅 "
+                      "na barra da Mesa para corrigir")
+    elif data.month != hoje.month:
+        avisos.append(f"a validade “{validade}” está fora do mês corrente "
+                      "— confira no 📅 da barra da Mesa (pode ser "
+                      "legítimo no Jornal)")
+    dia = dia_do_evento(evento) if evento else None
+    if dia is None:
+        dia = dia_pelo_nome(nome_layout)
+    if isinstance(dia, int) and data.weekday() != dia:
+        avisos.append(f"a validade “{validade}” não bate com o dia do "
+                      "encarte — confira no 📅 da barra da Mesa")
+    return avisos
 
 
 # --- F13-TER/D1: a EDIÇÃO do Jornal é REAL ("Nº 177 · ANO 42" mudava todo
@@ -1798,7 +1896,12 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                 msg = None
                 if (reg.papel_texto == PapelTexto.VALIDADE
                         and not texto_composto_legal(reg, d).strip()):
-                    msg = f"{rot}: papel “Validade da oferta” sem data — defina a validade"
+                    # F13-DECIMUS/D3: a mensagem que pede ação DIZ ONDE
+                    # (a frase antiga fez o dono dizer "não faço a
+                    # mínima ideia de como fazer isso")
+                    msg = (f"{rot}: papel “Validade da oferta” sem data — "
+                           "clique no 📅 na barra da Mesa, ao lado de "
+                           "Exportar")
                 elif reg.papel_texto == PapelTexto.DICA and not fixo:
                     msg = f"{rot}: papel “Fica a Dica” sem texto — gere a dica pela IA"
                 elif reg.papel_texto == PapelTexto.LEGAL and not fixo:

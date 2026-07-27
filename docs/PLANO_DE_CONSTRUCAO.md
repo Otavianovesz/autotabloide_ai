@@ -826,3 +826,22 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   preço-da-semana do fixo exige item na estante; duplicação fixo×
   estante; vigia que retenta; os 8 sem-porta. Suíte ×2 + invertida +
   janela (bloco_fnonus_*).
+  —— **10ª RODADA — `docs/ORDEM_F13_DECIMUS_A_VALIDADE_SE_RESOLVE_
+  SOZINHA.md` EXECUTADA (27/07): o P-01/P-02 do dossiê — o defeito
+  mais antigo vivo. A automação da validade morria em
+  dia_do_evento(None): abrir layout pelo Ateliê nunca definia _evento
+  e o dono não tem por que cadastrar Evento. Três rodadas consertaram
+  o TRANSPORTE da data (D7/O3/C3); nenhuma a ORIGEM — que estava no
+  NOME do arquivo.** D1: cascata (entidade → Config → `dia_pelo_nome`
+  por palavra INTEIRA; jornal→"DE 01/mm A 27/mm") + o autopreenchimento
+  na porta que faltava (carregar_layout — abrir o encarte JÁ preenche);
+  achado: a conciliação apagava a validade da cascata (guardada). D2:
+  o chip permanente (nunca vazio; alerta/vermelho; tooltip) + o
+  popover com respostas prontas (ValidadeDialog — a sugerida já
+  marcada; os 2 QInputDialog morreram). D3: a mensagem diz ONDE
+  ("clique no 📅 na barra") e o aviso clicável abre o popover; 6
+  mensagens sem-endereço nomeadas para o G. D4: guardas (passado/mês/
+  dia-não-bate — avisos, nunca veto) nos 2 pré-voos. §6: teste de
+  gesto SEM evento no banco + selo por pixel; o script da raiz real
+  parou de tocar a validade (assert: nasceu da cascata). Suíte ×2 +
+  invertida + janela (bloco_fdecimus_*).

@@ -175,6 +175,10 @@ class MesaTela(QWidget):
         self._validade_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self._validade_lbl.mousePressEvent = \
             lambda _ev: self._editar_validade_oferta()
+        # F13-DECIMUS/D2: o chip nasce FALANDO (nunca um espaço em
+        # branco) — o conteúdo real chega no carregar_layout pela
+        # cascata do D1
+        self._atualizar_chip_validade()
         # F13-TER/D1: o Nº/ANO do Jornal — vazio quando o layout não usa
         self._edicao_lbl = QLabel("")
         self._edicao_lbl.setProperty("papel", "legenda")
@@ -441,25 +445,53 @@ class MesaTela(QWidget):
     # --- validade da OFERTA (RG-34) -------------------------------------------------
 
     def _editar_validade_oferta(self) -> None:
-        """De/até PRÓPRIOS da oferta ("OFERTA VÁLIDA DE 17/07 ATÉ 24/07")."""
-        from PySide6.QtWidgets import QInputDialog
+        """F13-DECIMUS/D2: UM popover com as respostas prontas — a
+        sugerida (a cascata do D1) já vem marcada — no lugar dos dois
+        QInputDialog em sequência. O dono escolhe, não digita."""
+        from app.qt.telas.validade_dialog import ValidadeDialog
 
-        de, ok = QInputDialog.getText(
-            self, "Validade da oferta",
-            "Início (dd/mm — vazio para só “ATÉ”):",)
-        if not ok:
+        sugerida = self._validade or servico.sugerir_validade(
+            getattr(self, "_evento", None) or self._layout_nome)
+        dlg = ValidadeDialog(sugerida=sugerida, parent=self)
+        if dlg.exec() != ValidadeDialog.DialogCode.Accepted:
             return
-        ate, ok = QInputDialog.getText(
-            self, "Validade da oferta", "Fim (dd/mm):")
-        if not ok:
-            return
-        self._validade = servico.montar_validade_oferta(de, ate)
-        self._validade_lbl.setText(
-            f"Validade: {self._validade}" if self._validade else "")
+        self._validade = dlg.valor()
+        self._atualizar_chip_validade()
         self._marcar_salvo(False)
         if self._mapa:
             self.area.canvas.atualizar_dados(self._dados_por_slot())
             self.area.canvas.viewport().update()
+
+    def _atualizar_chip_validade(self) -> None:
+        """F13-DECIMUS/D2: o chip é PERMANENTE — campo invisível é um
+        segredo (P-02). Com data mostra a data; sem data convida ao
+        clique em cor de alerta; data no passado fica em perigo (D4)."""
+        from app.qt.design import tokens as t
+        v = (self._validade or "").strip()
+        avisos = servico.avisos_da_validade(
+            v, self._layout_nome, getattr(self, "_evento", None)) if v else []
+        if not v:
+            texto, alerta = "📅 sem data — clique  ✎", True
+            css = f"background: {t.ALERTA_FUNDO}; color: {t.ALERTA};"
+        elif any("passou" in a for a in avisos):
+            texto, alerta = f"📅 {v}  ✎", True
+            css = f"background: {t.PERIGO_FUNDO}; color: {t.PERIGO};"
+        elif avisos:
+            texto, alerta = f"📅 {v}  ✎", True
+            css = f"background: {t.ALERTA_FUNDO}; color: {t.ALERTA};"
+        else:
+            texto, alerta, css = f"📅 {v}  ✎", False, ""
+        self._validade_lbl.setText(texto)
+        self._validade_lbl.setProperty("alerta", alerta)
+        self._validade_lbl.setStyleSheet(
+            "QLabel { " + css + " border-radius: 11px; padding: 2px 10px; }")
+        if avisos:
+            self._validade_lbl.setToolTip("\n".join(avisos))
+        else:
+            self._validade_lbl.setToolTip(
+                "A validade da OFERTA (o selo da página). Clique para "
+                "trocar — as respostas prontas já vêm com o dia do "
+                "encarte.")
 
     # --- edição do Jornal (F13-TER/D1) ----------------------------------------------
 
@@ -740,6 +772,17 @@ class MesaTela(QWidget):
         self._fundo = fundo_path
         if nome_layout:
             self._layout_nome = nome_layout
+        # F13-DECIMUS/D1 (o P-01 morre aqui): o dia da semana ESTÁ no
+        # nome do encarte — "Segunda dos Frios" É segunda. Abrir o
+        # layout já preenche a validade pela cascata (evento → config →
+        # o nome), sem o dono cadastrar nada. Uma validade já definida
+        # NUNCA é sobrescrita em silêncio.
+        if not self._validade:
+            sugestao = servico.sugerir_validade(
+                getattr(self, "_evento", None) or self._layout_nome)
+            if sugestao:
+                self._validade = sugestao
+        self._atualizar_chip_validade()
         # RG-08: assinatura do documento carregado — o showEvent compara com
         # o banco e re-sincroniza se o Ateliê editou este layout
         self._assinatura_layout = json.dumps(layout.to_dict(), sort_keys=True)
@@ -917,12 +960,13 @@ class MesaTela(QWidget):
         # digitado VIVE no projeto — meta 32/40, pulso da barra e {evento}
         # nas frases nasciam mortos porque isto era jogado fora
         self._evento = evento or None
-        # RG-24: campanha com dia fixo sugere o "ATÉ" quando não há validade
+        # RG-24 + DECIMUS/D1: campanha OU o nome do encarte sugerem
         if not self._validade:
-            sugestao = servico.sugerir_validade(evento)
+            sugestao = servico.sugerir_validade(
+                evento or self._layout_nome)
             if sugestao:
                 self._validade = sugestao
-                self._validade_lbl.setText(f"Validade: {sugestao}")
+                self._atualizar_chip_validade()
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia da "
                                     "campanha) — edite se precisar.")
         # F13-TER/D1: a edição idem — sugerida da base registrada do evento
@@ -936,7 +980,10 @@ class MesaTela(QWidget):
         lay = self.area.canvas._layout or self._layout
         from app.qt.telas.prevoo import confirmar_pre_voo
         avisos = (servico.validar_composicao(lay, self._dados_por_slot())
-                  + self._avisos_orfaos())
+                  + self._avisos_orfaos()
+                  + servico.avisos_da_validade(          # DECIMUS/D4
+                      self._validade, self._layout_nome,
+                      getattr(self, "_evento", None)))
         if not confirmar_pre_voo(self, avisos, "Salvar"):
             return
         from app.qt.design.carregando import cursor_espera
@@ -1015,8 +1062,7 @@ class MesaTela(QWidget):
         if callable(self.ao_documento):
             self.ao_documento(p.nome)    # título da janela (passo 77)
         self._validade = p.validade_oferta
-        self._validade_lbl.setText(
-            f"Validade: {self._validade}" if self._validade else "")
+        self._atualizar_chip_validade()
         self._edicao = getattr(p, "edicao", None)    # F13-TER/D1
         self._edicao_lbl.setText(
             f"Edição: {self._edicao}" if self._edicao else "")
@@ -1153,7 +1199,7 @@ class MesaTela(QWidget):
         # não é sobrescrita em silêncio.
         if resultado.validade_oferta and not self._validade:
             self._validade = resultado.validade_oferta
-            self._validade_lbl.setText(f"Validade: {self._validade}")
+            self._atualizar_chip_validade()
             mostrar_toast(self, "Validade veio da tabela: "
                                 f"“{self._validade}”.")
         dlg = ConciliacaoDialog(resultado, self)
@@ -1197,9 +1243,11 @@ class MesaTela(QWidget):
         else:
             self._itens = verdes
 
-        self._validade = dlg.validade
-        self._validade_lbl.setText(
-            f"Validade: {self._validade}" if self._validade else "")
+        # DECIMUS: a conciliação sem validade própria NÃO apaga a que a
+        # cascata do D1 já pôs no chip (o dlg devolve None nesse caso)
+        if dlg.validade:
+            self._validade = dlg.validade
+        self._atualizar_chip_validade()
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
         self.btn_salvar_proj.setEnabled(bool(self._itens))
@@ -1556,6 +1604,7 @@ class MesaTela(QWidget):
         self._validade = estado.get("validade")
         self._edicao = estado.get("edicao") or None     # F13-TER/D1
         self._evento = estado.get("evento") or None     # F13/D7
+        self._atualizar_chip_validade()  # DECIMUS: o chip acompanha
         if estado.get("layout"):
             self._layout = LayoutDef.from_dict(estado["layout"])
             self.area.carregar(self._layout, {})
@@ -1851,8 +1900,15 @@ class MesaTela(QWidget):
 
     def _ir_para_aviso(self, aviso: str) -> str | None:
         """#23: acha o item citado no aviso ('“Nome”: …'), seleciona a linha
-        dele na estante e navega até a página do slot. Devolve o uid (teste)."""
+        dele na estante e navega até a página do slot. Devolve o uid (teste).
+
+        F13-DECIMUS/D3: aviso sobre a VALIDADE não aponta item nenhum —
+        aponta o chip da barra; clicar abre o popover direto (L9: o
+        mesmo padrão clicável do D10, estendido ao alvo novo)."""
         import re
+        if "validade" in (aviso or "").lower():
+            self._editar_validade_oferta()
+            return "validade"
         m = re.search(r"[“\"](.+?)[”\"]", aviso or "")
         if not m:
             return None
@@ -2793,16 +2849,20 @@ class MesaTela(QWidget):
         # aqui — a sugestão só rodava no salvar, e o export era a porta
         # onde a peça saía sem data (a trava #3 cai: preenche e AVISA)
         if not self._validade:
-            sugestao = servico.sugerir_validade(getattr(self, "_evento", None))
+            sugestao = servico.sugerir_validade(
+                getattr(self, "_evento", None) or self._layout_nome)
             if sugestao:
                 self._validade = sugestao
-                self._validade_lbl.setText(f"Validade: {sugestao}")
+                self._atualizar_chip_validade()
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia "
                                     "da campanha) — edite se precisar.")
         self._layout = self.area.canvas._layout or self._layout
         dados = self._dados_por_slot()
         avisos = (servico.validar_composicao(self._layout, dados)
-                  + self._avisos_orfaos())
+                  + self._avisos_orfaos()
+                  + servico.avisos_da_validade(          # DECIMUS/D4
+                      self._validade, self._layout_nome,
+                      getattr(self, "_evento", None)))
         if not confirmar_pre_voo(self, avisos, "Exportar"):   # I2: nada em silêncio
             return
         # F13/D8 (a trava #1, decisão do dono 24/07 — manda sobre o R-067):

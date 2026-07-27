@@ -140,9 +140,11 @@ def rodar() -> None:
         f"a conciliação não fechou verde ({len(m._itens)} na estante)")
     print(f"estante: {len(m._itens)} itens")
 
-    # o gesto do rótulo (RG-34): a validade da oferta
-    m._validade = "SOMENTE 27/07"
-    m._validade_lbl.setText(f"Validade: {m._validade}")
+    # F13-DECIMUS/§6: NINGUÉM toca a validade — ela nasceu SOZINHA no
+    # carregar_layout (a cascata do D1: "Segunda dos Frios" É segunda)
+    assert m._validade, "a validade não nasceu da cascata (D1)"
+    print(f"validade NASCIDA SOZINHA: {m._validade} · chip: "
+          f"{m._validade_lbl.text()}")
 
     # 4) auto-preencher pelo BOTÃO
     m.btn_preencher.click()
@@ -151,8 +153,15 @@ def rodar() -> None:
         f"o mapa não fechou 7/7 fora da fixa: {m._mapa}")
     print("auto-preencher: 7/7 células livres · fixa intocada")
 
-    # 5) salvar o PROJETO (diálogo real respondido por timer) — nome
-    # novo; o id=7 do dono fica intacto
+    # 5) salvar o PROJETO (diálogo real respondido por timer) — REUSA o
+    # projeto desta rodada por nome (sem duplicar na lista do dono);
+    # o id=7 dele fica intacto
+    from app.core import projetos as _projetos
+    existente = next((p["id"] for p in _projetos.listar_projetos()
+                      if p["nome"] == NOME_PROJETO), None)
+    if existente:
+        m._projeto_id = existente
+
     def _tic_salvar():
         dlg = app.activeModalWidget()
         if dlg is None:
