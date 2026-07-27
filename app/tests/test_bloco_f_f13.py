@@ -259,7 +259,14 @@ def test_f2_jornal_tem_caminho_proprio_com_42_celulas():
         legais = [r for s in pag.slots for r in s.regioes
                   if r.tipo == TipoRegiao.TEXTO_LEGAL]
         papeis = {r.papel_texto for r in legais}
-        assert PapelTexto.DICA in papeis, f"p{n}: sem o Fica-a-Dica (F4)"
+        # F13-TER/N3 (contrato INVERTIDO pela 3ª reprovação): o Fica a
+        # Dica virou UM bloco editorial por edição, na página 2 — a
+        # tarja fina da capa saiu da arte ("ridículo de pequeno")
+        if n == 2:
+            assert PapelTexto.DICA in papeis, "p2: sem o Fica-a-Dica (N3)"
+        else:
+            assert PapelTexto.DICA not in papeis, (
+                "p1: a tarja da capa voltou — o N3 a matou")
         assert PapelTexto.VALIDADE in papeis, (
             f"p{n}: sem validade — o BASE zera o exemplo inteiro e a "
             "data morre (N-04/N-06)")
@@ -314,11 +321,13 @@ def test_f2_f7_selo_da_terca_nao_oclui_o_slot():
 
 
 def test_f2_importar_pacote_semeia_os_7_e_copia_fontes(raiz_tmp):
-    """F2: a porta de USO — importar o pacote semeia os 7 layouts no
+    """F2: a porta de USO — importar o pacote semeia os layouts no
     banco (o Jornal com as 2 páginas; upsert por nome, importar de novo
     não duplica) e copia as fontes .ttf do pacote para a pasta de fontes
     do app (as famílias que as regiões declaram). I3: a arte internada
-    (nenhum caminho da pasta do pacote sobra no JSON persistido)."""
+    (nenhum caminho da pasta do pacote sobra no JSON persistido).
+    F13-TER (contrato ATUALIZADO): o QUINTOU entrou no pacote — o
+    padrão-ouro semanal do dono; 7 virou 8."""
     from app.core.database import Database
     from app.rendering.encartes import NOMES_EXIBICAO, importar_pacote
     from app.rendering.persistencia import carregar_layout, listar_layouts
@@ -329,7 +338,8 @@ def test_f2_importar_pacote_semeia_os_7_e_copia_fontes(raiz_tmp):
         with db.Session() as s:
             criados = importar_pacote(s, pac)
             s.commit()
-            assert len(criados) == 7, f"esperava 7 encartes: {criados}"
+            assert len(criados) == 8, f"esperava 8 encartes: {criados}"
+            assert "quintou" in criados, "o Quintou não entrou (F-TER)"
             rows = listar_layouts(s)
             nomes = {r.nome for r in rows}
             assert set(NOMES_EXIBICAO.values()) <= nomes, (
@@ -481,6 +491,11 @@ def test_f_dod_os_sete_montados_por_pixel_vs_preview(raiz_tmp, tmp_path):
     galeria.mkdir(parents=True, exist_ok=True)
     sem_conteudo_no_preview: list[str] = []
     for chave in sorted(_BASES):
+        if chave == "quintou":
+            # F13-TER: o Quintou tem régua PRÓPRIA — pixel a pixel
+            # contra o PUBLICADO real, na inspeção (não há PREVIEW
+            # de exemplo; o par sai em galeria_f13_bis/quintou.png)
+            continue
         lay = layout_de_encarte(chave, pac)
         for n_pag, pag in enumerate(lay.paginas, start=1):
             slots_prod = [s for s in

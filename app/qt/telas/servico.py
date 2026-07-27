@@ -708,7 +708,8 @@ def aplicar_override(dados, ov: dict):
 
 def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                        registro_selos: list | None = None,
-                       validade: str | None = None):
+                       validade: str | None = None,
+                       edicao: str | None = None):
     """A montagem OFICIAL item→DadosProduto — a MESMA para Mesa, export e
     Modo Pai (frota F12: o Modo Pai montava a peça 'à mão' e imprimia
     DIFERENTE do export — sem multi-preço, sem selo +18, sem validade)."""
@@ -754,6 +755,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                      if (validade or "").upper().startswith("OFERTA")
                      else f"Ofertas válidas {validade}"
                      if validade else None),
+        edicao=edicao,                       # F13-TER/D1: a edição viva
     )
 
 
@@ -801,7 +803,8 @@ def dados_de_projeto_aberto(aberto):
                 faltas.append(f"célula {sid}: o item do projeto sumiu")
                 continue
             d = dados_para_desenho(it, abrev or None, registro,
-                                   aberto.validade_oferta)
+                                   aberto.validade_oferta,
+                                   edicao=getattr(aberto, "edicao", None))
             ov = (aberto.overrides or {}).get(sid)
             dados[sid] = aplicar_override(d, ov) if ov else d
     for sid, d in dados.items():
@@ -1333,6 +1336,125 @@ def sugerir_validade(evento: str | None, hoje=None) -> str | None:
     return f"SOMENTE {data.strftime('%d/%m')}"
 
 
+# --- F13-TER/D1: a EDIÇÃO do Jornal é REAL ("Nº 177 · ANO 42" mudava todo
+# mês e estava cravada na arte) --------------------------------------------------
+
+
+def sugerir_edicao(evento: str | None, hoje=None) -> str | None:
+    """A edição sugerida a partir da BASE registrada (o nº/ano de uma
+    edição conhecida do evento): o NÚMERO incrementa por mês corrido
+    desde a base e o ANO (de circulação do jornal) vira junto com o ano
+    civil. Sem base registrada, sem palpite (None) — a região EDICAO
+    fica muda e o pré-voo avisa; um número inventado seria rótulo
+    mentindo (§4 da ordem TER)."""
+    from datetime import date
+    if not evento:
+        return None
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                mapa = ConfigRepositorio(s).get("eventos.edicao_base") or {}
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return None
+    base = next((v for k, v in mapa.items()
+                 if k.strip().lower() == evento.strip().lower()), None)
+    if not isinstance(base, dict):
+        return None
+    try:
+        numero, ano = int(base["numero"]), int(base["ano"])
+        ano_civil, mes = (int(x) for x in str(base["quando"]).split("-")[:2])
+    except (KeyError, TypeError, ValueError):
+        return None
+    d = hoje or date.today()
+    meses = (d.year - ano_civil) * 12 + (d.month - mes)
+    if meses < 0:
+        return None                       # base do futuro: sem palpite
+    return f"Nº {numero + meses} · ANO {ano + (d.year - ano_civil)}"
+
+
+def registrar_edicao_publicada(evento: str | None, edicao: str | None,
+                               hoje=None) -> None:
+    """Grava a edição EXPORTADA do evento — o pré-voo compara contra ela
+    para avisar "esta edição já foi publicada" (nunca repetir o número
+    da edição anterior). Se a edição parsear ("Nº 178 · ANO 42"), também
+    REALIMENTA a base da sugestão: o dono digita uma vez e os meses
+    seguintes se sugerem sozinhos. Nunca levanta (registro é rede)."""
+    import re
+    from datetime import date
+    if not evento or not (edicao or "").strip():
+        return
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                repo = ConfigRepositorio(s)
+                mapa = repo.get("eventos.edicao_publicada") or {}
+                mapa[evento.strip().lower()] = edicao.strip()
+                repo.set("eventos.edicao_publicada", mapa)
+                m = re.search(r"N[º°o]?\s*(\d+).*?ANO\s*(\d+)",
+                              edicao, re.IGNORECASE)
+                if m:
+                    d = hoje or date.today()
+                    base = repo.get("eventos.edicao_base") or {}
+                    base[evento.strip().lower()] = {
+                        "numero": int(m.group(1)), "ano": int(m.group(2)),
+                        "quando": f"{d.year:04d}-{d.month:02d}"}
+                    repo.set("eventos.edicao_base", base)
+                s.commit()
+        finally:
+            db.engine.dispose()
+    except Exception:
+        pass
+
+
+def atualizar_fixos_pela_tabela(layout, itens) -> list[str]:
+    """F13-TER/N1: item FIXO com "preço da semana" atualiza quando o
+    produto APARECE na tabela importada — casamento por CHAVE NATURAL
+    (D12, nunca OCR forçado). Preço fixo nunca é tocado; ausente mantém
+    o que está. Devolve avisos NOMEADOS (I2) das atualizações feitas."""
+    from app.core.portabilidade import chave_natural
+    avisos: list[str] = []
+    por_chave = {chave_natural(it.nome, getattr(it, "marca", None)): it
+                 for it in itens}
+    for pagina in getattr(layout, "paginas", []) or []:
+        for slot in pagina.slots:
+            cf = getattr(slot, "conteudo_fixo", None)
+            if not (getattr(slot, "fixa", False) and cf
+                    and cf.get("preco_da_semana")):
+                continue
+            it = por_chave.get(
+                chave_natural(cf.get("nome"), cf.get("marca")))
+            if it is None or not (it.preco or "").strip():
+                continue                      # ausente: mantém o que está
+            if (cf.get("preco") or "").strip() != it.preco.strip():
+                cf["preco"] = it.preco.strip()
+                avisos.append(f"item fixo “{cf.get('nome')}”: preço da "
+                              f"semana atualizado para {cf['preco']}")
+    return avisos
+
+
+def _edicoes_publicadas() -> set[str]:
+    """As edições já exportadas (todas as campanhas) — para o aviso do
+    pré-voo. Nunca levanta (sem banco = sem aviso, não sem export)."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                mapa = ConfigRepositorio(s).get(
+                    "eventos.edicao_publicada") or {}
+        finally:
+            db.engine.dispose()
+        return {str(v).strip() for v in mapa.values() if str(v).strip()}
+    except Exception:
+        return set()
+
+
 # --- RG-43: assistente de preço (pesquisa §3 — charm pricing) ----------------------
 
 
@@ -1681,6 +1803,21 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                     msg = f"{rot}: papel “Fica a Dica” sem texto — gere a dica pela IA"
                 elif reg.papel_texto == PapelTexto.LEGAL and not fixo:
                     msg = f"{rot}: papel “Aviso legal” sem texto — escolha um preset"
+                elif reg.papel_texto == PapelTexto.EDICAO:
+                    # F13-TER/D1: a edição é REAL — sem dado avisa; igual
+                    # a uma JÁ EXPORTADA avisa ("nunca publicar com o
+                    # número da edição anterior"). Aviso, nunca veto.
+                    from app.rendering.compositor import (
+                        _campo_vivo_da_pagina,
+                    )
+                    ed = (_campo_vivo_da_pagina(dados_por_slot, "edicao")
+                          or "").strip()
+                    if not ed:
+                        msg = (f"{rot}: papel “Edição” sem número — defina "
+                               "a edição do jornal (Nº/Ano)")
+                    elif ed in _edicoes_publicadas():
+                        msg = (f"{rot}: a edição “{ed}” já foi publicada — "
+                               "incremente antes de exportar")
                 if msg and msg not in vistos:
                     vistos.add(msg)
                     avisos.append(msg)

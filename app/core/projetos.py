@@ -44,6 +44,9 @@ class ProjetoAberto:
     layout: LayoutDef               # o layout DA ÉPOCA (inline)
     itens: list[dict] = field(default_factory=list)   # ItemMesa.to_dict()
     validade_oferta: str | None = None
+    # F13-TER/D1: a edição do Jornal ("Nº 178 · ANO 42") — real, muda
+    # por mês; autopreenchida por sugerir_edicao na recorrência
+    edicao: str | None = None
     criado_em: str = ""
     mapa: dict = field(default_factory=dict)          # slot_id → item.uid (I1)
     overrides: dict = field(default_factory=dict)     # F7.3: slot_id → {campo: v}
@@ -167,6 +170,7 @@ def salvar_projeto(
     itens: list[dict],
     validade_oferta: str | None = None,
     *,
+    edicao: str | None = None,
     nome_layout: str = "Layout do projeto",
     projeto_id: int | None = None,
     mapa: dict | None = None,
@@ -287,6 +291,7 @@ def salvar_projeto(
                 "layout": lay.to_dict(),
                 "itens": itens_frios,
                 "validade_oferta": validade_oferta,
+                "edicao": edicao,                    # F13-TER/D1
                 "mapa": dict(mapa or {}),
             })
             import hashlib
@@ -508,15 +513,21 @@ def duplicar_semana_passada(nome_evento: str) -> int | None:
     novo = duplicar_projeto(ultimo["id"], nome)
     if novo is None:
         return None
-    # validade re-sugerida pela campanha (ou limpa, se não há dia fixo)
-    from app.qt.telas.servico import sugerir_validade
+    # validade re-sugerida pela campanha (ou limpa, se não há dia fixo);
+    # F13-TER/D1: a EDIÇÃO idem — o clone do mês novo já nasce com o
+    # número incrementado (nunca herda o Nº da edição anterior)
+    from app.qt.telas.servico import sugerir_edicao, sugerir_validade
     sugestao = sugerir_validade(nome_evento)
+    ed_nova = sugerir_edicao(nome_evento)
     db = Database().init()
     try:
         with db.Session() as s:
             row = s.get(ProjetoSalvo, novo)
             dados = row.get_slots()
             dados["validade_oferta"] = sugestao
+            # sem sugestão a edição herdada é LIMPA (None): melhor o
+            # pré-voo avisar "sem número" do que repetir o Nº antigo calado
+            dados["edicao"] = ed_nova
             row.set_slots(dados)
             s.commit()
     finally:
@@ -736,6 +747,7 @@ def abrir_projeto(projeto_id: int) -> ProjetoAberto | None:
                 layout=layout,
                 itens=itens,
                 validade_oferta=dados.get("validade_oferta"),
+                edicao=dados.get("edicao"),          # F13-TER/D1
                 criado_em=row.criado_em.strftime("%d/%m/%Y %H:%M")
                 if row.criado_em else "",
                 mapa=dados.get("mapa", {}),

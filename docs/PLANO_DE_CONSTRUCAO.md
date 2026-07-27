@@ -681,5 +681,41 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   galeria em `saida_f13/galeria_f13_bis/` + `LEITURA_DO_LACO.md` (a
   frase honesta por página). 3 correções factuais contra a ordem BIS
   declaradas (Sexta foto-à-esquerda; Sábado texto dourado sem fita;
-  Peixe TEXTO legítimo). **PARADO: a galeria aguarda o OLHO do
-  Otaviano — o selo é dele.**
+  Peixe TEXTO legítimo).
+  —— **3ª RODADA (dono reprovou de novo, 26/07): `docs/ORDEM_F13_TER_
+  ENCARTES_ENCORPADOS.md` EXECUTADA (27/07).** V1 (Ajuste.ASSENTAR — o
+  quadrado 1000×1000 do acervo morre na composição: crop pela bbox do
+  alfa + âncora no rodapé; CONTER byte-idêntico); V2 (TipoRegiao.ADORNO
+  — a foto POR BAIXO da cesta/toldo/banda); V3 (+1 degrau); V4 (+18
+  vetorial novo por asset, selos relativos ≥24% da célula); V5 (a
+  `_justa.webp` no pipeline); S1 (Senepol por RADICAL, teste
+  permanente). **QUINTOU no pacote (o 8º, FRENTE+VERSO)** — geometria
+  por DIFF Fundo×Real (grade 4×4 270×258; painel 588,18,468,226;
+  validade 90°; verso: 16 posições + disclaimer no topo),
+  `FormaPreco.ETIQUETA_LISTRADA`, peso no nome (SUBTITULO suprime a
+  unidade automática — quem tem descritor nunca duplica), par
+  app|PUBLICADO na galeria + 2 opções do painel renderizadas. **D1**:
+  a edição do Jornal é REAL — `PapelTexto.EDICAO` condicional (rótulo
+  cravado morreu), campo do projeto, `sugerir_edicao` (mês corrido +
+  virada de ano), `registrar_edicao_publicada` no export realimenta a
+  base, recorrência clona com o Nº novo, pré-voo avisa vazia/repetida.
+  **D2**: TODAS as etiquetas condicionais nascem vazias (vazia não
+  desenha nem a forma; varredura permanente). **D3**: 3 opções do
+  período renderizadas (decisão do dono). **N1**: `Slot.conteudo_fixo`
+  (produto+foto escolhida+preço fixo OU da semana, congela com o
+  template; compositor = ponto único em toda porta;
+  `atualizar_fixos_pela_tabela` por chave natural na conciliação;
+  diálogo com prévia na célula real; foto de fora INTERNA em `_fixos/`
+  I3). **N2**: Jornal por SEÇÕES em fluxo — `app/rendering/
+  fluxo_jornal.py` (degraus TABELADOS: colunas/altura 202→178→156/
+  transbordo com aviso; última linha CENTRALIZA; seção de 1 item
+  INLINE compartilhando a linha), `TipoRegiao.FILETE` (fio do
+  cabeçalho versalete; lei do tipo novo cumprida), arte regenerada com
+  réguas de coluna CONTÍNUAS, `layout_de_encarte(..., secoes=…)`
+  compat total; demo real 26 itens/6 seções na galeria. **N3**: Fica a
+  Dica = UM bloco editorial na p2 (caixa 366×114, corpo 3 linhas); a
+  tarja da capa MORREU (2 guardiões antigos flipados com rastro).
+  Suíte 982×2 zero skips exit-0 + invertida + janela (junit
+  `bloco_fter_*` em `saida_f13/`). Resposta do builder no fim da ordem
+  TER com as 4 PERGUNTAS ao dono (painel A×B, período 1/2/3, seções,
+  dica fora da capa). **PARADO: galeria aguarda o OLHO do Otaviano.**

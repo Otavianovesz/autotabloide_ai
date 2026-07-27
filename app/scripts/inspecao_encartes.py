@@ -34,13 +34,100 @@ def _foto(rel: str) -> str | None:
 # célula → (nome, descritor, preço "por", foto do acervo, extra)
 # Produtos REAIS do banco/biblioteca do dono, escalados para o dia.
 DADOS: dict[str, dict] = {
+    "quintou": {
+        # o PADRÃO-OURO: os 15 produtos do "Quintou Frente Real.png"
+        # PUBLICADO, com os preços da campanha real (16/07) e as fotos
+        # do acervo — a régua é lado a lado com o próprio publicado
+        "validade": "Até 16/07",
+        "validade_p2": "*Imagens meramente ilustrativas · Ofertas "
+                       "válidas até dia 16/07 ou enquanto durarem os "
+                       "nossos estoques",
+        "preview": ["Quintou/Quintou Frente Real.png",
+                    "Quintou/Quintou Verso Real.png"],
+        "dica": "Fica a dica: o Quintou muda toda quinta — chegou "
+                "cedo, levou o melhor preço da semana.",
+        "itens": {
+            "pos-01": ("Doce de Leite Frimesa", "original · 400 g",
+                       "13,90", _foto("1/atual.png")),
+            "pos-02": ("Goma Dori Minhocas", "frutas ácidas · 100 g",
+                       "4,90", _foto("14/atual.png")),
+            "pos-03": ("Fígado Bovino BBX", "100 g", "0,99",
+                       _foto("4/atual.png")),
+            "pos-04": ("Coração e Língua Bov.", "BBX · 100 g", "0,77",
+                       _foto("7/atual.png")),
+            "pos-05": ("Geleia Ritter", "cebola caram. · 290 g",
+                       "19,90", _foto("17/atual.png")),
+            "pos-06": ("Snacks La Violetera", "40 g", "4,91",
+                       _foto("20/atual.png")),
+            "pos-07": ("Bife à Milanesa BBX", "100 g", "4,90",
+                       _foto("13/atual.png")),
+            "pos-08": ("Extrato Tomate Só Fruta", "300 g", "4,44",
+                       _foto("22/atual.png")),
+            "pos-09": ("Ração Kit e Kat", "carne ao molho · 70 g",
+                       "1,91", _foto("8/atual.png")),
+            "pos-10": ("Tortilhas Queijo Nacho", "Bebela · 84 g",
+                       "5,90", _foto("9/atual.png")),
+            "pos-11": ("Choc. M&M's", "amendoim · 40 g", "4,94",
+                       _foto("23/atual.png")),
+            "pos-12": ("Amido Milho Quero", "200 g", "1,91",
+                       _foto("10/atual.png")),
+            "pos-14": ("Marrom Glacê Val", "250 g", "6,66",
+                       _foto("6/atual.png")),
+            "pos-15": ("Rosquinha Mabel Choc.", "300 g", "6,61",
+                       _foto("11/atual.png")),
+            "pos-16": ("Creme Dental Oral-B", "Detox · 102 g", "19,90",
+                       _foto("25/atual.png")),
+            # a logo no painel (célula FIXA com foto escolhida — N1)
+            "painel-logo": ("", None, None, str(
+                RAIZ_REPO / "Templates novos" / "brand"
+                / "logo_semfundo.png")),
+            # ---- VERSO (§9.4: frente + verso) — os produtos do
+            # "Quintou Verso Real.png"; 8 saem EXATOS do publicado e 8
+            # são os REAIS MAIS PRÓXIMOS do acervo (buracos declarados:
+            # sem foto de Pastilhas Dori, Frango Marombi, Sandella,
+            # Paçoca Rolha, Pesto Mastroiani, Linguiça Perdigão,
+            # Italac, Agnesi — nunca inventados)
+            "vpos-01": ("Pé de Moleque Pinduca", "150 g", "8,88",
+                        _foto("26/atual.png")),
+            "vpos-02": ("Coxa Sobrecoxa", "frango · 100 g", "0,77",
+                        _foto("21/atual.png")),
+            "vpos-03": ("Granola Happy Life", "banana e canela · 250 g",
+                        "9,90", _foto("24/atual.png")),
+            "vpos-04": ("Goma Dori Minhocas", "frutas ácidas · 100 g",
+                        "4,90", _foto("14/atual.png")),
+            "vpos-05": ("Doce de Banana Val", "250 g", "6,66",
+                        _foto("6/atual.png")),
+            "vpos-06": ("Bife à Milanesa BBX", "bovino · 100 g", "4,90",
+                        _foto("13/atual.png")),
+            "vpos-07": ("Macarrão Nissin", "canja de galinha · 70 g",
+                        "2,66", _foto("19/atual.png")),
+            "vpos-08": ("Kit Natu Hair", "shampoo + cond. · 300 mL",
+                        "19,90", _foto("31/atual.png")),
+            "vpos-09": ("Salgadinho Ruppers", "galinha · 50 g", "1,90",
+                        _foto("2/atual.png")),
+            "vpos-10": ("Geleia Ritter", "alho caramelizado · 290 g",
+                        "18,81", _foto("17/atual.png")),
+            "vpos-11": ("Queijo Mussarela", "Lactopar · quilo", "55,05",
+                        _foto("_auto/queijo_mussarela_latopar_1kg.png")),
+            "vpos-12": ("Leite Parmalat", "integral · 1 L", "5,95",
+                        _foto("_auto/leite_parmalat_integral_1l.png")),
+            "vpos-13": ("Sab. Líquido Dove", "antibact. · 250 mL",
+                        "11,91", _foto("33/atual.png")),
+            "vpos-14": ("Café Brasileiro", "extra forte · 500 g",
+                        "23,99", _foto("12/atual.png")),
+            "vpos-15": ("Batata Palha Bulnez", "crocante · 100 g",
+                        "6,66", _foto("_auto/batata_palha_bulnez_100g.png")),
+            "vpos-16": ("Coco Ralado Menina", "100 g", "2,92",
+                        _foto("5/atual.png")),
+        },
+    },
     "segunda-frios": {
         "validade": "27/07",
         "itens": {
             # a FIXA com o conteúdo fixo do modelo; não há foto de
             # hambúrguer no acervo — vai a mussarela (declarado: o dono
             # cadastra a foto real do kit)
-            "celula-1": ("Senepal BBX", "blend senepol · 4 un × 120 g",
+            "celula-1": ("Senepol BBX", "blend senepol · 4 un × 120 g",
                          "24,90",
                          _foto("_auto/queijo_mussarela_latopar_1kg.png")),
             "celula-2": ("Queijo Mussarela Latopar", "Lactopar · quilo",
@@ -89,6 +176,7 @@ DADOS: dict[str, dict] = {
     "sabado-da-carne": {
         "validade": "01/08",
         "mais18": ["celula-9", "celula-10"],   # a lei: +18 SEMPRE em álcool
+        "etiquetas": {"celula-1": "CORTE DA SEMANA"},
         "itens": {
             # o açougue REAL do banco do dono (BBX = a marca da casa)
             "celula-1": ("Bife à Milanesa BBX", "bovino · 100 g",
@@ -114,6 +202,9 @@ DADOS: dict[str, dict] = {
         },
     },
     "jornal-do-mes": {
+        # D1: a edição REAL de agosto/2026 (a base do pacote era
+        # Nº 177 · ANO 42 em julho — incrementa por mês)
+        "edicao": "Nº 178 · ANO 42",
         "validade": "OFERTAS VÁLIDAS DE 01/08 A 27/08/2026 OU ENQUANTO "
                     "DURAREM OS ESTOQUES · IMAGENS MERAMENTE "
                     "ILUSTRATIVAS · (66) 9969-4009 / (66) 3419-1405",
@@ -124,6 +215,10 @@ DADOS: dict[str, dict] = {
         "dica_p2": "Fica a dica: compare o preço por quilo — a página "
                    "2 concentra as embalagens econômicas do mês.",
         "mais18": ["jp2-l8"],
+        # D2: o splash da capa é etiqueta OPCIONAL — aqui o dono
+        # escolheria "SUPER OFERTA" para o hero do mês (verdade: é a
+        # manchete do pacotão)
+        "etiquetas": {"jp1-hero": "SUPER OFERTA"},
         "itens": {
             # o HERO do modelo EXISTE no acervo: o pacotão de arroz
             "jp1-hero": ("Arroz Somar & Caibi",
@@ -221,8 +316,11 @@ DADOS: dict[str, dict] = {
     "quinta-do-peixe": {
         # não há PESCADO no acervo do dono — a página de inspeção sai
         # com as proteínas/congelados REAIS do banco (declarado); os
-        # rótulos de destaque são texto_fixo do layout (o dono edita)
+        # rótulos de destaque são etiquetas OPCIONAIS (D2) — aqui vão
+        # as que são VERDADE para os produtos reais
         "validade": "30/07",
+        "etiquetas": {"celula-1": "DESTAQUE DO DIA",
+                      "celula-4": "CORTE NOBRE"},
         "itens": {
             "celula-1": ("Frango Marombi", "congelado · 100 g",
                          "0,99", _foto("35/atual.png")),
@@ -246,6 +344,8 @@ DADOS: dict[str, dict] = {
         # dono cadastrar o hortifrúti da semana, as células recebem os
         # frescos (declarado na frase da página)
         "validade": "31/07",
+        "etiquetas": {"celula-banca-1": "DESTAQUE DA SEMANA",
+                      "celula-banca-2": "SELEÇÃO DA CASA"},
         "itens": {
             "celula-banca-1": ("Granola Happy Life",
                                "banana e canela · 250 g", "6,66",
@@ -293,6 +393,12 @@ DADOS: dict[str, dict] = {
 }
 
 
+def _r_px(x, y, w, h):
+    from app.rendering.encartes import DPI_VIEWBOX
+    from app.rendering.model import Retangulo
+    return Retangulo.de_px(x, y, w, h, DPI_VIEWBOX)
+
+
 def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
     from PIL import Image
 
@@ -328,17 +434,21 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
             nome, descr, preco, foto = item[:4]
             preco_de = item[4] if len(item) > 4 else None
             dados[sid] = DadosProduto(
-                nome, descritor=descr,
+                nome, descritor=descr, unidade=descr,
                 preco_por=preco_decimal(preco) if preco else None,
                 preco_de=preco_decimal(preco_de) if preco_de else None,
                 imagem_path=foto,
-                mais18=sid in spec.get("mais18", ()))
+                mais18=sid in spec.get("mais18", ()),
+                # D1: a edição VIVA (Nº/ANO) — canal de página; o layout
+                # não tem mais o "Nº 177" cravado
+                edicao=spec.get("edicao"))
         validade = spec["validade"]
         if n_pag == 2 and spec.get("validade_p2"):
             validade = spec["validade_p2"]
         dica = spec.get("dica_p2") if (n_pag == 2 and
                                        spec.get("dica_p2")) \
             else spec.get("dica")
+        etiquetas = spec.get("etiquetas", {})
         for s in pag.slots:                 # validade da SEMANA + dica
             for r in s.regioes:
                 if r.tipo != TipoRegiao.TEXTO_LEGAL:
@@ -347,24 +457,134 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
                     r.texto_fixo = validade
                 elif r.papel_texto == PapelTexto.DICA and dica:
                     r.texto_fixo = dica
+                elif r.nome in ("Etiqueta", "Splash") and s.id in etiquetas:
+                    # D2: a etiqueta é OPCIONAL e do dono — a inspeção
+                    # põe a que é VERDADE para o produto da célula
+                    r.texto_fixo = etiquetas[s.id]
 
         app_full = compor_pagina(lay, pag, dados)
-        app_1x = app_full.resize((1080, 1440), Image.LANCZOS)
-        nome_prev = Path(pag.arquivo_fundo).name \
-            .replace("-BASE-2160x2880.png", "-PREVIEW.png") \
-            .replace("-BASE.png", "-PREVIEW.png")
-        preview = Image.open(Path(pag.arquivo_fundo).parent / nome_prev)
-        lado = Image.new("RGB", (1080 * 2 + 8, 1440), "#666666")
+        alt_1x = round(1080 * lay.altura_mm / lay.largura_mm)
+        app_1x = app_full.resize((1080, alt_1x), Image.LANCZOS)
+        if spec.get("preview"):
+            prev = spec["preview"]
+            if isinstance(prev, (list, tuple)):     # um por página (§9.4)
+                prev = prev[n_pag - 1]
+            preview = Image.open(pasta_pacote / prev)
+        else:
+            nome_prev = Path(pag.arquivo_fundo).name \
+                .replace("-BASE-2160x2880.png", "-PREVIEW.png") \
+                .replace("-BASE.png", "-PREVIEW.png")
+            preview = Image.open(Path(pag.arquivo_fundo).parent
+                                 / nome_prev)
+        lado = Image.new("RGB", (1080 * 2 + 8, alt_1x), "#666666")
         lado.paste(app_1x.convert("RGB"), (0, 0))
-        lado.paste(preview.convert("RGB"), (1088, 0))
+        lado.paste(preview.convert("RGB").resize((1080, alt_1x)),
+                   (1088, 0))
         GALERIA.mkdir(parents=True, exist_ok=True)
         sufixo = f"-p{n_pag}" if len(lay.paginas) > 1 else ""
         destino = GALERIA / f"{chave}{sufixo}.png"
         lado.save(destino)
         saidas.append(destino)
+        # as DUAS opções do painel do Quintou (decisão do dono): a
+        # variante A tira a logo e dá o painel inteiro ao Fica a Dica
+        # (o painel é da FRENTE — o verso não o tem)
+        if chave == "quintou" and n_pag == 1:
+            for s in pag.slots:
+                if s.id == "painel-logo":
+                    s.regioes[0].visivel = False
+                if s.id == "painel-dica":
+                    s.regioes[0].rect = _r_px(604, 34, 448, 30)
+                    s.regioes[1].rect = _r_px(604, 68, 448, 158)
+            opcao_a = compor_pagina(lay, pag, dados) \
+                .resize((1080, alt_1x), Image.LANCZOS)
+            par = Image.new("RGB", (1080 * 2 + 8, alt_1x), "#666666")
+            par.paste(app_1x.convert("RGB"), (0, 0))
+            par.paste(opcao_a.convert("RGB"), (1088, 0))
+            par.save(GALERIA / "quintou-opcoes-painel.png")
+            print("[quintou] opções do painel: B (logo+dica, esq) × "
+                  "A (só a dica, dir) → quintou-opcoes-painel.png")
         ocup = len(ocupaveis(pag.slots))
         print(f"[{chave}{sufixo}] {len(dados)} itens em {ocup} células "
               f"livres (+fixas) → {destino.name}")
+    return saidas
+
+
+# F13-TER/N2: o MESMO Jornal com o miolo em FLUXO por seções — os
+# produtos REAIS da spec agrupados pela verdade de cada um. A ordem
+# exercita as três leis do fluxo: o degrau de altura (não cabe tudo no
+# 1º), a continuação de seção entre páginas e a seção de 1 item (Pet)
+# com cabeçalho INLINE compartilhando a linha da seguinte.
+SECOES_JORNAL = [
+    ("Mercearia", ["jp1-l3", "jp1-l7", "jp1-l8", "jp1-l11", "jp2-l16",
+                   "jp2-l19", "jp2-l14", "jp2-l5"]),
+    ("Guloseimas & Biscoitos", ["jp1-l1", "jp1-l4", "jp1-l5", "jp1-l13",
+                                "jp2-l1", "jp2-l10", "jp2-l17"]),
+    ("Frios & Laticínios", ["jp2-l6", "jp2-l7", "jp2-l9", "jp2-l22"]),
+    ("Pet", ["jp1-l14"]),
+    ("Higiene & Perfumaria", ["jp2-l2", "jp2-l3", "jp2-l21", "jp1-l15"]),
+    ("Bebidas", ["jp2-l4", "jp2-l8"]),
+]
+
+
+def _compor_jornal_secoes(pasta_pacote: Path) -> list[Path]:
+    from PIL import Image
+
+    from app.qt.telas.servico import preco_decimal
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.encartes import layout_de_encarte
+    from app.rendering.model import PapelTexto, TipoRegiao
+
+    spec = DADOS["jornal-do-mes"]
+    lay = layout_de_encarte(
+        "jornal-do-mes", pasta_pacote,
+        secoes=[(t, len(ids)) for t, ids in SECOES_JORNAL])
+    for a in lay.avisos_fluxo:
+        print(f"[jornal-secoes] aviso do fluxo: {a}")
+
+    dados = {}
+    for sid in ("jp1-hero", "jp1-ch1", "jp1-ch2", "jp1-ch3", "jp1-ch4"):
+        nome, descr, preco, foto = spec["itens"][sid][:4]
+        dados[sid] = DadosProduto(
+            nome, descritor=descr, unidade=descr,
+            preco_por=preco_decimal(preco) if preco else None,
+            imagem_path=foto, edicao=spec.get("edicao"))
+    n = 0
+    for _titulo, ids in SECOES_JORNAL:
+        for src in ids:
+            n += 1
+            nome, descr, preco, foto = spec["itens"][src][:4]
+            dados[f"jf-{n:02d}"] = DadosProduto(
+                nome, descritor=descr, unidade=descr,
+                preco_por=preco_decimal(preco) if preco else None,
+                imagem_path=foto, mais18=src in spec.get("mais18", ()),
+                edicao=spec.get("edicao"))
+
+    saidas = []
+    for n_pag, pag in enumerate(lay.paginas, start=1):
+        validade = spec["validade"]
+        if n_pag == 2 and spec.get("validade_p2"):
+            validade = spec["validade_p2"]
+        dica = spec.get("dica_p2") if (n_pag == 2 and
+                                       spec.get("dica_p2")) \
+            else spec.get("dica")
+        etiquetas = spec.get("etiquetas", {})
+        for s in pag.slots:
+            for r in s.regioes:
+                if r.tipo != TipoRegiao.TEXTO_LEGAL:
+                    continue
+                if r.papel_texto == PapelTexto.VALIDADE:
+                    r.texto_fixo = validade
+                elif r.papel_texto == PapelTexto.DICA and dica:
+                    r.texto_fixo = dica
+                elif r.nome in ("Etiqueta", "Splash") and s.id in etiquetas:
+                    r.texto_fixo = etiquetas[s.id]
+        img = compor_pagina(lay, pag, dados)
+        alt_1x = round(1080 * lay.altura_mm / lay.largura_mm)
+        destino = GALERIA / f"jornal-secoes-p{n_pag}.png"
+        GALERIA.mkdir(parents=True, exist_ok=True)
+        img.resize((1080, alt_1x), Image.LANCZOS).save(destino)
+        saidas.append(destino)
+        print(f"[jornal-secoes-p{n_pag}] → {destino.name}")
     return saidas
 
 
@@ -375,4 +595,7 @@ if __name__ == "__main__":
     pacote = Path(sys.argv[1])
     chaves = sys.argv[2:] or list(DADOS)
     for c in chaves:
-        _compor(c, pacote)
+        if c == "jornal-secoes":
+            _compor_jornal_secoes(pacote)
+        else:
+            _compor(c, pacote)

@@ -169,8 +169,15 @@ def processar_imagem(
         sem_fundo = Image.open(imagem).convert("RGBA")
     else:
         sem_fundo = remover_fundo(imagem, modelo)
-    normalizado = normalizar(recortar_conteudo(sem_fundo), lado, padding_frac)
+    justo = recortar_conteudo(sem_fundo)
+    normalizado = normalizar(justo, lado, padding_frac)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     normalizado.save(destino, "PNG")
+    # F13-TER/V1: a versão JUSTA (a bbox do item, alfa preservado) vive
+    # AO LADO da normalizada — o quadrado é bom para a grade de
+    # miniaturas, mas a composição precisa do item no tamanho do item.
+    # Curadoria não-destrutiva (trava da F10): nada é apagado.
+    justo.save(destino.with_name(destino.stem + "_justa.webp"),
+               "WEBP", lossless=True)
     return destino

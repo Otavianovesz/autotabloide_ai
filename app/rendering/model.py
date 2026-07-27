@@ -34,6 +34,16 @@ class TipoRegiao(str, Enum):
     # app tinha uma. NÃO é conteúdo ocupável (lei do tipo novo: um slot
     # só com subtítulo não engole produto — grade.TIPOS_CONTEUDO).
     SUBTITULO = "SUBTITULO"
+    # F13-TER/V2: recola o recorte do FUNDO ORIGINAL por cima do que já
+    # foi desenhado — é o que põe a foto POR BAIXO da cesta/toldo/banda
+    # da arte ("deixar ela preencher todo o vazio"). Decoração pura:
+    # fora do ocupável e do pré-voo (lei do tipo novo).
+    ADORNO = "ADORNO"
+    # F13-TER/N2: o FIO tipográfico — retângulo chapado na ``cor`` da
+    # região (o cabeçalho de seção do Jornal é fio + versalete, e o
+    # fluxo põe o fio onde a linha CAIU, não onde a arte cravou).
+    # Decoração pura: fora do ocupável e do pré-voo (lei do tipo novo).
+    FILETE = "FILETE"
 
 
 class FormaPreco(str, Enum):
@@ -57,6 +67,10 @@ class FormaPreco(str, Enum):
     # (extensão declarada ao T1: o scout provou que o Jornal usa uma 8ª
     # forma — o carimbo de borda perfurada — que a lista da ordem não tinha)
     CARIMBO = "CARIMBO"                    # Jornal (borda tracejada, sem fundo)
+    # F13-TER: a 9ª forma — o QUINTOU entrou no pacote (o publicado
+    # real usa etiqueta vermelha com LISTRAS diagonais; ref. nas artes
+    # de preço 4500×5418 do próprio dono)
+    ETIQUETA_LISTRADA = "ETIQUETA_LISTRADA"
 
 
 class SubtipoPreco(str, Enum):
@@ -87,6 +101,10 @@ class PapelTexto(str, Enum):
                                # — puxa `dados.observacao`; condicional (vazia não desenha)
     DESCONTO = "DESCONTO"  # R-109 (Fase 11): "-XX%" CALCULADO de (de−por)/de;
                            # condicional — some se não houver "de" (nunca digitado)
+    EDICAO = "EDICAO"      # F13-TER/D1: "Nº X · ANO Y" do Jornal — puxa a
+                           # edição VIVA do projeto; condicional (sem dado não
+                           # desenha — rótulo que não é sempre verdade não
+                           # pode estar na estrutura)
 
 
 class Alinhamento(str, Enum):
@@ -111,6 +129,13 @@ class AlinhamentoV(str, Enum):
 class Ajuste(str, Enum):
     CONTER = "CONTER"       # aspect-fit (cabe inteira dentro do retângulo)
     PREENCHER = "PREENCHER"  # cobre o retângulo (pode cortar)
+    # F13-TER/V1: a causa-raiz do "pequeneninhas" — o acervo guarda um
+    # QUADRADO 1000×1000 com o item pequeno dentro, e o CONTER ajusta o
+    # quadrado. ASSENTAR recorta pela bbox do ALFA na composição (o
+    # quadrado morre sem reprocessar o acervo), escala pelo maior fator
+    # que caiba e ancora o produto no RODAPÉ da zona (assenta, não
+    # flutua). É o ajuste dos encartes.
+    ASSENTAR = "ASSENTAR"
 
 
 class Mascara(str, Enum):
@@ -359,6 +384,14 @@ class Slot:
     # Segunda 1, Quarta 3) — fica fora do auto-preencher e não conta
     # como vaga (grade.ocupaveis é o ponto único da regra).
     fixa: bool = False
+    # F13-TER/N1: o CONTEÚDO do item fixo, guardado COM o template —
+    # produto + foto ESCOLHIDA pelo dono + preço fixo OU da semana:
+    # {"nome", "descritor", "preco", "preco_da_semana", "imagem",
+    #  "marca"}; imagem relativa resolve contra biblioteca_imagens
+    # (I3). O compositor desenha em TODA porta; a tabela da semana só
+    # atualiza o preço quando preco_da_semana=True (chave natural,
+    # D12) — nunca depende de OCR.
+    conteudo_fixo: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -368,6 +401,8 @@ class Slot:
             "origem_mm": list(self.origem_mm) if self.origem_mm else None,
             "ref_grupo": self.ref_grupo,
             "fixa": self.fixa,
+            "conteudo_fixo": (dict(self.conteudo_fixo)
+                              if self.conteudo_fixo else None),
         }
 
     @classmethod
@@ -380,6 +415,7 @@ class Slot:
             origem_mm=tuple(origem) if origem else None,
             ref_grupo=d.get("ref_grupo"),
             fixa=d.get("fixa", False),      # layout antigo: nunca fixa
+            conteudo_fixo=d.get("conteudo_fixo") or None,   # N1 aditivo
         )
 
 

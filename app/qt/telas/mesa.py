@@ -50,6 +50,8 @@ class MesaTela(QWidget):
         # o mapa slot→uid mora no CANVAS (D5: undo versiona {layout, mapa});
         # aqui, `_mapa` é um proxy — ver a property abaixo
         self._validade: str | None = None
+        # F13-TER/D1: a edição REAL do Jornal ("Nº 178 · ANO 42")
+        self._edicao: str | None = None
         self._registro_selos: list[dict] = []   # RG-33: cache por recomposição
         self._trabalhos = GerenciadorTrabalhos()
         self.ao_salvo = None           # callable(bool) → indicador do rodapé
@@ -164,6 +166,15 @@ class MesaTela(QWidget):
         self._validade_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self._validade_lbl.mousePressEvent = \
             lambda _ev: self._editar_validade_oferta()
+        # F13-TER/D1: o Nº/ANO do Jornal — vazio quando o layout não usa
+        self._edicao_lbl = QLabel("")
+        self._edicao_lbl.setProperty("papel", "legenda")
+        self._edicao_lbl.setToolTip(
+            "Clique para editar a EDIÇÃO do jornal (Nº/Ano) — muda a cada "
+            "mês; o pré-voo avisa se repetir a anterior")
+        self._edicao_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._edicao_lbl.mousePressEvent = \
+            lambda _ev: self._editar_edicao()
         # RG-53: barra por GRUPOS na ordem do fluxo, com separador visível —
         # o dono acha o botão pela função. Desfazer/refazer abrem; depois
         # Importar · Montar · Salvar/Exportar · Navegar páginas.
@@ -225,6 +236,7 @@ class MesaTela(QWidget):
             "vermelho >90%")
         hb.addWidget(self._densidade_lbl)
         hb.addWidget(self._validade_lbl)
+        hb.addWidget(self._edicao_lbl)               # F13-TER/D1
         self._barra_mesa = barra
         self._barra_layout = hb
         # RG-53 (o conserto do "botões se comendo"): a barra PODE encolher
@@ -426,6 +438,27 @@ class MesaTela(QWidget):
         self._validade = servico.montar_validade_oferta(de, ate)
         self._validade_lbl.setText(
             f"Validade: {self._validade}" if self._validade else "")
+        self._marcar_salvo(False)
+        if self._mapa:
+            self.area.canvas.atualizar_dados(self._dados_por_slot())
+            self.area.canvas.viewport().update()
+
+    # --- edição do Jornal (F13-TER/D1) ----------------------------------------------
+
+    def _editar_edicao(self) -> None:
+        """O Nº/ANO REAL do Jornal ("Nº 178 · ANO 42") — muda por mês;
+        vazio deixa a região EDICAO muda (o pré-voo avisa)."""
+        from PySide6.QtWidgets import QInputDialog
+
+        texto, ok = QInputDialog.getText(
+            self, "Edição do jornal",
+            "Edição (ex.: Nº 178 · ANO 42 — vazio para nenhuma):",
+            text=self._edicao or "")
+        if not ok:
+            return
+        self._edicao = texto.strip() or None
+        self._edicao_lbl.setText(
+            f"Edição: {self._edicao}" if self._edicao else "")
         self._marcar_salvo(False)
         if self._mapa:
             self.area.canvas.atualizar_dados(self._dados_por_slot())
@@ -867,6 +900,14 @@ class MesaTela(QWidget):
                 self._validade_lbl.setText(f"Validade: {sugestao}")
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia da "
                                     "campanha) — edite se precisar.")
+        # F13-TER/D1: a edição idem — sugerida da base registrada do evento
+        if not self._edicao:
+            ed = servico.sugerir_edicao(evento)
+            if ed:
+                self._edicao = ed
+                self._edicao_lbl.setText(f"Edição: {ed}")
+                mostrar_toast(self, f"Edição sugerida: “{ed}” — edite se "
+                                    "precisar.")
         lay = self.area.canvas._layout or self._layout
         from app.qt.telas.prevoo import confirmar_pre_voo
         avisos = (servico.validar_composicao(lay, self._dados_por_slot())
@@ -878,6 +919,7 @@ class MesaTela(QWidget):
             self._projeto_id = projetos.salvar_projeto(
                 nome, evento, "TABLOIDE", lay,
                 [it.to_dict() for it in self._itens], self._validade,
+                edicao=self._edicao,
                 nome_layout=self._layout_nome, mapa=self._mapa,
                 overrides=self._overrides)
         self._marcar_salvo(True)
@@ -950,6 +992,9 @@ class MesaTela(QWidget):
         self._validade = p.validade_oferta
         self._validade_lbl.setText(
             f"Validade: {self._validade}" if self._validade else "")
+        self._edicao = getattr(p, "edicao", None)    # F13-TER/D1
+        self._edicao_lbl.setText(
+            f"Edição: {self._edicao}" if self._edicao else "")
         # F13/D7 (P-03, a 2ª linha): o evento do projeto VOLTA com ele —
         # p.evento chegava aqui e era ignorado (meta/pulso/{evento} mortos)
         self._evento = getattr(p, "evento", None) or None
@@ -1141,6 +1186,13 @@ class MesaTela(QWidget):
         self._avisar_repeticao()          # R-059: "está no encarte há N semanas"
         self._avisar_foto_repetida()      # R-104: mesma foto em 2+ itens (hash)
         self._avisar_divergencia()        # R-123: mesmo item, preços diferentes
+        # F13-TER/N1: item FIXO com "preço da semana" bebe da tabela nova
+        # (chave natural, D12) — o fixo sobrevive à reimportação, só o
+        # preço acompanha; cada atualização vira toast NOMEADO (I2)
+        lay = self.area.canvas._layout or self._layout
+        if lay is not None:
+            for a in servico.atualizar_fixos_pela_tabela(lay, self._itens):
+                mostrar_toast(self, a, tipo="info")
 
     def _atualizar_precos(self, plano) -> None:
         """F13/D12: a prévia→confirma do 'Atualizar preços' (o molde da
@@ -1398,6 +1450,7 @@ class MesaTela(QWidget):
             "layout": lay.to_dict() if lay is not None else None,
             "itens": [it.to_dict() for it in self._itens],
             "validade": self._validade,
+            "edicao": self._edicao,                     # F13-TER/D1
             "evento": getattr(self, "_evento", None),   # F13/D7
             "mapa": dict(self._mapa),
             "overrides": dict(self._overrides),
@@ -1476,6 +1529,7 @@ class MesaTela(QWidget):
         self._itens = [servico.ItemMesa.from_dict(d)
                        for d in estado.get("itens", [])]
         self._validade = estado.get("validade")
+        self._edicao = estado.get("edicao") or None     # F13-TER/D1
         self._evento = estado.get("evento") or None     # F13/D7
         if estado.get("layout"):
             self._layout = LayoutDef.from_dict(estado["layout"])
@@ -1522,6 +1576,9 @@ class MesaTela(QWidget):
             # OS F11.5 #50/#51 (R-082): variações do mesmo produto
             ("lampada", "Sugerir variações para agrupar (sabores)…", "",
              self._sugerir_variacoes),
+            # F13-TER/N1: o conteúdo das células FIXAS é do TEMPLATE
+            ("caixa", "Itens fixos deste encarte…", "",
+             self._editar_itens_fixos),
         ]
         # OS F11.5 #57: navegar por página e abrir Configurações pela paleta
         canvas = self.area.canvas
@@ -1542,6 +1599,27 @@ class MesaTela(QWidget):
     def _abrir_paleta(self) -> None:
         from app.qt.design.paleta_comandos import PaletaComandos
         PaletaComandos(self.window(), self._acoes_da_mesa()).abrir()
+
+    # --- F13-TER/N1: itens fixos do encarte -----------------------------------
+
+    def _editar_itens_fixos(self) -> None:
+        """O conteúdo das células FIXAS (produto + foto escolhida +
+        preço fixo/da semana) — vive no template, sobrevive à
+        reimportação; salvar o projeto congela junto."""
+        from app.qt.telas.fixos_dialog import ItensFixosDialog, slots_fixos
+        lay = self.area.canvas._layout or self._layout
+        if lay is None or not slots_fixos(lay):
+            mostrar_toast(self, "Este layout não tem células fixas — "
+                                "marque uma pelo menu da célula no Ateliê.")
+            return
+        dlg = ItensFixosDialog(lay, self)
+        if dlg.exec() != ItensFixosDialog.DialogCode.Accepted:
+            return
+        self._marcar_salvo(False)         # o template mudou de verdade
+        self.area.canvas.atualizar_dados(self._dados_por_slot())
+        self.area.canvas.viewport().update()
+        mostrar_toast(self, "Itens fixos atualizados — salve o projeto "
+                            "para congelar no template.")
 
     # --- OS F11.5 #50/#51 (R-082): variações do mesmo produto -----------------
 
@@ -2464,7 +2542,8 @@ class MesaTela(QWidget):
         # e Modo Pai compõem pela MESMA função (antes o Modo Pai divergia)
         return servico.dados_para_desenho(it, abreviacoes,
                                           self._registro_selos,
-                                          self._validade)
+                                          self._validade,
+                                          edicao=self._edicao)
 
     def _dados_por_slot(self) -> dict[str, DadosProduto]:
         """Resolve o mapa slot→uid em slot→DadosProduto (o contrato do compositor).
@@ -2717,6 +2796,10 @@ class MesaTela(QWidget):
             from app.core.projetos import marcar_status, registrar_export
             marcar_status(self._projeto_id, "exportado")
             registrar_export(self._projeto_id, caminho)   # passo 94
+        # F13-TER/D1: a edição exportada fica REGISTRADA — o pré-voo da
+        # próxima passa a avisar se o Nº repetir ("já foi publicada")
+        servico.registrar_edicao_publicada(
+            getattr(self, "_evento", None), self._edicao)
 
     def _falhou(self, msg: str) -> None:
         self._overlay.esconder()

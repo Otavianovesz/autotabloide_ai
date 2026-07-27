@@ -82,6 +82,10 @@ class DadosProduto:
     # F8.2: categoria do item — as SEÇÕES visuais (contorno+título) derivam
     # dela; sem categoria o item agrupa em "Outros"
     categoria: str | None = None
+    # F13-TER/D1: a EDIÇÃO do Jornal ("Nº 178 · ANO 42") — campo do
+    # PROJETO que chega aqui pela montagem oficial (como a validade);
+    # desenhado nas regiões de papel EDICAO, condicional
+    edicao: str | None = None
 
 
 def percentual_desconto(preco_de: "Decimal | None",
@@ -139,6 +143,11 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
             dados.preco_de if dados is not None else None,
             dados.preco_por if dados is not None else None)
         return f"-{pct}%" if pct else ""
+    if papel == PapelTexto.EDICAO:
+        # F13-TER/D1: a edição VIVA do projeto ("Nº 178 · ANO 42");
+        # condicional — sem dado a região fica MUDA (nunca um número
+        # de edição mentindo; o pré-voo avisa que falta)
+        return (getattr(dados, "edicao", None) or "") if dados else ""
     return fixo or validade
 
 
@@ -269,6 +278,21 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
         if forma is None and not enquadrada:
             # 1 imagem, sem forma nem enquadramento: caminho da F2 —
             # byte-idêntico no CONTER (min nunca estoura a caixa)
+            if reg.ajuste == Ajuste.ASSENTAR:
+                # F13-TER/V1: mata o QUADRADO do acervo na composição
+                # (recorte pela bbox do alfa) e ASSENTA no rodapé
+                bbox = (img.getchannel("A").getbbox()
+                        if img.mode == "RGBA" else None)
+                if bbox:
+                    img = img.crop(bbox)
+                escala = min(rw / img.width, rh / img.height)
+                nw = max(1, round(img.width * escala))
+                nh = max(1, round(img.height * escala))
+                img = img.resize((nw, nh))
+                ox = x + (rw - nw) // 2
+                oy = y + rh - nh              # o produto assenta
+                base.paste(img, (ox, oy), img)
+                return
             if reg.ajuste == Ajuste.PREENCHER:
                 escala = max(rw / img.width, rh / img.height)
             else:
@@ -466,6 +490,30 @@ def _desenhar_forma_preco(base: Image.Image, reg: Regiao, dpi: int) -> None:
             a0 = k * 360 / 24
             d.arc((cx - ri, cy - ri, cx + ri, cy + ri),
                   start=a0, end=a0 + 7, fill=reg.cor, width=1)
+    elif reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA:
+        # a etiqueta do QUINTOU: vermelho com listras diagonais claras
+        # (ref.: "Quintou do Real Frente Preço.png" do acervo do dono)
+        r = max(3, round(h * 0.12))
+        d.rounded_rectangle(sombra, radius=r, fill=cor_sombra)
+        d.rounded_rectangle(caixa, radius=r, fill=reg.forma_cor)
+        listra = Image.new("RGBA", tile.size, (0, 0, 0, 0))
+        dl = ImageDraw.Draw(listra)
+        passo = max(12, h // 3)
+        for k in range(-(h + w) // passo, (h + w) // passo + 1):
+            x0l = m + k * passo
+            dl.line((x0l, m + h, x0l + h, m), fill=(255, 255, 255, 115),
+                    width=max(4, h // 9))
+        recorte = Image.new("L", tile.size, 0)
+        ImageDraw.Draw(recorte).rounded_rectangle(caixa, radius=r,
+                                                  fill=255)
+        listra.putalpha(Image.composite(
+            listra.getchannel("A"), Image.new("L", tile.size, 0),
+            recorte))
+        tile.alpha_composite(listra)
+        d = ImageDraw.Draw(tile)
+        if borda:
+            d.rounded_rectangle(caixa, radius=r, outline=borda,
+                                width=esp)
     elif reg.forma_preco == FormaPreco.CARIMBO:
         # o carimbo do Jornal: borda perfurada + moldura interna, SEM
         # fundo (espec: carimbo, gen_jornal_final:30)
@@ -649,6 +697,31 @@ def _desenhar_regiao(base, draw, reg, dados, dpi, fontes_dir, tem_regiao_unidade
                           tem_regiao_unidade)
 
 
+_FUNDO_LIMPO_CACHE: dict = {}
+
+
+def _desenhar_adorno(base: Image.Image, reg: Regiao, dpi: int,
+                     arquivo_fundo: str | None) -> None:
+    """F13-TER/V2: recola o recorte do FUNDO ORIGINAL (a cesta, o
+    toldo, a banda) por cima da foto já desenhada. O fundo limpo vem do
+    arquivo da página (cache por caminho+tamanho); sem fundo, não há o
+    que recolar — silêncio correto (a página sintética não tem adorno)."""
+    if not arquivo_fundo:
+        return
+    chave = (arquivo_fundo, base.size)
+    fundo = _FUNDO_LIMPO_CACHE.get(chave)
+    if fundo is None:
+        try:
+            fundo = Image.open(arquivo_fundo).convert("RGB") \
+                .resize(base.size)
+        except OSError:
+            return                          # o pré-voo já acusa a arte sumida
+        _FUNDO_LIMPO_CACHE.clear()          # 1 página por vez basta
+        _FUNDO_LIMPO_CACHE[chave] = fundo
+    x, y, w, h = _rect_px(reg.rect, dpi)
+    base.paste(fundo.crop((x, y, x + w, y + h)), (x, y))
+
+
 def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
                           tem_regiao_unidade):
     if reg.tipo == TipoRegiao.IMAGEM:
@@ -663,6 +736,16 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         _desenhar_texto(base, draw, reg,
                         dados.descritor or dados.unidade or "",
                         dpi, fontes_dir)
+    elif reg.tipo == TipoRegiao.ADORNO:
+        # F13-TER/V2: o fundo volta por cima da foto (cesta/toldo/banda)
+        _desenhar_adorno(base, reg, dpi,
+                         getattr(base, "_arquivo_fundo", None))
+    elif reg.tipo == TipoRegiao.FILETE:
+        # F13-TER/N2: o fio tipográfico — retângulo chapado na cor da
+        # região (o cabeçalho de seção do fluxo o põe onde a linha caiu)
+        x, y, w_px, h_px = _rect_px(reg.rect, dpi)
+        draw.rectangle((x, y, x + max(1, w_px) - 1, y + max(1, h_px) - 1),
+                       fill=reg.cor or "#000000")
     elif reg.tipo == TipoRegiao.PRECO:
         _desenhar_preco(base, draw, reg, dados, dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.TEXTO_LEGAL:
@@ -801,16 +884,47 @@ def _dados_do_slot(dados, lista, i, slot_id=None):
     return lista[i] if i < len(lista) else None   # célula sem produto -> vazia
 
 
-def _texto_legal_da_pagina(dados) -> "str | None":
-    """F13/D7: o primeiro ``texto_legal`` vivo dos dados da página — a
-    validade da oferta é uma só; slot decorativo com papel VALIDADE bebe
-    da mesma fonte dos slots mapeados."""
+def _campo_vivo_da_pagina(dados, campo: str) -> "str | None":
+    """F13/D7 + TER/D1: o primeiro valor VIVO de um campo de página
+    (validade, edição) nos dados — o dado é um só por página; slot
+    decorativo bebe da mesma fonte dos slots mapeados."""
     valores = (dados.values() if isinstance(dados, dict)
                else dados if isinstance(dados, (list, tuple)) else [dados])
     for d in valores:
-        if d is not None and getattr(d, "texto_legal", None):
-            return d.texto_legal
+        if d is not None and getattr(d, campo, None):
+            return getattr(d, campo)
     return None
+
+
+def _texto_legal_da_pagina(dados) -> "str | None":
+    """F13/D7: a validade viva da página (ver _campo_vivo_da_pagina)."""
+    return _campo_vivo_da_pagina(dados, "texto_legal")
+
+
+def _dados_do_conteudo_fixo(cf: dict) -> "DadosProduto":
+    """F13-TER/N1: o DadosProduto de uma célula FIXA — o conteúdo vive
+    no TEMPLATE (produto + foto escolhida pelo dono + preço), então
+    compõe em TODA porta sem depender da tabela da semana. Imagem
+    relativa resolve contra a biblioteca de imagens da raiz (I3)."""
+    from decimal import Decimal, InvalidOperation
+    preco = None
+    bruto = (cf.get("preco") or "").strip()
+    if bruto:
+        try:
+            preco = Decimal(bruto.replace("R$", "").strip()
+                            .replace(".", "").replace(",", "."))
+        except InvalidOperation:
+            preco = None                    # pré-voo do template acusa
+    img = (cf.get("imagem") or "").strip() or None
+    if img and not Path(img).is_absolute():
+        try:
+            from app.core.paths import SystemRoot
+            img = str(SystemRoot().biblioteca_imagens / img)
+        except Exception:
+            pass
+    return DadosProduto(
+        cf.get("nome") or "", descritor=cf.get("descritor"),
+        unidade=cf.get("descritor"), preco_por=preco, imagem_path=img)
 
 
 def compor_pagina(
@@ -843,6 +957,10 @@ def compor_pagina(
             base = base.resize((w, h))
     else:
         base = Image.new("RGB", (w, h), "white")
+    # F13-TER/V2: as regiões ADORNO recolam o FUNDO LIMPO por cima da
+    # foto — o caminho viaja com a base (cada composição tem o seu;
+    # nenhuma assinatura interna muda)
+    base._arquivo_fundo = str(fundo) if fundo else None
 
     lista = dados if isinstance(dados, (list, tuple)) else None
 
@@ -865,6 +983,12 @@ def compor_pagina(
     draw = ImageDraw.Draw(base)
     for i, slot in enumerate(pagina.slots):
         d = _dados_do_slot(dados, lista, i, slot_id=slot.id)
+        cf = getattr(slot, "conteudo_fixo", None)
+        if d is None and getattr(slot, "fixa", False) and cf:
+            # F13-TER/N1: célula FIXA com conteúdo do TEMPLATE — compõe
+            # como slot normal (foto escolhida, nome, preço) em toda
+            # porta; a fila do auto-preencher continua sem vê-la
+            d = _dados_do_conteudo_fixo(cf)
         if d is None:
             # célula sem produto fica com a arte — MAS texto fixo do layout
             # ("Fica a Dica") desenha mesmo assim (A1 da ORDEM_F5_8);
@@ -877,14 +1001,24 @@ def compor_pagina(
             # rodapé típico do tabloide ficava mudo e o marco da F12
             # contornava com texto_fixo.
             vazio = DadosProduto(
-                "", texto_legal=_texto_legal_da_pagina(dados))
+                "", texto_legal=_texto_legal_da_pagina(dados),
+                edicao=_campo_vivo_da_pagina(dados, "edicao"))
             for reg in slot.regioes:
-                if (reg.visivel and reg.tipo == TipoRegiao.TEXTO_LEGAL
-                        and texto_composto_legal(reg, vazio)):
+                if not reg.visivel:
+                    continue
+                if (reg.tipo == TipoRegiao.TEXTO_LEGAL
+                        and texto_composto_legal(reg, vazio)) \
+                        or reg.tipo == TipoRegiao.FILETE:
+                    # N2: o FILETE decorativo (fio de seção) desenha
+                    # mesmo sem produto — é estrutura, não conteúdo
                     _desenhar_regiao(base, draw, reg, vazio,
                                      dpi_ef, fontes_dir, False)
             continue
-        tem_unidade = any(r.tipo == TipoRegiao.UNIDADE and r.visivel for r in slot.regioes)
+        # F13-TER: o SUBTITULO também suprime a unidade automática no
+        # nome (quem tem linha de descritor não repete o peso no nome)
+        tem_unidade = any(r.tipo in (TipoRegiao.UNIDADE,
+                                     TipoRegiao.SUBTITULO)
+                          and r.visivel for r in slot.regioes)
         for reg in slot.regioes:
             _desenhar_regiao(base, draw, reg, d, dpi_ef, fontes_dir, tem_unidade)
         # selos (+18, Qualidade) por slot, ancorados na célula

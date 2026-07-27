@@ -57,9 +57,18 @@ _BASES: dict[str, tuple[str, tuple[str, ...]]] = {
     "sabado-da-carne": ("sabado-da-carne", ("sabado-da-carne-BASE.png",)),
     "jornal-do-mes": ("jornal-do-mes",
                       ("jornal-p1-BASE.png", "jornal-p2-BASE.png")),
+    # F13-TER: o QUINTOU — o encarte que o dono entrega TODA SEMANA
+    # ficou fora do pacote dos 7 (veio do Illustrator, sem gerador).
+    # A geometria foi MEDIDA por diff do Fundo limpo contra o Real
+    # publicado ("./" = pasta relativa à raiz do pacote, não a artes/)
+    # F13-TER §9.4: FRENTE + VERSO — o Quintou é o que ele entrega
+    # toda semana (o "fundo" do verso vem em minúsculo do Illustrator)
+    "quintou": ("./Quintou", ("Quintou Frente Fundo.png",
+                              "Quintou Verso fundo.png")),
 }
 
 NOMES_EXIBICAO = {
+    "quintou": "Quintou do Real",
     "segunda-frios": "Segunda dos Frios",
     "terca-do-pao": "Terça do Pão",
     "quarta-das-ofertas": "Quarta das Ofertas",
@@ -80,8 +89,12 @@ def _mm(v: float) -> float:
 
 
 def _img(x, y, w, h, rot=0.0) -> Regiao:
+    from app.rendering.model import Ajuste
+    # F13-TER/V1: as fotos dos encartes ASSENTAM — recorte pela bbox do
+    # alfa (o quadrado do acervo morre), maior escala que caiba, âncora
+    # no rodapé da zona
     return Regiao(TipoRegiao.IMAGEM, _r(x, y, w, h), nome="Foto",
-                  rotacao_graus=rot)
+                  rotacao_graus=rot, ajuste=Ajuste.ASSENTAR)
 
 
 def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
@@ -167,13 +180,13 @@ def _terca() -> list[Slot]:
     escalopado PENDURADO no toldo (r=36, centro cx,952 — cavalga a aba
     da cesta), Fraunces, centavos NA BASE (a espec: sem dy)."""
     slots = [
-        # celula-1 FIXA (Pão Francês) — nome em serifa GRANDE na metade
-        # direita; o selo "50%" e o painel picotado são da própria arte;
-        # o manuscrito Caveat é CONTEÚDO (não está no BASE)
+        # celula-1 FIXA (Pão Francês) — F13-TER: a zona da foto cresceu
+        # ao painel inteiro (84,372,330,268 — para antes do selo 50%,
+        # que é circular e não se recola por retângulo); nome +1 degrau
         _slot("celula-1", [
-            _img(86, 376, 320, 214),
-            _nome(324, 382, 420, 44, fonte=_F_FRAUNCES,
-                  tam=30.0, cor="#33200F"),
+            _img(84, 372, 330, 268),
+            _nome(324, 380, 420, 46, fonte=_F_FRAUNCES,
+                  tam=33.0, cor="#33200F"),
             _sub(324, 432, 420, 22, fonte=_F_FRA_IT,
                  tam=10.9, cor="#96826A"),
             # (sem a "★" do exemplo: a Caveat não tem o glifo — no
@@ -183,14 +196,13 @@ def _terca() -> list[Slot]:
                    texto="metade do preço, é hoje!", rot=-1.5,
                    tam=21.0, cor="#A03A22"),
         ], origem=(64, 352), fixa=True),
-        # celula-2 FIXA (Sonho + Croissant) — DUAS zonas de foto com o
-        # "+" da estrutura entre elas; 1º slot ENCOLHIDO 210→194 (F7:
-        # o selo de 25% gravado no BASE invadia o canto)
+        # celula-2 FIXA (Sonho + Croissant) — zonas estendidas até o
+        # claro do selo 25% e do "+" da estrutura (folga 4 px)
         _slot("celula-2", [
-            _img(712, 386, 194, 90),
-            _img(712, 524, 210, 90),
-            _nome(697, 630, 240, 26, fonte=_F_FRAUNCES,
-                  tam=17.2, cor="#33200F"),
+            _img(706, 372, 192, 108),
+            _img(706, 518, 292, 102),
+            _nome(697, 628, 240, 28, fonte=_F_FRAUNCES,
+                  tam=18.75, cor="#33200F"),
             _sub(697, 660, 240, 18, fonte=_F_FRA_IT,
                  tam=9.4, cor="#96826A"),
         ], origem=(688, 352), fixa=True),
@@ -201,22 +213,28 @@ def _terca() -> list[Slot]:
         cx = x + 113                      # BW=226
         prot = -1.5 if (i - 3) % 2 == 0 else 1.5   # o remendo da cesta
         slots.append(_slot(f"celula-{i}", [
-            _img(x + 18, 756, 190, 150, rot=rot),
-            # o disco pendurado: r=36 centrado em (cx, 952)
-            _preco(cx - 36, 916, 72, 72, fonte=_F_FRAUNCES,
+            # V2: o pão desce ATRÁS da cesta (zona até y=1000) e a
+            # aba+corpo do vime VOLTAM por cima (adornos do inventário)
+            _img(x - 8 + 18, 748, 206, 252, rot=rot),
+            Regiao(TipoRegiao.ADORNO, _r(x - 1, 911, 228, 97),
+                   nome="Cesta"),
+            Regiao(TipoRegiao.ADORNO, _r(x + 10, 903, 101, 39),
+                   nome="Pano"),
+            # o disco pendurado cresceu R 36→40 (o preço +1 degrau)
+            _preco(cx - 40, 912, 80, 80, fonte=_F_FRAUNCES,
                    rot=rot, forma=FormaPreco.ETIQUETA_PENDURADA,
                    forma_cor="#C94F32", borda="#A03A22",
-                   cor="#FFF9EC", tam=17.0, tam_cent=11.0,
+                   cor="#FFF9EC", tam=19.5, tam_cent=12.4,
                    centavos_na_base=True),
             _legal(cx - 95, 1014, 190, 12, papel=PapelTexto.LIVRE,
                    fonte=_F_ARCHIVO, nome="Rótulo",
                    texto="· PADARIA BELO BRASIL ·", rot=prot,
                    tam=6.0, cor="#C77E38"),
-            _nome(cx - 95, 1028, 190, 20, fonte=_F_FRAUNCES,
-                  tam=11.6, cor="#33200F", rot=prot),
+            _nome(cx - 95, 1026, 190, 22, fonte=_F_FRAUNCES,
+                  tam=13.1, cor="#33200F", rot=prot),
             _sub(cx - 95, 1050, 190, 15, fonte=_F_FRA_IT,
                  tam=7.5, cor="#96826A", rot=prot),
-        ], origem=(x, 756)))
+        ], origem=(x, 748)))
     slots.append(_slot("selo-validade", [
         _legal(896, 106, 100, 44, papel=PapelTexto.VALIDADE,
                fonte=_F_FRAUNCES, nome="Validade", rot=8.0,
@@ -232,18 +250,21 @@ def _segunda() -> list[Slot]:
     (cera), BUTTERD #C08F1F (anel), banda azul #1F4E79 (estrutura) com
     nome BRANCO e descritor #BCD2E4; chips "Nº 0X" são CONTEÚDO."""
     slots = [
-        # celula-1 FIXA (Kit Burger) — §3.2.5: o preço do kit EXISTE
-        # (selo de cera s=1.15, R=46, centro 734,516; texto NAVY)
+        # celula-1 FIXA (Kit Burger) — F13-TER: a foto ocupa a oval
+        # inteira e a FITA da marca volta por cima; nome +1 degrau
         _slot("celula-1", [
-            _img(390, 352, 300, 104),
-            _nome(380, 458, 320, 34, fonte=_F_FRAUNCES,
-                  tam=21.0, cor="#17293B"),
+            # (laço TER: a foto até 476 cobria o nome — para em 446)
+            _img(384, 356, 312, 90),
+            Regiao(TipoRegiao.ADORNO, _r(314, 496, 452, 38),
+                   nome="Fita da marca"),
+            _nome(380, 452, 320, 40, fonte=_F_FRAUNCES,
+                  tam=24.0, cor="#17293B"),
             _sub(380, 540, 320, 24, fonte=_F_FRA_IT,
                  tam=9.4, cor="#6E7F8D"),
             _preco(688, 470, 92, 92, fonte=_F_FRAUNCES,
                    forma=FormaPreco.MEDALHAO_ESTRELA,
                    forma_cor="#E9B23A", borda="#C08F1F",
-                   cor="#17293B", tam=23.0, tam_cent=14.6,
+                   cor="#17293B", tam=25.0, tam_cent=15.8,
                    centavos_na_base=True),
         ], origem=(290, 288), fixa=True),
     ]
@@ -252,52 +273,64 @@ def _segunda() -> list[Slot]:
     # flancos: texto na BANDA de baixo, selo SOBRE A FOTO; etiquetas:
     # selo morde a banda e o texto DESVIA (tcx do gerador)
     flancos = (
-        # nome @ (cx, y+h−40) — DENTRO da banda azul (526/532..578/584)
-        (2, (64, 288), -0.6, (84, 314, 170, 116), (76, 302),
-         (236, 328, 32), 169, 548),
-        (3, (806, 294), 0.5, (826, 320, 170, 116), (818, 308),
-         (978, 334, 32), 911, 554),
+        # F13-TER: foto estendida ATRÁS da banda azul, banda recolada
+        (2, (64, 288), -0.6, (78, 302, 182, 248), (68, 522, 202, 60),
+         (76, 302), (236, 328, 32), 169, 548),
+        (3, (806, 294), 0.5, (820, 308, 182, 248), (810, 528, 202, 60),
+         (818, 308), (978, 334, 32), 911, 554),
     )
-    for i, origem, rot, foto, (chx, chy), (sx, sy, sr), tcx, ty in flancos:
+    for i, origem, rot, foto, banda, (chx, chy), (sx, sy, sr), tcx, ty \
+            in flancos:
         slots.append(_slot(f"celula-{i}", [
             _img(*foto, rot=rot),
+            Regiao(TipoRegiao.ADORNO, _r(*banda), nome="Banda"),
             _chip_num(chx, chy, f"Nº {i:02d}", rot),
             _preco(sx - sr, sy - sr, sr * 2, sr * 2, fonte=_F_FRAUNCES,
                    rot=rot, forma=FormaPreco.MEDALHAO_ESTRELA,
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
-                   tam=16.2, tam_cent=10.2, centavos_na_base=True),
-            _nome(tcx - 93, ty - 22, 186, 24, fonte=_F_FRAUNCES,
-                  tam=11.2, cor="#FFFFFF", rot=rot),
+                   tam=18.0, tam_cent=11.4, centavos_na_base=True),
+            _nome(tcx - 93, ty - 24, 186, 26, fonte=_F_FRAUNCES,
+                  tam=12.75, cor="#FFFFFF", rot=rot),
             _sub(tcx - 93, ty + 2, 186, 18, fonte=_F_FRA_IT,
                  tam=7.9, cor="#BCD2E4", rot=rot),
         ], origem=origem))
-    # (id, origem, rot, foto, chip, selo(cx,cy,R,s_tam), tcx, y_nome)
+    # (id, origem, rot, foto ESTENDIDA, adornos [(x,y,w,h)...], chip,
+    #  selo(cx,cy,R), tcx, y_nome, tam_nome, tam_sub, tam_preco)
     etiquetas = (
-        (4, (64, 652), -0.5, (82, 672, 268, 138), (76, 664),
-         (328, 886, 38), 180, 906, 13.5, 8.6),
-        (5, (388, 644), 0.4, (406, 664, 268, 138), (398, 656),
-         (428, 878, 38), 568, 898, 13.5, 8.6),
-        (6, (712, 654), -0.5, (730, 674, 268, 138), (722, 666),
-         (976, 888, 38), 828, 908, 13.5, 8.6),
-        (7, (240, 955), -0.45, (256, 973, 264, 104), (250, 965),
-         (496, 1152, 35), 352, 1171, 12.4, 8.2),
-        (8, (552, 948), 0.4, (568, 966, 264, 104), (562, 958),
-         (592, 1145, 35), 728, 1164, 12.4, 8.2),
+        (4, (64, 652), -0.5, (76, 662, 280, 245),
+         ((66, 654, 26, 26), (340, 654, 26, 26), (65, 879, 302, 64)),
+         (76, 664), (328, 886, 38), 180, 906, 15.0, 8.6, 21.4),
+        (5, (388, 644), 0.4, (400, 654, 280, 245),
+         ((390, 646, 26, 26), (664, 646, 26, 26), (389, 871, 302, 64)),
+         (398, 656), (428, 878, 38), 568, 898, 15.0, 8.6, 21.4),
+        (6, (712, 654), -0.5, (724, 664, 280, 245),
+         ((714, 656, 26, 26), (988, 656, 26, 26), (713, 881, 302, 64)),
+         (722, 666), (976, 888, 38), 828, 908, 15.0, 8.6, 21.4),
+        (7, (240, 955), -0.45, (252, 964, 272, 209),
+         ((240, 1145, 296, 62),),
+         (250, 965), (496, 1152, 35), 352, 1171, 13.9, 8.2, 19.8),
+        (8, (552, 948), 0.4, (564, 957, 272, 209),
+         ((552, 1138, 296, 62),),
+         (562, 958), (592, 1145, 35), 728, 1164, 13.9, 8.2, 19.8),
     )
-    for i, origem, rot, foto, (chx, chy), (sx, sy, sr), tcx, ny, tn, ts \
-            in etiquetas:
-        slots.append(_slot(f"celula-{i}", [
-            _img(*foto, rot=rot),
+    for i, origem, rot, foto, adornos, (chx, chy), (sx, sy, sr), tcx, \
+            ny, tn, ts, tp in etiquetas:
+        regs = [_img(*foto, rot=rot)]
+        regs += [Regiao(TipoRegiao.ADORNO, _r(*a), nome="Adorno")
+                 for a in adornos]
+        regs += [
             _chip_num(chx, chy, f"Nº {i:02d}", rot),
             _preco(sx - sr, sy - sr, sr * 2, sr * 2, fonte=_F_FRAUNCES,
                    rot=rot, forma=FormaPreco.MEDALHAO_ESTRELA,
                    forma_cor="#E9B23A", borda="#C08F1F", cor="#17293B",
-                   tam=14.6, tam_cent=9.2, centavos_na_base=True),
-            _nome(tcx - 100, ny - 22, 200, 24, fonte=_F_FRAUNCES,
+                   tam=tp, tam_cent=round(tp * 0.63, 1),
+                   centavos_na_base=True),
+            _nome(tcx - 100, ny - 24, 200, 26, fonte=_F_FRAUNCES,
                   tam=tn, cor="#FFFFFF", rot=rot),
             _sub(tcx - 100, ny + 2, 200, 18, fonte=_F_FRA_IT,
                  tam=ts, cor="#BCD2E4", rot=rot),
-        ], origem=origem))
+        ]
+        slots.append(_slot(f"celula-{i}", regs, origem=origem))
     slots.append(_slot("selo-validade", [
         _legal(885, 74, 100, 44, papel=PapelTexto.VALIDADE,
                fonte=_F_FRAUNCES, nome="Validade", rot=10.0,
@@ -329,25 +362,26 @@ def _quarta() -> list[Slot]:
     for i in range(3):                    # minis: RX+20=74, MY0=546, MH+MG=246
         my = 546 + i * 246
         regs = [
-            _img(88, my + 14, 112, 204),
+            # F13-TER: zona estendida (inset 8 provado contra o canto)
+            _img(82, my + 8, 122, 216),
             _nome(212, my + 34, 148, 60, fonte=_F_NUNITO,
-                  alin=Alinhamento.ESQUERDA, tam=15.4, cor=escuro),
+                  alin=Alinhamento.ESQUERDA, tam=17.5, cor=escuro),
             # a linha do peso do modelo ("BBX 100g" — cola no nome)
             _sub(212, my + 98, 148, 22, fonte="Nunito-Bold.ttf",
-                 alin=Alinhamento.ESQUERDA, tam=11.0, cor=escuro),
+                 alin=Alinhamento.ESQUERDA, tam=12.0, cor=escuro),
         ]
         if i < 2:
-            # pricepod VERDE (s=0.82), centro (278, my+180), sobrescrito
-            regs.append(_preco(228, my + 157, 100, 47, fonte=_F_ANTON,
+            # pricepod VERDE, centro (278, my+180), sobrescrito
+            regs.append(_preco(224, my + 154, 108, 52, fonte=_F_ANTON,
                                forma=FormaPreco.TAG_ARREDONDADA,
                                forma_cor=verde, borda=escuro,
-                               cor="#FFFFFF", tam=22.0, tam_cent=12.3,
+                               cor="#FFFFFF", tam=24.5, tam_cent=13.8,
                                rot=-1.5))
         else:
             # pctpod LARANJA: o "-XX%" CALCULADO veste a pílula (F9)
-            d = _legal(224, my + 156, 108, 48, papel=PapelTexto.DESCONTO,
+            d = _legal(224, my + 154, 108, 52, papel=PapelTexto.DESCONTO,
                        fonte=_F_ANTON, nome="Desconto", rot=-1.5,
-                       tam=21.0, cor="#FFFFFF")
+                       tam=23.0, cor="#FFFFFF")
             d.forma_preco = FormaPreco.TAG_ARREDONDADA
             d.forma_cor = laranja
             d.forma_cor_borda = escuro
@@ -357,25 +391,25 @@ def _quarta() -> list[Slot]:
     for i, (cx, cy) in enumerate(((410, 44), (729, 44),
                                   (410, 456), (729, 456)), start=1):
         slots.append(_slot(f"celula-var-{i}", [
-            _img(cx + 16, cy + 16, 265, 218),
+            _img(cx + 8, cy + 8, 281, 236),
             _nome(cx + 16, cy + 248, 261, 34, fonte=_F_NUNITO,
-                  alin=Alinhamento.ESQUERDA, tam=16.5, cor=escuro),
+                  alin=Alinhamento.ESQUERDA, tam=18.5, cor=escuro),
             _sub(cx + 16, cy + 284, 261, 24, fonte="Nunito-Bold.ttf",
-                 alin=Alinhamento.ESQUERDA, tam=12.0, cor=escuro),
-            _preco(cx + 39, cy + 314, 112, 56, fonte=_F_ANTON,
+                 alin=Alinhamento.ESQUERDA, tam=13.0, cor=escuro),
+            _preco(cx + 35, cy + 311, 120, 62, fonte=_F_ANTON,
                    forma=FormaPreco.TAG_ARREDONDADA, forma_cor=laranja,
-                   borda=escuro, cor="#FFFFFF", tam=27.0, tam_cent=15.0,
+                   borda=escuro, cor="#FFFFFF", tam=30.0, tam_cent=16.8,
                    rot=-1.5),
         ], origem=(cx, cy)))
     slots.append(_slot("celula-var-5", [
-        _img(434, 892, 290, 378),
+        _img(420, 878, 320, 406),
         _nome(752, 990, 264, 46, fonte=_F_NUNITO,
-              alin=Alinhamento.ESQUERDA, tam=20.0, cor=escuro),
+              alin=Alinhamento.ESQUERDA, tam=22.5, cor=escuro),
         _sub(752, 1040, 264, 26, fonte="Nunito-Bold.ttf",
              alin=Alinhamento.ESQUERDA, tam=14.0, cor=escuro),
-        _preco(801, 1087, 130, 63, fonte=_F_ANTON,
+        _preco(796, 1083, 140, 70, fonte=_F_ANTON,
                forma=FormaPreco.TAG_ARREDONDADA, forma_cor=laranja,
-               borda=escuro, cor="#FFFFFF", tam=31.0, tam_cent=17.0,
+               borda=escuro, cor="#FFFFFF", tam=35.0, tam_cent=19.0,
                rot=-1.5),
     ], origem=(410, 868)))
     # a DATA no selo preto da Coluna do Dia: Anton AMARELO (a caixa
@@ -398,37 +432,50 @@ def _peixe() -> list[Slot]:
     )
     slots = []
     navy, cinza, gold = "#123243", "#7C8B93", "#9A7A16"
-    rotulos = {1: "PESCA DO DIA", 4: "CORTE NOBRE"}
     for i, (x, y, w, h, tipo) in enumerate(cells, start=1):
         if tipo == "wide":
+            fx = x + w - 286
             regs = [
-                _img(x + w - 286, y + 24, 262, h - 48),
-                # o rótulo do destaque vira CAMPO (a heurística
-                # "'Camarão' in nome" do gerador morre aqui)
+                # F13-TER: foto até a moldura; as bordas finas voltam
+                _img(fx, y + 3, 283, 314),
+                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 3, 286, 9),
+                       nome="Moldura"),
+                Regiao(TipoRegiao.ADORNO, _r(fx + 274, y + 3, 9, 314),
+                       nome="Moldura"),
+                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 308, 286, 9),
+                       nome="Moldura"),
+                # D2: o rótulo do destaque é etiqueta OPCIONAL — nasce
+                # VAZIO (vazio não desenha; nunca um rótulo mentindo)
                 _legal(x + 32, y + 38, 250, 24, papel=PapelTexto.LIVRE,
-                       fonte=_F_ARCHIVO, texto=rotulos[i],
-                       nome="Rótulo", tam=9.75, cor=gold,
+                       fonte=_F_ARCHIVO, texto="",
+                       nome="Etiqueta", tam=9.75, cor=gold,
                        alin=Alinhamento.ESQUERDA),
-                _nome(x + 32, y + 62, 260, 82, fonte=_F_FRAUNCES,
-                      alin=Alinhamento.ESQUERDA, tam=23.25, cor=navy),
+                _nome(x + 32, y + 60, 260, 86, fonte=_F_FRAUNCES,
+                      alin=Alinhamento.ESQUERDA, tam=26.0, cor=navy),
                 _sub(x + 32, y + 152, 260, 26, fonte=_F_FRA_IT,
                      alin=Alinhamento.ESQUERDA, tam=12.75, cor=cinza),
                 # texto navy PURO com R$ menor — a ÚNICA forma TEXTO
                 # legítima do pacote (§3.4 conferido pelo scout)
-                _preco(x + 32, y + h - 78, 260, 56, fonte=_F_FRAUNCES,
-                       cor=navy, tam=34.5, tam_cent=21.4,
+                _preco(x + 32, y + h - 82, 260, 60, fonte=_F_FRAUNCES,
+                       cor=navy, tam=38.0, tam_cent=23.5,
                        centavos_na_base=True,
                        alin=Alinhamento.ESQUERDA),
             ]
         else:
             regs = [
-                _img(x + 22, y + 22, w - 44, 140),
+                _img(x + 3, y + 3, w - 6, 169),
+                Regiao(TipoRegiao.ADORNO, _r(x + 3, y + 3, w - 6, 9),
+                       nome="Moldura"),
+                Regiao(TipoRegiao.ADORNO, _r(x + 3, y + 3, 9, 169),
+                       nome="Moldura"),
+                Regiao(TipoRegiao.ADORNO, _r(x + w - 12, y + 3, 9, 169),
+                       nome="Moldura"),
                 _nome(x + 20, y + 164, w - 40, 62, fonte=_F_FRAUNCES,
-                      tam=18.75, cor=navy),
+                      tam=21.0, cor=navy),
                 _sub(x + 20, y + 232, w - 40, 24, fonte=_F_FRA_IT,
                      tam=11.6, cor=cinza),
-                _preco(x + 20, y + 254, w - 40, 48, fonte=_F_FRAUNCES,
-                       cor=navy, tam=27.75, tam_cent=17.2,
+                _preco(x + 20, y + 250, w - 40, 52, fonte=_F_FRAUNCES,
+                       cor=navy, tam=31.0, tam_cent=19.2,
                        centavos_na_base=True),
             ]
         slots.append(_slot(f"celula-{i}", regs, origem=(x, y)))
@@ -443,25 +490,25 @@ def _peixe() -> list[Slot]:
 def _sexta() -> list[Slot]:
     """gen_verde5: bancas (AX1/AX2) + 9 patches (PXS × 3 linhas)."""
     slots = []
-    # (sem as "★" do exemplo: nenhuma fonte do pacote tem o glifo — no
-    # SVG o Chromium cai no fallback do sistema; o Pillow não tem)
-    rotulos = ("DIRETO DA GRANJA", "COLHEITA DA SEMANA")
     for i, (x, rot) in enumerate(((54, -5.0), (566, 4.0)), start=1):
         cx = x + 230
         slots.append(_slot(f"celula-banca-{i}", [
-            _img(x + 36, 486, 388, 92),
-            # o rótulo ★ dos heróis é CONTEÚDO (T4 — não está no BASE)
+            # F13-TER: a foto SOBE atrás do toldo listrado, recolado
+            _img(x + 36, 402, 388, 188),
+            Regiao(TipoRegiao.ADORNO, _r(x - 14, 398, 488, 75),
+                   nome="Toldo"),
+            # D2: etiqueta OPCIONAL — nasce vazia (o dono escolhe)
             _legal(x + 40, 588, 380, 24, papel=PapelTexto.LIVRE,
-                   fonte=_F_ARCHIVO, texto=rotulos[i - 1], nome="Rótulo",
+                   fonte=_F_ARCHIVO, texto="", nome="Etiqueta",
                    tam=9.8, cor="#DFA637"),
-            _nome(x + 40, 610, 380, 34, fonte=_F_FRAUNCES,
-                  tam=20.0, cor="#FDF6E9"),
+            _nome(x + 40, 608, 380, 36, fonte=_F_FRAUNCES,
+                  tam=22.5, cor="#FDF6E9"),
             _sub(x + 40, 648, 380, 22, fonte=_F_FRA_IT,
                  tam=10.5, cor="#BFD3C2"),
             # o OVAL é ESTRUTURA (gravado no BASE) — aqui SÓ o texto
             # coral, Fraunces, centavos na base (a espec do arco_ex)
-            _preco(cx - 80, 706, 160, 48, fonte=_F_FRAUNCES, rot=rot,
-                   cor="#D6543C", tam=28.5, tam_cent=18.0,
+            _preco(cx - 85, 704, 170, 52, fonte=_F_FRAUNCES, rot=rot,
+                   cor="#D6543C", tam=31.0, tam_cent=19.5,
                    centavos_na_base=True),
         ], origem=(x, 380)))
     rots = (-2.0, 2.0, -1.5, 2.5, -2.0, 1.5, -2.5, 2.0, -1.5)
@@ -471,21 +518,24 @@ def _sexta() -> list[Slot]:
             x, y = 54 + c * 328, 782 + r * 174
             rot = rots[k - 3]
             slots.append(_slot(f"celula-{k}", [
-                # F13-BIS: a foto à ESQUERDA é o layout DO MODELO (a
-                # ordem §3.5.1 supôs foto-em-cima; o gerador e o
-                # PREVIEW dizem o contrário — divergência declarada)
-                _img(x + 14, y + 14, 120, 134),
+                # F13-BIS: a foto à ESQUERDA é o layout DO MODELO;
+                # F13-TER: estendida até a moldura, cantoneiras voltam
+                _img(x + 8, y + 8, 132, 146),
+                Regiao(TipoRegiao.ADORNO, _r(x + 7, y + 7, 16, 16),
+                       nome="Cantoneira"),
+                Regiao(TipoRegiao.ADORNO, _r(x + 7, y + 140, 16, 16),
+                       nome="Cantoneira"),
                 _nome(x + 148, y + 24, 158, 52, fonte=_F_FRAUNCES,
-                      alin=Alinhamento.ESQUERDA, tam=15.0,
+                      alin=Alinhamento.ESQUERDA, tam=17.0,
                       cor="#123526"),
                 _sub(x + 148, y + 78, 158, 20, fonte=_F_FRA_IT,
                      alin=Alinhamento.ESQUERDA, tam=10.1,
                      cor="#6E7A63"),
                 # a tag CORAL cheia, sem borda (patch_ex)
-                _preco(x + 170, y + 103, 120, 46, fonte=_F_FRAUNCES,
+                _preco(x + 165, y + 100, 130, 50, fonte=_F_FRAUNCES,
                        rot=rot, forma=FormaPreco.TAG_ARREDONDADA,
                        forma_cor="#D6543C", cor="#FDF6E9",
-                       tam=19.5, tam_cent=12.75, centavos_na_base=True),
+                       tam=22.0, tam_cent=14.0, centavos_na_base=True),
             ], origem=(x, y)))
             k += 1
     slots.append(_slot("selo-validade", [
@@ -514,43 +564,60 @@ def _sabado() -> list[Slot]:
     def _bandeira(cx, cy, rot):
         # a bandeirola CAVALGA a borda inferior da célula (cy = borda);
         # RED cheia, ponta à direita, texto CREAM com centavos na base
-        return _preco(cx - 56, cy - 20, 112, 40, fonte=_F_FRAUNCES,
+        return _preco(cx - 62, cy - 22, 124, 44, fonte=_F_FRAUNCES,
                       rot=rot, forma=FormaPreco.ETIQUETA_GIRADA,
-                      forma_cor=red, cor=cream, tam=18.75,
-                      tam_cent=12.75, centavos_na_base=True)
+                      forma_cor=red, cor=cream, tam=21.0,
+                      tam_cent=14.2, centavos_na_base=True)
 
-    for cid, x, y, alt in cels:
+    def _molduras(x, y, alt):
+        # F13-TER/V2: a borda "à mão" (tinta_rect) volta por cima da
+        # foto estendida — topo e as duas laterais
+        return [
+            Regiao(TipoRegiao.ADORNO, _r(x - 6, y - 6, 318, 12),
+                   nome="Moldura"),
+            Regiao(TipoRegiao.ADORNO, _r(x - 6, y - 6, 12, alt + 12),
+                   nome="Moldura"),
+            Regiao(TipoRegiao.ADORNO, _r(x + 300, y - 6, 12, alt + 12),
+                   nome="Moldura"),
+        ]
+
+    # F13-TER: as células desenham de BAIXO para CIMA — a bandeirola
+    # cavalga a borda inferior, e a moldura recolada (ADORNO) da célula
+    # de baixo a cobriria se desenhasse depois (pego pela inspeção)
+    for cid, x, y, alt in sorted(cels, key=lambda c: -c[2]):
         rot = rotf[cid - 1]
-        if cid == 1:                       # o "Corte da Semana" (destaque)
+        if cid == 1:                       # o destaque
             regs = [
-                _img(406, 542, 274, 104),
-                # texto DOURADO puro (a ordem supôs fita vermelha; o
-                # gerador diz Archivo #A8801F + roseta — divergência
-                # declarada; a roseta é adorno vetorial, fica de fora)
-                _legal(405, 632, 276, 24, papel=PapelTexto.LIVRE,
-                       fonte=_F_ARCHIVO, texto="CORTE DA SEMANA",
-                       nome="Chamada", tam=8.6, cor="#A8801F"),
-                _nome(408, 656, 270, 30, fonte=_F_FRAUNCES,
-                      tam=16.5, cor=ink),
-                _sub(408, 688, 270, 20, fonte=_F_FRA_IT,
+                _img(390, 528, 306, 128),
+                *_molduras(x, y, alt),
+                # D2: etiqueta OPCIONAL (nasce vazia; a inspeção põe a
+                # que é verdade — texto dourado, sem fita: o gerador)
+                _legal(405, 656, 276, 24, papel=PapelTexto.LIVRE,
+                       fonte=_F_ARCHIVO, texto="",
+                       nome="Etiqueta", tam=8.6, cor="#A8801F"),
+                _nome(408, 678, 270, 30, fonte=_F_FRAUNCES,
+                      tam=18.5, cor=ink),
+                _sub(408, 710, 270, 20, fonte=_F_FRA_IT,
                      tam=10.1, cor=mute),
                 _bandeira(x + 153, y + alt, rot),
             ]
         elif alt == 166:                   # célula curta (1ª coluna)
             regs = [
-                _img(x + 16, y + 12, 274, 80),
-                _nome(x + 18, y + 94, 270, 28, fonte=_F_FRAUNCES,
-                      tam=16.5, cor=ink),
-                _sub(x + 18, y + 124, 270, 20, fonte=_F_FRA_IT,
+                _img(x, y, 306, 94),
+                *_molduras(x, y, alt),
+                _nome(x + 18, y + 96, 270, 28, fonte=_F_FRAUNCES,
+                      tam=18.5, cor=ink),
+                _sub(x + 18, y + 126, 270, 20, fonte=_F_FRA_IT,
                      tam=10.1, cor=mute),
                 _bandeira(x + 153, y + alt, rot),
             ]
         else:                              # célula alta (2ª/3ª colunas)
             regs = [
-                _img(x + 16, y + 14, 274, 124),
-                _nome(x + 18, y + 148, 270, 28, fonte=_F_FRAUNCES,
-                      tam=16.5, cor=ink),
-                _sub(x + 18, y + 178, 270, 20, fonte=_F_FRA_IT,
+                _img(x, y, 306, 148),
+                *_molduras(x, y, alt),
+                _nome(x + 18, y + 150, 270, 30, fonte=_F_FRAUNCES,
+                      tam=18.5, cor=ink),
+                _sub(x + 18, y + 182, 270, 20, fonte=_F_FRA_IT,
                      tam=10.1, cor=mute),
                 _bandeira(x + 153, y + alt, rot),
             ]
@@ -577,14 +644,17 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
         x = 64 + c * 198
         rot = -6.0 if (c % 2 == 0) else 5.0
         slots.append(_slot(f"{pref}-l{inicio + c}", [
-            _img(x + 4, y, 178, 96),
+            # F13-TER: a foto sobe até o fio da linha (recolado)
+            _img(x + 4, y - 20, 178, 116),
+            Regiao(TipoRegiao.ADORNO, _r(x, y - 20, 186, 6),
+                   nome="Fio"),
             _nome(x + 8, y + 96, 170, 24, fonte=_F_FRAUNCES,
-                  tam=9.4, cor=_J_INK),
+                  tam=11.0, cor=_J_INK),
             _sub(x + 8, y + 120, 170, 16, fonte=_F_FRA_IT,
-                 tam=7.5, cor=_J_GRAY),
-            _preco(x + 49, y + 149, 88, 38, fonte=_F_FRAUNCES, rot=rot,
+                 tam=8.5, cor=_J_GRAY),
+            _preco(x + 45, y + 147, 96, 42, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
-                   cor=_J_LARD, tam=17.5, tam_cent=11.1,
+                   cor=_J_LARD, tam=20.0, tam_cent=12.6,
                    centavos_na_base=True),
         ], origem=(x + 4, y)))
 
@@ -596,11 +666,15 @@ def _jornal_p1() -> list[Slot]:
     edição, manchete e o período editável (F8) são desenhados pelo app."""
     slots = [
         _slot("jp1-hero", [
-            _img(74, 328, 384, 234),
+            _img(74, 308, 384, 266),
+            Regiao(TipoRegiao.ADORNO, _r(236, 308, 226, 3),
+                   nome="Fio"),
             # a estrela SUPER OFERTA (24 pontas no modelo) sai como
-            # medalhão de pétalas VERDE — a aproximação declarada
+            # medalhão de pétalas VERDE — a aproximação declarada.
+            # D2: etiqueta OPCIONAL — nasce VAZIA (vazia = a forma nem
+            # desenha); o dono escolhe o rótulo (a inspeção põe o real)
             _legal(347, 299, 114, 114, papel=PapelTexto.LIVRE,
-                   fonte=_F_ARCHIVO, texto="SUPER OFERTA",
+                   fonte=_F_ARCHIVO, texto="",
                    nome="Splash", rot=-8.0, tam=12.0, cor="#F7F3E9"),
             # a legenda da capa = nome + descritor do produto do hero
             _nome(78, 574, 376, 24, fonte=_F_FRA_IT,
@@ -609,22 +683,23 @@ def _jornal_p1() -> list[Slot]:
                  tam=8.0, cor=_J_GRAY),
         ], origem=(74, 328)),
     ]
-    splash = slots[0].regioes[1]
+    splash = next(r for r in slots[0].regioes if r.nome == "Splash")
     splash.forma_preco = FormaPreco.MEDALHAO_ESTRELA
     splash.forma_cor = "#0F783F"
     splash.forma_cor_borda = "#F7F3E9"
     for i, (x, y) in enumerate(((488, 328), (762, 328),
                                 (488, 466), (762, 466)), start=1):
         rot = -5.0 if i % 2 else 4.0
+        dy = 20 if i <= 2 else 18
         slots.append(_slot(f"jp1-ch{i}", [
-            _img(x, y, 112, 112),
+            _img(x, y - dy, 112, 112 + dy),
             _nome(x + 112, y + 14, 168, 26, fonte=_F_FRAUNCES,
-                  tam=11.6, cor=_J_INK),
+                  tam=13.0, cor=_J_INK),
             _sub(x + 112, y + 42, 168, 18, fonte=_F_FRA_IT,
-                 tam=8.6, cor=_J_GRAY),
-            _preco(x + 150, y + 74, 92, 40, fonte=_F_FRAUNCES, rot=rot,
+                 tam=9.4, cor=_J_GRAY),
+            _preco(x + 146, y + 72, 100, 44, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
-                   cor=_J_LARD, tam=18.4, tam_cent=11.7,
+                   cor=_J_LARD, tam=21.0, tam_cent=13.2,
                    centavos_na_base=True),
         ], origem=(x, y)))
     _jornal_linha("jp1", slots, 660, 5, 1)
@@ -640,9 +715,11 @@ def _jornal_p1() -> list[Slot]:
             _legal(120, 170, 840, 28, papel=PapelTexto.VALIDADE,
                    fonte="Archivo-Medium.ttf", nome="Validade",
                    tam=7.9, cor=_J_GRAY),
-            _legal(870, 56, 160, 24, papel=PapelTexto.LIVRE,
-                   fonte=_F_ARCHIVO, texto="Nº 177 · ANO 42",
-                   nome="Edição", tam=9.0, cor=_J_INK),
+            # F13-TER/D1: o Nº/ANO é REAL (muda por edição) — papel
+            # EDICAO puxa a edição VIVA do projeto; sem dado fica MUDO
+            # (rótulo cravado mentia) e o pré-voo avisa
+            _legal(870, 56, 160, 24, papel=PapelTexto.EDICAO,
+                   fonte=_F_ARCHIVO, nome="Edição", tam=9.0, cor=_J_INK),
         ], origem=(40, 50)),
         _slot("jp1-manchete", [
             _legal(190, 218, 700, 48, papel=PapelTexto.LIVRE,
@@ -656,12 +733,8 @@ def _jornal_p1() -> list[Slot]:
                          "oferta do dia 1º ao 27",
                    tam=10.9, cor=_J_GRAY),
         ], origem=(188, 218)),
-        _slot("jp1-dica", [
-            # a caixa começa DEPOIS do chip verde da estrutura
-            _legal(230, 1324, 770, 42, papel=PapelTexto.DICA,
-                   fonte=_F_FRA_IT, nome="Fica a Dica",
-                   tam=10.5, cor=_J_INK, alin=Alinhamento.ESQUERDA),
-        ], origem=(64, 1314)),
+        # F13-TER/N3: a tarja "FICA A DICA" da capa SAIU da arte — a
+        # dica é UM bloco editorial por edição e mora na página 2
     ]
     return slots
 
@@ -684,16 +757,97 @@ def _jornal_p2() -> list[Slot]:
                    tam=8.25, cor=_J_GRAY),
         ], origem=(640, 48)),
         _slot("jp2-dica", [
-            # abaixo do chip verde da estrutura
-            _legal(664, 1248, 338, 44, papel=PapelTexto.DICA,
+            # F13-TER/N3: BLOCO EDITORIAL de verdade — a caixa da arte
+            # cresceu (650,1188,366×114) e o corpo ganha 3-4 linhas
+            # legíveis em coluna de jornal; o título é o chip verde da
+            # própria arte (com o lápis)
+            _legal(666, 1226, 336, 70, papel=PapelTexto.DICA,
                    fonte=_F_FRA_IT, nome="Fica a Dica",
-                   tam=9.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
-        ], origem=(650, 1214)),
+                   tam=10.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
+        ], origem=(650, 1188)),
     ]
     return slots
 
 
+def _quintou() -> list[Slot]:
+    """O QUINTOU (1080×1300) — geometria MEDIDA por diff Fundo×Real.
+
+    Grade 4×4 (célula 270×258 a partir de y=270; colunas em x=0/270/
+    540/810), posição 13 = o "B" do rodapé (estrutura, fora da grade).
+    O Fundo limpo NÃO tem divisórias nem logo: a grade inteira é do
+    app. Foto GRANDE assentada direto no tijolo; nome branco à
+    esquerda; a etiqueta LISTRADA vermelha (a forma do publicado) no
+    canto inferior direito; validade "Até dd/mm" a 90° junto ao B."""
+    vermelho, branco = "#CE2418", "#FFFFFF"
+    slots = []
+    for pos in range(1, 17):
+        if pos == 13:                      # o B laranja da estrutura
+            continue
+        lin, col = divmod(pos - 1, 4)
+        x, y = col * 270, 270 + lin * 258
+        slots.append(_slot(f"pos-{pos:02d}", [
+            _img(x + 10, y + 6, 250, 152),
+            _nome(x + 8, y + 162, 152, 88, fonte=_F_ARCHIVO,
+                  tam=12.0, cor=branco),
+            _preco(x + 158, y + 180, 108, 64, fonte=_F_ARCHIVO,
+                   forma=FormaPreco.ETIQUETA_LISTRADA,
+                   forma_cor=vermelho, cor=branco, tam=24.0,
+                   tam_cent=13.5, centavos_na_base=True),
+        ], origem=(x, y)))
+    slots.append(_slot("selo-validade", [
+        _legal(213, 1078, 54, 196, papel=PapelTexto.VALIDADE,
+               fonte=_F_ARCHIVO, nome="Validade", rot=90.0,
+               tam=15.0, cor="#E01A1A"),
+    ], origem=(213, 1078)))
+    # o painel do topo-direito é VAZIO no fundo limpo (a logo do
+    # publicado é conteúdo) — as DUAS opções do dono nascem aqui:
+    # logo (célula FIXA, foto escolhida) + Fica a Dica ao lado; a
+    # inspeção também compõe a variante só-dica (decisão é dele)
+    slots.append(_slot("painel-logo", [
+        _img(604, 30, 200, 200),
+    ], origem=(588, 18), fixa=True))
+    slots.append(_slot("painel-dica", [
+        _legal(816, 40, 236, 30, papel=PapelTexto.LIVRE,
+               fonte=_F_ARCHIVO, texto="FICA A DICA", nome="Título",
+               tam=12.0, cor="#1B2A4A", alin=Alinhamento.ESQUERDA),
+        _legal(816, 74, 236, 152, papel=PapelTexto.DICA,
+               fonte=_F_FRA_IT, nome="Fica a Dica",
+               tam=10.0, cor="#33384A", alin=Alinhamento.ESQUERDA),
+    ], origem=(810, 18)))
+    return slots
+
+
+def _quintou_verso() -> list[Slot]:
+    """O VERSO do Quintou — geometria MEDIDA por diff do "Verso fundo"
+    × "Verso Real" (mesma grade 4×4 da frente, célula 270×258 a partir
+    de y=270), agora com as 16 POSIÇÕES (o verso não tem o "B" nem o
+    painel — a marca neon "Quintou do Real" e o "Só Hoje" são ARTE).
+    A validade vive no DISCLAIMER do topo direito (bbox do diff:
+    y 7–41, x ~640–1076), em branco, sem rotação."""
+    vermelho, branco = "#CE2418", "#FFFFFF"
+    slots = []
+    for pos in range(1, 17):
+        lin, col = divmod(pos - 1, 4)
+        x, y = col * 270, 270 + lin * 258
+        slots.append(_slot(f"vpos-{pos:02d}", [
+            _img(x + 10, y + 6, 250, 152),
+            _nome(x + 8, y + 162, 152, 88, fonte=_F_ARCHIVO,
+                  tam=12.0, cor=branco),
+            _preco(x + 158, y + 180, 108, 64, fonte=_F_ARCHIVO,
+                   forma=FormaPreco.ETIQUETA_LISTRADA,
+                   forma_cor=vermelho, cor=branco, tam=24.0,
+                   tam_cent=13.5, centavos_na_base=True),
+        ], origem=(x, y)))
+    slots.append(_slot("v-validade", [
+        _legal(640, 8, 434, 36, papel=PapelTexto.VALIDADE,
+               fonte=_F_ARCHIVO, nome="Validade", tam=9.5,
+               cor=branco, alin=Alinhamento.ESQUERDA),
+    ], origem=(640, 8)))
+    return slots
+
+
 _BUILDERS = {
+    "quintou": (_quintou, _quintou_verso),
     "segunda-frios": (_segunda,),
     "terca-do-pao": (_terca,),
     "quarta-das-ofertas": (_quarta,),
@@ -704,26 +858,83 @@ _BUILDERS = {
 }
 
 
+def _pasta_do_encarte(raiz: Path, sub: str) -> Path:
+    return raiz / sub[2:] if sub.startswith("./") else raiz / "artes" / sub
+
+
 def chaves_do_pacote(pasta_pacote: str | Path) -> list[str]:
     """As chaves dos encartes cujo BASE.png existe na pasta do pacote."""
     raiz = Path(pasta_pacote)
     achadas = []
     for chave, (sub, bases) in _BASES.items():
-        if all((raiz / "artes" / sub / b).exists() for b in bases):
+        if all((_pasta_do_encarte(raiz, sub) / b).exists() for b in bases):
             achadas.append(chave)
     return achadas
 
 
-def layout_de_encarte(chave: str, pasta_pacote: str | Path) -> LayoutDef:
+def _jornal_celula_fluxo(n: int, x: float, y: float, w: float,
+                         alt: float) -> Slot:
+    """F13-TER/N2: a célula do MIOLO em fluxo — a mesma receita da
+    ``_jornal_linha`` (foto + nome Fraunces + descritor itálico +
+    CARIMBO), parametrizada pela geometria que o fluxo decidiu. A foto
+    encolhe com o degrau de altura (o custo declarado do degrau)."""
+    foto_h = max(40.0, alt - 108)
+    rot = -6.0 if (n % 2 == 0) else 5.0
+    return _slot(f"jf-{n:02d}", [
+        _img(x + 6, y + 2, w - 16, foto_h),
+        _nome(x + 6, y + foto_h + 4, w - 16, 24, fonte=_F_FRAUNCES,
+              tam=11.0, cor=_J_INK),
+        _sub(x + 6, y + foto_h + 28, w - 16, 16, fonte=_F_FRA_IT,
+             tam=8.5, cor=_J_GRAY),
+        _preco(x + (w - 96) / 2, y + alt - 50, 96, 42, fonte=_F_FRAUNCES,
+               rot=rot, forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
+               cor=_J_LARD, tam=20.0, tam_cent=12.6,
+               centavos_na_base=True),
+    ], origem=(x, y))
+
+
+def _jornal_cabecalho_secao(n: int, titulo: str, caixa: tuple) -> Slot:
+    """F13-TER/N2: o cabeçalho de seção do jornal — VERSALETE + FILETE
+    (nunca retângulo colorido; o estilo é DO encarte)."""
+    x, y, w, h = caixa
+    return _slot(f"jsec-{n:02d}", [
+        _legal(x + 2, y + 4, min(w - 4, 420), 20, papel=PapelTexto.LIVRE,
+               fonte=_F_ARCHIVO, texto=titulo.upper(),
+               nome=f"Seção: {titulo}", tam=9.5, cor=_J_INK,
+               alin=Alinhamento.ESQUERDA),
+        Regiao(TipoRegiao.FILETE, _r(x, y + h - 7, w, 1.6),
+               nome="Fio da seção", cor=_J_INK),
+    ], origem=(x, y))
+
+
+# as FAIXAS de fluxo do Jornal (px 1×, medidas da arte regenerada:
+# réguas de coluna contínuas em x=64+198c−6; p1 y 656–1296, p2 y
+# 128–980). Colunas cravadas em 5 PELA ARTE (degrau (a) não existe
+# aqui — declarado); degraus de altura tabelados.
+_FAIXAS_JORNAL = (
+    dict(x=64.0, y=648.0, largura=990.0, altura=648.0),
+    dict(x=64.0, y=116.0, largura=990.0, altura=864.0),
+)
+
+
+def layout_de_encarte(chave: str, pasta_pacote: str | Path,
+                      secoes: "list[tuple[str, int]] | None" = None,
+                      ) -> LayoutDef:
     """Monta o LayoutDef de um encarte do pacote a partir das TABELAS.
 
     A página nasce do BASE.png real (2160×2880 ⇒ dpi 192 ⇒ 285,75×381
     mm); o Jornal vira UM layout de duas páginas (fundo POR página,
     seções ligadas — N-05: a arte não traz seção; quem desenha é o app).
+
+    F13-TER/N2: com ``secoes`` (só no Jornal), o MIOLO das duas páginas
+    troca a grade fixa pelo FLUXO por seções (cabeçalho fio+versalete +
+    células ``jf-NN`` na ordem de leitura); capa (hero/chamadas/
+    manchete) e rodapés ficam. Os avisos do fluxo (degrau usado,
+    transbordo, o que não coube) saem em ``layout.avisos_fluxo``.
     """
     raiz = Path(pasta_pacote)
     sub, bases = _BASES[chave]
-    caminhos = [raiz / "artes" / sub / b for b in bases]
+    caminhos = [_pasta_do_encarte(raiz, sub) / b for b in bases]
     for c in caminhos:
         if not c.exists():
             raise FileNotFoundError(
@@ -740,9 +951,33 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path) -> LayoutDef:
             # um estilo de seção POR ENCARTE é assunto do G
             secoes_ligadas=False,
         ))
-    layout = layout_de_arte(str(caminhos[0]), dpi=DPI_BASE,
-                            paginas=paginas)
+    avisos_fluxo: list[str] = []
+    if secoes and chave == "jornal-do-mes":
+        from app.rendering.fluxo_jornal import FaixaFluxo, montar_fluxo
+        faixas = [FaixaFluxo(colunas=(5,), alturas_celula=(202, 178, 156),
+                             altura_cabecalho=34, **f)
+                  for f in _FAIXAS_JORNAL]
+        fluxo = montar_fluxo(secoes, faixas)
+        avisos_fluxo = fluxo.avisos
+        for pag in paginas:                # a grade fixa do miolo sai
+            pag.slots = [s for s in pag.slots
+                         if not s.id.split("-")[1].startswith("l")]
+        n_cel = n_sec = 0
+        for bloco in fluxo.blocos:
+            pag = paginas[bloco.faixa]
+            n_sec += 1
+            pag.slots.append(_jornal_cabecalho_secao(
+                n_sec, bloco.secao, bloco.cabecalho))
+            for cx, cy, cw, calt in bloco.celulas:
+                n_cel += 1
+                pag.slots.append(
+                    _jornal_celula_fluxo(n_cel, cx, cy, cw, calt))
+    # o Quintou veio do Illustrator em 1× (1080×1300, sem BASE ×2) —
+    # os demais têm BASE 2160×2880 (×2 exato do viewBox)
+    dpi = DPI_VIEWBOX if chave == "quintou" else DPI_BASE
+    layout = layout_de_arte(str(caminhos[0]), dpi=dpi, paginas=paginas)
     layout.validar_ids_unicos()
+    layout.avisos_fluxo = avisos_fluxo
     return layout
 
 
