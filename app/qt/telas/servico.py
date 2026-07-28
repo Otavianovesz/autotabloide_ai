@@ -69,6 +69,10 @@ class ItemMesa:
     # por quantidade; quando presente, a região de preço desenha ele (não o
     # Decimal) e o pré-voo o trata como preço (não "sem preço").
     multi_preco: str | None = None
+    # F13-TERTIUSDECIMUS/Q2: desconto DECLARADO na tabela ("com 20% de
+    # desconto", sem preço) — a célula mostra o percentual (papel
+    # DESCONTO) e o pré-voo não acusa "sem preço"
+    desconto_pct: int | None = None
     # R-071 (Fase 7): observação por item ("limite 2 por cliente") — texto
     # OPCIONAL que vira uma região condicional (papel OBSERVACAO): só desenha
     # se preenchida; vazia não é problema no pré-voo (não-ocupável, lei da casa).
@@ -748,6 +752,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         marca_propria=it.marca_propria,                     # F13/COND-5
         unidade=it.unidade,
         descritor=descritor,                 # F13-BIS/T2
+        desconto_pct=getattr(it, "desconto_pct", None),   # Q2
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
         # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
@@ -1527,8 +1532,18 @@ def atualizar_fixos_pela_tabela(layout, itens) -> list[str]:
                 continue
             it = por_chave.get(
                 chave_natural(cf.get("nome"), cf.get("marca")))
-            if it is None or not (it.preco or "").strip():
+            if it is None:
                 continue                      # ausente: mantém o que está
+            # Q2 (TERTIUSDECIMUS): a oferta do fixo pode ser um DESCONTO
+            # declarado ("Lanche na Chapa com 20%") — atualiza como o
+            # preço da semana atualiza
+            dp = getattr(it, "desconto_pct", None)
+            if dp and cf.get("desconto_pct") != dp:
+                cf["desconto_pct"] = dp
+                avisos.append(f"item fixo “{cf.get('nome')}”: desconto "
+                              f"da semana atualizado para {dp}%")
+            if not (it.preco or "").strip():
+                continue
             if (cf.get("preco") or "").strip() != it.preco.strip():
                 cf["preco"] = it.preco.strip()
                 avisos.append(f"item fixo “{cf.get('nome')}”: preço da "
@@ -1857,7 +1872,9 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                         avisos.append(
                             f"{rotulo} ({nome}): foto com nota RUIM{idx} — "
                             + "; ".join(av.motivos))
-        if d.preco_por is None and not d.multi_preco:   # R-070: multi-preço TEM preço
+        if d.preco_por is None and not d.multi_preco \
+                and not getattr(d, "desconto_pct", None):
+            # R-070: multi-preço TEM preço; Q2: desconto declarado idem
             avisos.append(f"{rotulo} ({nome}): sem preço (ou preço não entendido)")
         # FASE 3 (passo 73, I2): selo escolhido cuja ARTE sumiu do disco —
         # o desenho cairia no badge genérico sem ninguém saber por quê
@@ -2000,7 +2017,7 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
 
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                      aviso=None, caminho_fonte=None,
-                     multi_precos=None) -> ResultadoMesa:
+                     multi_precos=None, descontos=None) -> ResultadoMesa:
     """Concilia uma lista de tuplas ``(descricao, preco, ean)`` com o banco —
     o MESMO caminho que ``importar_ofertas`` usa. A COLAGEM (R-050, Fase 7)
     reusa isto: o parser de colagem produz as tuplas e cai aqui, sem duplicar
@@ -2045,10 +2062,13 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                             session.rollback()
                 mp = (multi_precos[i - 1] if multi_precos
                       and i - 1 < len(multi_precos) else None)
+                dp = (descontos[i - 1] if descontos
+                      and i - 1 < len(descontos) else None)
                 itens.append(ItemMesa(
                     descricao=desc,
                     preco=preco,
                     multi_preco=mp,                          # R-070 (colagem)
+                    desconto_pct=dp,                         # Q2 (declarado)
                     ean=ean or (p.ean if p else None),
                     semaforo=v.semaforo.value,
                     nome=p.nome_sanitizado if p else desc,

@@ -86,6 +86,10 @@ class DadosProduto:
     # PROJETO que chega aqui pela montagem oficial (como a validade);
     # desenhado nas regiões de papel EDICAO, condicional
     edicao: str | None = None
+    # F13-TERTIUSDECIMUS/Q2: o desconto DECLARADO na tabela ("COM 20%
+    # DE DESCONTO", item sem preço) — o papel DESCONTO o desenha quando
+    # não há de/por para calcular; a arte foi desenhada para isso
+    desconto_pct: int | None = None
 
 
 def percentual_desconto(preco_de: "Decimal | None",
@@ -148,10 +152,15 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
         return obs or fixo
     if papel == PapelTexto.DESCONTO:
         # R-109: "-XX%" CALCULADO de (de−por)/de — condicional (sem "de" ou
-        # sem desconto real, a região não pinta). Nunca digitado.
+        # sem desconto real, a região não pinta). Nunca digitado…
+        # TERTIUSDECIMUS/Q2: …exceto quando o desconto É a oferta ("LANCHE
+        # NA CHAPA COM 20% DE DESCONTO" — item SEM preço, com percentual
+        # DECLARADO na tabela do dono); aí o dado vale
         pct = percentual_desconto(
             dados.preco_de if dados is not None else None,
             dados.preco_por if dados is not None else None)
+        if not pct and dados is not None:
+            pct = getattr(dados, "desconto_pct", None)
         return f"-{pct}%" if pct else ""
     if papel == PapelTexto.EDICAO:
         # F13-TER/D1: a edição VIVA do projeto ("Nº 178 · ANO 42");
@@ -375,6 +384,17 @@ def _desenhar_texto(
     )
     total_h = aj.altura_linha_px * len(aj.linhas)
     oy = _y_alinhado(y, rh, total_h, reg)     # F13/C4: TOPO/CENTRO/BASE
+    # TERTIUSDECIMUS/A1 (a rede do invariante): NENHUM texto desenha
+    # fora do rect da região — bloco maior que a caixa não transborda
+    # pelo alinhamento (era a 1ª linha da Terça sobre a palha da
+    # cesta); o clamp corta ao que cabe — a precedência (N1) é quem
+    # evita chegar aqui
+    if total_h > rh:
+        oy = y
+        n_cabem = max(1, int(rh // max(1, aj.altura_linha_px)))
+        aj.linhas = aj.linhas[:n_cabem]
+    else:
+        oy = min(max(oy, y), y + rh - total_h)
 
     # R-035: pílula atrás do texto (antes das letras), justa ao bloco usado
     if reg.pill:
@@ -965,7 +985,8 @@ def _dados_do_conteudo_fixo(cf: dict) -> "DadosProduto":
     return DadosProduto(
         cf.get("nome") or "", descritor=cf.get("descritor"),
         unidade=cf.get("descritor"), preco_por=preco, imagem_path=img,
-        imagens=imagens)
+        imagens=imagens,
+        desconto_pct=cf.get("desconto_pct"))     # Q2: o 20% do Lanche
 
 
 def compor_pagina(

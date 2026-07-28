@@ -869,3 +869,19 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   para o G: o LM inventou "1" em KG→"1kg" (furo fino RG-20); botão
   "reprocessar" do Estúdio; reuso de projeto por nome. Suíte ×2 +
   invertida + janela (bloco_fduodecimus_*).
+  —— **13ª RODADA — TERTIUSDECIMUS (os 2 acertos da Terça + a QUARTA)
+  EXECUTADA (28/07).** A1: o texto nunca sai do painel — o remendo das
+  cestas cresceu na ARTE (regenerada) + o passo 3 só cresce COLADO na
+  foto + a rede de clamp no desenho + o TESTE DE MÁSCARA nas 8 (todo
+  pixel de texto dentro do bbox da região). A2: SÓ A DATA nos oito
+  selos (miolos medidos por pixel em cada BASE; exceções de arte
+  declaradas: Jornal e verso do Quintou). A3 com dado: a página era o
+  projeto id=12 QUE O DONO MONTOU SOZINHO (a aceitação de verdade).
+  QUARTA: o OCR VENCEU a foto de monitor (8 itens, preços exatos, 67s,
+  zero tratamento); conta exata 3+5=8; item-com-percentual no modelo
+  (desconto_pct: parser→estante→pílula DESCONTO→pré-voo calado→
+  atualizar_fixos); os 3 modos do fixo numa página; validade 29/07
+  sozinha; projeto id=13. Achados p/ o G: o desconto não passa pelo
+  parser do OCR; o diálogo dos fixos não mostra qual célula tem papel
+  DESCONTO; critério do Concluir com vermelho-resolvido. Suíte 1043 ×2
+  + invertida + janela (bloco_ftertius_*).

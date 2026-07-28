@@ -92,6 +92,11 @@ def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
     rn, ri = reg_nome.rect, reg_img.rect
     if ri.y_mm + ri.alt_mm > rn.y_mm + 0.5:      # foto não está acima
         return None
+    # TERTIUSDECIMUS/A1: a banda só cresce COLADA na foto — crescer
+    # através de um vão de ARTE (o painel das cestas da Terça) pinta
+    # texto sobre o desenho; com vão, a precedência segue ao passo 4/5
+    if rn.y_mm - (ri.y_mm + ri.alt_mm) > 2.5:    # ~9 px de folga na régua
+        return None
     try:
         from PIL import ImageFont
         from app.rendering.units import pt_para_px

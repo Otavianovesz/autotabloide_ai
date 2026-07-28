@@ -251,20 +251,25 @@ def _terca() -> list[Slot]:
                    forma_cor="#C94F32", borda="#A03A22",
                    cor="#FFF9EC", tam=19.5, tam_cent=12.4,
                    centavos_na_base=True),
-            _legal(cx - 95, 1014, 190, 12, papel=PapelTexto.LIVRE,
+            # TERTIUSDECIMUS/A1: o remendo cresceu na ARTE (66→96) e o
+            # nome ganhou caixa de 2 LINHAS — o texto nunca mais sai
+            # do painel sobre a palha da cesta
+            _legal(cx - 95, 1006, 190, 12, papel=PapelTexto.LIVRE,
                    fonte=_F_ARCHIVO, nome="Rótulo",
                    texto="· PADARIA BELO BRASIL ·", rot=prot,
                    tam=6.0, cor="#C77E38"),
-            _nome(cx - 95, 1026, 190, 22, fonte=_F_FRAUNCES,
+            _nome(cx - 95, 1020, 190, 44, fonte=_F_FRAUNCES,
                   tam=13.1, cor="#33200F", rot=prot),
-            _sub(cx - 95, 1050, 190, 15, fonte=_F_FRA_IT,
+            _sub(cx - 95, 1070, 190, 16, fonte=_F_FRA_IT,
                  tam=7.5, cor="#96826A", rot=prot),
         ], origem=(x, 748)))
-    slots.append(_slot("selo-validade", [
-        _legal(896, 106, 100, 44, papel=PapelTexto.VALIDADE,
-               fonte=_F_FRAUNCES, nome="Validade", rot=8.0,
-               tam=16.5, cor="#33200F"),
-    ], origem=(876, 106)))
+    # TERTIUSDECIMUS/A2: SÓ A DATA no miolo limpo MEDIDO por pixel no
+    # BASE (y 116–142) — o "Ofertas válidas" atravessava a curva gravada
+    selo_t = _legal(896, 114, 100, 30, papel=PapelTexto.VALIDADE,
+                    fonte=_F_FRAUNCES, nome="Validade (data)", rot=8.0,
+                    tam=16.5, cor="#33200F")
+    selo_t.so_data = True
+    slots.append(_slot("selo-validade", [selo_t], origem=(876, 106)))
     return slots
 
 
@@ -456,11 +461,12 @@ def _quarta() -> list[Slot]:
     ], origem=(410, 868)))
     # a DATA no selo preto da Coluna do Dia: Anton AMARELO (a caixa
     # existia VAZIA na 1ª galeria — defeito funcional, §3.3.1)
-    slots.append(_slot("selo-validade", [
-        _legal(92, 362, 152, 48, papel=PapelTexto.VALIDADE,
-               fonte=_F_ANTON, nome="Validade", rot=-2.0,
-               tam=28.5, cor="#F7C868"),
-    ], origem=(80, 348)))
+    # A2: só a data no miolo medido (y 367–393 do BASE)
+    selo_q = _legal(92, 366, 152, 28, papel=PapelTexto.VALIDADE,
+                    fonte=_F_ANTON, nome="Validade (data)", rot=-2.0,
+                    tam=28.5, cor="#F7C868")
+    selo_q.so_data = True
+    slots.append(_slot("selo-validade", [selo_q], origem=(80, 348)))
     return slots
 
 
@@ -521,11 +527,12 @@ def _peixe() -> list[Slot]:
                        centavos_na_base=True),
             ]
         slots.append(_slot(f"celula-{i}", regs, origem=(x, y)))
-    slots.append(_slot("selo-validade", [
-        _legal(892, 124, 120, 44, papel=PapelTexto.VALIDADE,
-               fonte=_F_FRAUNCES, nome="Validade", rot=-7.0,
-               tam=23.25, cor=navy),
-    ], origem=(877, 124)))
+    # A2: só a data no miolo medido (y 144–170 do BASE)
+    selo_p = _legal(892, 142, 120, 30, papel=PapelTexto.VALIDADE,
+                    fonte=_F_FRAUNCES, nome="Validade (data)", rot=-7.0,
+                    tam=23.25, cor=navy)
+    selo_p.so_data = True
+    slots.append(_slot("selo-validade", [selo_p], origem=(877, 124)))
     return slots
 
 
@@ -580,11 +587,12 @@ def _sexta() -> list[Slot]:
                        tam=22.0, tam_cent=14.0, centavos_na_base=True),
             ], origem=(x, y)))
             k += 1
-    slots.append(_slot("selo-validade", [
-        _legal(852, 116, 120, 48, papel=PapelTexto.VALIDADE,
-               fonte=_F_FRAUNCES, nome="Validade", rot=-6.0,
-               tam=28.5, cor="#FDF6E9"),
-    ], origem=(852, 116)))
+    # A2: só a data no miolo medido (y 154–180 do BASE)
+    selo_s = _legal(852, 152, 120, 30, papel=PapelTexto.VALIDADE,
+                    fonte=_F_FRAUNCES, nome="Validade (data)", rot=-6.0,
+                    tam=28.5, cor="#FDF6E9")
+    selo_s.so_data = True
+    slots.append(_slot("selo-validade", [selo_s], origem=(852, 116)))
     return slots
 
 
@@ -664,11 +672,12 @@ def _sabado() -> list[Slot]:
                 _bandeira(x + 153, y + alt, rot),
             ]
         slots.append(_slot(f"celula-{cid}", regs, origem=(x, y)))
-    slots.append(_slot("selo-validade", [
-        _legal(876, 146, 120, 44, papel=PapelTexto.VALIDADE,
-               fonte=_F_FRAUNCES, nome="Validade", rot=9.0,
-               tam=25.5, cor=red),
-    ], origem=(856, 146)))
+    # A2: só a data no miolo medido (y 154–180 do BASE)
+    selo_c = _legal(876, 152, 120, 30, papel=PapelTexto.VALIDADE,
+                    fonte=_F_FRAUNCES, nome="Validade (data)", rot=9.0,
+                    tam=25.5, cor=red)
+    selo_c.so_data = True
+    slots.append(_slot("selo-validade", [selo_c], origem=(856, 146)))
     return slots
 
 
@@ -832,16 +841,18 @@ def _quintou() -> list[Slot]:
         x, y = col * 270, 270 + lin * 258
         slots.append(_slot(f"pos-{pos:02d}", _celula_quintou(x, y),
                            origem=(x, y)))
-    slots.append(_slot("selo-validade", [
-        # QUATER/Q6 (medido no Real): alvo VISUAL (221,1080,36,192),
-        # cap ~34px, #E04444 — sobre o TIJOLO, nunca o logo. O RG-12
-        # gira o conteúdo em torno do CENTRO do rect, então o rect é o
-        # RETO pré-rotação (196×40 centrado em 238,1176) — a caixa
-        # pós-rotação esmagava o texto (o bug das 3 rodadas).
-        _legal(138, 1146, 200, 60, papel=PapelTexto.VALIDADE,
-               fonte=_F_QUICK, nome="Validade", rot=90.0,
-               tam=34.0, cor="#E04444"),
-    ], origem=(138, 1146)))
+    # QUATER/Q6 (medido no Real): alvo VISUAL (221,1080,36,192),
+    # cap ~34px, #E04444 — sobre o TIJOLO, nunca o logo. O RG-12
+    # gira o conteúdo em torno do CENTRO do rect, então o rect é o
+    # RETO pré-rotação (196×40 centrado em 238,1176) — a caixa
+    # pós-rotação esmagava o texto (o bug das 3 rodadas).
+    # TERTIUSDECIMUS/A2: só a data no tijolo (a frase inteira girada
+    # não é o publicado — que escrevia "Até 16/07", curto)
+    selo_qt = _legal(138, 1146, 200, 60, papel=PapelTexto.VALIDADE,
+                     fonte=_F_QUICK, nome="Validade (data)", rot=90.0,
+                     tam=34.0, cor="#E04444")
+    selo_qt.so_data = True
+    slots.append(_slot("selo-validade", [selo_qt], origem=(138, 1146)))
     # o painel do topo-direito é VAZIO no fundo limpo. QUATER/Q5: meio
     # a meio arruinava os DOIS — aqui o builder entrega a opção B FIEL
     # ao publicado (o logo ocupa o painel INTEIRO, 468×226 medidos);

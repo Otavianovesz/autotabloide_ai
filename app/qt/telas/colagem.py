@@ -32,6 +32,10 @@ class LinhaColada:
     preco: str | None            # texto cru, como veio (None = sem preço)
     preco_valido: bool           # preco_decimal(preco) is not None
     aviso: str | None = None
+    # TERTIUSDECIMUS/Q2: o desconto DECLARADO ("LANCHE NA CHAPA COM
+    # 20 % de DESCONTO") — item SEM preço que TEM valor comercial; a
+    # arte tem a pílula para ele e o pré-voo não reclama
+    desconto_pct: int | None = None
     # R-070/passo 62: multi-preço reconhecido NA COLAGEM ("3 por R$10", "leve 3
     # pague 2"). Quando presente, `preco` fica None e a linha TEM preço (não é
     # "sem preço"): é um FORMATO de promoção, não um valor. O "2x 5,00" proibido
@@ -115,6 +119,8 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
     linhas: list[LinhaColada] = []
     for raw in (texto or "").splitlines():
         raw = raw.rstrip()
+        # Q4 (a Quarta): "▶"/"•" no início é marcador visual, não texto
+        raw = raw.lstrip("▶•·◦> ").rstrip()
         if not raw.strip() or _eh_lixo(raw):
             continue
         # passo 62: multi-preço PRIMEIRO — "Sabão;3 por R$10" é promoção, não
@@ -149,8 +155,24 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
         # PROSA com número (o 25%/50% da mecânica gravada na arte — T3)
         # vai ao balde VISÍVEL; prosa sem número morre em silêncio.
         if not preco:
-            eh_prosa = (re.search(r"[.!?“”\"…]|\.{2,}", raw)
-                        or len(nome.split()) > 6)
+            eh_prosa = (re.search(r"[.!?“”\"…<>]|\.{2,}", raw)
+                        or len(nome.split()) > 8)
+            # Q2 (a Quarta): "LANCHE NA CHAPA COM 20 % de DESCONTO" —
+            # item cuja OFERTA é o percentual; linha curta com o padrão
+            # vira item-com-desconto (a prosa longa/pontuada continua
+            # indo ao balde — o leve-3 da Terça não engana)
+            m_desc = re.search(r"(?:com\s+)?(\d{1,3})\s*%\s*(?:de\s*)?"
+                               r"desconto", raw, re.IGNORECASE)
+            if m_desc and not eh_prosa:
+                nome_d = _limpar_nome_de_tabela(
+                    raw[:m_desc.start()].strip(" -–:;|"))
+                nome_d = re.sub(r"\bcom\s*$", "", nome_d,
+                                flags=re.IGNORECASE).strip()
+                if nome_d:
+                    linhas.append(LinhaColada(
+                        nome_d, None, True,
+                        desconto_pct=int(m_desc.group(1))))
+                    continue
             if re.search(r"\d", raw):
                 if balde is not None:
                     balde.append(raw.strip())
@@ -207,6 +229,12 @@ def multi_precos_de(linhas: list[LinhaColada]):
     """Lista de multi-preços PARALELA às tuplas (mesma ordem) — propagada ao
     ItemMesa depois da conciliação (`conciliar_linhas(..., multi_precos=...)`)."""
     return [li.multi_preco for li in linhas]
+
+
+def descontos_de(linhas: list[LinhaColada]):
+    """Q2: lista de descontos declarados PARALELA às tuplas (mesma
+    ordem) — o "20% de desconto" do Lanche viaja ao ItemMesa."""
+    return [li.desconto_pct for li in linhas]
 
 
 # ----------------------------------------------------------------------------
