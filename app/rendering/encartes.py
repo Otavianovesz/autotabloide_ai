@@ -96,13 +96,16 @@ def _mm(v: float) -> float:
     return px_para_mm(v, DPI_VIEWBOX)
 
 
-def _img(x, y, w, h, rot=0.0) -> Regiao:
+def _img(x, y, w, h, rot=0.0, flex=False) -> Regiao:
     from app.rendering.model import Ajuste
     # F13-TER/V1: as fotos dos encartes ASSENTAM — recorte pela bbox do
     # alfa (o quadrado do acervo morre), maior escala que caiba, âncora
     # no rodapé da zona
+    # QUARTUSDECIMUS/Q1: ``flex`` marca célula de arte LISA onde a zona
+    # pode mudar de forma conforme a foto da semana (foto_fit)
     return Regiao(TipoRegiao.IMAGEM, _r(x, y, w, h), nome="Foto",
-                  rotacao_graus=rot, ajuste=Ajuste.ASSENTAR)
+                  rotacao_graus=rot, ajuste=Ajuste.ASSENTAR,
+                  zona_flex=flex)
 
 
 def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
@@ -410,7 +413,11 @@ def _quarta() -> list[Slot]:
         my = 546 + i * 246
         regs = [
             # F13-TER: zona estendida (inset 8 provado contra o canto)
-            _img(82, my + 8, 122, 216),
+            # Q1: o cartão dos minis é LISO — a zona muda de forma
+            # conforme a foto da semana (as fotos do dono são LARGAS
+            # numa zona alta: 56% de área, colada no chão — a doença
+            # que a ordem mediu)
+            _img(82, my + 8, 122, 216, flex=True),
             _nome(212, my + 34, 148, 60, fonte=_F_NUNITO,
                   alin=Alinhamento.ESQUERDA, tam=17.5, cor=escuro),
             # a linha do peso do modelo ("BBX 100g" — cola no nome)
@@ -425,12 +432,14 @@ def _quarta() -> list[Slot]:
                                cor="#FFFFFF", tam=24.5, tam_cent=13.8,
                                rot=-1.5))
         else:
-            # pctpod LARANJA: o "-XX%" CALCULADO veste a pílula (F9)
+            # pctpod VERDE (QUARTUSDECIMUS/Q3): a cor segue a COLUNA —
+            # a identidade da célula fixa — não o tipo do valor; o
+            # laranja destoava das duas irmãs de cima
             d = _legal(224, my + 154, 108, 52, papel=PapelTexto.DESCONTO,
                        fonte=_F_ANTON, nome="Desconto", rot=-1.5,
                        tam=23.0, cor="#FFFFFF")
             d.forma_preco = FormaPreco.TAG_ARREDONDADA
-            d.forma_cor = laranja
+            d.forma_cor = verde
             d.forma_cor_borda = escuro
             regs.append(d)
         slots.append(_slot(f"celula-fixa-{i + 1}", regs,

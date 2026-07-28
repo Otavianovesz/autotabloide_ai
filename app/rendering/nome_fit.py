@@ -7,9 +7,18 @@ cadeia da OCTAVUS roda em RUNTIME, para todo nome, nesta ordem:
 1. o nome cabe no corpo mínimo (1 linha)?    → usa
 2. cabe em 2+ linhas no corpo mínimo?        → usa (mesma medida)
 3. a banda pode crescer (orçamento O1)?      → cresce, a FOTO cede
-4. tem descritor? o descritor SAI            → o nome usa a banda inteira
+4. descritor SEM unidade sai (banda inteira); COM unidade fica —
+   a UNIDADE nunca é sacrificável (QUARTUSDECIMUS §2)
 5. o nome ENCURTA pelo descritor             → o excedente desce inteiro
 6. só então elipsa — e a revisora/pré-voo acusa (``elipsa=True``)
+
+QUARTUSDECIMUS §2: o descritor tem DUAS metades — o QUALIFICADOR
+("BB-X", "tinto", "extra virgem") pode sair; a UNIDADE ("100 g", "kg",
+"1,5 L") é informação comercial: "Salsicha — R$ 9,90" sem o kg, ao
+lado de vizinhos "100 g", lê DEZ vezes mais caro. Caso-limite escrito
+junto com a regra (a lição do §6): item vendido a quilo cercado de
+itens por 100 g; e o SUBTITULO estreito que elipsava o número
+("BB-X · 10…") — o desenho corta o qualificador, nunca a unidade.
 
 O encurtamento do passo 5 é MECÂNICO, nunca heurístico: como a ordem
 travada do nome é Tipo+Marca+Sabor+Peso, o fim do nome é o que pode
@@ -25,6 +34,7 @@ silenciosa.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -65,6 +75,68 @@ def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
         if p and _norm(p) not in _norm(" ".join(saida)):
             saida.append(p)
     return " · ".join(saida) or None
+
+
+# uma PARTE do descritor é unidade quando é peso/volume ("100 g",
+# "1,5 L", "4x120 g", "395g") ou unidade solta de venda a peso ("kg")
+_RE_PARTE_UNIDADE = re.compile(
+    r"^(?:\d+\s*x\s*)?\d+(?:[.,]\d+)?\s*(?:kg|g|mg|ml|l|un)\.?$"
+    r"|^(?:kg|g|ml|mg|un|l)\.?$", re.IGNORECASE)
+
+
+def dividir_descritor(descritor: str | None,
+                      unidade: str | None = None,
+                      ) -> tuple[str | None, str | None]:
+    """QUARTUSDECIMUS §2 — as duas metades do descritor: devolve
+    ``(qualificador, protegido)``. O qualificador é sacrificável; o
+    protegido NUNCA sai por falta de espaço e inclui a UNIDADE (peso/
+    volume — informação comercial) **e as SIGLAS DE EMBALAGEM
+    conhecidas** (TP, L.V., BB…): a palavra do dono (adendo NONUS,
+    27/07 — "não se pode omitir o tipo de embalagem") vale também no
+    desenho, não só na precedência (achado da frota QUARTUSDECIMUS).
+    A ``unidade`` do dado decide o empate quando uma parte não parece
+    peso (ex.: "un" declarada pelo cadastro)."""
+    if not descritor:
+        return None, None
+    quals: list[str] = []
+    prot: list[str] = []
+    for parte in descritor.split(" · "):
+        p = parte.strip()
+        if not p:
+            continue
+        if bool(_RE_PARTE_UNIDADE.match(p)) or (
+                unidade is not None and _norm(p) == _norm(unidade)):
+            prot.append(p)
+            continue
+        # o SUFIXO de siglas de embalagem da parte é protegido
+        # ("tinto TP" → qualificador "tinto", protegido "TP")
+        tks = p.split()
+        sig: list[str] = []
+        while tks and tks[-1].upper() in REGRAS_PADRAO.siglas:
+            sig.insert(0, tks.pop())
+        if tks:
+            quals.append(" ".join(tks))
+        if sig:
+            prot.append(" ".join(sig))
+    return (" · ".join(quals) or None), (" · ".join(prot) or None)
+
+
+def descritor_que_cabe(descritor: str | None, unidade: str | None,
+                       reg: Regiao, dpi: int,
+                       fontes_dir: str | Path) -> str | None:
+    """O texto que o SUBTITULO desenha: o descritor completo se couber
+    sem elipse; senão o QUALIFICADOR sai e a unidade fica — reticências
+    em cima do número ("BB-X · 10…") é preço errado na vitrine. Se nem
+    a unidade sozinha cabe, ela vai mesmo assim (região pequena demais
+    é caso de calibração; elipsar a unidade seria pior)."""
+    texto = descritor or unidade
+    if not texto:
+        return None
+    fontes_dir = Path(fontes_dir)
+    if _cabe(texto, reg, reg.rect, dpi, fontes_dir):
+        return texto
+    _qual, unidade_txt = dividir_descritor(texto, unidade)
+    return unidade_txt or texto
 
 
 def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
@@ -156,7 +228,12 @@ def precedencia_do_nome(
     reg_img = next((r for r in regioes
                     if r.tipo == TipoRegiao.IMAGEM and r.visivel), None)
 
-    descritor0 = descritor or unidade
+    # QUARTUSDECIMUS (frota): a unidade do DADO entra SEMPRE no
+    # descritor de trabalho (dedupe cuida da repetição) — descritor
+    # qualificador-puro com unidade só no campo não engana mais o
+    # passo 4 nem o desenho
+    descritor0 = _juntar_descritor([descritor] if descritor else [],
+                                   unidade)
     if reg_sub is None:
         # sem descritor na célula não há para onde mover (I2): a cadeia
         # é só o aviso de elipse (o Quintou/Jornal-fluxo caem aqui)
@@ -206,8 +283,10 @@ def precedencia_do_nome(
             if _cabe(nome_atual, reg_nome, rect_nome, dpi, fontes_dir):
                 return NomeAjustado(nome_atual, desc_atual, rects)
 
-    # passo 4 — o descritor sai e o nome usa a banda inteira
-    if desc_atual:
+    # passo 4 — QUARTUSDECIMUS §2: a banda inteira (o SUBTITULO cala)
+    # só existe para item SEM unidade nenhuma; com unidade no descritor
+    # a cadeia segue ao passo 5 — o nome encurta, a unidade fica
+    if desc_atual and dividir_descritor(desc_atual, unidade)[1] is None:
         alto = min(rect_nome.y_mm, reg_sub.rect.y_mm)
         baixo = max(rect_nome.y_mm + rect_nome.alt_mm,
                     reg_sub.rect.y_mm + reg_sub.rect.alt_mm)

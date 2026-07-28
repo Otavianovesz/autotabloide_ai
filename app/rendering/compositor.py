@@ -112,6 +112,21 @@ def percentual_desconto(preco_de: "Decimal | None",
     return int(pct.to_integral_value(rounding=ROUND_HALF_UP))
 
 
+# QUARTUSDECIMUS/Q4: o formato do papel DESCONTO — "off" segue o desenho
+# de referência do pacote (o pctpod escreve "20% OFF"); "menos" é a
+# alternativa renderizada para o dono escolher. PROVISÓRIO até a palavra
+# dele: o padrão é o do desenho (L9 — o asset é a fonte da verdade).
+FORMATO_DESCONTO_PADRAO = "off"
+
+
+def formato_do_desconto(pct, estilo: str | None = None) -> str:
+    """O texto que o papel DESCONTO escreve para um percentual ``pct``."""
+    estilo = estilo or FORMATO_DESCONTO_PADRAO
+    if estilo == "menos":
+        return f"-{pct}% no preço"
+    return f"{pct}% OFF"
+
+
 def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> str:
     """RG-57: o texto que uma região TEXTO_LEGAL desenha, decidido pelo PAPEL.
 
@@ -151,7 +166,7 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
         obs = (dados.observacao if dados is not None else None) or ""
         return obs or fixo
     if papel == PapelTexto.DESCONTO:
-        # R-109: "-XX%" CALCULADO de (de−por)/de — condicional (sem "de" ou
+        # R-109: o % CALCULADO de (de−por)/de — condicional (sem "de" ou
         # sem desconto real, a região não pinta). Nunca digitado…
         # TERTIUSDECIMUS/Q2: …exceto quando o desconto É a oferta ("LANCHE
         # NA CHAPA COM 20% DE DESCONTO" — item SEM preço, com percentual
@@ -161,7 +176,7 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
             dados.preco_por if dados is not None else None)
         if not pct and dados is not None:
             pct = getattr(dados, "desconto_pct", None)
-        return f"-{pct}%" if pct else ""
+        return formato_do_desconto(pct) if pct else ""
     if papel == PapelTexto.EDICAO:
         # F13-TER/D1: a edição VIVA do projeto ("Nº 178 · ANO 42");
         # condicional — sem dado a região fica MUDA (nunca um número
@@ -780,8 +795,12 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         _desenhar_texto(base, draw, reg, dados.unidade or "", dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.SUBTITULO:
         # F13-BIS/T2: a linha de descritor do modelo (fallback: unidade)
+        # QUARTUSDECIMUS §2: se o completo não cabe na largura, o
+        # QUALIFICADOR sai e a unidade fica — nunca "BB-X · 10…"
+        from app.rendering.nome_fit import descritor_que_cabe
         _desenhar_texto(base, draw, reg,
-                        dados.descritor or dados.unidade or "",
+                        descritor_que_cabe(dados.descritor, dados.unidade,
+                                           reg, dpi, fontes_dir) or "",
                         dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.ADORNO:
         # F13-TER/V2: o fundo volta por cima da foto (cesta/toldo/banda)
@@ -879,14 +898,19 @@ def _selos_do_produto(dados: DadosProduto) -> list[Selo]:
     return selos
 
 
-def _ancora_selos_slot(slot, dpi: int, w: int, h: int) -> tuple[int, int, int, int]:
-    """Onde os selos do slot se ancoram: [SELO] > [IMAGEM] do slot > página."""
+def _ancora_selos_slot(slot, dpi: int, w: int, h: int,
+                       rects_subst: dict | None = None,
+                       ) -> tuple[int, int, int, int]:
+    """Onde os selos do slot se ancoram: [SELO] > [IMAGEM] do slot > página.
+    ``rects_subst`` (Q1/N1): rect efetivo por uid quando a composição
+    replanejou a célula — o selo pousa onde a foto REALMENTE está."""
+    subst = rects_subst or {}
     selo_rect = imagem_rect = None
     for reg in slot.regioes:
         if reg.tipo == TipoRegiao.SELO and selo_rect is None:
-            selo_rect = reg.rect
+            selo_rect = subst.get(reg.uid, reg.rect)
         elif reg.tipo == TipoRegiao.IMAGEM and imagem_rect is None:
-            imagem_rect = reg.rect
+            imagem_rect = subst.get(reg.uid, reg.rect)
     rect = selo_rect or imagem_rect
     return _rect_px(rect, dpi) if rect is not None else (0, 0, w, h)
 
@@ -982,9 +1006,14 @@ def _dados_do_conteudo_fixo(cf: dict) -> "DadosProduto":
                (_abs(r) for r in cf.get("imagens") or []) if c]
     if imagens and img is None:
         img = imagens[0].caminho
+    # QUARTUSDECIMUS (frota): a unidade da fixa é a METADE-UNIDADE do
+    # descritor, nunca o descritor inteiro — "marca própria" duplicado
+    # em unidade virava "unidade" pelo desempate e bloqueava o passo 4
+    from app.rendering.nome_fit import dividir_descritor
     return DadosProduto(
         cf.get("nome") or "", descritor=cf.get("descritor"),
-        unidade=cf.get("descritor"), preco_por=preco, imagem_path=img,
+        unidade=dividir_descritor(cf.get("descritor"))[1],
+        preco_por=preco, imagem_path=img,
         imagens=imagens,
         desconto_pct=cf.get("desconto_pct"))     # Q2: o 20% do Lanche
 
@@ -1101,25 +1130,7 @@ def compor_pagina(
         tem_unidade = any(r.tipo in (TipoRegiao.UNIDADE,
                                      TipoRegiao.SUBTITULO)
                           and r.visivel for r in slot.regioes)
-        # F13-NONUS/N1: a precedência do nome é CÓDIGO — a cadeia roda
-        # para toda célula, aqui, no único ponto que conhece o dado E
-        # todas as regiões antes do desenho. O dado da célula é uma
-        # CÓPIA (o mesmo DadosProduto pode servir a vários slots).
-        # F13-UNDECIMUS/U1: o piso do tipo é a RÉGUA da página, não o
-        # dado da região — o 6.0 do banco velho deixa de ser consultado
         from dataclasses import replace as _replace
-        from app.rendering.nome_fit import precedencia_do_nome
-        from app.rendering.text_fit import piso_do_celular
-        piso_nome = piso_do_celular(layout.largura_mm)
-        aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
-                                      slot.regioes, dpi_ef, fontes_dir,
-                                      piso_pt=piso_nome)
-        rects_subst: dict = {}
-        if aj_nome is not None:
-            d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,
-                         unidade=None if aj_nome.descritor_saiu
-                         else d.unidade)
-            rects_subst = aj_nome.rects
         # F13-DUODECIMUS/T5: célula com VÁRIAS zonas de foto E várias
         # imagens — a k-ésima zona desenha a k-ésima foto (o par
         # "Sonho + Croissant" da Terça; o arranjo F7.2, que divide UMA
@@ -1131,6 +1142,52 @@ def compor_pagina(
             for k, rz in enumerate(zonas_img):
                 im = d.imagens[min(k, len(d.imagens) - 1)]
                 por_zona[rz.uid] = im.caminho
+        # QUARTUSDECIMUS/Q1: a foto tem de encher a zona — o plano da
+        # célula roda ANTES da precedência do nome (a cadeia trabalha
+        # sobre a célula já replanejada). Só em célula marcada
+        # ``zona_flex`` (arte lisa), foto ÚNICA, sem máscara nem
+        # enquadramento, no ASSENTAR — o mesmo gate do caminho rápido
+        # do desenho, que é onde o defeito da ordem vivia.
+        rects_foto: dict = {}
+        regioes_cel = slot.regioes
+        if (len(zonas_img) == 1 and zonas_img[0].zona_flex
+                and zonas_img[0].mascara == Mascara.RETANGULO
+                and zonas_img[0].ajuste == Ajuste.ASSENTAR):
+            pares_q1 = _carregar_imagens(d)
+            if len(pares_q1) == 1:
+                esp_q1, img_q1 = pares_q1[0]
+                if (esp_q1.zoom == 1.0 and esp_q1.foco_x == 0.5
+                        and esp_q1.foco_y == 0.5):
+                    bb = (img_q1.getchannel("A").getbbox()
+                          if img_q1.mode == "RGBA" else None)
+                    iw, ih = ((bb[2] - bb[0], bb[3] - bb[1]) if bb
+                              else (img_q1.width, img_q1.height))
+                    from app.rendering.foto_fit import plano_da_celula
+                    plano = plano_da_celula(slot.regioes, iw, ih)
+                    if plano is not None:
+                        rects_foto = plano.rects
+                        regioes_cel = [
+                            _replace(r, rect=rects_foto[r.uid])
+                            if r.uid in rects_foto else r
+                            for r in slot.regioes]
+        # F13-NONUS/N1: a precedência do nome é CÓDIGO — a cadeia roda
+        # para toda célula, aqui, no único ponto que conhece o dado E
+        # todas as regiões antes do desenho. O dado da célula é uma
+        # CÓPIA (o mesmo DadosProduto pode servir a vários slots).
+        # F13-UNDECIMUS/U1: o piso do tipo é a RÉGUA da página, não o
+        # dado da região — o 6.0 do banco velho deixa de ser consultado
+        from app.rendering.nome_fit import precedencia_do_nome
+        from app.rendering.text_fit import piso_do_celular
+        piso_nome = piso_do_celular(layout.largura_mm)
+        aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
+                                      regioes_cel, dpi_ef, fontes_dir,
+                                      piso_pt=piso_nome)
+        rects_subst: dict = dict(rects_foto)
+        if aj_nome is not None:
+            d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,
+                         unidade=None if aj_nome.descritor_saiu
+                         else d.unidade)
+            rects_subst.update(aj_nome.rects)
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
             campos: dict = {}
@@ -1148,9 +1205,12 @@ def compor_pagina(
                                  imagens=[])
             _desenhar_regiao(base, draw, reg_f, d_reg, dpi_ef, fontes_dir,
                              tem_unidade)
-        # selos (+18, Qualidade) por slot, ancorados na célula
+        # selos (+18, Qualidade) por slot, ancorados na célula — nos
+        # rects EFETIVOS (o Q1 pode ter movido a zona da foto)
         selos = _selos_do_produto(d)
         if selos:
-            desenhar_selos(base, _ancora_selos_slot(slot, dpi_ef, w, h), selos,
-                           fontes_dir / "Roboto-Bold.ttf")
+            desenhar_selos(base,
+                           _ancora_selos_slot(slot, dpi_ef, w, h,
+                                              rects_subst),
+                           selos, fontes_dir / "Roboto-Bold.ttf")
     return base

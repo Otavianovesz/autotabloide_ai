@@ -885,3 +885,28 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   parser do OCR; o diálogo dos fixos não mostra qual célula tem papel
   DESCONTO; critério do Concluir com vermelho-resolvido. Suíte 1043 ×2
   + invertida + janela (bloco_ftertius_*).
+  —— **14ª RODADA — QUARTUSDECIMUS (a foto enche a zona; a unidade
+  nunca se perde) EXECUTADA (28/07).** As duas regras que o arquiteto
+  confessou ter escrito errado (§6), corrigidas COM caso-limite: Q2 o
+  descritor tem DUAS METADES em código (`nome_fit.dividir_descritor`)
+  — qualificador sacrificável, UNIDADE+SIGLA DE EMBALAGEM protegidas;
+  o passo 4 só derruba descritor sem unidade; o SUBTITULO estreito
+  corta o qualificador, nunca elipsa o número; espião nas 8 páginas
+  (vermelho no código antigo). Q1 a régua e o plano viraram runtime
+  (`app/rendering/foto_fit.py`): 3 arranjos candidatos (lateral/
+  vertical/MISTO — a sugestão literal do dono venceu nas 3 fixas da
+  Quarta: 36/37/25% → 100%, área da foto +74%), marca `Regiao.
+  zona_flex`, guardas de célula vestida (ADORNO)/rotação/multi-zona,
+  caso-limite da garrafa-em-pé POR TESTE (o Óleo não regride). Q3
+  pílula do desconto VERDE (a cor segue a coluna; nota factual: o
+  gerador estava laranja hardcoded, não há "original verde" no
+  pacote). Q4 os 2 formatos renderizados p/ o dono ("20% OFF"
+  provisório, L9). Q6 L.V. no glossário de siglas. Q8 densidade da
+  Terça 1,00 (cestas vestidas: a âncora é da arte). FROTA (19
+  agentes): 5 confirmados TODOS consertados (pílula do misto vazando
+  o bbox c/ foto 10:1; a sigla TP caindo no corte do desenho; o corte
+  silencioso → a revisora anuncia; a fixa duplicando descritor em
+  unidade; a máscara afrouxada → híbrida) + 2 endurecimentos + 4
+  refutados com prova. 3 páginas recompostas na raiz real (backup
+  core_pre_quartusdecimus). Suíte 1061 ×2 + invertida + janela
+  (bloco_fquartusdecimus_*).

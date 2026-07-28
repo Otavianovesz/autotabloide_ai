@@ -121,6 +121,27 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                 if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
+                # QUARTUSDECIMUS (frota, I2): o corte do QUALIFICADOR
+                # no desenho do SUBTITULO nunca é silencioso — a MESMA
+                # decisão do desenho (descritor_que_cabe), anunciada
+                from app.rendering.model import TipoRegiao
+                from app.rendering.nome_fit import descritor_que_cabe
+                reg_sub = next(
+                    (r for r in slot.regioes
+                     if r.tipo == TipoRegiao.SUBTITULO and r.visivel),
+                    None)
+                desc_f = (aj.descritor if aj is not None
+                          else getattr(d, "descritor", None))
+                uni_f = (None if aj is not None and aj.descritor_saiu
+                         else getattr(d, "unidade", None))
+                cheio = desc_f or uni_f
+                if reg_sub is not None and cheio:
+                    vai = descritor_que_cabe(desc_f, uni_f, reg_sub,
+                                             dpi, Path(fontes_dir))
+                    if vai and vai != cheio:
+                        avisos.append(
+                            f"{rot}: o descritor não coube inteiro no "
+                            f"espaço — “{cheio}” vai sair como “{vai}”.")
             except Exception:
                 pass
     return avisos

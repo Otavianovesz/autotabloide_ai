@@ -236,6 +236,12 @@ class Regiao:
     # p/ ARREDONDADO. Recorte é no compositor por alpha — não muda o rect (I1).
     mascara: Mascara = Mascara.RETANGULO
     mascara_raio_mm: float = 4.0
+    # QUARTUSDECIMUS/Q1: a célula é REPLANEJÁVEL por dentro — a zona de
+    # foto muda de forma conforme a proporção da foto da semana, e os
+    # textos deslocam DENTRO do bbox da célula (foto_fit.py). Só onde a
+    # arte de fundo é lisa (as fábricas dos encartes marcam); False =
+    # geometria do template intocada (o de sempre).
+    zona_flex: bool = False
 
     # --- legibilidade sobre foto (R-035 pill, R-034 sombra/contorno) ---
     # pill: faixa/pílula semitransparente atrás do texto (nome). sombra/contorno:
@@ -320,6 +326,7 @@ class Regiao:
             "forma_cor_borda": self.forma_cor_borda,
             "centavos_na_base": self.centavos_na_base,
             "sem_hifen": self.sem_hifen,                 # F13-BIS/T5
+            "zona_flex": self.zona_flex,                 # QUARTUSDECIMUS/Q1
         }
 
     @classmethod
@@ -369,6 +376,7 @@ class Regiao:
             forma_cor_borda=d.get("forma_cor_borda"),
             centavos_na_base=d.get("centavos_na_base", False),
             sem_hifen=d.get("sem_hifen", False),
+            zona_flex=d.get("zona_flex", False),         # Q1 aditivo
         )
 
 

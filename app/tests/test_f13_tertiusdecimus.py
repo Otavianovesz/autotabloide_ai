@@ -91,10 +91,12 @@ def test_q2_item_com_percentual_em_vez_de_preco():
     assert any("25" in b for b in balde), "o leve-3 fugiu do balde"
 
     # o papel DESCONTO desenha o dado quando não há de/por
+    # (QUARTUSDECIMUS/Q4, rastro: "-20%" virou "20% OFF" — o formato do
+    # desenho de referência; provisório até a palavra do dono)
     reg = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 20, 8),
                  papel_texto=PapelTexto.DESCONTO)
     assert texto_composto_legal(
-        reg, DadosProduto("Lanche", desconto_pct=20)) == "-20%"
+        reg, DadosProduto("Lanche", desconto_pct=20)) == "20% OFF"
 
     # e o pré-voo NÃO acusa "sem preço" no item com desconto
     lay = LayoutDef(100, 100, dpi=100, paginas=[Pagina([Slot("c", [
@@ -139,17 +141,29 @@ def test_a1_a_banda_nao_cresce_atraves_de_vao_de_arte(tmp_path):
 
 def test_a1_nenhum_texto_fora_do_rect_nas_8_por_mascara(tmp_path):
     """A1 (o invariante, medível): compõe cada página COM e SEM os
-    textos — todo pixel que mudou tem de estar DENTRO do bbox de
-    alguma região da célula (rot-aware, folga de sombra). Tinta de
-    texto fora do rect é a pior saída possível: pinta a arte."""
+    conteúdos — todo pixel que mudou tem de estar DENTRO do bbox da
+    SUA CÉLULA (rot-aware, folga de sombra). Tinta fora da célula é a
+    pior saída possível: pinta a arte.
+
+    QUARTUSDECIMUS/Q1 (rastro): a máscara é HÍBRIDA — por REGIÃO nas
+    células comuns (o invariante original, cheio de força) e por bbox
+    de CÉLULA só onde há ``zona_flex`` (a célula replanejável por
+    dentro); os dados levam FOTO, para o plano rodar e ser medido
+    junto. (A 1ª versão afrouxou para bbox em TUDO — a frota mediu
+    75–225k px de vão interno virando zona cega e provou a híbrida
+    verde; consertado.)"""
     _requer_pacote()
+    import math
     import numpy as np
+    from PIL import Image
     from app.rendering.compositor import DadosProduto, compor_pagina
     from app.rendering.encartes import layout_de_encarte
     from app.rendering.model import TipoRegiao
     from app.rendering.units import mm_para_px
 
     fontes = _fontes_reais(tmp_path)
+    foto = tmp_path / "foto_mascara.png"
+    Image.new("RGBA", (900, 900), (180, 60, 200, 255)).save(foto)
     NOME = "Nome Comprido De Teste Para O Invariante Da Máscara"
     violacoes = []
     for chave in _CHAVES_8:
@@ -160,7 +174,9 @@ def test_a1_nenhum_texto_fora_do_rect_nas_8_por_mascara(tmp_path):
                            for r in s.regioes)]
             if not alvo:
                 continue
-            dados = {s.id: DadosProduto(NOME, descritor="descritor teste")
+            dados = {s.id: DadosProduto(NOME, descritor="descritor teste",
+                                        unidade="100 g",
+                                        imagem_path=str(foto))
                      for s in alvo}
             com = compor_pagina(lay, pag, dados, fontes_dir=fontes, dpi=96)
             sem = compor_pagina(lay, pag, {}, fontes_dir=fontes, dpi=96)
@@ -169,18 +185,30 @@ def test_a1_nenhum_texto_fora_do_rect_nas_8_por_mascara(tmp_path):
             masc = np.zeros(diff.shape, dtype=bool)
             F = 8                          # folga: sombra/anti-alias
             for s in alvo:
+                flex = any(getattr(r, "zona_flex", False)
+                           for r in s.regioes if r.visivel)
+                caixas = []
+                bx0 = by0 = float("inf")
+                bx1 = by1 = float("-inf")
                 for r in s.regioes:
+                    if not r.visivel:
+                        continue
                     x = mm_para_px(r.rect.x_mm, 96)
                     y = mm_para_px(r.rect.y_mm, 96)
                     w = mm_para_px(r.rect.larg_mm, 96)
                     h = mm_para_px(r.rect.alt_mm, 96)
                     if r.rotacao_graus % 360:
                         # rot: o palco é a diagonal centrada
-                        import math
                         lado = math.hypot(w, h)
                         cx, cy = x + w / 2, y + h / 2
                         x, y = cx - lado / 2, cy - lado / 2
                         w = h = lado
+                    caixas.append((x, y, w, h))
+                    bx0, by0 = min(bx0, x), min(by0, y)
+                    bx1, by1 = max(bx1, x + w), max(by1, y + h)
+                if flex:
+                    caixas = [(bx0, by0, bx1 - bx0, by1 - by0)]
+                for x, y, w, h in caixas:
                     y0 = max(0, int(y - F)); y1 = min(diff.shape[0],
                                                       int(y + h + F))
                     x0 = max(0, int(x - F)); x1 = min(diff.shape[1],
@@ -188,6 +216,6 @@ def test_a1_nenhum_texto_fora_do_rect_nas_8_por_mascara(tmp_path):
                     masc[y0:y1, x0:x1] = True
             fora = int((diff & ~masc).sum())
             if fora > 20:                  # ruído de compressão tolerado
-                violacoes.append(f"{chave} p{pi + 1}: {fora}px de texto "
-                                 "FORA das regiões")
+                violacoes.append(f"{chave} p{pi + 1}: {fora}px de tinta "
+                                 "FORA das células")
     assert not violacoes, "\n".join(violacoes)

@@ -72,8 +72,11 @@ class RegrasSanitizacao:
 
     # Siglas que devem ficar em MAIÚSCULO (glossário editável — espírito DIY).
     # Ex.: "TP" (Tetra Pak). Pode ser sobrescrito pela tabela Config.
+    # QUARTUSDECIMUS/Q6: "L.V." (Longa Vida, com e sem pontos) — sigla de
+    # embalagem como o TP: desce ao descritor na precedência do nome
+    # ("Leite Integral Parmalat" + "L.V. · 1 L").
     siglas: frozenset[str] = frozenset(
-        {"TP", "BB", "XL", "XXL", "TV", "DVD", "CD", "LED"}
+        {"TP", "BB", "XL", "XXL", "TV", "DVD", "CD", "LED", "L.V.", "LV"}
     )
 
     # Glossário de EXPANSÃO de siglas da tabela de ofertas (C1 do Bloco D):
