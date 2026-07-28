@@ -25,7 +25,7 @@ silenciosa.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from app.core.sanitize import REGRAS_PADRAO, separar_peso
@@ -124,10 +124,16 @@ def precedencia_do_nome(
     regioes: list[Regiao],
     dpi: int,
     fontes_dir: str | Path,
+    piso_pt: float | None = None,
 ) -> NomeAjustado | None:
     """A cadeia dos 6 passos para UMA célula. Devolve None quando não há
     o que decidir (sem região NOME visível, ou nome vazio) — o
-    compositor segue byte-idêntico ao de sempre."""
+    compositor segue byte-idêntico ao de sempre.
+
+    F13-UNDECIMUS/U1: ``piso_pt`` é a RÉGUA de runtime (o piso do
+    celular calculado da página); o ``tamanho_min_pt`` da região só
+    manda quando é MAIOR que ela (override para cima) — o 6.0 inerte
+    do banco velho deixa de ser consultado."""
     if not nome:
         return None
     fontes_dir = Path(fontes_dir)
@@ -135,6 +141,11 @@ def precedencia_do_nome(
                      if r.tipo == TipoRegiao.NOME and r.visivel), None)
     if reg_nome is None:
         return None
+    if piso_pt:
+        min_ef = min(reg_nome.tamanho_max_pt,
+                     max(reg_nome.tamanho_min_pt, piso_pt))
+        if min_ef != reg_nome.tamanho_min_pt:
+            reg_nome = replace(reg_nome, tamanho_min_pt=min_ef)
     reg_sub = next((r for r in regioes
                     if r.tipo == TipoRegiao.SUBTITULO and r.visivel), None)
     reg_img = next((r for r in regioes
@@ -156,6 +167,13 @@ def precedencia_do_nome(
     partes_desc: list[str] = []
     nome_atual, peso = separar_peso(nome)
     tokens = nome_atual.split()
+    # T4 (DUODECIMUS): unidade SOLTA no fim ("…Rezende KG", vendido a
+    # peso sem número) desce ao descritor como o peso desce
+    _UNIDADES_SOLTAS = {"kg", "g", "ml", "mg", "un", "l"}
+    if peso is None and len(tokens) > 1 \
+            and tokens[-1].lower() in _UNIDADES_SOLTAS:
+        solta = tokens.pop()
+        peso = "L" if solta.lower() == "l" else solta.lower()
     siglas: list[str] = []
     if peso:
         while len(tokens) > 1 and tokens[-1].upper() in REGRAS_PADRAO.siglas:

@@ -491,11 +491,15 @@ def test_n1_dialogo_edita_o_template_e_interna_a_foto(raiz_tmp, tmp_path):
     dlg.ed_nome.setText("Kit Burguer")
     dlg.ed_preco.setText("39,90")
     dlg.chk_semana.setChecked(True)
-    dlg._imagem_rel = rel
+    # CONTRATO ATUALIZADO (DUODECIMUS/T5, com rastro): a foto do fixo
+    # virou LISTA por zona (_imagens_rel); célula de zona única grava
+    # "imagens": None e o singular "imagem" segue como a 1ª foto
+    dlg._imagens_rel = [rel]
     dlg._confirmar()
     assert fixa.conteudo_fixo == {
         "nome": "Kit Burguer", "descritor": None, "preco": "39,90",
-        "preco_da_semana": True, "imagem": "_fixos/kit.png"}
+        "preco_da_semana": True, "imagem": "_fixos/kit.png",
+        "imagens": None}
     dlg.deleteLater()
 
 

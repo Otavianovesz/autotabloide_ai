@@ -121,6 +121,33 @@ def _truncar_com_reticencias(linhas, fonte, larg_px, alt_linha, alt_px):
     return mantidas
 
 
+def piso_do_celular(largura_pagina_mm: float) -> float:
+    """F13-UNDECIMUS/U1: o piso do tipo é uma REGRA, não um dado.
+
+    A régua do teste do celular (OCTAVUS/C1): o WhatsApp mostra a
+    página a ~37% — para o nome ter os 11 px mínimos legíveis no
+    celular, a LINHA precisa de 11/0,37 ≈ 30 px na página-régua de
+    1080 px de largura. Escalando pela largura real e convertendo a
+    pontos (linha ≈ corpo×1,2 × entrelinha 1,12), o piso é função SÓ
+    da largura física da página — vale para todo layout, inclusive os
+    que o dono desenhar amanhã. Na página dos encartes (285,75 mm) dá
+    ~16,8 pt: exatamente a calibração aprovada da Segunda.
+
+    Nunca desce do 6.0 histórico (etiquetas pequenas não são peça de
+    celular)."""
+    PX_MINIMOS_NO_CELULAR = 11.0
+    FATOR_WHATSAPP = 0.37
+    PAGINA_REGUA_PX = 1080.0
+    ALTURA_DE_LINHA = 1.2 * 1.12          # (asc+desc)/corpo × entrelinha
+    if not largura_pagina_mm or largura_pagina_mm <= 0:
+        return 6.0
+    linha_regua_px = PX_MINIMOS_NO_CELULAR / FATOR_WHATSAPP
+    larg_px_96 = largura_pagina_mm / 25.4 * 96.0
+    linha_px = linha_regua_px * (larg_px_96 / PAGINA_REGUA_PX)
+    piso = (linha_px / ALTURA_DE_LINHA) * 72.0 / 96.0
+    return max(6.0, piso)
+
+
 def ajustar_texto(
     texto: str,
     fonte_path: str | Path,

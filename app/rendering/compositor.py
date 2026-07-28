@@ -942,16 +942,30 @@ def _dados_do_conteudo_fixo(cf: dict) -> "DadosProduto":
                             .replace(".", "").replace(",", "."))
         except InvalidOperation:
             preco = None                    # pré-voo do template acusa
-    img = (cf.get("imagem") or "").strip() or None
-    if img and not Path(img).is_absolute():
+    def _abs(rel):
+        rel = (rel or "").strip()
+        if not rel:
+            return None
+        if Path(rel).is_absolute():
+            return rel
         try:
             from app.core.paths import SystemRoot
-            img = str(SystemRoot().biblioteca_imagens / img)
+            return str(SystemRoot().biblioteca_imagens / rel)
         except Exception:
-            pass
+            return rel
+
+    img = _abs(cf.get("imagem"))
+    # F13-DUODECIMUS/T5: o item fixo PAR ("Sonho + Croissant") — uma
+    # foto POR ZONA da célula, na ordem das regiões IMAGEM; o singular
+    # "imagem" segue valendo (a mesma foto em todas as zonas)
+    imagens = [ImagemSlot(c) for c in
+               (_abs(r) for r in cf.get("imagens") or []) if c]
+    if imagens and img is None:
+        img = imagens[0].caminho
     return DadosProduto(
         cf.get("nome") or "", descritor=cf.get("descritor"),
-        unidade=cf.get("descritor"), preco_por=preco, imagem_path=img)
+        unidade=cf.get("descritor"), preco_por=preco, imagem_path=img,
+        imagens=imagens)
 
 
 def compor_pagina(
@@ -1070,20 +1084,48 @@ def compor_pagina(
         # para toda célula, aqui, no único ponto que conhece o dado E
         # todas as regiões antes do desenho. O dado da célula é uma
         # CÓPIA (o mesmo DadosProduto pode servir a vários slots).
+        # F13-UNDECIMUS/U1: o piso do tipo é a RÉGUA da página, não o
+        # dado da região — o 6.0 do banco velho deixa de ser consultado
         from dataclasses import replace as _replace
         from app.rendering.nome_fit import precedencia_do_nome
+        from app.rendering.text_fit import piso_do_celular
+        piso_nome = piso_do_celular(layout.largura_mm)
         aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
-                                      slot.regioes, dpi_ef, fontes_dir)
+                                      slot.regioes, dpi_ef, fontes_dir,
+                                      piso_pt=piso_nome)
         rects_subst: dict = {}
         if aj_nome is not None:
             d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,
                          unidade=None if aj_nome.descritor_saiu
                          else d.unidade)
             rects_subst = aj_nome.rects
+        # F13-DUODECIMUS/T5: célula com VÁRIAS zonas de foto E várias
+        # imagens — a k-ésima zona desenha a k-ésima foto (o par
+        # "Sonho + Croissant" da Terça; o arranjo F7.2, que divide UMA
+        # região, continua intocado para célula de zona única)
+        zonas_img = [r for r in slot.regioes
+                     if r.tipo == TipoRegiao.IMAGEM and r.visivel]
+        por_zona: dict[str, str] = {}
+        if len(zonas_img) > 1 and d.imagens:
+            for k, rz in enumerate(zonas_img):
+                im = d.imagens[min(k, len(d.imagens) - 1)]
+                por_zona[rz.uid] = im.caminho
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
-            reg_f = _replace(reg, rect=novo_rect) if novo_rect else reg
-            _desenhar_regiao(base, draw, reg_f, d, dpi_ef, fontes_dir,
+            campos: dict = {}
+            if novo_rect:
+                campos["rect"] = novo_rect
+            if reg.tipo == TipoRegiao.NOME and reg.visivel:
+                min_ef = min(reg.tamanho_max_pt,
+                             max(reg.tamanho_min_pt, piso_nome))
+                if min_ef != reg.tamanho_min_pt:
+                    campos["tamanho_min_pt"] = min_ef
+            reg_f = _replace(reg, **campos) if campos else reg
+            d_reg = d
+            if reg.uid in por_zona:
+                d_reg = _replace(d, imagem_path=por_zona[reg.uid],
+                                 imagens=[])
+            _desenhar_regiao(base, draw, reg_f, d_reg, dpi_ef, fontes_dir,
                              tem_unidade)
         # selos (+18, Qualidade) por slot, ancorados na célula
         selos = _selos_do_produto(d)

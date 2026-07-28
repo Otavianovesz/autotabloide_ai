@@ -99,10 +99,17 @@ def _split_multi(raw: str) -> "tuple[str, MultiPreco] | None":
     return None
 
 
-def parse_colagem(texto: str) -> list[LinhaColada]:
+def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]:
     """Uma linha de produto por linha do texto colado; preço validado por P0.3
     (ambíguo → marcado, nunca criado em silêncio). Multi-preço reconhecido como
-    FORMATO (R-070) — não confundido com preço inválido."""
+    FORMATO (R-070) — não confundido com preço inválido.
+
+    F13-DUODECIMUS/T1: a tabela real do dono é 2/3 PROSA promocional
+    com números que parecem preço ("LEVE 3… GANHE 25 %", "50 % de
+    DESCONTO"). Linha SEM preço de moeda no fim não vira produto:
+    prosa COM número vai ao ``balde`` (mostrado ao dono — I2); prosa
+    sem número morre em silêncio. A colagem ESTRUTURADA (tab/;/| e
+    preço-no-fim) segue como sempre."""
     from app.qt.telas.servico import preco_decimal
 
     linhas: list[LinhaColada] = []
@@ -136,12 +143,28 @@ def parse_colagem(texto: str) -> list[LinhaColada]:
         nome = _limpar_nome_de_tabela(nome)
         if not nome:
             continue
-        valido = bool(preco) and preco_decimal(preco) is not None
+        # T1 (a Terça): linha SEM preço só vira item se tiver CARA DE
+        # PRODUTO — curta, sem dígito solto, sem pontuação de frase
+        # ("Sabonete Dove" da lista de WhatsApp segue virando amarelo).
+        # PROSA com número (o 25%/50% da mecânica gravada na arte — T3)
+        # vai ao balde VISÍVEL; prosa sem número morre em silêncio.
+        if not preco:
+            eh_prosa = (re.search(r"[.!?“”\"…]|\.{2,}", raw)
+                        or len(nome.split()) > 6)
+            if re.search(r"\d", raw):
+                if balde is not None:
+                    balde.append(raw.strip())
+                continue
+            if eh_prosa:
+                continue
+            linhas.append(LinhaColada(
+                nome, None, False,
+                "sem preço — vira amarelo na conciliação"))
+            continue
+        valido = preco_decimal(preco) is not None
         aviso = None
-        if preco and not valido:
+        if not valido:
             aviso = f"preço “{preco}” não foi entendido — confira (ex.: 5,00)"
-        elif not preco:
-            aviso = "sem preço — vira amarelo na conciliação"
         linhas.append(LinhaColada(nome, preco, valido, aviso))
     return linhas
 
@@ -158,7 +181,13 @@ def _limpar_nome_de_tabela(nome: str | None) -> str:
     (só isolada, nunca dentro de palavra)."""
     if not nome:
         return ""
-    limpo = re.sub(r"[_]{2,}", " ", nome)
+    # T4 (a Terça): o "À"/"A" ENTRE pontilhados é enfeite de
+    # preenchimento do documento ("OSSINHO ___À___100g") — sai ANTES da
+    # troca dos underscores; um "à" legítimo no nome (Frango à
+    # Passarinho) não tem underscores e fica
+    limpo = re.sub(r"_+\s*[àáa]\s*(?=_|\d)", " ", nome,
+                   flags=re.IGNORECASE)
+    limpo = re.sub(r"[_]{2,}", " ", limpo)
     limpo = re.sub(r"\s{2,}", " ", limpo).strip(" _.·–-\t")
     while True:
         novo = _RE_SUFIXO_PRECO.sub("", limpo).strip(" _.·–-\t")

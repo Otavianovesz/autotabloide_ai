@@ -565,7 +565,15 @@ def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
                                imagem_path=por_uid[u].imagem)
              for sid, u in mapa.items()}
     avisos = servico.validar_composicao(layout, dados)
-    assert avisos == []                          # pré-voo LIMPO (passo 59)
+    # CONTRATO ATUALIZADO (F13-UNDECIMUS/U1, com rastro): o piso do
+    # tipo virou RÉGUA de runtime — no layout do marco (célula pequena,
+    # SEM linha de descritor para a precedência encurtar), nomes reais
+    # longos agora ficam ABAIXO do piso do celular e o pré-voo AVISA
+    # (nunca veta). O "pré-voo LIMPO" original foi escrito quando o
+    # ilegível passava calado; o resto do pré-voo segue limpo.
+    outros = [a for a in avisos if "não cabe inteiro" not in a]
+    assert outros == [], outros                  # (passo 59, fora o piso)
+    assert all("não cabe inteiro" in a for a in avisos)
 
     imgs = [compor_pagina(layout, pag, dados) for pag in layout.paginas]
     # a VALIDADE desenhada: com vs sem texto → pixels diferem NA região

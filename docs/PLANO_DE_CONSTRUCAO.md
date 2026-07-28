@@ -845,3 +845,27 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   gesto SEM evento no banco + selo por pixel; o script da raiz real
   parou de tocar a validade (assert: nasceu da cascata). Suíte ×2 +
   invertida + janela (bloco_fdecimus_*).
+  —— **11ª+12ª RODADAS — UNDECIMUS ("a regra não pode ser dado") +
+  DUODECIMUS ("a Terça do Pão") EXECUTADAS (27-28/07).** U1: 115 de
+  123 regiões NOME no banco real estavam com piso inerte (o código
+  certo, o artefato velho — a QUINQUE pela 4ª vez) → o piso virou
+  REGRA DE RUNTIME (`text_fit.piso_do_celular` ≈ largura/17, reproduz
+  o 17pt aprovado por construção; `tamanho_min_pt` virou override
+  só-para-cima; o 6.0 velho deixou de ser consultado — byte-idêntico
+  por teste). U2: carimbo de versão do pacote no import + o Ateliê
+  avisa com "Atualizar agora" (gesto testado). DUODECIMUS: T1/T3 a
+  PROSA não vira produto (balde visível; percentuais 50/25 intactos na
+  arte); T2 o 5º item fora da grade VISÍVEL; T4 o "À" de enfeite sai,
+  unidade solta desce, "Coxa Sob Coxa"→"Coxa Sobrecoxa" POR DECISÃO DO
+  DONO com alias APRENDIDO; T5 o PAR Sonho+Croissant
+  (conteudo_fixo["imagens"] por zona); T6 as 3 fotos pelo pipeline —
+  alfa útil pula rembg (guarda nova), o Sonho limpo (J18 nem acendeu),
+  o croissant SEM a tábua (reprocesso = gesto do Estúdio, declarado),
+  Real-ESRGAN provou vida (621→1200 em 76s) com a régua da célula
+  respeitada. §4 na raiz real: validade SOMENTE 28/07 sozinha NA
+  terça, densidade 1,00 (era 0,60), zero "…", projeto id=11. Guardião
+  do marco virado com rastro (o pré-voo agora AVISA os 16 nomes abaixo
+  do piso no layout antigo — o U1 valendo; avisa, nunca veta). Achados
+  para o G: o LM inventou "1" em KG→"1kg" (furo fino RG-20); botão
+  "reprocessar" do Estúdio; reuso de projeto por nome. Suíte ×2 +
+  invertida + janela (bloco_fduodecimus_*).

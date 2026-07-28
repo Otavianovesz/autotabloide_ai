@@ -100,14 +100,12 @@ class ItensFixosDialog(QDialog):
         form.addRow("", self.chk_semana)
         lado.addLayout(form)
 
-        linha_foto = QHBoxLayout()
-        self._foto_lbl = QLabel("(sem foto)")
-        self._foto_lbl.setProperty("papel", "legenda")
-        btn_foto = QPushButton("Escolher foto…")
-        btn_foto.clicked.connect(self._escolher_foto)
-        linha_foto.addWidget(self._foto_lbl, 1)
-        linha_foto.addWidget(btn_foto)
-        lado.addLayout(linha_foto)
+        # F13-DUODECIMUS/T5: uma foto POR ZONA da célula ("Sonho +
+        # Croissant" tem duas) — as linhas nascem em _trocar, conforme
+        # o slot; célula de zona única fica com a linha de sempre
+        self._caixa_fotos = QVBoxLayout()
+        lado.addLayout(self._caixa_fotos)
+        self._foto_lbls: list[QLabel] = []
 
         self._previa = QLabel("")
         self._previa.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -127,9 +125,43 @@ class ItensFixosDialog(QDialog):
         lado.addWidget(caixa)
         raiz.addLayout(lado, 2)
 
-        self._imagem_rel: str | None = None
+        self._imagens_rel: list[str | None] = []
         if self._pares:
             self.lista.setCurrentRow(0)
+
+    def _zonas_de_foto(self, slot) -> int:
+        from app.rendering.model import TipoRegiao
+        return max(1, sum(1 for r in slot.regioes
+                          if r.tipo == TipoRegiao.IMAGEM and r.visivel))
+
+    def _montar_linhas_de_foto(self, slot) -> None:
+        """T5: (re)monta uma linha de foto por ZONA do slot em edição."""
+        while self._caixa_fotos.count():
+            item = self._caixa_fotos.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            lay = item.layout()
+            if lay is not None:
+                while lay.count():
+                    sub = lay.takeAt(0)
+                    if sub.widget() is not None:
+                        sub.widget().deleteLater()
+        self._foto_lbls = []
+        n = self._zonas_de_foto(slot)
+        for k in range(n):
+            linha = QHBoxLayout()
+            lbl = QLabel("(sem foto)")
+            lbl.setProperty("papel", "legenda")
+            rotulo = ("Escolher foto…" if n == 1
+                      else f"Foto da zona {k + 1}…")
+            btn = QPushButton(rotulo)
+            btn.clicked.connect(lambda _c=False, i=k:
+                                self._escolher_foto(i))
+            linha.addWidget(lbl, 1)
+            linha.addWidget(btn)
+            self._caixa_fotos.addLayout(linha)
+            self._foto_lbls.append(lbl)
 
     # --- estado por slot ------------------------------------------------------
 
@@ -139,13 +171,21 @@ class ItensFixosDialog(QDialog):
             self._atual = None
             return
         self._atual = idx
-        cf = self._pares[idx][1].conteudo_fixo or {}
+        slot = self._pares[idx][1]
+        cf = slot.conteudo_fixo or {}
         self.ed_nome.setText(cf.get("nome") or "")
         self.ed_descritor.setText(cf.get("descritor") or "")
         self.ed_preco.setText(cf.get("preco") or "")
         self.chk_semana.setChecked(bool(cf.get("preco_da_semana")))
-        self._imagem_rel = cf.get("imagem")
-        self._foto_lbl.setText(self._imagem_rel or "(sem foto)")
+        self._montar_linhas_de_foto(slot)
+        n = self._zonas_de_foto(slot)
+        gravadas = list(cf.get("imagens") or [])
+        if not gravadas and cf.get("imagem"):
+            gravadas = [cf.get("imagem")]
+        self._imagens_rel = [(gravadas[k] if k < len(gravadas) else None)
+                             for k in range(n)]
+        for k, lbl in enumerate(self._foto_lbls):
+            lbl.setText(self._imagens_rel[k] or "(sem foto)")
         self._atualizar_previa()
 
     def _gravar_form(self) -> None:
@@ -154,7 +194,8 @@ class ItensFixosDialog(QDialog):
             return
         slot = self._pares[self._atual][1]
         nome = self.ed_nome.text().strip()
-        if not (nome or self._imagem_rel or self.ed_preco.text().strip()):
+        fotos = [r for r in self._imagens_rel if r]
+        if not (nome or fotos or self.ed_preco.text().strip()):
             slot.conteudo_fixo = None     # tudo vazio = célula só-arte
             return
         slot.conteudo_fixo = {
@@ -162,7 +203,11 @@ class ItensFixosDialog(QDialog):
             "descritor": self.ed_descritor.text().strip() or None,
             "preco": self.ed_preco.text().strip() or None,
             "preco_da_semana": self.chk_semana.isChecked(),
-            "imagem": self._imagem_rel,
+            # T5: a lista por zona é a verdade; o singular segue para
+            # compat (a 1ª foto)
+            "imagem": fotos[0] if fotos else None,
+            "imagens": [r for r in self._imagens_rel] if len(
+                self._imagens_rel) > 1 else None,
         }
         item = self.lista.item(self._atual)
         if item is not None:
@@ -174,15 +219,19 @@ class ItensFixosDialog(QDialog):
 
     # --- foto + prévia --------------------------------------------------------
 
-    def _escolher_foto(self) -> None:
+    def _escolher_foto(self, zona: int = 0) -> None:
         caminho, _ = QFileDialog.getOpenFileName(
             self, "Foto do item fixo",
             str(SystemRoot().biblioteca_imagens),
             "Imagens (*.png *.webp *.jpg *.jpeg)")
         if not caminho:
             return
-        self._imagem_rel = internar_foto_fixa(caminho)
-        self._foto_lbl.setText(self._imagem_rel)
+        rel = internar_foto_fixa(caminho)
+        while len(self._imagens_rel) <= zona:
+            self._imagens_rel.append(None)
+        self._imagens_rel[zona] = rel
+        if zona < len(self._foto_lbls):
+            self._foto_lbls[zona].setText(rel)
         self._atualizar_previa()
 
     def _atualizar_previa(self) -> None:

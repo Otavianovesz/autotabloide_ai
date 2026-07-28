@@ -1093,4 +1093,56 @@ def importar_pacote(session, pasta_pacote: str | Path,
             destino = raiz.fontes / nome
             if origem.exists() and not destino.exists():
                 shutil.copy(origem, destino)
+        # F13-UNDECIMUS/U2: o CARIMBO do pacote — quando as artes ou os
+        # geradores mudarem, o Ateliê avisa que há atualização (o dado
+        # importado fica velho e ninguém sabia)
+        try:
+            from app.core.repositories import ConfigRepositorio
+            repo = ConfigRepositorio(session)
+            repo.set("encartes.pasta_pacote", str(pasta.resolve()))
+            repo.set("encartes.versao_pacote", versao_do_pacote(pasta))
+        except Exception:
+            pass          # o carimbo é conveniência; o import já valeu
     return chaves
+
+
+def versao_do_pacote(pasta_pacote: str | Path) -> str:
+    """F13-UNDECIMUS/U2: o carimbo de versão do pacote — hash curto de
+    (caminho, tamanho, mtime) das artes e dos geradores. Qualquer BASE
+    regenerado ou gerador editado muda o carimbo."""
+    import hashlib
+
+    raiz = Path(pasta_pacote)
+    partes: list[str] = []
+    for p in sorted(raiz.rglob("*")):
+        if p.is_file() and p.suffix.lower() in (".png", ".py", ".svg"):
+            st = p.stat()
+            partes.append(f"{p.relative_to(raiz).as_posix()}"
+                          f"|{st.st_size}|{st.st_mtime_ns}")
+    return hashlib.sha1("\n".join(partes).encode("utf-8")).hexdigest()[:12]
+
+
+def pacote_desatualizado() -> str | None:
+    """F13-UNDECIMUS/U2: a pasta do último pacote importado, SE ela
+    estiver mais nova que o carimbo gravado — senão None. Pasta sumida
+    ou nunca importado degrada para None em silêncio (é só um aviso;
+    noutra máquina o caminho local simplesmente não existe)."""
+    try:
+        from app.core.database import Database
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                repo = ConfigRepositorio(s)
+                pasta = repo.get("encartes.pasta_pacote")
+                versao = repo.get("encartes.versao_pacote")
+        finally:
+            db.engine.dispose()
+        if not pasta or not versao:
+            return None
+        p = Path(pasta)
+        if not p.exists():
+            return None
+        return str(p) if versao_do_pacote(p) != versao else None
+    except Exception:
+        return None

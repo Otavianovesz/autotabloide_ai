@@ -116,9 +116,27 @@ class AtelieTela(QWidget):
             "Clique em “Novo layout” para importar a sua arte\n"
             "do Illustrator e marcar a grade.", acao=btn_vazio)
 
+        # F13-UNDECIMUS/U2: quando o pacote de encartes tem atualização
+        # (carimbo de versão diverge), um aviso DISCRETO com o botão —
+        # o dado importado ficava velho e ninguém sabia
+        self._aviso_pacote = QWidget()
+        self._aviso_pacote.setObjectName("avisoPacote")
+        hp = QHBoxLayout(self._aviso_pacote)
+        hp.setContentsMargins(t.ESP_2, t.ESP_1, t.ESP_2, t.ESP_1)
+        lbl_pac = QLabel("Os encartes têm atualização.")
+        lbl_pac.setProperty("papel", "legenda")
+        self._btn_atualizar_pacote = QPushButton(" Atualizar agora")
+        self._btn_atualizar_pacote.setIcon(icone("restaurar", tamanho=14))
+        self._btn_atualizar_pacote.clicked.connect(self._atualizar_pacote)
+        hp.addWidget(lbl_pac)
+        hp.addWidget(self._btn_atualizar_pacote)
+        hp.addStretch(1)
+        self._aviso_pacote.hide()
+
         corpo = QWidget()
         vc = QVBoxLayout(corpo)
         vc.setContentsMargins(0, 0, 0, 0)
+        vc.addWidget(self._aviso_pacote)
         vc.addWidget(self._vazio)
         vc.addWidget(self.lista)
 
@@ -168,6 +186,38 @@ class AtelieTela(QWidget):
         if self._db is None:
             self._db = Database().init()
         return self._db
+
+    # --- U2: pacote de encartes desatualizado -------------------------------------
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        self._verificar_pacote()
+
+    def _verificar_pacote(self) -> None:
+        """U2: compara o carimbo do pacote com o gravado no import —
+        diverge, o aviso aparece; senão, some. Nunca levanta (é aviso)."""
+        try:
+            from app.rendering.encartes import pacote_desatualizado
+            self._pacote_novo = pacote_desatualizado()
+        except Exception:
+            self._pacote_novo = None
+        self._aviso_pacote.setVisible(bool(self._pacote_novo))
+
+    def _atualizar_pacote(self) -> None:
+        """U2: reimporta da MESMA pasta do último import (upsert por
+        nome; o conteúdo fixo do dono é preservado por slot.id)."""
+        pasta = getattr(self, "_pacote_novo", None)
+        if not pasta:
+            return
+        from app.rendering.encartes import NOMES_EXIBICAO, importar_pacote
+        with self._banco().Session() as s:
+            importadas = importar_pacote(s, pasta)
+            s.commit()
+        self.recarregar()
+        self._verificar_pacote()
+        nomes = [NOMES_EXIBICAO[c] for c in importadas]
+        mostrar_toast(self, f"{len(importadas)} encarte(s) atualizados: "
+                            + ", ".join(nomes) + ".")
 
     # --- biblioteca ----------------------------------------------------------------
 

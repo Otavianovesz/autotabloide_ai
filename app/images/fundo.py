@@ -110,6 +110,24 @@ def remover_fundo(imagem: str | Path, modelo: str = "birefnet-general") -> Image
     return remover_fundo_img(Image.open(imagem), modelo)
 
 
+def tem_alfa_util(img: Image.Image) -> bool:
+    """F13-DUODECIMUS/T6: a foto JÁ VEM recortada (alfa de verdade —
+    o "pão francês.png" do dono)? Então o rembg é PULADO: reprocessar
+    um recorte pronto só degrada. "Útil" = tem canal A com transparência
+    REAL (>2% dos pixels transparentes) e conteúdo (>10% opacos) — um
+    PNG com alfa todo opaco não conta (é um JPG disfarçado)."""
+    if "A" not in img.getbands():
+        return False
+    alfa = img.getchannel("A")
+    menor = alfa.copy()
+    menor.thumbnail((96, 96))
+    px = list(menor.getdata())
+    n = len(px) or 1
+    transparentes = sum(1 for a in px if a < 16) / n
+    opacos = sum(1 for a in px if a > 240) / n
+    return transparentes > 0.02 and opacos > 0.10
+
+
 def _pular_rembg_fundo_branco(imagem: str | Path) -> bool:
     """R-095: True se a Config `imagem.detector_fundo_branco` está ligada E a foto
     já tem fundo branco uniforme (os 4 cantos). Nunca levanta.

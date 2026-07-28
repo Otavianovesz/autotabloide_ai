@@ -1144,7 +1144,8 @@ class MesaTela(QWidget):
             return
         from app.qt.telas.colagem import (
             linhas_para_tuplas, multi_precos_de, parse_colagem)
-        linhas = parse_colagem(texto)
+        balde: list[str] = []          # T1: as linhas de prosa ignoradas
+        linhas = parse_colagem(texto, balde=balde)
         if not linhas:
             mostrar_toast(self, "Não reconheci produtos no que foi colado — "
                                 "cole nome e preço, um por linha.", tipo="erro")
@@ -1155,17 +1156,25 @@ class MesaTela(QWidget):
             return
         confirmadas = dlg.linhas_confirmadas()
         tuplas = linhas_para_tuplas(confirmadas)
+        aviso_balde = None
+        if balde:                      # I2: descarte NUNCA invisível
+            mostra = "; ".join(b[:48] for b in balde[:3])
+            aviso_balde = (f"{len(balde)} linha(s) da tabela ficaram de "
+                           f"fora (prosa sem preço): {mostra}"
+                           + ("…" if len(balde) > 3 else ""))
         if tuplas:
-            self._importar_tuplas(tuplas, multi_precos_de(confirmadas))
+            self._importar_tuplas(tuplas, multi_precos_de(confirmadas),
+                                  aviso=aviso_balde)
 
-    def _importar_tuplas(self, tuplas, multi_precos=None) -> None:
+    def _importar_tuplas(self, tuplas, multi_precos=None,
+                         aviso=None) -> None:
         """Concilia tuplas (descricao, preco, ean) em worker → estante (o mesmo
         _conciliar do multi-arquivo). 'Dados primeiro, fotos depois': os itens
         nascem sem foto e a busca em lote fica para depois (R-053).
         `multi_precos` (paralelo) leva a promoção "N por R$X" ao ItemMesa."""
         trab = Trabalhador(
-            lambda st, t=tuplas, mp=multi_precos:
-            servico.conciliar_linhas(t, st, multi_precos=mp))
+            lambda st, t=tuplas, mp=multi_precos, av=aviso:
+            servico.conciliar_linhas(t, st, multi_precos=mp, aviso=av))
         trab.status.connect(self._overlay.mostrar)
         trab.ok.connect(self._conciliar)
         trab.erro.connect(self._falhou)
@@ -2751,7 +2760,11 @@ class MesaTela(QWidget):
         self._mapa = mapa
         self._aplicar_mapa()
         extra = len(self._itens) - len(self._mapa)
-        aviso = f" ({extra} fora da grade)" if extra > 0 else ""
+        # F13-DUODECIMUS/T2: item que não coube NUNCA some — segue na
+        # estante marcado "fora da grade", e o aviso diz o que fazer
+        aviso = (f" · {extra} item(ns) não couberam na grade — seguem "
+                 "na estante marcados “fora da grade”; arraste para uma "
+                 "célula ou tire outro") if extra > 0 else ""
         # RG-42: medidor de densidade — respiro vende (60-30-10 da pesquisa)
         from app.rendering.grade import ocupaveis as _ocup
         dados_slot = self._dados_por_slot()

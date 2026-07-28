@@ -110,11 +110,14 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
         if reg is not None and (d.nome or "").strip() and fontes_dir is not None:
             try:
                 from app.rendering.nome_fit import precedencia_do_nome
+                from app.rendering.text_fit import piso_do_celular
                 dpi = getattr(layout, "dpi", 300)
                 aj = precedencia_do_nome(
                     d.nome, getattr(d, "descritor", None),
                     getattr(d, "unidade", None), slot.regioes, dpi,
-                    Path(fontes_dir))
+                    Path(fontes_dir),
+                    piso_pt=piso_do_celular(
+                        getattr(layout, "largura_mm", 0)))
                 if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
