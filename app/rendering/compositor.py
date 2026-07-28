@@ -112,10 +112,10 @@ def percentual_desconto(preco_de: "Decimal | None",
     return int(pct.to_integral_value(rounding=ROUND_HALF_UP))
 
 
-# QUARTUSDECIMUS/Q4: o formato do papel DESCONTO — "off" segue o desenho
-# de referência do pacote (o pctpod escreve "20% OFF"); "menos" é a
-# alternativa renderizada para o dono escolher. PROVISÓRIO até a palavra
-# dele: o padrão é o do desenho (L9 — o asset é a fonte da verdade).
+# QUARTUSDECIMUS/Q4: o formato do papel DESCONTO — DECIDIDO PELO DONO
+# (28/07, ao ver as duas opções renderizadas): "deixa 20% off mesmo".
+# Vale em toda porta (encarte, cartaz, etiqueta); "menos" fica como a
+# alternativa que ele viu e rejeitou.
 FORMATO_DESCONTO_PADRAO = "off"
 
 

@@ -156,11 +156,19 @@ def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
 
 def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
                    regioes: list[Regiao], dpi: int,
-                   fontes_dir: Path) -> tuple[Retangulo, Retangulo] | None:
-    """Passo 3: quanto a banda do nome PODE crescer para 2 linhas no
-    corpo mínimo, com a foto cedendo — sem furar o piso de 55% do O1.
-    Só quando a foto está ACIMA da banda (o desenho das células do
-    pacote); devolve (rect_nome, rect_foto) ou None se não há folga."""
+                   fontes_dir: Path,
+                   texto: str) -> tuple[Retangulo, Retangulo] | None:
+    """Passo 3: quanto a banda do nome PRECISA crescer para o texto
+    caber, com a foto cedendo — sem furar o piso de 55% do O1. Só
+    quando a foto está ACIMA da banda (o desenho das células do
+    pacote); devolve (rect_nome, rect_foto) ou None se não há folga.
+
+    ADENDO QUARTUSDECIMUS (achado do OLHAR): a régua é o PRÓPRIO
+    ``_cabe`` — a estimativa antiga por métrica de fonte SUBESTIMAVA a
+    altura de 2 linhas (o ajustar_texto tem entrelinha própria) e a
+    banda crescia de menos: "Mini Salgadinhos" caía na escada mesmo
+    com folga sobrando. Bisseção até o MENOR delta que faz caber (a
+    foto nunca cede mais do que o texto precisa)."""
     rn, ri = reg_nome.rect, reg_img.rect
     if ri.y_mm + ri.alt_mm > rn.y_mm + 0.5:      # foto não está acima
         return None
@@ -169,29 +177,29 @@ def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
     # texto sobre o desenho; com vão, a precedência segue ao passo 4/5
     if rn.y_mm - (ri.y_mm + ri.alt_mm) > 2.5:    # ~9 px de folga na régua
         return None
-    try:
-        from PIL import ImageFont
-        from app.rendering.units import pt_para_px
-        px = max(1, round(pt_para_px(reg_nome.tamanho_min_pt, dpi)))
-        f = ImageFont.truetype(str(fontes_dir / reg_nome.fonte), px)
-        asc, desc = f.getmetrics()
-    except OSError:
-        return None
-    precisa_px = 2 * round((asc + desc) * 1.12)
-    delta_mm = px_para_mm(precisa_px, dpi) - rn.alt_mm
-    if delta_mm <= 0:
-        return None                              # altura não é o problema
     y0 = min(r.rect.y_mm for r in regioes if r.visivel)
     y1 = max(r.rect.y_mm + r.rect.alt_mm for r in regioes if r.visivel)
     folga_mm = ri.alt_mm - _FRACAO_MIN_FOTO * (y1 - y0)
-    delta_mm = min(delta_mm, folga_mm)
-    if delta_mm <= 0.1:
+    if folga_mm <= 0.1:
         return None
-    return (
-        Retangulo(rn.x_mm, rn.y_mm - delta_mm, rn.larg_mm,
-                  rn.alt_mm + delta_mm),
-        Retangulo(ri.x_mm, ri.y_mm, ri.larg_mm, ri.alt_mm - delta_mm),
-    )
+
+    def _rects(delta: float) -> tuple[Retangulo, Retangulo]:
+        return (
+            Retangulo(rn.x_mm, rn.y_mm - delta, rn.larg_mm,
+                      rn.alt_mm + delta),
+            Retangulo(ri.x_mm, ri.y_mm, ri.larg_mm, ri.alt_mm - delta),
+        )
+
+    if not _cabe(texto, reg_nome, _rects(folga_mm)[0], dpi, fontes_dir):
+        return None                     # nem com a folga toda cabe
+    lo, hi = 0.0, folga_mm
+    for _ in range(5):
+        mid = (lo + hi) / 2.0
+        if _cabe(texto, reg_nome, _rects(mid)[0], dpi, fontes_dir):
+            hi = mid
+        else:
+            lo = mid
+    return _rects(hi)
 
 
 def precedencia_do_nome(
@@ -276,7 +284,7 @@ def precedencia_do_nome(
     # passo 3 — a banda cresce, a foto cede (orçamento O1)
     if reg_img is not None:
         crescido = _crescer_banda(reg_nome, reg_img, regioes, dpi,
-                                  fontes_dir)
+                                  fontes_dir, nome_atual)
         if crescido is not None:
             rect_nome, rect_foto = crescido
             rects = {reg_nome.uid: rect_nome, reg_img.uid: rect_foto}

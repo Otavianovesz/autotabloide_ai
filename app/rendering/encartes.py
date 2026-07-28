@@ -412,21 +412,26 @@ def _quarta() -> list[Slot]:
     for i in range(3):                    # minis: RX+20=74, MY0=546, MH+MG=246
         my = 546 + i * 246
         regs = [
-            # F13-TER: zona estendida (inset 8 provado contra o canto)
-            # Q1: o cartão dos minis é LISO — a zona muda de forma
-            # conforme a foto da semana (as fotos do dono são LARGAS
-            # numa zona alta: 56% de área, colada no chão — a doença
-            # que a ordem mediu)
-            _img(82, my + 8, 122, 216, flex=True),
-            _nome(212, my + 34, 148, 60, fonte=_F_NUNITO,
+            # ADENDO do dono (28/07, QUARTUSDECIMUS): "a imagem na
+            # parte superior no meio, usando o resto do espaço; a
+            # descrição no canto inferior esquerdo; o preço ou
+            # desconto no canto inferior direito". Zona LARGA no topo
+            # (as fotos do dono são largas — casam), flex por cima
+            # (a foto da semana ainda manda na forma, Q1)
+            _img(82, my + 8, 274, 132, flex=True),
+            # nome em LARGURA TOTAL (o OLHAR provou: 164px perdiam
+            # "Mini Salgadinhos"/"Lanche na Chapa" por um fio, e 2
+            # linhas de 16,8pt não cabem sob o piso O1 da foto —
+            # full-width resolve pela raiz; o passo 3 segue colado)
+            _nome(82, my + 144, 274, 36, fonte=_F_NUNITO,
                   alin=Alinhamento.ESQUERDA, tam=17.5, cor=escuro),
-            # a linha do peso do modelo ("BBX 100g" — cola no nome)
-            _sub(212, my + 98, 148, 22, fonte="Nunito-Bold.ttf",
+            # a linha do peso do modelo ("BBX 100g" — canto inf. esq.)
+            _sub(82, my + 184, 164, 20, fonte="Nunito-Bold.ttf",
                  alin=Alinhamento.ESQUERDA, tam=12.0, cor=escuro),
         ]
         if i < 2:
-            # pricepod VERDE, centro (278, my+180), sobrescrito
-            regs.append(_preco(224, my + 154, 108, 52, fonte=_F_ANTON,
+            # pricepod VERDE no canto inferior DIREITO, sobrescrito
+            regs.append(_preco(250, my + 178, 106, 52, fonte=_F_ANTON,
                                forma=FormaPreco.TAG_ARREDONDADA,
                                forma_cor=verde, borda=escuro,
                                cor="#FFFFFF", tam=24.5, tam_cent=13.8,
@@ -434,8 +439,8 @@ def _quarta() -> list[Slot]:
         else:
             # pctpod VERDE (QUARTUSDECIMUS/Q3): a cor segue a COLUNA —
             # a identidade da célula fixa — não o tipo do valor; o
-            # laranja destoava das duas irmãs de cima
-            d = _legal(224, my + 154, 108, 52, papel=PapelTexto.DESCONTO,
+            # formato "20% OFF" foi DECIDIDO pelo dono (28/07)
+            d = _legal(250, my + 178, 106, 52, papel=PapelTexto.DESCONTO,
                        fonte=_F_ANTON, nome="Desconto", rot=-1.5,
                        tam=23.0, cor="#FFFFFF")
             d.forma_preco = FormaPreco.TAG_ARREDONDADA
@@ -447,7 +452,11 @@ def _quarta() -> list[Slot]:
     for i, (cx, cy) in enumerate(((410, 44), (729, 44),
                                   (410, 456), (729, 456)), start=1):
         slots.append(_slot(f"celula-var-{i}", [
-            _img(cx + 8, cy + 8, 281, 236),
+            # ADENDO do dono (28/07): as livres também são flex — "os
+            # outros 5 sejam respeitados caso mudem gramatura e outras
+            # questões"; hoje inócuo (a régua mediu todas aprovadas),
+            # rede para a foto futura
+            _img(cx + 8, cy + 8, 281, 236, flex=True),
             _nome(cx + 16, cy + 248, 261, 34, fonte=_F_NUNITO,
                   alin=Alinhamento.ESQUERDA, tam=18.5, cor=escuro),
             _sub(cx + 16, cy + 284, 261, 24, fonte="Nunito-Bold.ttf",
@@ -458,7 +467,7 @@ def _quarta() -> list[Slot]:
                    rot=-1.5),
         ], origem=(cx, cy)))
     slots.append(_slot("celula-var-5", [
-        _img(420, 878, 320, 406),
+        _img(420, 878, 320, 406, flex=True),
         _nome(752, 990, 264, 46, fonte=_F_NUNITO,
               alin=Alinhamento.ESQUERDA, tam=22.5, cor=escuro),
         _sub(752, 1040, 264, 26, fonte="Nunito-Bold.ttf",
@@ -470,10 +479,12 @@ def _quarta() -> list[Slot]:
     ], origem=(410, 868)))
     # a DATA no selo preto da Coluna do Dia: Anton AMARELO (a caixa
     # existia VAZIA na 1ª galeria — defeito funcional, §3.3.1)
-    # A2: só a data no miolo medido (y 367–393 do BASE)
-    selo_q = _legal(92, 366, 152, 28, papel=PapelTexto.VALIDADE,
+    # A2: só a data no miolo medido; ADENDO do dono (28/07): a data
+    # MAIOR — o miolo limpo re-medido por pixel dá y 354–398 (1×),
+    # a caixa cresce 28→44 e o corpo 28,5→40
+    selo_q = _legal(84, 354, 168, 44, papel=PapelTexto.VALIDADE,
                     fonte=_F_ANTON, nome="Validade (data)", rot=-2.0,
-                    tam=28.5, cor="#F7C868")
+                    tam=40.0, cor="#F7C868")
     selo_q.so_data = True
     slots.append(_slot("selo-validade", [selo_q], origem=(80, 348)))
     return slots

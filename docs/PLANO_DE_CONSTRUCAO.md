@@ -909,4 +909,14 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   unidade; a máscara afrouxada → híbrida) + 2 endurecimentos + 4
   refutados com prova. 3 páginas recompostas na raiz real (backup
   core_pre_quartusdecimus). Suíte 1061 ×2 + invertida + janela
-  (bloco_fquartusdecimus_*).
+  (bloco_fquartusdecimus_*). **ADENDO DO DONO (28/07):** "20% OFF"
+  DECIDIDO; a data da Quarta cresceu (miolo re-medido, 28,5→40pt); as
+  3 fixas no arranjo QUE ELE DESENHOU (foto topo-centro 274×132 flex,
+  nome em largura total, descrição inferior-esquerda, pílula
+  inferior-direita) — com um achado de MOTOR no caminho: o
+  `_crescer_banda` estimava a altura de 2 linhas por métrica de fonte
+  e subestimava; agora cresce MEDINDO com o próprio `_cabe` (bisseção)
+  — uma régua só; e o abraço do foto_fit ancora no RODAPÉ quando há
+  texto colado abaixo (centralizar matava o passo 3). As 5 livres da
+  Quarta com zona_flex (rede futura). Suíte ×2 + invertida + janela
+  (bloco_fquartus_adendo_*).

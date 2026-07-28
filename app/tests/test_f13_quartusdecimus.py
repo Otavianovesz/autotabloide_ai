@@ -232,10 +232,11 @@ def test_q1_a_garrafa_em_pe_nao_regride(tmp_path):
 
 
 def test_q1_as_fixas_da_quarta_enchem_a_zona():
-    """O alvo da ordem: as 3 fixas estavam em ~56%. Com as TRÊS fotos
-    reais do dono (quadrada 1080×1080, largas 1920×1080 e 1000×667) o
-    plano existe, a zona nova tem a proporção da foto (ocupação ~100%),
-    tudo fica no bbox da célula e a foto não pisa em texto."""
+    """O alvo da ordem, no arranjo do ADENDO do dono (foto topo-centro
+    usando o resto do espaço): para as fotos reais dele E sondas duras,
+    a foto acaba CHEIA — ou a zona nova já aprova direto (área ou
+    altura ≥85%), ou o plano conserta; quando há plano, tudo fica no
+    bbox da célula e a foto não pisa em texto."""
     _requer_pacote()
     from app.rendering.encartes import layout_de_encarte
     from app.rendering.foto_fit import (FRACAO_CHEIA, medir_ocupacao,
@@ -245,29 +246,31 @@ def test_q1_as_fixas_da_quarta_enchem_a_zona():
     lay = layout_de_encarte("quarta-das-ofertas", _PACOTE)
     fixas = [s for s in lay.paginas[0].slots if s.id.startswith("celula-fixa")]
     assert len(fixas) == 3
-    fotos_do_dono = [(1080, 1080), (1920, 1080), (1000, 667)]
+    fotos = [(1080, 1080), (1920, 1080), (1000, 667), (1600, 400)]
     for slot in fixas:
         regs = [r for r in slot.regioes if r.visivel]
         bx0 = min(r.rect.x_mm for r in regs)
         by0 = min(r.rect.y_mm for r in regs)
         bx1 = max(r.rect.x_mm + r.rect.larg_mm for r in regs)
         by1 = max(r.rect.y_mm + r.rect.alt_mm for r in regs)
-        for iw, ih in fotos_do_dono:
+        rf = next(r for r in slot.regioes if r.tipo == TipoRegiao.IMAGEM)
+        for iw, ih in fotos:
             plano = plano_da_celula(slot.regioes, iw, ih)
-            assert plano is not None, f"{slot.id}: {iw}x{ih} sem plano"
-            rf = next(r for r in slot.regioes
-                      if r.tipo == TipoRegiao.IMAGEM)
-            novo = plano.rects[rf.uid]
-            depois = medir_ocupacao(novo.larg_mm, novo.alt_mm, iw, ih)
-            assert depois.area_frac >= FRACAO_CHEIA, (
-                f"{slot.id} {iw}x{ih}: {depois.area_frac:.0%}")
-            assert plano.area_depois_mm2 >= 1.15 * plano.area_antes_mm2
+            rect_ef = plano.rects[rf.uid] if plano is not None else rf.rect
+            m = medir_ocupacao(rect_ef.larg_mm, rect_ef.alt_mm, iw, ih)
+            assert m.area_frac >= FRACAO_CHEIA \
+                or m.h_frac >= FRACAO_CHEIA, (
+                f"{slot.id} {iw}x{ih}: área {m.area_frac:.0%} / "
+                f"altura {m.h_frac:.0%} — a foto ficou pequena")
+            if plano is None:
+                continue
             eps = 0.15
             for uid, r in plano.rects.items():
                 assert r.x_mm >= bx0 - eps and r.y_mm >= by0 - eps \
                     and r.x_mm + r.larg_mm <= bx1 + eps \
                     and r.y_mm + r.alt_mm <= by1 + eps, (
                     f"{slot.id}: rect {uid} saiu do bbox da célula")
+            novo = plano.rects[rf.uid]
             for uid, r in plano.rects.items():
                 if uid == rf.uid:
                     continue
@@ -301,11 +304,12 @@ def test_q1_celula_vestida_nunca_entra_no_plano():
         "célula com ADORNO entrou no plano — o pão descolaria da cesta")
 
 
-def test_q1_por_pixel_a_foto_da_fixa_sobe_do_chao(tmp_path):
+def test_q1_por_pixel_a_foto_sobe_do_chao(tmp_path):
     """Por conteúdo (I5): a MESMA página da Quarta com a MESMA foto
-    quadrada, com e sem a marca zona_flex — os bytes diferem, e na
-    versão flex há tinta de foto na metade de CIMA da zona original
-    (onde antes era o paredão de vazio)."""
+    AFUNDÁVEL (4:1) no BANNER (célula flex de arranjo lateral — nas
+    fixas do adendo o abraço ancora no rodapé de propósito), com e sem
+    a marca zona_flex — os bytes diferem, e na versão flex a tinta da
+    foto COMEÇA mais alto (o paredão de vazio em cima morre)."""
     _requer_pacote()
     from dataclasses import replace as _rep
     import numpy as np
@@ -318,16 +322,16 @@ def test_q1_por_pixel_a_foto_da_fixa_sobe_do_chao(tmp_path):
     from decimal import Decimal
 
     fontes = _fontes_reais(tmp_path)
-    foto = tmp_path / "quadrada.png"
-    Image.new("RGBA", (400, 400), (255, 0, 255, 255)).save(foto)
+    foto = tmp_path / "larga.png"
+    Image.new("RGBA", (1600, 400), (255, 0, 255, 255)).save(foto)
 
     lay = layout_de_encarte("quarta-das-ofertas", _PACOTE)
     pag = lay.paginas[0]
-    fixa = next(s for s in pag.slots if s.id == "celula-fixa-1")
-    dados = {fixa.id: DadosProduto("Salgados Da Casa",
-                                   preco_por=Decimal("4.99"),
-                                   unidade="100 g",
-                                   imagem_path=str(foto))}
+    banner = next(s for s in pag.slots if s.id == "celula-var-5")
+    dados = {banner.id: DadosProduto("Kit Da Casa",
+                                     preco_por=Decimal("9.99"),
+                                     unidade="900 ml",
+                                     imagem_path=str(foto))}
     com_flex = compor_pagina(lay, pag, dados, fontes_dir=fontes, dpi=96)
 
     for s in pag.slots:
@@ -336,22 +340,26 @@ def test_q1_por_pixel_a_foto_da_fixa_sobe_do_chao(tmp_path):
 
     assert com_flex.tobytes() != sem_flex.tobytes(), (
         "a marca zona_flex não mudou NADA no pixel — o plano não rodou")
-    # o TERÇO de cima da zona original: a foto AFUNDADA (quadrada no
-    # assentar) começa abaixo dele; a replanejada, acima
-    rf = next(r for r in fixa.regioes if r.tipo == TipoRegiao.IMAGEM)
-    x0 = int(mm_para_px(rf.rect.x_mm, 96))
-    y0 = int(mm_para_px(rf.rect.y_mm, 96))
-    x1 = x0 + int(mm_para_px(rf.rect.larg_mm, 96))
-    ytopo = y0 + int(mm_para_px(rf.rect.alt_mm, 96)) // 3
-    a = np.asarray(com_flex)[y0:ytopo, x0:x1]
-    b = np.asarray(sem_flex)[y0:ytopo, x0:x1]
-    magenta_flex = int(((a[:, :, 0] > 200) & (a[:, :, 1] < 60)
-                        & (a[:, :, 2] > 200)).sum())
-    magenta_afundada = int(((b[:, :, 0] > 200) & (b[:, :, 1] < 60)
-                            & (b[:, :, 2] > 200)).sum())
-    assert magenta_flex > 200, "a foto não subiu do chão"
-    assert magenta_afundada < 20, (
-        "a versão sem flex tem foto em cima?! a régua mediu errado")
+    regs = [r for r in banner.regioes if r.visivel]
+    x0 = int(mm_para_px(min(r.rect.x_mm for r in regs), 96))
+    y0 = int(mm_para_px(min(r.rect.y_mm for r in regs), 96))
+    x1 = int(mm_para_px(max(r.rect.x_mm + r.rect.larg_mm
+                            for r in regs), 96))
+    y1 = int(mm_para_px(max(r.rect.y_mm + r.rect.alt_mm
+                            for r in regs), 96))
+
+    def _topo_magenta(img):
+        rec = np.asarray(img)[y0:y1, x0:x1]
+        mag = ((rec[:, :, 0] > 200) & (rec[:, :, 1] < 60)
+               & (rec[:, :, 2] > 200))
+        linhas = np.where(mag.any(axis=1))[0]
+        return int(linhas.min()) if linhas.size else 10 ** 6
+
+    topo_flex = _topo_magenta(com_flex)
+    topo_afundada = _topo_magenta(sem_flex)
+    assert topo_flex < topo_afundada - 5, (
+        f"a foto não subiu do chão (flex y={topo_flex} vs "
+        f"afundada y={topo_afundada})")
 
 
 def test_q1_roundtrip_zona_flex():

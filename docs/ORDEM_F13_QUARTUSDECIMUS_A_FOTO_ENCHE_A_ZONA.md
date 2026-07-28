@@ -374,3 +374,54 @@ pista nova para o COND-10) — re-rodado limpo. O OSError 22 transitório do sav
 PNG (o mesmo da OCTAVUS) apareceu 2× no script da régua e ganhou retry declarado.
 
 
+
+---
+
+# ADENDO DO DONO (28/07/2026, ao ver as páginas da rodada)
+
+> *"Deixa 20% off mesmo. Melhora o tamanho da data também do quarta de
+> ofertas… E formata melhor os três itens fixos colocando a descrição no
+> canto inferior esquerdo, o preço ou desconto no canto inferior direito e
+> a imagem na parte superior no meio, usando o resto do espaço… tudo isso
+> que você edita e programa tem que funcionar perfeitamente e estar lá no
+> programa, pra quando eu for usar e fazer outros itens que não sejam os
+> fixos (nesse caso os outros 5) eles sejam respeitados caso mudem
+> gramatura e outras questões… Quero tudo perfeito aqui."*
+
+## Execução (builder, mesma data)
+
+1. **Q4 DECIDIDO: "20% OFF"** — o "provisório" saiu do código e dos
+   testes; vale em toda porta (encarte, cartaz, etiqueta).
+2. **A data da Quarta cresceu** — o miolo limpo do selo preto foi
+   re-medido por pixel (faixa de menor variância: y 354–398 no 1×) e a
+   caixa da VALIDADE subiu de 152×28/28,5pt para 168×44/40pt. O BASE
+   segue byte-idêntico (a data é tinta do app, não da arte).
+3. **O arranjo do dono nas 3 fixas** (fábrica + gerador + reimport na
+   raiz real): foto no TOPO-CENTRO (zona 274×132, flex), NOME em largura
+   total abaixo dela, descrição no canto inferior ESQUERDO, pílula no
+   inferior DIREITO. Três iterações do OLHAR até ficar perfeito, com um
+   ACHADO DE MOTOR no caminho: o `_crescer_banda` estimava a altura de
+   2 linhas por métrica de fonte e SUBESTIMAVA (o `ajustar_texto` tem
+   entrelinha própria) — a banda crescia de menos e "Mini Salgadinhos"
+   caía na escada mesmo com folga sobrando. Consertado pela raiz: a
+   banda agora cresce MEDINDO com o próprio `_cabe` (bisseção até o
+   menor delta que faz caber) — uma régua só, a doença das duas
+   receitas morta de novo. E o ABRAÇO do foto_fit, com texto colado
+   logo abaixo da zona, passou a ancorar no RODAPÉ (centralizar abria
+   um vão e matava o passo 3 — o "Lanche na" decapitado do OLHAR).
+4. **"Os outros 5 respeitados"** — confirmado que TODAS as regras da
+   rodada são do MOTOR (valem em qualquer célula de qualquer página):
+   a unidade/sigla protegida, o piso do celular, o formato do
+   desconto; e as 5 livres da Quarta ganharam `zona_flex` também
+   (hoje inócuo — a régua mediu todas aprovadas; rede para fotos
+   futuras).
+
+Página recomposta do projeto id=13 com o template novo: os três nomes
+completos, "BB-X · 100 g"/"feito na hora" no canto esquerdo, 4,99/4,99/
+20% OFF verdes no direito, fotos grandes no topo, data 29/07 grande.
+
+**Placares do adendo (junit `bloco_fquartus_adendo_*`):** suíte **1061 ×2
+zero skips exit-0** (runs 1 e 2, sem nenhum incidente desta vez);
+**invertida 1061/0/0**; **janela real 4/0/0**. A régua na raiz real:
+fixas 75/73/91% (duas em pé com altura cheia, uma aprovada por área —
+nenhuma afundada).

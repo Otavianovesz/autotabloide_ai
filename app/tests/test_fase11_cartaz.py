@@ -113,9 +113,8 @@ def test_desconto_region_desenha_e_some_por_conteudo():
     assert _tem_tinta(_recorte(img_sem, reg, lay.dpi)) == 0    # nada sem "de"
 
     # e o texto exato bate com o cálculo (QUARTUSDECIMUS/Q4, rastro:
-    # "-34%" virou "34% OFF" — o formato do desenho de referência do
-    # pacote vale para o papel DESCONTO em toda porta; provisório até
-    # a palavra do dono entre "XX% OFF" e "-XX% no preço")
+    # "-34%" virou "34% OFF" — DECIDIDO pelo dono em 28/07 ("deixa 20%
+    # off mesmo") ao ver as duas opções renderizadas; vale em toda porta)
     assert texto_composto_legal(reg, com) == "34% OFF"
     assert texto_composto_legal(reg, sem) == ""
 

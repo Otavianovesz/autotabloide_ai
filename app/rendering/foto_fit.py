@@ -258,11 +258,21 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
     if antes.h_frac < FRACAO_CHEIA:
         # a rede: a foto está AFUNDADA (limitada pela largura, vazio em
         # cima) e nenhum arranjo pagou a mudança — a zona vira o abraço
-        # centrado da foto (some o paredão de vazio; ocupação ~100%)
+        # da foto (ocupação ~100%). Com texto COLADO logo abaixo da
+        # zona (o arranjo do adendo: foto em cima, descrição embaixo),
+        # o abraço ANCORA NO RODAPÉ — centralizar abriria um vão e
+        # mataria o passo 3 da precedência (o nome não poderia mais
+        # crescer sobre a foto; foi o "Lanche na" decapitado do OLHAR);
+        # sem vizinho colado, centraliza (o caso da coluna lateral)
         w = min(rf.larg_mm, rf.alt_mm * prop)
         h = w / prop
-        rect = Retangulo(rf.x_mm + (rf.larg_mm - w) / 2,
-                         rf.y_mm + (rf.alt_mm - h) / 2, w, h)
+        fundo = rf.y_mm + rf.alt_mm
+        colado = any(r.tipo in _TIPOS_REALOCAVEIS and r.visivel
+                     and 0.0 <= r.rect.y_mm - fundo <= 2.5
+                     for r in regioes)
+        y_novo = (fundo - h) if colado \
+            else rf.y_mm + (rf.alt_mm - h) / 2
+        rect = Retangulo(rf.x_mm + (rf.larg_mm - w) / 2, y_novo, w, h)
         return PlanoFoto({foto.uid: rect}, antes, area_atual,
                          w * h, "abraco")
     return None
