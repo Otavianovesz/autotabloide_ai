@@ -121,6 +121,10 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                 if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
+                if aj is not None and getattr(aj, "piso_cedeu", False):
+                    avisos.append(f"{rot}: o nome só coube abaixo do piso "
+                                  "de legibilidade do celular (corpo "
+                                  "reduzido — confira no zoom).")
                 # QUARTUSDECIMUS (frota, I2): o corte do QUALIFICADOR
                 # no desenho do SUBTITULO nunca é silencioso — a MESMA
                 # decisão do desenho (descritor_que_cabe), anunciada

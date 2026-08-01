@@ -873,15 +873,22 @@ def _quintou() -> list[Slot]:
                      tam=34.0, cor="#E04444")
     selo_qt.so_data = True
     slots.append(_slot("selo-validade", [selo_qt], origem=(138, 1146)))
-    # o painel do topo-direito é VAZIO no fundo limpo. QUATER/Q5: meio
-    # a meio arruinava os DOIS — aqui o builder entrega a opção B FIEL
-    # ao publicado (o logo ocupa o painel INTEIRO, 468×226 medidos);
-    # a variante A (painel inteiro para o Fica a Dica, sem logo) é
-    # composta pela inspeção — a decisão A/B segue do dono
-    slots.append(_slot("painel-logo", [
-        # o bbox EXATO do painel medido no publicado (588,18,468,226) —
-        # a foto da logo entra 1:1, sem reescala nem deslocamento
-        _img(588, 18, 468, 226),
+    # o painel do topo-direito: ADENDO do dono (30/07, ao ver a página
+    # dele) — "não tem o fica a dica preenchendo o espaço": a decisão
+    # A/B do QUATER/Q5 caiu para a DICA (variante A). O título é
+    # texto_fixo; o corpo é papel DICA (a IA/editorial sobrescreve; o
+    # default é no tom do PRÓPRIO publicado do dono — L9)
+    slots.append(_slot("painel-dica", [
+        _legal(600, 26, 444, 34, papel=PapelTexto.LIVRE,
+               fonte=_F_QUICK, nome="Fica a Dica (título)",
+               texto="Fica a Dica", tam=22.0, cor="#241D2E"),
+        _legal(600, 62, 444, 172, papel=PapelTexto.DICA,
+               fonte=_F_QUICK, nome="Fica a Dica",
+               texto=("Que tal usar os produtos do Quintou para fazer "
+                      "aquela janta para agradar a família heinn?! "
+                      "Aproveite as ofertas de hoje — é só no Quintou "
+                      "do Real, e só até durar o estoque!"),
+               tam=13.5, cor="#241D2E"),
     ], origem=(588, 18), fixa=True))
     return slots
 
@@ -899,8 +906,11 @@ def _celula_quintou(x: float, y: float) -> list:
     branco = "#FFFFFF"
     return [
         _img(x + 8, y + 2, 254, 190),
+        # ADENDO do dono (30/07): o publicado reduz o corpo dos nomes
+        # longos até bem pequeno (nunca corta) — range real 14,5→9,5;
+        # o piso do celular cede antes da tesoura (motor)
         _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
-              tam=14.5, cor=branco),
+              tam=14.5, tam_min=9.5, cor=branco),
         _preco(x + 153, y + 189, 112, 64, fonte=_F_QUICK,
                forma=FormaPreco.ETIQUETA_LISTRADA, forma_cor="#FF0000",
                cor=branco, tam=40.0, tam_cent=40.0,
@@ -921,11 +931,25 @@ def _quintou_verso() -> list[Slot]:
         x, y = col * 270, 270 + lin * 258
         slots.append(_slot(f"vpos-{pos:02d}", _celula_quintou(x, y),
                            origem=(x, y)))
+    # ADENDO do dono (30/07): o disclaimer do publicado é a FRASE
+    # COMPLETA com o aviso das imagens, alinhada à DIREITA — e a DATA
+    # em neon VERTICAL no vão entre o "ATÉ" e o "Só Hoje" da arte
+    # (o publicado escreve "26#05" ali; o app escreve a data viva)
     slots.append(_slot("v-validade", [
-        _legal(640, 8, 434, 36, papel=PapelTexto.VALIDADE,
+        _legal(640, 6, 434, 18, papel=PapelTexto.LEGAL,
+               fonte=_F_QUICK, nome="Aviso legal",
+               texto="*Imagens meramente ilustrativas — ofertas "
+                     "enquanto durarem os nossos estoques",
+               tam=9.5, cor="#FFFFFF", alin=Alinhamento.DIREITA),
+        _legal(640, 26, 434, 18, papel=PapelTexto.VALIDADE,
                fonte=_F_QUICK, nome="Validade", tam=9.5,
-               cor="#FFFFFF", alin=Alinhamento.ESQUERDA),
+               cor="#FFFFFF", alin=Alinhamento.DIREITA),
     ], origem=(640, 8)))
+    neon = _legal(560, 105, 200, 70, papel=PapelTexto.VALIDADE,
+                  fonte=_F_QUICK, nome="Validade (data neon)",
+                  rot=90.0, tam=40.0, cor="#E14546")
+    neon.so_data = True
+    slots.append(_slot("v-data-neon", [neon], origem=(560, 105)))
     return slots
 
 

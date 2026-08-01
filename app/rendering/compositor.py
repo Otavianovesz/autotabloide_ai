@@ -1193,7 +1193,10 @@ def compor_pagina(
             campos: dict = {}
             if novo_rect:
                 campos["rect"] = novo_rect
-            if reg.tipo == TipoRegiao.NOME and reg.visivel:
+            if reg.tipo == TipoRegiao.NOME and reg.visivel \
+                    and not (aj_nome is not None and aj_nome.piso_cedeu):
+                # (piso_cedeu: sem SUBTITULO o piso cede antes da
+                # tesoura — o mínimo original da região vale, Quintou)
                 min_ef = min(reg.tamanho_max_pt,
                              max(reg.tamanho_min_pt, piso_nome))
                 if min_ef != reg.tamanho_min_pt:

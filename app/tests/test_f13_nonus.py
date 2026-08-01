@@ -303,6 +303,8 @@ def test_n2_nenhum_nome_no_piso_inerte_nas_8_paginas():
         for lay in variantes:
             for pag in lay.paginas:
                 for s in pag.slots:
+                    tem_sub = any(r2.tipo == TipoRegiao.SUBTITULO
+                                  and r2.visivel for r2 in s.regioes)
                     for r in s.regioes:
                         if r.tipo not in (TipoRegiao.NOME,
                                           TipoRegiao.SUBTITULO):
@@ -314,7 +316,14 @@ def test_n2_nenhum_nome_no_piso_inerte_nas_8_paginas():
                         if r.tamanho_min_pt > r.tamanho_max_pt:
                             problemas.append(f"{rot}: piso {r.tamanho_min_pt}"
                                              f" > teto {r.tamanho_max_pt}")
-                        if r.tamanho_min_pt < r.tamanho_max_pt - 3.0 - 1e-6:
+                        # ADENDO do dono (30/07, rastro): em célula SEM
+                        # SUBTITULO (o Quintou) o range grande É o
+                        # mecanismo — sem linha de descritor não há
+                        # escada; o corpo desce (14,5→9,5, como o
+                        # publicado) e a revisora avisa. O degrau ≤3pt
+                        # segue valendo onde a escada existe.
+                        if tem_sub and \
+                                r.tamanho_min_pt < r.tamanho_max_pt - 3.0 - 1e-6:
                             problemas.append(
                                 f"{rot}: degrau {r.tamanho_max_pt}→"
                                 f"{r.tamanho_min_pt} maior que 3pt")

@@ -422,6 +422,51 @@ def test_q4_os_dois_formatos_do_desconto():
     assert formato_do_desconto(20, "menos") == "-20% no preço"
 
 
+# ---------------------------------------- o adendo do QUINTOU (30/07) --
+
+
+def test_quintou_piso_cede_antes_da_tesoura(tmp_path):
+    """Adendo do dono (30/07): "não reduziu o tamanho dos textos
+    maiores" — em célula SEM SUBTITULO (o Quintou) o piso do celular
+    CEDE até o mínimo original da região antes de elipsar; a revisora
+    anuncia o corpo reduzido (I2)."""
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+    from app.rendering.nome_fit import precedencia_do_nome
+    from app.rendering.units import px_para_mm
+
+    fontes = _fontes_reais(tmp_path)
+    dpi = 96
+    nome = Regiao(TipoRegiao.NOME,
+                  Retangulo(0, 0, px_para_mm(134, dpi), px_para_mm(62, dpi)),
+                  fonte="Roboto-Bold.ttf", tamanho_max_pt=14.5,
+                  tamanho_min_pt=9.5, sem_hifen=True)
+    aj = precedencia_do_nome("Geléia Ritter Alho Caramelizado",
+                             None, None, [nome], dpi, fontes, piso_pt=16.8)
+    assert aj is not None and aj.piso_cedeu and not aj.elipsa, (
+        f"o piso não cedeu: {aj}")
+
+
+def test_quintou_dica_aviso_e_data_neon():
+    """Adendo do dono (30/07): o painel da frente é o FICA A DICA
+    (decisão A/B do QUATER, agora dele); o verso tem o aviso das
+    imagens (a frase do publicado) e a DATA em neon vertical no vão
+    do "ATÉ" (so_data, 90°) — o v-validade segue frase completa."""
+    _requer_pacote()
+    from app.rendering.encartes import layout_de_encarte
+    from app.rendering.model import PapelTexto
+
+    lay = layout_de_encarte("quintou", _PACOTE)
+    painel = next(s for s in lay.paginas[0].slots if s.id == "painel-dica")
+    assert any(r.papel_texto == PapelTexto.DICA for r in painel.regioes)
+    verso = lay.paginas[1]
+    aviso = next(r for s in verso.slots for r in s.regioes
+                 if r.papel_texto == PapelTexto.LEGAL)
+    assert "meramente ilustrativas" in (aviso.texto_fixo or "")
+    neon = next(s for s in verso.slots if s.id == "v-data-neon")
+    assert neon.regioes[0].so_data is True
+    assert neon.regioes[0].rotacao_graus == 90.0
+
+
 # ------------------------------------------------- os achados da frota --
 
 

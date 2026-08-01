@@ -60,6 +60,9 @@ class NomeAjustado:
     rects: dict[str, Retangulo] = field(default_factory=dict)
     descritor_saiu: bool = False        # passo 4 venceu: o SUBTITULO cala
     elipsa: bool = False                # passo 6: nem a cadeia salvou
+    # QUINTOU (adendo do dono): sem SUBTITULO o piso do celular CEDE
+    # antes da tesoura — legível-pequeno > cortado; a revisora avisa
+    piso_cedeu: bool = False
 
 
 def _norm(s: str) -> str:
@@ -226,6 +229,7 @@ def precedencia_do_nome(
                      if r.tipo == TipoRegiao.NOME and r.visivel), None)
     if reg_nome is None:
         return None
+    reg_nome_cru = reg_nome
     if piso_pt:
         min_ef = min(reg_nome.tamanho_max_pt,
                      max(reg_nome.tamanho_min_pt, piso_pt))
@@ -247,6 +251,14 @@ def precedencia_do_nome(
         # é só o aviso de elipse (o Quintou/Jornal-fluxo caem aqui)
         if _cabe(nome, reg_nome, reg_nome.rect, dpi, fontes_dir):
             return None
+        # ADENDO do dono (Quintou, 30/07): "não reduziu o tamanho dos
+        # textos maiores" — sem SUBTITULO não há como encurtar; antes
+        # da tesoura o PISO CEDE até o mínimo original da região (o
+        # publicado reduz o corpo dos nomes longos, nunca corta)
+        if reg_nome_cru.tamanho_min_pt < reg_nome.tamanho_min_pt \
+                and _cabe(nome, reg_nome_cru, reg_nome_cru.rect, dpi,
+                          fontes_dir):
+            return NomeAjustado(nome, descritor, piso_cedeu=True)
         return NomeAjustado(nome, descritor, elipsa=True)
 
     # C2 no motor: com linha de descritor, o peso do fim do nome DESCE

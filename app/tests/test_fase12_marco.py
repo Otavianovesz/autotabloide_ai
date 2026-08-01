@@ -571,9 +571,13 @@ def test_d_marco_dados_reais_validade_desenhada_e_pdf_em_mm(
     # longos agora ficam ABAIXO do piso do celular e o pré-voo AVISA
     # (nunca veta). O "pré-voo LIMPO" original foi escrito quando o
     # ilegível passava calado; o resto do pré-voo segue limpo.
-    outros = [a for a in avisos if "não cabe inteiro" not in a]
+    # (ADENDO 30/07, rastro: "abaixo do piso de legibilidade" é o aviso
+    # novo do piso-que-cede — informativo como o do nome, nunca veta)
+    outros = [a for a in avisos if "não cabe inteiro" not in a
+              and "abaixo do piso de legibilidade" not in a]
     assert outros == [], outros                  # (passo 59, fora o piso)
-    assert all("não cabe inteiro" in a for a in avisos)
+    assert all("não cabe inteiro" in a
+               or "abaixo do piso de legibilidade" in a for a in avisos)
 
     imgs = [compor_pagina(layout, pag, dados) for pag in layout.paginas]
     # a VALIDADE desenhada: com vs sem texto → pixels diferem NA região
