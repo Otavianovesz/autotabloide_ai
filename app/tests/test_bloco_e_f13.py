@@ -126,7 +126,9 @@ def test_e3_criar_estrutura_prova_a_escrita(tmp_path, monkeypatch):
     original = _P.write_text
 
     def _nega(self, *a, **k):
-        if self.name == ".escrita_ok":
+        # (ADENDO 01/08, rastro: o probe ganhou sufixo ÚNICO por
+        # tentativa — o nome fixo colidia entre threads, WinError 32)
+        if self.name.startswith(".escrita_ok"):
             raise PermissionError("ACL de bancada")
         return original(self, *a, **k)
 

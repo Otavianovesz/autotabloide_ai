@@ -68,7 +68,12 @@ class SystemRoot:
         self.raiz.mkdir(parents=True, exist_ok=True)
         for nome in SUBPASTAS.values():
             (self.raiz / nome).mkdir(parents=True, exist_ok=True)
-        probe = self.raiz / ".escrita_ok"
+        # ADENDO 30/07: nome ÚNICO por tentativa — duas threads (fila
+        # de IA + reconciliar da conciliação) iniciando Database ao
+        # mesmo tempo colidiam no MESMO ".escrita_ok" (WinError 32) e
+        # a prova acusava falso "sem escrita" numa pasta saudável
+        import uuid
+        probe = self.raiz / f".escrita_ok_{uuid.uuid4().hex[:8]}"
         try:
             probe.write_text("ok", encoding="utf-8")
             probe.unlink()

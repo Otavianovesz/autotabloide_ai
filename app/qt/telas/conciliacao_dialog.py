@@ -13,11 +13,17 @@ Cada linha importada aparece com o veredito 🟢🟡🔴:
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -27,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from app.qt.design import tokens as t
 from app.qt.design.carregando import OverlayOcupado
-from app.qt.design.toast import mostrar_toast
+from app.qt.design.toast import mostrar_toast, mostrar_toast_desfazer
 from app.qt.telas import servico
 from app.qt.telas.curadoria_dialog import CuradoriaDialog
 from app.qt.workers import (
@@ -39,6 +45,74 @@ from app.qt.workers import (
 
 _COR = {"VERDE": t.SUCESSO, "AMARELO": t.ALERTA, "VERMELHO": t.PERIGO}
 _ROTULO = {"VERDE": "No banco", "AMARELO": "Conferir", "VERMELHO": "Novo"}
+
+
+class EscolherProdutoDialog(QDialog):
+    """ADENDO 30/07 — o gesto "é ESTE aqui": busca no acervo para o dono
+    vincular a linha da importação a um produto que JÁ existe (o app
+    aprende o apelido e da próxima vez casa sozinho). Seleção única."""
+
+    def __init__(self, texto_inicial: str = "", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Vincular a um produto do acervo")
+        self.resize(520, 460)
+        self.produto_id: int | None = None
+        self.produto_nome: str = ""
+
+        lay = QVBoxLayout(self)
+        info = QLabel("Busque o produto que este item da tabela É — o "
+                      "vínculo vira apelido e a próxima importação casa "
+                      "sozinha.")
+        info.setWordWrap(True)
+        info.setProperty("papel", "legenda")
+        lay.addWidget(info)
+        self.busca = QLineEdit(texto_inicial)
+        self.busca.setPlaceholderText("Digite parte do nome…")
+        self.busca.textChanged.connect(self._rebuscar)
+        lay.addWidget(self.busca)
+        self.lista = QListWidget()
+        self.lista.setIconSize(QSize(40, 40))
+        self.lista.itemDoubleClicked.connect(lambda _it: self._confirmar())
+        lay.addWidget(self.lista, 1)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                  | QDialogButtonBox.StandardButton.Cancel)
+        botoes.button(QDialogButtonBox.StandardButton.Ok).setText("Vincular")
+        botoes.button(
+            QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        botoes.accepted.connect(self._confirmar)
+        botoes.rejected.connect(self.reject)
+        lay.addWidget(botoes)
+        self._rebuscar()
+        self.busca.setFocus()
+
+    def _rebuscar(self) -> None:
+        self.lista.clear()
+        try:
+            achados = servico.buscar_produtos_para_vinculo(
+                self.busca.text())
+        except Exception:
+            achados = []
+        for a in achados:
+            rot = a["nome"] + (f"   —   R$ {a['preco']}"
+                               if a.get("preco") else "")
+            it = QListWidgetItem(rot)
+            it.setData(Qt.ItemDataRole.UserRole, a["produto_id"])
+            it.setData(Qt.ItemDataRole.UserRole + 1, a["nome"])
+            if a.get("imagem"):
+                pix = QPixmap(a["imagem"])
+                if not pix.isNull():
+                    it.setIcon(QIcon(pix))
+            self.lista.addItem(it)
+        if self.lista.count():
+            self.lista.setCurrentRow(0)
+
+    def _confirmar(self) -> None:
+        it = self.lista.currentItem()
+        if it is None:
+            return
+        self.produto_id = it.data(Qt.ItemDataRole.UserRole)
+        self.produto_nome = it.data(Qt.ItemDataRole.UserRole + 1) or ""
+        self.accept()
 
 
 class ConciliacaoDialog(QDialog):
@@ -66,6 +140,8 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setHorizontalHeaderLabels(
             ["Situação", "Importado", "Preço", "No banco", "Ação"])
         self.tabela.verticalHeader().setVisible(False)
+        # ADENDO 30/07: a miniatura do palpite na coluna "No banco"
+        self.tabela.setIconSize(QSize(28, 28))
         # OS F11.5 #13: nome e preço IMPORTADOS editáveis inline (duplo clique
         # ou F2) — o dono corrige o erro do OCR na hora, com a foto ao lado.
         # As demais colunas seguem travadas (flag por célula no _recarregar).
@@ -314,7 +390,19 @@ class ConciliacaoDialog(QDialog):
                 banco = (item.nome if item.produto_id
                          else (item.candidato_nome or "—"))
                 cel_banco = QTableWidgetItem(banco)
-                cel_banco.setToolTip(banco)
+                # ADENDO 30/07: a MINIATURA do palpite responde "é este
+                # mesmo?" num relance; o tooltip lista os candidatos
+                if item.imagem:
+                    pix = QPixmap(item.imagem)
+                    if not pix.isNull():
+                        cel_banco.setIcon(QIcon(pix))
+                dica = banco
+                if item.candidatos:
+                    dica += "\n\nOutros palpites do banco:"
+                    for c in item.candidatos[:5]:
+                        dica += (f"\n  • {c.get('nome', '?')} "
+                                 f"({c.get('score', 0):.0f})")
+                cel_banco.setToolTip(dica)
                 # #13: só Importado e Preço editam; "No banco" é do banco
                 cel_banco.setFlags(cel_banco.flags()
                                    & ~Qt.ItemFlag.ItemIsEditable)
@@ -339,7 +427,11 @@ class ConciliacaoDialog(QDialog):
 
     def _celula_editada(self, cel: QTableWidgetItem) -> None:
         """#13: a edição inline reflete no ItemMesa (por LINHA da view atual —
-        a lista self.itens é a mesma que a tabela exibe)."""
+        a lista self.itens é a mesma que a tabela exibe).
+
+        ADENDO 30/07: corrigir o texto do OCR RE-CONCILIA a linha na
+        hora — muitos vermelhos viram verdes só com o nome certo (antes
+        nada recalculava e o dono criava duplicata sem saber)."""
         if self._recarregando:
             return
         linha, col = cel.row(), cel.column()
@@ -347,8 +439,18 @@ class ConciliacaoDialog(QDialog):
             return
         item = self.itens[linha]
         texto = cel.text().strip()
-        if col == 1 and texto:
+        if col == 1 and texto and texto != item.descricao:
             item.descricao = texto
+            if item.semaforo != "VERDE":
+                trab = Trabalhador(lambda st, it=item:
+                                   servico.reconciliar_item(it))
+                trab.status.connect(self._overlay.mostrar)
+                trab.ok.connect(lambda it, u=item.uid:
+                                (self._overlay.esconder(),
+                                 self._resolvido_uid(u, it)))
+                trab.erro.connect(self._falhou)
+                self._overlay.mostrar("Reconferindo no banco…")
+                self._trabalhos.rodar(trab)
         elif col == 2:
             item.preco = "" if texto in ("", "—") else texto
 
@@ -361,6 +463,14 @@ class ConciliacaoDialog(QDialog):
             aceitar = QPushButton("Aceitar")
             aceitar.setToolTip("Confirmar o palpite do banco (aprende o alias)")
             aceitar.clicked.connect(lambda _=False, li=linha: self._aceitar(li))
+            # ADENDO 30/07: "não é esse, é AQUELE" — o menu traz os
+            # outros candidatos que o motor calculava e jogava fora,
+            # mais a busca no acervo (o vínculo forçado)
+            outro = QPushButton("Outro…")
+            outro.setToolTip("Vincular a OUTRO produto do banco "
+                             "(candidatos ou busca no acervo)")
+            outro.clicked.connect(
+                lambda _=False, li=linha, b=outro: self._menu_vinculo(li, b))
             criar = QPushButton("É novo")
             criar.setToolTip("Não é esse — criar um produto novo")
             criar.clicked.connect(lambda _=False, li=linha: self._criar(li))
@@ -372,9 +482,18 @@ class ConciliacaoDialog(QDialog):
                                "sem ensinar nada ao banco")
             ignorar.clicked.connect(lambda _=False, li=linha: self._ignorar(li))
             h.addWidget(aceitar)
+            h.addWidget(outro)
             h.addWidget(criar)
             h.addWidget(ignorar)
         elif item.semaforo == "VERMELHO":
+            # ADENDO 30/07: a queixa 3 do dono — o vermelho OBRIGAVA a
+            # duplicata; "Vincular…" aponta o produto que JÁ existe
+            vincular = QPushButton("Vincular…")
+            vincular.setToolTip("Este item JÁ EXISTE no acervo — escolher "
+                                "qual é (o app aprende para a próxima)")
+            vincular.clicked.connect(
+                lambda _=False, li=linha, b=vincular:
+                self._menu_vinculo(li, b))
             criar = QPushButton("Criar")
             criar.setProperty("tipo", "primario")
             criar.setToolTip("Enriquecer o nome, escolher a imagem e cadastrar")
@@ -382,11 +501,54 @@ class ConciliacaoDialog(QDialog):
             ignorar = QPushButton("Ignorar")
             ignorar.setToolTip("Deixar este item fora do tabloide")
             ignorar.clicked.connect(lambda _=False, li=linha: self._ignorar(li))
+            h.addWidget(vincular)
             h.addWidget(criar)
             h.addWidget(ignorar)
         else:
             h.addWidget(QLabel("—"))
         return caixa
+
+    # --- ADENDO 30/07: o vínculo forçado ("é ESTE aqui") --------------------
+
+    def _menu_vinculo(self, linha: int, botao: QWidget) -> None:
+        """Os candidatos que o motor conhece (com score) + a busca."""
+        item = self.itens[linha]
+        menu = QMenu(self)
+        vistos: set[int] = set()
+        for c in (item.candidatos or []):
+            pid = c.get("produto_id")
+            if pid is None or pid in vistos or pid == item.produto_id:
+                continue
+            vistos.add(pid)
+            ac = menu.addAction(f"{c.get('nome', '?')}   ({c.get('score', 0):.0f})")
+            ac.triggered.connect(
+                lambda _=False, li=linha, p=pid: self._vincular(li, p))
+        if vistos:
+            menu.addSeparator()
+        buscar = menu.addAction("Buscar no acervo…")
+        buscar.triggered.connect(
+            lambda _=False, li=linha: self._buscar_no_acervo(li))
+        menu.exec(botao.mapToGlobal(botao.rect().bottomLeft()))
+
+    def _buscar_no_acervo(self, linha: int) -> None:
+        item = self.itens[linha]
+        dlg = EscolherProdutoDialog(item.descricao.split("·")[0][:40],
+                                    parent=self)
+        if dlg.exec() and dlg.produto_id is not None:
+            self._vincular(linha, dlg.produto_id)
+
+    def _vincular(self, linha: int, produto_id: int) -> None:
+        item = self.itens[linha]
+        trab = Trabalhador(lambda st, it=item, p=produto_id:
+                           servico.aceitar_correspondencia(it, produto_id=p))
+        trab.status.connect(self._overlay.mostrar)
+        # por UID (I1): a linha pode mudar de índice enquanto o worker roda
+        trab.ok.connect(lambda it, u=item.uid:
+                        (self._overlay.esconder(),
+                         self._resolvido_uid(u, it)))
+        trab.erro.connect(self._falhou)
+        self._overlay.mostrar("Vinculando…")
+        self._trabalhos.rodar(trab)
 
     def _atualizar_resumo(self) -> None:
         n = {"VERDE": 0, "AMARELO": 0, "VERMELHO": 0}
@@ -472,8 +634,19 @@ class ConciliacaoDialog(QDialog):
         self._trabalhos.rodar(trab)
 
     def _ignorar(self, linha: int) -> None:
+        # ADENDO 30/07: o atalho R tornava o acidente fácil e não havia
+        # volta — agora o toast dá 6 s de "Desfazer" (a linha volta ao
+        # MESMO lugar; nada foi ensinado ao banco em nenhum dos casos)
+        item = self.itens[linha]
         del self.itens[linha]
         self._recarregar()
+
+        def _voltar(li=linha, it=item):
+            self.itens.insert(min(li, len(self.itens)), it)
+            self._recarregar()
+
+        mostrar_toast_desfazer(self, f"“{item.descricao[:40]}” ignorado.",
+                               _voltar)
 
     def _criar(self, linha: int) -> None:
         item = self.itens[linha]

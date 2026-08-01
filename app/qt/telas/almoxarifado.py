@@ -278,6 +278,15 @@ class AlmoxarifadoTela(QWidget):
         self.filtro.addItem("● Sem imagem", "VERMELHO")
         self.filtro.addItem("● Incompletos", "AMARELO")
         self.filtro.currentIndexChanged.connect(self._rebuscar)
+        # ADENDO 30/07 (a queixa do dono): não havia COMO cadastrar um
+        # item avulso — a única porta era a importação na Mesa
+        btn_novo = QPushButton(" Novo produto…")
+        btn_novo.setProperty("tipo", "primario")
+        btn_novo.setIcon(icone("caixa", tamanho=16))
+        btn_novo.setToolTip("Cadastrar um produto do zero — digite o nome "
+                            "(com peso, se tiver) e complete no painel; a "
+                            "foto entra por “Trocar imagem…”")
+        btn_novo.clicked.connect(self._novo_produto)
         corrigir = QPushButton(" Corrigir nomes (IA)")
         corrigir.setIcon(icone("texto", tamanho=16))
         corrigir.setToolTip("Enriquecer todos os nomes do banco com a IA "
@@ -322,6 +331,7 @@ class AlmoxarifadoTela(QWidget):
         btn_intel.clicked.connect(self._abrir_inteligencia)
         hb.addWidget(self.busca)
         hb.addWidget(self.filtro)
+        hb.addWidget(btn_novo)
         hb.addWidget(corrigir)
         hb.addWidget(categorizar)
         hb.addWidget(btn_estudio_lote)
@@ -562,6 +572,42 @@ class AlmoxarifadoTela(QWidget):
             shell.ir_para("mesa")
         else:                            # fora do shell (bancada): avisa
             mostrar_toast(self, "Abra a tela Mesa para importar ofertas.")
+
+    def _novo_produto(self) -> None:
+        """ADENDO 30/07: cadastrar um item AVULSO — o nome basta (a
+        porta única ``importar`` sanitiza e nunca duplica); o painel
+        inline vira o formulário para completar, e a foto entra pelo
+        “Trocar imagem…” de sempre."""
+        from PySide6.QtWidgets import QInputDialog
+
+        nome, ok = QInputDialog.getText(
+            self, "Novo produto",
+            "Nome do produto (com peso, se tiver — ex.: "
+            "\"Pão de Queijo Tradicional 500g\"):")
+        if not ok or not nome.strip():
+            return
+        try:
+            pid, nome_san = servico.criar_produto_manual(nome)
+        except Exception as exc:                    # somente-leitura etc.
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        # a busca filtra até ele e a seleção abre o painel de edição
+        self.busca.setText(nome_san)
+        self._rebuscar()
+        from PySide6.QtCore import QTimer
+
+        def _selecionar(p=pid):
+            for i, d in enumerate(self.modelo._linhas):
+                if d.get("id") == p:
+                    ix = self.modelo.index(i, 0)
+                    self.lista.setCurrentIndex(ix)
+                    self._selecionou(ix)
+                    self.nome.setFocus()
+                    break
+
+        QTimer.singleShot(150, _selecionar)
+        mostrar_toast(self, f"“{nome_san}” cadastrado — complete os "
+                            "campos no painel.", tipo="sucesso")
 
     def _dado_atual(self) -> dict | None:
         return (self.modelo._linhas[self._linha_atual]

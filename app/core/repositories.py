@@ -20,6 +20,13 @@ from app.core.models import Categoria, Config, Produto, ProdutoAlias
 from app.core.sanitize import REGRAS_PADRAO, RegrasSanitizacao, ResultadoSanitizacao, sanitizar
 
 
+def _alias_limpo(texto: str) -> str:
+    """ADENDO 30/07: tira os marcadores de lista que o OCR/colagem
+    trazem na frente do nome ("• ", "▶ ", "> ") — enfeite não é
+    identidade; o match exato por alias compara os dois lados limpos."""
+    return (texto or "").strip().lstrip("•·▶>*–- ").strip()
+
+
 def _para_decimal(valor: Decimal | str | float | None) -> Decimal | None:
     """Converte preço para Decimal com segurança (aceita '5,95' ou '5.95')."""
     if valor is None:
@@ -66,7 +73,22 @@ class ProdutoRepositorio:
             .join(ProdutoAlias)
             .where(ProdutoAlias.alias_raw == alias_raw)
         )
-        return self.session.execute(stmt).scalars().first()
+        achado = self.session.execute(stmt).scalars().first()
+        if achado is not None:
+            return achado
+        # ADENDO 30/07: aliases herdados do OCR antigo carregam
+        # marcadores ("• FIGADO..."), e a consulta de hoje vem limpa
+        # (ou vice-versa) — o match exato compara os DOIS lados limpos
+        limpo = _alias_limpo(alias_raw)
+        pares = self.session.execute(
+            select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
+        ).all()
+        for pid, raw in pares:
+            if _alias_limpo(raw) == limpo:
+                p = self.session.get(Produto, pid)
+                if p is not None and p.excluido_em is None:
+                    return p
+        return None
 
     def listar(self, limit: int = 100, offset: int = 0) -> list[Produto]:
         stmt = (
@@ -113,6 +135,10 @@ class ProdutoRepositorio:
         return cat
 
     def _garantir_alias(self, produto_id: int, alias_raw: str) -> None:
+        # ADENDO 30/07: o alias nasce LIMPO de marcadores de lista do
+        # OCR ("• ", "▶ ") — enfeite gravado no cru inutilizava o
+        # match exato das importações seguintes
+        alias_raw = _alias_limpo(alias_raw) or alias_raw
         stmt = select(ProdutoAlias).where(
             ProdutoAlias.produto_id == produto_id,
             ProdutoAlias.alias_raw == alias_raw,

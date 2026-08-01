@@ -920,3 +920,18 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   texto colado abaixo (centralizar matava o passo 3). As 5 livres da
   Quarta com zona_flex (rede futura). Suíte ×2 + invertida + janela
   (bloco_fquartus_adendo_*).
+  —— **ADENDO QUINTOU (30/07)** e **ADENDO DIA-A-DIA (01/08)** — dois
+  pedidos diretos do dono usando o app. QUINTOU: o piso do celular
+  CEDE antes da tesoura em célula sem SUBTITULO (nomes completos em
+  corpo reduzido, revisora avisa); Fica a Dica no painel; aviso das
+  imagens + data neon no verso (medidos no publicado). DIA-A-DIA
+  (`docs/ADENDO_F13_DIA_A_DIA.md`): "Novo produto…" no Almoxarifado;
+  o motor da conciliação deixou de esconder irmãos de gramatura
+  (corpus multi-pid + desempate por PESO), ganhou exclusividade de
+  lote, divergência tolerante (BB-X/grafia OCR) e aliases limpos de
+  marcadores; a UI ganhou "Vincular…"/"Outro…" (o vínculo forçado que
+  APRENDE — F9), re-conciliar ao corrigir texto, candidatos visíveis,
+  miniatura e desfazer no Ignorar; aliases do id=50 corrompido
+  devolvidos ao produto certo (backup core_pre_diaadia). 9 testes L1
+  (test_f13_diaadia.py). Suíte ×2 + invertida + janela
+  (bloco_fdiaadia_*).

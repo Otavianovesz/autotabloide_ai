@@ -45,6 +45,10 @@ class ItemMesa:
     via: str = ""                  # exato | alias | fuzzy | juiz | novo | banco
     score: float = 0.0
     candidato_nome: str = ""       # melhor palpite do banco (para o 🟡)
+    # ADENDO 30/07: os TOP candidatos do banco viajam à UI (o motor
+    # sempre calculou 5 e jogava fora 4 — se o certo era o nº2, o dono
+    # criava duplicata). Lista de dicts {produto_id, nome, score}.
+    candidatos: list = field(default_factory=list)
     preco_de: str | None = None    # preço vigente no banco (o "de" do cartaz)
     validade: str | None = None    # validade do ITEM (cartaz, perto de vencer)
     unidade: str | None = None     # peso/medida ("500g") p/ a região UNIDADE
@@ -2036,9 +2040,18 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
         with db.Session() as session:
             conc = Conciliador(session, motor=motor, embedder=motor,
                                status_cb=status_cb)
+            # ADENDO 30/07: 1ª passada concilia TUDO; a exclusividade
+            # de lote roda sobre os vereditos (duas linhas nunca casam
+            # verdes com o mesmo produto em silêncio); a 2ª monta os
+            # itens da Mesa
+            from app.ai.conciliacao import exclusividade_de_lote
+            vereditos = []
             for i, (desc, preco, ean) in enumerate(linhas, 1):
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
-                v = conc.conciliar(desc)
+                vereditos.append(conc.conciliar(desc))
+            exclusividade_de_lote(vereditos)
+            for i, ((desc, preco, ean), v) in enumerate(
+                    zip(linhas, vereditos), 1):
                 p = v.produto
                 # F13/D5 (C-01): o acervo se conserta SOZINHO a cada
                 # importação — produto casado SEM categoria ganha a do
@@ -2080,6 +2093,10 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     score=v.confianca,
                     candidato_nome=(v.candidatos[0].produto.nome_sanitizado
                                     if v.candidatos else ""),
+                    candidatos=[{"produto_id": c.produto.id,
+                                 "nome": c.produto.nome_sanitizado,
+                                 "score": round(float(c.score), 1)}
+                                for c in (v.candidatos or [])],
                     preco_de=_preco_texto(p.preco_atual) if p else None,
                     unidade=(f"{_qtd_texto(p.peso_valor)}{p.peso_unidade}"
                              if p and p.peso_valor is not None and p.peso_unidade
@@ -2469,10 +2486,18 @@ def esquecer_correcao(alias_id: int) -> bool:
 
 # --- aceitar 🟡 (aprende alias) -------------------------------------------------
 
-def aceitar_correspondencia(item: ItemMesa) -> ItemMesa:
-    """Confirma o palpite do banco para o item 🟡 e APRENDE o alias."""
+def aceitar_correspondencia(item: ItemMesa,
+                            produto_id: int | None = None) -> ItemMesa:
+    """Confirma o palpite do banco para o item 🟡 e APRENDE o alias.
+
+    ADENDO 30/07: ``produto_id`` explícito é o VÍNCULO FORÇADO — o dono
+    escolheu o produto (no menu de candidatos ou na busca do acervo) e
+    a escolha humana é a confirmação por excelência (F9): vira alias e
+    a próxima importação casa sozinha, VERDE exato."""
     from app.core.repositories import ProdutoRepositorio
 
+    if produto_id is not None:
+        item.produto_id = produto_id
     db = Database().init()
     try:
         with db.Session() as session:
@@ -2489,6 +2514,65 @@ def aceitar_correspondencia(item: ItemMesa) -> ItemMesa:
     finally:
         db.engine.dispose()
     return item
+
+
+def criar_produto_manual(nome: str, preco: str | None = None) -> tuple[int, str]:
+    """ADENDO 30/07 (a queixa 1 do dono): cadastrar um item AVULSO no
+    Almoxarifado, sem passar por importação. Reusa a porta única de
+    nascimento (``ProdutoRepositorio.importar``: sanitiza, casa por
+    nome/alias — não duplica se já existe — e aprende o alias).
+    Devolve (produto_id, nome_sanitizado)."""
+    from app.core.modo import exigir_escrita
+    from app.core.repositories import ProdutoRepositorio
+
+    exigir_escrita()
+    db = Database().init()
+    try:
+        with db.Session() as session:
+            r = ProdutoRepositorio(session).importar(nome.strip(),
+                                                     preco=preco)
+            session.commit()
+            return r.produto.id, r.produto.nome_sanitizado
+    finally:
+        db.engine.dispose()
+
+
+def buscar_produtos_para_vinculo(texto: str, limite: int = 30) -> list[dict]:
+    """ADENDO 30/07: a busca do gesto "é ESTE aqui" — produtos do acervo
+    para o dono escolher o vínculo na conciliação. Dados planos p/ a UI."""
+    from app.core.repositories import ProdutoRepositorio
+
+    db = Database().init()
+    try:
+        with db.Session() as session:
+            repo = ProdutoRepositorio(session)
+            achados = (repo.buscar(texto, limit=limite) if texto.strip()
+                       else repo.listar(limit=limite))
+            return [{"produto_id": p.id,
+                     "nome": p.nome_sanitizado,
+                     "imagem": _imagem_absoluta(p.caminho_imagem),
+                     "preco": _preco_texto(p.preco_atual)}
+                    for p in achados]
+    finally:
+        db.engine.dispose()
+
+
+def reconciliar_item(item: ItemMesa) -> ItemMesa:
+    """ADENDO 30/07: o dono corrigiu o texto do OCR na linha — a linha
+    RE-CONCILIA na hora (muitos vermelhos viram verdes só com o nome
+    certo; antes a correção não recalculava nada e nascia duplicata).
+    Preserva a identidade (uid) e o que é da OFERTA, não do matching."""
+    resultado = conciliar_linhas([(item.descricao, item.preco, item.ean)],
+                                 lambda *_a, **_k: None)
+    if not resultado.itens:
+        return item
+    novo = resultado.itens[0]
+    novo.uid = item.uid                     # I1: a identidade fica
+    novo.multi_preco = item.multi_preco
+    novo.desconto_pct = item.desconto_pct
+    novo.observacao = item.observacao
+    novo.selos = item.selos
+    return novo
 
 
 # --- criar 🔴: enriquecer + candidatos de imagem --------------------------------

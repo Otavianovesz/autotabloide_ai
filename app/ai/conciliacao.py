@@ -47,6 +47,42 @@ class Semaforo(str, Enum):
 # unidade compartilhada infla o score e casa produtos diferentes.
 _PESO_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:kg|mg|g|ml|l)\b", re.IGNORECASE)
 
+# fator para a base canônica (g / ml) — o desempate de irmãos compara
+# grandezas na mesma régua ("1 kg" == "1000 g")
+_FATOR_PESO = {"kg": 1000.0, "g": 1.0, "mg": 0.001, "l": 1000.0, "ml": 1.0}
+
+
+def _peso_canonico(texto: str) -> tuple[float, str] | None:
+    """O peso do TEXTO na base canônica: (valor, 'g'|'ml') — None sem
+    peso. "1,5L" → (1500, 'ml'); "500 g" → (500, 'g')."""
+    m = _PESO_RE.search(texto or "")
+    if not m:
+        return None
+    bruto = m.group(0).lower().replace(",", ".")
+    m2 = re.match(r"([\d.]+)\s*([a-z]+)", bruto)
+    if not m2:
+        return None
+    try:
+        valor = float(m2.group(1))
+    except ValueError:
+        return None
+    uni = m2.group(2)
+    if uni not in _FATOR_PESO:
+        return None
+    base = "ml" if uni in ("l", "ml") else "g"
+    return valor * _FATOR_PESO[uni], base
+
+
+def _peso_do_produto(produto: "Produto") -> tuple[float, str] | None:
+    """O peso do CADASTRO na mesma base — do campo estruturado ou, na
+    falta dele, do nome sanitizado."""
+    valor = getattr(produto, "peso_valor", None)
+    uni = (getattr(produto, "peso_unidade", None) or "").lower()
+    if valor and uni in _FATOR_PESO:
+        base = "ml" if uni in ("l", "ml") else "g"
+        return float(valor) * _FATOR_PESO[uni], base
+    return _peso_canonico(produto.nome_sanitizado or "")
+
 # Palavras que não distinguem marca/produto (conectivos, embalagens, medidas).
 _GENERICOS = frozenset({
     "de", "da", "do", "das", "dos", "e", "com", "para", "por", "tipo",
@@ -64,9 +100,29 @@ def _divergencia(entrada_chave: str, candidato_chave: str) -> set[str]:
     """S1 da sessão ao vivo: tokens significativos do CADASTRO ausentes da
     OFERTA. Se o cadastro diz "aurora" e a oferta diz "campo largo", pode ser
     OUTRA MARCA — e divergência de marca **nunca é verde** (§14 da ordem):
-    no máximo amarelo, para o humano decidir (a confirmação vira alias)."""
-    return (_tokens_significativos(candidato_chave)
-            - _tokens_significativos(entrada_chave))
+    no máximo amarelo, para o humano decidir (a confirmação vira alias).
+
+    ADENDO 30/07 (o dia a dia do dono): presença TOLERANTE — (a) o token
+    do cadastro que aparece na oferta sem espaços não é ausência ("bbx"
+    está em "bb x", que a chave separou); (b) o quase-igual por difflib
+    ≥0,8 é erro de LEITURA do OCR ("tortuguita"×"toturguita"), não marca
+    diferente. Era o rebaixamento que obrigava o dono a conferir (ou
+    duplicar) item que o fuzzy já tinha reconhecido com 94+."""
+    div = (_tokens_significativos(candidato_chave)
+           - _tokens_significativos(entrada_chave))
+    if not div:
+        return div
+    import difflib
+    colada = entrada_chave.replace(" ", "")
+    q_tokens = entrada_chave.split()
+    sobra: set[str] = set()
+    for t in div:
+        if t in colada:
+            continue
+        if difflib.get_close_matches(t, q_tokens, n=1, cutoff=0.8):
+            continue
+        sobra.add(t)
+    return sobra
 
 
 def _chave_comparacao(texto: str) -> str:
@@ -191,27 +247,37 @@ class Conciliador:
 
     # --- corpus para o fuzzy (nomes sanitizados + aliases sanitizados) ---------
 
-    def _corpus(self) -> dict[str, int]:
-        """chave de comparação -> produto_id (nomes sanitizados + aliases).
+    def _corpus(self) -> dict[str, list[int]]:
+        """chave de comparação -> [produto_ids] (nomes sanitizados + aliases).
 
         CACHEADO por instância (FASE 12, achado do marco 5k): o Conciliador
         vive por LOTE e só LÊ o acervo — reconstruir o corpus a cada item
-        custava ~0,3 s × N itens no acervo grande."""
+        custava ~0,3 s × N itens no acervo grande.
+
+        ADENDO 30/07: a chave (sem peso, de propósito) COLIDE produtos
+        irmãos que só diferem pela gramatura — era ``setdefault`` e o 2º
+        produto ficava INVISÍVEL ("não sabe puxar dois itens diferentes",
+        a queixa do dono). Agora todos os pids da chave são candidatos e
+        o peso da OFERTA desempata em ``_candidatos``."""
         if self._corpus_cache is None:
-            corpus: dict[str, int] = {}
+            corpus: dict[str, list[int]] = {}
             # F13/E5 (CI-01): a conciliação não enxergava a LIXEIRA —
             # produto excluído (soft-delete) voltava VERDE, calado
             for pid, nome in self.session.execute(
                 select(Produto.id, Produto.nome_sanitizado)
                 .where(Produto.excluido_em.is_(None))
             ).all():
-                corpus.setdefault(self._chave(nome), pid)
+                grupo = corpus.setdefault(self._chave(nome), [])
+                if pid not in grupo:
+                    grupo.append(pid)
             for pid, alias in self.session.execute(
                 select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
             ).all():
                 chave = self._chave(
                     sanitizar(alias, self.regras).nome_sanitizado)
-                corpus.setdefault(chave, pid)
+                grupo = corpus.setdefault(chave, [])
+                if pid not in grupo:
+                    grupo.append(pid)
             self._corpus_cache = corpus
         return self._corpus_cache
 
@@ -313,12 +379,14 @@ class Conciliador:
             return []
 
         # Camada FUZZY (sempre real, local): melhor score por produto
-        # (nomes E aliases entram no corpus).
+        # (nomes E aliases entram no corpus; irmãos da mesma chave
+        # entram TODOS — adendo 30/07)
         fuzzy_pid: dict[int, float] = {}
-        for chave, pid in corpus.items():
+        for chave, pids in corpus.items():
             s = self._pontuar(q, chave)
-            if s > fuzzy_pid.get(pid, -1.0):
-                fuzzy_pid[pid] = s
+            for pid in pids:
+                if s > fuzzy_pid.get(pid, -1.0):
+                    fuzzy_pid[pid] = s
 
         # Camada de SIGNIFICADO sobre o ACERVO INTEIRO, via índice
         # persistido (frota F12): cosseno local contra os vetores prontos —
@@ -357,12 +425,30 @@ class Conciliador:
             else:
                 final[pid] = fz
 
-        ordenado = sorted(final.items(), key=lambda kv: -kv[1])[: self.limiares.top_k]
+        # ADENDO 30/07: o PESO da oferta desempata os irmãos de chave —
+        # "PAO DE QUEIJO 1KG" prefere o cadastro de 1 kg ao de 500 g
+        # (bônus/pena pequenos, só no topo do ranking: reordenam gêmeos
+        # sem atropelar diferenças reais de texto)
+        topo = sorted(final.items(),
+                      key=lambda kv: -kv[1])[: self.limiares.top_k * 2]
+        peso_q = _peso_canonico(nome_bruto)
+        ajustado: list[tuple[int, float]] = []
+        for pid, score in topo:
+            produto = self.session.get(Produto, pid)
+            if produto is None:
+                continue
+            if peso_q is not None:
+                pp = _peso_do_produto(produto)
+                if pp is not None:
+                    score += 2.5 if pp == peso_q else -2.5
+            ajustado.append((pid, score))
+        ordenado = sorted(ajustado,
+                          key=lambda kv: -kv[1])[: self.limiares.top_k]
         cands: list[Candidato] = []
         for pid, score in ordenado:
             produto = self.session.get(Produto, pid)
             if produto is not None:
-                cands.append(Candidato(produto, float(score)))
+                cands.append(Candidato(produto, float(min(100.0, score))))
         return cands
 
     def categoria_do_vizinho(self, nome_bruto: str,
@@ -481,3 +567,23 @@ class Conciliador:
 
         return Veredito(nome_bruto, Semaforo.VERMELHO, None, cands,
                         melhor.score / 100, "abaixo do limiar — provável novo", "novo")
+
+
+def exclusividade_de_lote(vereditos: list[Veredito]) -> None:
+    """ADENDO 30/07 (o dia a dia do dono): duas linhas do MESMO lote não
+    casam VERDES com o mesmo produto em silêncio — era assim que o OCR
+    "puxava" dois itens diferentes para o mesmo registro. A linha de
+    menor confiança desce a AMARELO com o motivo dito; o dono decide
+    qual é qual (e o vínculo forçado resolve a outra)."""
+    por_pid: dict[int, list[Veredito]] = {}
+    for v in vereditos:
+        if v.semaforo == Semaforo.VERDE and v.produto is not None:
+            por_pid.setdefault(v.produto.id, []).append(v)
+    for grupo in por_pid.values():
+        if len(grupo) < 2:
+            continue
+        grupo.sort(key=lambda v: -float(v.confianca or 0.0))
+        for v in grupo[1:]:
+            v.semaforo = Semaforo.AMARELO
+            v.motivo = ("outra linha desta importação já casou com este "
+                        "produto — confira qual é qual")
