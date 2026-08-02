@@ -2192,6 +2192,32 @@ def preco_de_por(texto: str | None) -> tuple[str, str] | None:
     return de, por
 
 
+# §13.5/L4: o preço INLINE da tabela do dono — o número mora na
+# DESCRIÇÃO atrás do "<>" e a coluna de valor diz "S. OFERTA"
+_RE_PRECO_INLINE = re.compile(r"(?:<>\s*)?R\$\s*(\d+[.,]\d{2})")
+
+
+def preco_inline_da_descricao(descricao: str | None
+                              ) -> tuple[str, str | None]:
+    """K2/L4: quando a coluna de valor é TEXTO ("S. OFERTA") e a
+    descrição carrega UM número monetário ("… <> R$ 18,81"), esse
+    número É o preço — devolve ``(descricao_limpa, preco)``. Dois
+    números = ambíguo, não extrai (a lei do P0.3b); zero = nada muda."""
+    texto = (descricao or "")
+    achados = _RE_PRECO_INLINE.findall(texto)
+    if len(achados) != 1:
+        return texto, None
+    limpo = _RE_PRECO_INLINE.sub(" ", texto)
+    limpo = re.sub(r"\s{2,}", " ", limpo).strip(" -–·<>")
+    # o código de coluna que apontava o preço ("… 5 Kgs T-1 <> R$ …")
+    # sobra colado no FIM — só AQUI ele é sempre código (a limpa geral
+    # exige frequência no lote); "VITAMINA B-12" segue intocada, por
+    # regra escrita
+    limpo = re.sub(r"(?<!VITAMINA )(?<!COMPLEXO )\b[A-Z]{1,2}-\d+$", "",
+                   limpo, flags=re.IGNORECASE).strip(" -–·")
+    return limpo, achados[0]
+
+
 def classificar_preco_ocr(texto_preco: str | None
                           ) -> tuple[str | None, str | None, str | None]:
     """Rodada JM (B2B) + J18: a regra nomeada do filtro do import —
@@ -2255,7 +2281,15 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
         precos_de: list[str | None] = []
         for ln in tabela.linhas:
             preco, mp, pde = classificar_preco_ocr(ln.preco)
-            linhas.append((ln.descricao, preco, None))
+            desc = ln.descricao
+            # L4: carimbo sem número + número inline na descrição →
+            # o número é o preço e sai da descrição (junto, nunca no
+            # lugar — K2)
+            if mp and not preco:
+                desc, inline = preco_inline_da_descricao(desc)
+                if inline:
+                    preco = inline
+            linhas.append((desc, preco, None))
             multi_precos.append(mp)
             precos_de.append(pde)
         validade = tabela.validade_oferta
@@ -2302,6 +2336,7 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                                             Semaforo,
                                             categoria_dos_candidatos,
                                             exclusividade_de_lote)
+            from app.core.mais18 import eh_bebida_alcoolica
             from app.core.sanitize import sanitizar
             vereditos = []
             for i, (desc, preco, ean) in enumerate(linhas, 1):
@@ -2385,7 +2420,16 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     motivo=v.motivo,
                     produto_id=p.id if p else None,
                     imagem=_imagem_absoluta(p.caminho_imagem) if p else None,
-                    mais18=bool(p.selo_mais18) if p else False,
+                    # L12 (A RÉGUA SOMA — §13.2/L1): o dado do banco
+                    # SOMA com a heurística, nunca a substitui. O item
+                    # novo (27 de 42 no Jornal) ganhava mais18=False
+                    # cravado e a Amstel ia à página SEM selo; e o
+                    # cadastro velho (selo_mais18=0 de antes da régua)
+                    # também envelhecia. `or`, nunca if/else.
+                    mais18=((bool(p.selo_mais18) if p else False)
+                            or eh_bebida_alcoolica(
+                                p.nome_sanitizado if p
+                                else san.nome_sanitizado)),
                     marca_propria=bool(p.marca_propria) if p else False,
                     via=v.via,
                     score=v.confianca,
@@ -3121,7 +3165,11 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
         mais18=enr.mais18 or eh_bebida_alcoolica(enr.nome_sanitizado),
         categoria=enr.categoria,
         tokens_perdidos=list(enr.tokens_perdidos),
-        componentes=comps,
+        # L12 (§13.3/L2): a CARGA também soma — a IA que devolve UM
+        # componente (o nome inteiro) não vale como resposta; a
+        # sugestão determinística preenche os 2 campos (o dono não
+        # digita à mão o que a régua já sabia)
+        componentes=(comps if len(comps) >= 2 else det),
         possivel_composto=len(comps) >= 2 or len(det) == 2,
         sugestao_componentes=det,
         # o check só nasce PRÉ-MARCADO quando a IA deu os componentes;

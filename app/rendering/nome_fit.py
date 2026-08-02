@@ -218,6 +218,22 @@ def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
     return _rects(hi)
 
 
+# K3 (QUINTUSDECIMUS): pares do mercado que NUNCA se separam — o mesmo
+# critério conservador do vocabulário da ortografia: só entra o
+# inequívoco no domínio; na dúvida, fica de fora.
+_PARES_DO_MERCADO = {("extra", "virgem"), ("mon", "bijou")}
+
+
+def _corte_parte_marca(ultimo: str, descido: str) -> bool:
+    """O corte deixaria uma marca partida ao meio? Órfão CURTO no fim do
+    nome (<4 letras não-sigla — o "Mon" de Mon Bijou) ou par consagrado
+    partido ("Extra | Virgem"): o par desce junto ao descritor."""
+    if (ultimo.lower(), descido.lower()) in _PARES_DO_MERCADO:
+        return True
+    return (len(ultimo) < 4 and ultimo.isalpha()
+            and ultimo.upper() not in REGRAS_PADRAO.siglas)
+
+
 def precedencia_do_nome(
     nome: str,
     descritor: str | None,
@@ -333,11 +349,17 @@ def precedencia_do_nome(
 
     # passo 5 — o nome encurta pelo descritor (o fim desce, inteiro,
     # na ordem do nome; Tipo+Marca ficam enquanto couber)
+    # K3 (QUINTUSDECIMUS): o corte NUNCA parte marca ao meio — o pop que
+    # deixaria um órfão curto no fim ("Amaciante Mon | Bijou…") desce o
+    # par JUNTO; idem o par consagrado do mercado ("Extra | Virgem")
     tokens = nome_atual.split()
     excedente: list[str] = []
     while len(tokens) > 1:
         tk = tokens.pop()
         excedente.insert(0, tk)            # a sigla desce COM o resto
+        while len(tokens) > 1 and _corte_parte_marca(tokens[-1],
+                                                     excedente[0]):
+            excedente.insert(0, tokens.pop())
         candidato = " ".join(tokens)
         if _cabe(candidato, reg_nome, rect_nome, dpi, fontes_dir):
             return NomeAjustado(
@@ -345,6 +367,16 @@ def precedencia_do_nome(
                 _juntar_descritor([" ".join(excedente)] + partes_desc,
                                   descritor0),
                 rects)
+
+    # K3, a palavra do dono na reauditoria: "na dúvida entre cortar a
+    # marca e diminuir o corpo, diminui o corpo" — antes da elipse o
+    # PISO CEDE ao mínimo original da região e o nome sai INTEIRO
+    # (o espelho do ramo sem SUBTITULO do adendo do Quintou)
+    if reg_nome_cru.tamanho_min_pt < reg_nome.tamanho_min_pt \
+            and _cabe(nome_atual, reg_nome_cru, rect_nome, dpi,
+                      fontes_dir):
+        return NomeAjustado(nome_atual, desc_atual, rects,
+                            piso_cedeu=True)
 
     # passo 6 — nem a cadeia salvou: elipsa (o desenho trunca no piso) e
     # a revisora/pré-voo acusam pela flag

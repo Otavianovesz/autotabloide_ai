@@ -376,6 +376,13 @@ class ConciliacaoDialog(QDialog):
         chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return chip
 
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        # L3: o diálogo NUNCA transborda a tela — a 1366×768 os botões
+        # Concluir/Cancelar ficavam atrás da barra de tarefas
+        from app.qt.design.polimento import clampar_a_tela
+        clampar_a_tela(self)
+
     def _recarregar(self) -> None:
         self._recarregando = True
         try:
@@ -516,6 +523,16 @@ class ConciliacaoDialog(QDialog):
             h.addWidget(aceitar)
             h.addWidget(outro)
             h.addWidget(criar)
+            # §13.6/L6: a linha que acendeu "multiplos" tem "Separar em
+            # 2" em QUALQUER cor — a porta estava só no verde e o Arroz
+            # amarelo (a linha que o dono citou 2×) ficava sem ela
+            if "multiplos" in (item.pendencias or []):
+                separar_am = QPushButton("Separar em 2")
+                separar_am.setToolTip("Dois produtos num preço — criar "
+                                      "os dois e compor")
+                separar_am.clicked.connect(
+                    lambda _=False, li=linha: self._separar_em_dois(li))
+                h.addWidget(separar_am)
             h.addWidget(ignorar)
         elif item.semaforo == "VERMELHO":
             # ADENDO 30/07: a queixa 3 do dono — o vermelho OBRIGAVA a

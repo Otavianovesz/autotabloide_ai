@@ -669,7 +669,14 @@ def _desenhar_preco(
                     and getattr(base, "_tem_camada", False)):
                 _desenhar_forma_preco(base, reg, dpi)
             reg = _regiao_palco_da_forma(reg)
-        _desenhar_texto(base, draw, reg, dados.multi_preco, dpi, fontes_dir)
+        # QUINTUSDECIMUS/K2: um carimbo sem número não é preço — quando
+        # o item TEM o valor, ele sai JUNTO ("SUPER OFERTA · R$ 6,90"),
+        # nunca no lugar (o cliente sabe quanto custa)
+        texto_mp = dados.multi_preco
+        if dados.preco_por is not None:
+            reais, centavos = _reais_centavos(dados.preco_por)
+            texto_mp = f"{texto_mp} · R$ {reais},{centavos}"
+        _desenhar_texto(base, draw, reg, texto_mp, dpi, fontes_dir)
         return
 
     valor = dados.preco_de if reg.papel_preco == PapelPreco.DE else dados.preco_por

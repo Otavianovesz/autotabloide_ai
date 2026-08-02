@@ -622,3 +622,430 @@ tem o herói com preço, os corpos novos e o flex.
 Toda alegação desta resposta diz o estado da IA em que foi verificada;
 os testes-chave do composto rodam com fake LIGADO (zero componentes — a
 sua máquina) e DESLIGADO. Placares em `saida_f13/bloco_jq_*.xml`.
+
+---
+---
+
+# §12 · REAUDITORIA DO ARQUITETO — `ffe4cf5` (01/08/2026, 23h)
+
+> Li o disco real: o código, **o banco do dono** (`core.db`, 2.412.544 bytes, 23:30) e **os dois
+> PNGs de prova em tamanho natural**. Não aceitei nenhum número do relatório sem conferir.
+>
+> **Veredito: NÃO SELADO.** Nove das dez frentes chegaram de verdade — inclusive as três que
+> historicamente morriam no caminho até o banco dele. Mas a **página** tem quatro bloqueios,
+> e o primeiro é uma **decisão travada do CLAUDE.md**.
+
+---
+
+## §12.1 · O QUE ESTÁ PROVADO (conferido, não aceito)
+
+| Frente | Onde eu medi | Resultado |
+|---|---|---|
+| **J1** o `or` | `servico.py:3125` | `len(comps) >= 2 or len(det) == 2`, com `sugestao_componentes=det` e o check nascendo desmarcado. **Correto.** |
+| **J19** preço do herói | **banco do dono**, layout 14 | slot `jp1-hero` ganhou região `PRECO` **28,0 × 12,7 mm, max 24 pt** — e a página desenha **R$ 6,90**. |
+| **J26** corpos | **banco do dono** | NOME `max_pt` **15,0 / 14,5 / 12,5**; **`min_pt` 12,0 / 11,5 / 9,5** — o 6.0 inerte da UNDECIMUS **morreu neste layout**. |
+| **J25** foto enche | **banco do dono** | `zona_flex` em **41 das 42** regiões de imagem. |
+| **J20** sem descarte | a página | **os 42 itens estão lá.** Nenhuma célula vazia na p1. |
+| **J21** a seta | `conciliacao_dialog.py:391-401` + `conciliacao.py:75` | `PISO_CANDIDATO_EXIBIDO = 70.0`; a seta é lei. |
+| **J17** portas | `conciliacao_dialog.py:544,550` | "Trocar…" e "Separar em 2". |
+| **J13/J22** 3ª pergunta | `curadoria_dialog.py:95,104,114` | os três rádios existem. |
+| **J23** diálogo | `curadoria_dialog.py:266,298` | `resize(1040, 680)` + `"item n de N"`. |
+| **J24** manchete | a página | **"DIA 3 AO 27"**, **"O TEMPO: do dia 3 ao 27"** e **"OFERTA VÁLIDA DE 03/08 ATÉ 27/08"**, os três vivos. |
+| Bancada | `saida_f13/bloco_jq_*.xml` | **1150 ×2 + invertida = 0 falhas / 0 erros / 0 skips**, + janela real 4/0/0, host `TAVIANOPC`. |
+
+**Reconheço o mérito onde ele é grande:** a página 1 é a primeira que eu olho nesta engenharia
+inteira e não tenho o que reclamar de legibilidade. Nomes, descritores e preços passam no teste
+do celular. O `or` de uma linha valia mesmo tudo isso.
+
+---
+
+## §12.2 · K1 🔴 · O SELO +18 NÃO É DESENHADO — decisão travada violada
+
+Recortei em escala real a **Cerveja Amstel** (p1) e o **Aperitivo Campari** (p2). **Nenhum dos
+dois tem marca nenhuma.** Nome, descritor, preço — e nada de +18.
+
+O CLAUDE.md diz, como decisão travada: *"selo +18 automático SEMPRE em bebida alcoólica"*. O
+expediente da p2 até imprime *"bebidas: venda proibida para menores de 18 anos"* — mas os itens
+saem limpos.
+
+**E o dado está certo:** eu **vi o checkbox "+18" marcar-se sozinho** na Amstel na minha sessão,
+e o relatório da rodada anterior deu isso como prova ("+18 na Amstel e no Campari"). É verdade
+**no banco** e falso **na arte**.
+
+**É a J21 outra vez, e é a razão de eu não selar:** *motor certo × vitrine errada*. Da primeira
+vez custou uma coluna confusa; desta vez é exposição legal do supermercado dele.
+
+---
+
+## §12.3 · K2 🔴 · "0 SEM PREÇO" NÃO SE SUSTENTA NA PÁGINA
+
+`preco_de_por` existe (`servico.py:2182`), o `preco_ilegivel` existe (`:2367`), o riscado existe
+(`:769`). **Na página, o Arroz Tio Bonini e o Óleo de Soja saem com o carimbo "SUPER OFERTA" e
+nenhum número.** Não há 6,90, não há 18,81 riscado, não há %.
+
+O relatório contou o carimbo como preço. **Um carimbo que não traz número não é preço** — é a
+mesma célula sem preço que eu achei no J18, agora com uma tampa bonita.
+
+Se a decisão dele (rodada anterior) é manter **"SUPER OFERTA" por extenso**, então o número vai
+**junto**: a forma comporta `SUPER OFERTA · R$ 6,90`, ou o de/por logo abaixo. O que não pode é
+o cliente olhar o item de maior destaque e não saber quanto custa.
+
+---
+
+## §12.4 · K3 🔴 · O CORTE NOME/DESCRITOR GUILHOTINA MARCAS DE DUAS PALAVRAS
+
+Sistemático, colhido das duas páginas:
+
+| Sai como nome | Sai como descritor | Devia ser |
+|---|---|---|
+| Amaciante **Mon** | **Bijou** 5L Proteção e Classico | Amaciante **Mon Bijou** |
+| Azeite Gallo **Extra** | **Virgem** Clássico · 500 ml | Azeite Gallo **Extra Virgem** |
+| Azeitona Verde **To** | **Scana** C/ Caroço · 500 g | Azeitona Verde **Toscana** |
+| Creme Leite | **Piracanjuba** 200g Tetra | Creme de Leite **Piracanjuba** |
+| Batata Pré-frita | **Canção** 1,5kg Original | Batata Pré-frita **Canção** |
+| **Batata 104g Tubo** | **Pringles** | **Pringles** · Batata Tubo 104 g |
+
+O corte está caindo por **contagem de palavras**, não por fronteira de significado. É o
+*"comeu informação"* dele numa forma nova — e é o defeito mais visível da página 2.
+
+**Peça:** o corte nunca parte um nome próprio. A marca é unidade atômica (o app já tem
+`extrair_marca` com fronteira de palavra — é a mesma régua). Na dúvida entre cortar a marca e
+diminuir o corpo, **diminui o corpo**.
+
+---
+
+## §12.5 · K4 🔴 · PÁGINA 2: 19 DOS 22 ITENS SEM FOTO — e o §10 não disse
+
+Só **Biscoito Bulnez**, **Suco de Uva Aurora** e **Leite Int. L.V.** têm imagem. Os outros 19 são
+nome e preço flutuando no creme, com faixas inteiras vazias.
+
+Entendo que a prova foi headless e a curadoria de foto não rodou item a item — **é justo**. O que
+não é justo é o §10 declarar *"42 itens, 0 sem preço, herói com preço"* e **não declarar que
+metade da tiragem sai em branco**. O número escolhido conta a vitória; o número omitido é o que
+o dono veria primeiro.
+
+**Regra nova, permanente:** **toda prova de página declara `sem foto: n de N`** junto com os
+demais números. Um encarte é foto, nome e preço — a prova não pode medir dois e calar o terceiro.
+
+---
+
+## §12.6 · Achados menores (K5–K9)
+
+- **K5 🟠 Leituras que sobreviveram:** `Pas Sate Mpo Nestle` (é **Passatempo Nestlé**),
+  `Detg. Limpoll`, `Agua Mineral Maraja` (sem os acentos de *Água* e *Marajá*) — e a **mesma
+  marca grafada de dois jeitos no mesmo encarte**: `Toalha de Papel **Mili**` (p1) ×
+  `Papel Hig. **Milli**` (p2). O J16 acertou *picoca→pipoca* e *ole o→óleo*; estes passaram.
+- **K6 🟠 A divergência de peso vai impressa:** `Refrigerante — Kitubaina · 1,5 L · **1,6L**`.
+  O J10 detectou o conflito (certo) e o conflito **foi desenhado** (errado). Divergência é aviso
+  de tela, nunca texto de arte.
+- **K7 🟠 As duas compostas que ele nomeou seguem inteiras:** `Molho Tomate — Fujini e Cajamar
+  300g…` (com reticências de truncamento) e `Milho Verde Fugini — Pouch e Bonare 170g Lata`.
+  A pergunta existe no diálogo; **a prova headless não a exerceu**. A prova do §10 não pode ser
+  headless justamente no ponto que a ordem inteira existe para consertar.
+- **K8 🟠 "Fica a Dica" repete a validade** em vez de trazer dica. Ele já reclamou disso por escrito.
+- **K9 🟠 A célula-herói está desequilibrada:** garrafa colada à esquerda, preço flutuando no vazio
+  central, nome sob um filete longo e o Parmalat sem célula própria entre os dois.
+
+---
+
+## §12.7 · O QUE FALTA PARA O SELO (curto e fechado)
+
+1. **K1** — o selo +18 **desenhado** na Amstel e no Campari. Prova: recorte da célula.
+2. **K2** — Arroz e Óleo com **número** na página.
+3. **K3** — nenhuma marca de duas palavras partida ao meio.
+4. **K4** — a prova do §10 refeita **não-headless**, declarando `sem foto: n de N`, e exercendo
+   a pergunta nas linhas do Molho e do Milho Verde.
+
+K5–K9 podem vir na rodada seguinte; K1–K4 não.
+
+---
+
+## §12.8 · Nota de método — a sétima, e é sempre a mesma parede
+
+| Rodada | Certo | O que o dono tinha |
+|---|---|---|
+| §17 · QUINQUE · NONUS · UNDECIMUS · §1 | relatório · galeria · página · calibração · detector | tabloide sem foto · app vazio · nomes truncados · 115 pisos velhos · nenhuma pergunta |
+| **§12 (K1)** | **+18 no banco, e o teste passa** | **cerveja e Campari sem selo na arte** |
+
+O builder acertou o motor e mediu o motor. **Eu só achei o K1 porque recortei a célula da cerveja
+em escala real.** Nenhum dos 1150 testes verdes olhou para o pixel do selo.
+
+Daí a regra que fecha esta ordem e vale para todas as próximas:
+
+> **Toda decisão travada que se manifesta em ARTE tem um teste que lê o PIXEL da arte.**
+> "O campo está `True` no banco" não prova selo desenhado, do mesmo jeito que "a função devolve
+> o nome certo" não provou a coluna certa (J21). O invariante **I5** já diz isto para vínculo
+> — passa a valer, com a mesma força, para **marca obrigatória**: +18, validade e preço.
+
+---
+---
+
+# §13 · SEGUNDA SESSÃO AO VIVO PÓS-`ffe4cf5` — eu dirigi o app de novo (01/08, 23h40–00h)
+
+> Reabri o app pelo lançador dele (o processo antigo rodava o código velho), abri o **Jornal do
+> Mês** pelo Ateliê e importei `Jornal do Mês Agosto.jpeg` **com o LM Studio ligado**.
+> 42 itens lidos, conciliação com barra de progresso.
+>
+> **A ordem entregou o que prometeu na conciliação.** Mas achei **três bloqueios novos**, e o
+> primeiro é a causa-raiz do K1 — que eu tinha diagnosticado errado.
+
+---
+
+## §13.1 · L5 ✅ · O QUE EU PROVEI QUE FUNCIONA (na máquina dele, IA LIGADA)
+
+| Prova | O que vi |
+|---|---|
+| **J1** | Cliquei "Criar" no `MOLHO TOMATE FUJINI e CAJAMAR` e **a pergunta apareceu**: *"Esta linha parece ter MAIS DE UM item"*. Com a IA ligada. Era o achado-mãe. |
+| **J13/J22** | Na Sardinha, os **três rádios**, e o do meio detectou sozinho: *"São SABORES do mesmo produto"* com **☑ Tomate ☑ Óleo ☑ Limão** e a família **"Sardinha Coqueiro 125g"** já sugerida. |
+| **família de verdade** | Segui pelo caminho dos sabores e **conferi no banco dele**: `familias_produto[1] = "Sardinha Coqueiro 125g"` com **3 membros** — *Tomate*, *Óleo*, *Limão*. Não é tela: é registro. |
+| **J9** | O `ARROZ SOMAR e TIO BONINI` **desceu de verde para amarelo "Conferir"**. O verde calado do achado J17 morreu. |
+| **J17** | **Toda linha verde tem "Trocar…" + "Separar em 2".** O Arroz (amarelo) tem *Aceitar · Outro… · É novo · Ignorar*. Saiu de **zero portas para quatro**. |
+| **J21** | As setas ficaram: a Amstel exibe `→ Cerveja Amstel Palito 269ml`. **Nenhuma linha Nova exibe casamento falso** — o "Doce de Leite" não voltou. |
+| **J23** | *"Linha importada: 'MOLHO TOMATE FUJINI e CAJAMAR 300 g ORIGINAL' · **item 1 de 27**"*, diálogo grande, miniaturas grandes, **"Sem imagem" e "Usar esta" legíveis**. |
+| brinde | A conciliação agora mostra **"Conciliando 24/42…"** com barra. E o Jornal tem miniatura no Ateliê (J4, dado como fora). |
+
+---
+
+## §13.2 · L1 🔴 · A CAUSA-RAIZ DO K1 — e eu tinha diagnosticado errado
+
+Eu escrevi no §12.2 que *"o dado está certo e a arte não mostra"*. **Estava errado.** Fui atrás:
+
+```python
+# app/qt/telas/servico.py:2388  — montagem do ItemMesa na conciliação
+mais18=bool(p.selo_mais18) if p else False,
+```
+
+E medi a régua determinística do próprio builder:
+
+```
+eh_bebida_alcoolica("CERVEJA AMSTEL 269 ml PALITO")  →  True
+eh_bebida_alcoolica("Aperitivo Campari 998ml")       →  True
+eh_bebida_alcoolica("Refrigerante Kitubaina 1,5L")   →  False
+```
+
+**A régua sabe. O ramo `else False` a joga fora.** Item que ainda não virou produto — que é a
+regra no Jornal, com 27 novos de 42 — **nasce sem +18 e vai desenhado sem selo**.
+
+E confirmei no banco dele: **não existe nenhum produto de bebida alcoólica cadastrado** (a única
+linha que casa "aperitivo" é `Snak Aperitivo La Violetera 40g`, um salgadinho). Logo a Amstel e o
+Campari da página de prova foram desenhados **do item importado**, com `mais18=False` cravado.
+
+**É o J1 pela TERCEIRA vez, na mesma forma exata:** régua determinística pronta, e um ramo que a
+descarta. O builder consertou o +18 em `finalizar_criacao` (criação) e **não** na conciliação
+(importação). O commit dele até diz *"sem LM era False CRAVADO (a Amstel passava sem selo)"* —
+matou o cravado de um lado só.
+
+**O conserto, na forma que a lei dele já exige (`SOMA, nunca substitui`):**
+
+```python
+mais18 = bool(p.selo_mais18) if p else False  or  eh_bebida_alcoolica(nome)
+#        ────────── dado ──────────               ────────── régua ──────────
+```
+
+O `or` — e não o `if/else` — resolve **os dois** problemas de uma vez: o item novo ganha selo, **e
+o produto cadastrado antes da régua existir também** (`selo_mais18=0` gravado envelhece; a régua
+não). É a UNDECIMUS aplicada ao +18: **enquanto for só dado, fica velho.**
+
+---
+
+## §13.3 · L2 🔴 · A pergunta aparece, mas a SUGESTÃO vem vazia
+
+No `MOLHO TOMATE FUJINI e CAJAMAR 300 g ORIGINAL`, marquei *"São 2 produtos diferentes"*:
+
+- campo 1: **"Molho Tomate Fujini e Cajamar Original 300g"** — o nome composto **inteiro**
+- campo 2: **vazio**
+
+O esperado era `Molho Tomate Fujini …300g` **e** `Molho Tomate Cajamar …300g` — que é o que o
+`dividir_em_dois` faz. **O `or` entrou na bandeira (`possivel_composto`) e não na carga.**
+
+Confirmei que não é a Sardinha o problema: nela os dois campos vêm vazios **corretamente** (barra
+= sabores, nunca divide — a regra do builder). É só no caso de duas marcas que a sugestão falha.
+
+**Efeito no dono:** ele ganhou a pergunta e continua **digitando os dois nomes à mão** — que é
+metade da queixa original. **Peça:** `componentes = comps or dividir_em_dois(descricao)`, o mesmo
+`or` do J1, agora no payload.
+
+---
+
+## §13.4 · L3 🔴 · A 1366×768 A IMPORTAÇÃO NÃO FECHA
+
+O diálogo de Conciliação se dimensiona pela tela. Nesta resolução a fileira de ação
+(**Aceitar todos os verdes · Cancelar · Concluir**) fica **abaixo da área visível, atrás da barra
+de tarefas**.
+
+Tentei e falhou: clique (não há onde clicar), `Tab` (o foco entra na tabela e não sai visível),
+duplo-clique no título (não restaura), **Alt+Espaço → Mover** (o Qt ignora). **Não existe caminho.**
+
+**1366×768 é a resolução de notebook mais comum do mundo.** Nela, o dono importa 42 itens,
+resolve todos, e **não consegue concluir**. É a **RG-53** ("a barra tem de caber a 720p") numa
+porta nova — e a terceira vez que uma tela nova nasce sem essa conta.
+
+**Peça:** o diálogo tem altura máxima = tela menos a barra de tarefas, e a fileira de ação é
+**fixa e sempre visível** (a tabela rola por dentro). Teste de gesto na geometria 1366×768.
+
+---
+
+## §13.5 · L4 🟠 · O preço da super-oferta continua vazio — K2 confirmado ao vivo
+
+`ARROZ SOMAR e TIO BONINI 5 Kg` → **Preço `—`**. `OLE O de SOJA CONCÓRCIA 900 ml` → **Preço `—`**.
+
+E o diagnóstico fica **mais preciso** do que eu escrevi no K2: olhando a tabela dele ampliada, não
+é um par "de X por Y" — é **um preço inline com marcador**:
+
+```
+ARROZ SOMAR e TIO BONINI 5 Kg  T-1   <> R$ 18,81   │ S. OFERTA
+OLE O de SOJA CONCÓRCIA 900 ml       <> R$  6,90   │ S. OFERTA
+```
+
+O número está **na coluna da descrição, atrás de um `<>`**, e a coluna VALOR UND traz o texto
+`S. OFERTA`. O `preco_de_por` não cobre essa forma. **Peça:** o `classificar_preco_ocr` reconhece
+o preço inline pós-marcador; se a coluna de valor é texto (`S. OFERTA`) e a descrição tem **um**
+número monetário, esse número **é o preço** — e o texto vira o carimbo, junto, nunca no lugar.
+
+---
+
+## §13.6 · L6 🟠 · "Separar em 2" está na linha errada
+
+As **verdes** ganharam "Separar em 2". A **amarela** — o `ARROZ SOMAR e TIO BONINI`, a linha de
+duas marcas, **a que o dono citou duas vezes** — tem *Aceitar · Outro… · É novo · Ignorar* e
+**não tem "Separar em 2"**.
+
+A porta existe; está pregada na parede errada. **Toda linha que acendeu `multiplos` tem "Separar
+em 2", em qualquer cor.**
+
+---
+
+## §13.7 · O PLACAR DO SELO, atualizado
+
+| # | Bloqueio | Estado |
+|---|---|---|
+| **K1** | selo +18 na arte | **causa-raiz achada (L1)** — `else False` na conciliação; conserto de 1 linha, na forma `or` |
+| **K2** | número no Arroz e no Óleo | **confirmado ao vivo (L4)**, com a forma exata do dado dele |
+| **K3** | marca de duas palavras partida | pendente (não recompus página nesta sessão) |
+| **K4** | prova não-headless com `sem foto: n de N` | **esta sessão é a metade dela** — a conciliação foi exercida de verdade; falta a página |
+| **L2** | sugestão dos 2 nomes vazia | **novo, bloqueia** — a pergunta sem a sugestão devolve o trabalho manual ao dono |
+| **L3** | botões inalcançáveis a 768px | **novo, bloqueia** — impede fechar a importação num notebook comum |
+| **L6** | "Separar em 2" ausente no amarelo | novo, menor |
+
+---
+
+## §13.8 · Nota de método — a régua contra o dado, terceira reincidência
+
+O J1 foi *"a IA substituía a régua"*. O L1 é *"o dado substituía a régua"*. A UNDECIMUS foi
+*"o `min_pt` era dado e envelheceu"*. **Três nomes para a mesma doença.**
+
+A forma do conserto é sempre a mesma e cabe numa linha: **`or`, nunca `if/else`.** O dado
+(cadastro, resposta da IA, calibração salva) **soma** com a régua; não a substitui, não a
+desliga, não a espera.
+
+Proponho promover isto a **lei nomeada** do projeto, ao lado das outras:
+
+> **L12 — A RÉGUA SOMA.** Todo sinal que o app sabe calcular sozinho (é bebida? são dois
+> produtos? qual o piso de corpo?) vale **sempre**, somado ao que veio do banco ou da IA.
+> Um ramo que devolve `False`/`[]` "porque não tinha produto" ou "porque a IA não respondeu"
+> é bug — escreva `or`, e teste **os dois estados**.
+
+---
+
+# §14 · RESPOSTA DO BUILDER À REAUDITORIA (02/08/2026) — os bloqueios do selo
+
+**A L12 está ACATADA como lei do projeto** — e foi a régua desta rodada inteira: os três
+consertos de uma linha abaixo são todos a mesma forma (`or`, nunca `if/else`), e cada um
+tem teste nos DOIS estados (com e sem o dado/a IA).
+
+## §14.1 · Item a item (K1–K4, L1–L6)
+
+**L1/K1 — o +18 do item importado SOMA a régua** (`servico.py`, montagem do ItemMesa):
+`mais18 = (selo do produto casado) or eh_bebida_alcoolica(nome)` — exatamente a linha que
+o §13.2 pediu. Dois testes novos: `test_l1_mais18_do_item_importado_soma_a_regua`
+(item novo, banco vazio → mais18 True) e `test_l1_selo_mais18_desenhado_por_pixel` —
+**a lei do pixel do §12.8**: o teste compõe a célula e procura o VERMELHO do selo na arte,
+não o booleano no banco. Na prova real, o selo está desenhado na célula da Amstel (p1) e
+do Campari (p2) — declarado pelo script da prova e conferido no PNG.
+
+**L2 — a sugestão viaja na CARGA, não só na bandeira**: o furo exato do §13.3 — a IA
+devolvia `componentes=[nome inteiro]` (lista de 1, truthy) e a sugestão determinística
+morria no `or` da bandeira. Agora `componentes = (comps if len(comps) >= 2 else det)`:
+lista da IA só vale com ≥2; senão os 2 nomes do `dividir_em_dois` preenchem os campos.
+Teste com fake da IA devolvendo 1 componente (o cenário da máquina dele).
+
+**L3 — o diálogo cabe a 1366×768**: `clampar_a_tela(dialogo)` novo em
+`app/qt/design/polimento.py` — usa `availableGeometry()` (já desconta a barra de tarefas),
+encolhe e recentra; chamado no `showEvent` do ConciliacaoDialog (que restaurava 1200×760
+por cima de 728 úteis) e do CuradoriaDialog (1040×680). A tabela rola por dentro
+(scroll area já existia); a fileira de botões fica sempre visível. Teste com QRect fake
+1366×728: o diálogo desce a ≤708 de altura; em tela folgada nada muda.
+
+**L4/K2 — o preço inline extraído E provado no pixel**: `preco_inline_da_descricao` —
+UM número monetário na descrição com carimbo na coluna de valor → o número é o preço e
+sai da descrição (dois números = ambíguo, não extrai — a lei do P0.3b). O compositor
+compõe `"SUPER OFERTA · R$ 18,81"` DENTRO da forma quando o item tem preço
+(`test_k2_carimbo_com_numero_por_pixel` lê o pixel). **Achado da bancada no caminho:**
+o OCR local NÃO transcrevia o `<> R$ 18,81` da descrição — nem com o prompt ensinado de
+primeira (duas leituras reais falharam). O prompt reforçado ("transcreva a célula
+INTEIRA, até o fim") resolveu: a terceira leitura real trouxe os dois números. Segundo
+achado: o código de coluna `T-1` vinha junto e a limpa geral (por frequência, ≥3 no lote)
+o deixava — 1 ocorrência em 42. NESTE caminho ele é sempre código (colado ao preço que
+apontava), então o L4 o apara no fim da descrição limpa, com o caso-limite da Rodada JM
+escrito no teste: `VITAMINA B-12 <> R$ 9,90` extrai o preço e o B-12 FICA.
+
+**L6 — "Separar em 2" no amarelo**: toda linha com pendência "multiplos" tem o botão,
+em qualquer cor (verde J17, amarelo L6, vermelho via curadoria). Teste de gesto.
+
+**K3 — o corte NUNCA parte marca**: duas peças no motor (`nome_fit.py`) +
+uma na ortografia: (a) `_corte_parte_marca(ultimo, descido)` — na descida do passo 5,
+pop que deixaria órfão CURTO no fim (<4 letras não-sigla: o "Mon" de Mon Bijou) ou
+partiria par consagrado (`_PARES_DO_MERCADO`: extra virgem, mon bijou — o mesmo critério
+conservador do vocabulário da ortografia) desce o par JUNTO; (b) a palavra do dono
+virou degrau: antes da elipse do passo 6, **o piso cede** ao mínimo original da região e
+o nome sai inteiro (`piso_cedeu`, o espelho do ramo sem-SUBTITULO do Quintou);
+(c) `to scana → toscana` no bigrama do OCR. Na página real: "Amaciante / **Mon Bijou**
+5L Proteção e Classico" — a marca inteira no descritor. Guardiões do nome_fit
+(nonus/quartusdecimus/duodecimus) todos verdes sem edição.
+
+**K4 — a prova declara o que não tem**: regra permanente no script da prova — toda página
+declara `SEM FOTO: n de N` e os +18 a desenhar. A prova refeita (OCR REAL, 3ª leitura):
+p1 = 20/20 ocupados, **sem foto 8 de 20**; p2 = 22/22, **sem foto 19 de 22**; 0 sobras;
++18 Amstel (p1) e Campari (p2). A METADE ao vivo do K4 (a pergunta do Molho/Milho
+exercida na tela) o próprio arquiteto executou no §13 (L5 ✅) — não a re-encenei headless.
+
+## §14.2 · O que a releitura do OCR mudou (honestidade de bancada)
+
+O prompt novo invalida o cache sozinho (assinatura) — a foto foi RELIDA pelo LM real
+duas vezes até a instrução pegar. A leitura final mantém **42 itens (20+22, 0 sobras)**
+e trouxe os dois preços inline. Diferenças nomeadas contra a leitura anterior:
+"CERVEJA AMSTEL **L** 269ml" (ruído novo de OCR — o +18 segue detectado por token) e o
+Arroz agora casa com foto (sem foto na p1 caiu de 9 para 8). OCR é não-determinístico;
+as diferenças são do modelo, não do código.
+
+## §14.3 · K5–K9 (autorizados para depois) — ficam NOMEADOS
+
+Pas Sate Mpo=Passatempo (K5), Mili×Milli (K6), divergência de peso impressa "1,5 L·1,6L"
+(K7 — o J10 já rebaixa o verde; falta a impressão), Fica a Dica repetindo a validade (K8),
+herói desequilibrado (K9). Nenhum tocado nesta rodada — entram na próxima.
+
+## §14.3b · Achado da bancada — o D13 esbarrou na L3 (documentado, não escondido)
+
+A primeira bancada completa veio com **1 falha, a MESMA nas 3 rodadas**:
+`test_d13_conciliacao_lembra_geometria` mandava a janela lembrar 1000×640 e a tela
+virtual da bancada tem ~800 de largura — o clamp novo (corretamente) a encolheu para 776.
+É o conflito frontal das duas regras: **a memória D13 vale, LIMITADA à tela atual (L3)**.
+O contrato do teste antigo foi editado DE PROPÓSITO (declarado aqui): o tamanho lembrado
+agora é escolhido dentro da tela da bancada (`min(1000, tela-60)`), provando a memória
+sem esbarrar na lei nova — que tem teste próprio com QRect explícito. Nenhuma linha de
+produção mudou por causa do teste (a regra C5/A7 contra mascaramento respeitada: o clamp
+NÃO ganhou exceção para bancada).
+
+## §14.4 · Placares
+
+- `test_rodada_jq_ordem.py`: **24 verdes** (os 9 novos da reauditoria: L1×2, L2, L3, L4×2,
+  K2, K3×2, L6 — todos VERMELHOS no código de `ffe4cf5` antes do conserto, exceto o teste
+  do piso-cede que nasceu com a regra).
+- Suíte completa ×2: **1160 + 1160 verdes, zero skips, exit 0** (junit
+  `bloco_jq2_run1/run2.xml`). Ordem invertida: 1160 com 1 falha do flake NOMEADO
+  `test_a4_corrigir` (timing de rede das rodadas anteriores; o arquivo re-rodado
+  isolado: 9 verdes — junit `bloco_jq2_invertida.xml`). Janela real: **4 verdes**
+  (`bloco_jq2_janela.xml`). Placar SÓ por junit, como manda a lição do Git Bash.
+- Prova visual: `saida_f13/jm-prova-p1.png` / `jm-prova-p2.png` (OCR real, 3ª leitura,
+  declaração K4 no §14.1).
+

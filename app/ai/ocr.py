@@ -46,6 +46,12 @@ PROMPT_OCR = (
     'EXCEÇÃO: se a COLUNA DE PREÇO da linha diz "S. OFERTA", "S.OFERTA" '
     'ou "SUPER OFERTA", isso É o preço da linha — transcreva no campo '
     '"preco" exatamente como está (nunca pule a linha nem use null). '
+    # K2\L4 (QUINTUSDECIMUS): nessas linhas o NÚMERO costuma morar na
+    # própria descrição, atrás de "<>" — sem ele o carimbo sai sem preço
+    'Nessas linhas transcreva a célula de descrição INTEIRA, até o fim: '
+    'ela costuma terminar com "<>" seguido de um valor "R$ …" '
+    '(ex: "ARROZ X 5 Kgs <> R$ 18,81") — copie esse valor JUNTO na '
+    "descrição, nunca o descarte. "
     "Ignore também códigos de coluna curtos no meio da linha (ex: T-1). "
     "Leia a imagem:"
 )

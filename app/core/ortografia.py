@@ -53,6 +53,7 @@ BIGRAMAS_QUEBRADOS: dict[str, str] = {
     "inte gral": "integral",
     "de sinfetante": "desinfetante",
     "ole o": "óleo",                # J16: "OLE O de SOJA" da tabela real
+    "to scana": "toscana",          # K3: "AZEITONA VERDE TO SCANA"
 }
 
 _RE_BORDAS = re.compile(r"^(\W*)(.*?)(\W*)$", re.DOTALL)

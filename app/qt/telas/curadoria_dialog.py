@@ -313,6 +313,11 @@ class CuradoriaDialog(QDialog):
         from app.qt.design.polimento import ordenar_tab
         ordenar_tab(self)               # FASE 1 (passo 66): Tab visual
 
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        from app.qt.design.polimento import clampar_a_tela
+        clampar_a_tela(self)            # L3: cabe em qualquer notebook
+
     def _habilitar_multi(self, *_a) -> None:
         dois = self.chk_composto.isChecked()
         sab = self.rb_sabores.isChecked()

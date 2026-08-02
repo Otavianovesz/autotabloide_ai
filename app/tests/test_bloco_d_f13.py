@@ -967,7 +967,12 @@ def test_d13_conciliacao_lembra_geometria_e_largura_de_coluna(raiz_tmp):
     zerava tudo com resizeColumnsToContents. O padrão de memória já
     morava ao lado (splitter_com_memoria, ui.shell) — agora a conciliação
     lembra: tamanho da janela E largura de coluna sobrevivem a fechar e
-    reabrir."""
+    reabrir.
+
+    QUINTUSDECIMUS/L3 (contrato editado de propósito): a memória vale
+    LIMITADA à tela atual — ``clampar_a_tela`` roda no show. O tamanho
+    lembrado aqui é escolhido DENTRO da tela da bancada, para provar a
+    memória sem esbarrar na lei nova (que tem teste próprio)."""
     from app.qt.telas import servico
     from app.qt.telas.conciliacao_dialog import ConciliacaoDialog
     _app()
@@ -977,8 +982,10 @@ def test_d13_conciliacao_lembra_geometria_e_largura_de_coluna(raiz_tmp):
     dlg.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     dlg.show()
     drenar()
+    tela = dlg.screen().availableGeometry()
+    alvo = (min(1000, tela.width() - 60), min(640, tela.height() - 60))
     # o gesto do dono: ajusta a janela e arrasta a coluna "Importado"
-    dlg.resize(1000, 640)
+    dlg.resize(*alvo)
     dlg.tabela.horizontalHeader().resizeSection(1, 333)
     drenar()
     dlg.done(0)
@@ -989,7 +996,7 @@ def test_d13_conciliacao_lembra_geometria_e_largura_de_coluna(raiz_tmp):
     dlg2.show()
     drenar()
     try:
-        assert (dlg2.width(), dlg2.height()) == (1000, 640), (
+        assert (dlg2.width(), dlg2.height()) == alvo, (
             "a janela ESQUECEU o tamanho — abre sempre no default fixo "
             "(C-10/D13)")
         assert dlg2.tabela.columnWidth(1) == 333, (
