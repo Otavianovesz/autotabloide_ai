@@ -206,6 +206,68 @@ class ProdutoRepositorio:
     # chamadores (nem produção, nem teste). A exclusão oficial de produto
     # é a lixeira (`excluir_suave("produto", id)`, 30 dias, reversível).
 
+    def definir_familia(self, produto_ids: list[int],
+                        familia_id: int | None) -> None:
+        """Rodada JM (B4): liga (ou desliga, com None) os produtos à
+        família — por id, nunca por posição (I1)."""
+        for pid in produto_ids:
+            produto = self.get(pid)
+            if produto is not None:
+                produto.familia_id = familia_id
+        self.session.flush()
+
+
+# ==============================================================================
+# FAMÍLIA DE PRODUTOS (Rodada JM, B4)
+# ==============================================================================
+
+
+class FamiliaRepositorio:
+    """A família de sabores ("Sardinha Coqueiro 125g") — cada membro é
+    um produto completo; a integridade da FK solta é DESTE serviço."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def obter_ou_criar(self, nome: str) -> int:
+        from app.core.models import FamiliaProduto
+        nome = (nome or "").strip()
+        stmt = select(FamiliaProduto).where(FamiliaProduto.nome == nome)
+        fam = self.session.execute(stmt).scalar_one_or_none()
+        if fam is None:
+            fam = FamiliaProduto(nome=nome)
+            self.session.add(fam)
+            self.session.flush()
+        return fam.id
+
+    def membros(self, familia_id: int) -> list:
+        """Os produtos VIVOS da família (a lixeira não aparece — CI-01),
+        ordenados por id (identidade estável)."""
+        from app.core.models import Produto
+        stmt = (select(Produto)
+                .where(Produto.familia_id == familia_id,
+                       Produto.excluido_em.is_(None))
+                .order_by(Produto.id))
+        return list(self.session.execute(stmt).scalars())
+
+    def nome_de(self, familia_id: int) -> str | None:
+        from app.core.models import FamiliaProduto
+        fam = self.session.get(FamiliaProduto, familia_id)
+        return fam.nome if fam is not None else None
+
+    def dissolver(self, familia_id: int) -> None:
+        """Zera o vínculo dos membros e remove a família (reversível só
+        religando — a família sem membros não significa nada)."""
+        from app.core.models import FamiliaProduto, Produto
+        for p in self.session.execute(
+                select(Produto).where(
+                    Produto.familia_id == familia_id)).scalars():
+            p.familia_id = None
+        fam = self.session.get(FamiliaProduto, familia_id)
+        if fam is not None:
+            self.session.delete(fam)
+        self.session.flush()
+
 
 # ==============================================================================
 # CONFIG
@@ -251,6 +313,12 @@ def regras_de_config(session: Session) -> RegrasSanitizacao:
     if isinstance(glossario, dict) and glossario:
         regras = replace(regras, glossario_siglas=tuple(
             (str(k), str(v)) for k, v in glossario.items() if k and v))
+    # Rodada JM (B1.5): correções de grafia do dono ("fugini" → "fugini"
+    # do jeito certo da marca dele) — somadas ao vocabulário de mercado
+    ortografia = cfg.get("sanitizacao.ortografia")
+    if isinstance(ortografia, dict) and ortografia:
+        regras = replace(regras, ortografia=tuple(
+            (str(k), str(v)) for k, v in ortografia.items() if k and v))
     # FASE 3 (passo 51): palavras que ficam minúsculas no meio do nome
     minusculas = cfg.get("sanitizacao.palavras_minusculas")
     if isinstance(minusculas, list) and minusculas:

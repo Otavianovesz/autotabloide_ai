@@ -20,14 +20,17 @@ def _app():
 
 
 def test_nome_composto_prefixo_e_sufixo_comuns():
+    # Rodada JM (B3.4, decisão do dono 03/08): o peso COMUM sai do nome
+    # e vira descritor com "·" — os asserts antigos mudaram de propósito
     assert servico.nome_composto("Arroz Camil 5kg", "Arroz Rei 5kg") == \
-        "Arroz Camil e Rei 5kg"
+        "Arroz Camil e Rei · 5 kg"
     assert servico.nome_composto("Feijão Preto Kicaldo 1kg",
                                  "Feijão Preto Máximo 1kg") == \
-        "Feijão Preto Kicaldo e Máximo 1kg"
-    # sem miolo distinto de um dos lados: cai no "A e B" simples
+        "Feijão Preto Kicaldo e Máximo · 1 kg"
+    # sem miolo distinto de um dos lados: os nomes não se mesclam
+    # ("A e B" simples) — e o peso comum desce ao descritor (B3.4)
     assert servico.nome_composto("Arroz 5kg", "Arroz Rei 5kg") == \
-        "Arroz 5kg e Arroz Rei 5kg"
+        "Arroz e Arroz Rei · 5 kg"
 
 
 # --- compor/separar headless ----------------------------------------------------------
@@ -46,7 +49,7 @@ def test_compor_itens_campos_e_identidade():
     a, b = _dupla()
     comp = servico.compor_itens(a, b, preco="39,90")
     assert comp.uid not in (a.uid, b.uid)          # uid PRÓPRIO (1 slot → 1 uid)
-    assert comp.nome == "Arroz Camil e Rei 5kg"
+    assert comp.nome == "Arroz Camil e Rei · 5 kg"     # B3.4: peso no descritor
     assert comp.preco == "39,90"                   # preço ÚNICO da dupla
     assert [i for i in comp.imagens] == ["/fotos/camil.png", "/fotos/rei.png"]
     assert comp.arranjo == "LADO_A_LADO"           # o padrão da ordem

@@ -26,6 +26,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     LargeBinary,
     Numeric,
     String,
@@ -65,6 +66,31 @@ class Categoria(Base):
 
     def __repr__(self) -> str:
         return f"<Categoria {self.nome!r}>"
+
+
+# ==============================================================================
+# FAMÍLIA DE PRODUTOS (Rodada JM, B4 — decisão do dono 03/08)
+# ==============================================================================
+
+
+class FamiliaProduto(Base):
+    """A FAMÍLIA de sabores/fragrâncias ("Sardinha Coqueiro 125g"):
+    cada sabor é um produto COMPLETO (foto/EAN/preço próprios) ligado
+    aqui por `Produto.familia_id`. Na importação o dono marca com CHECK
+    quais sabores estão na oferta e a célula desenha o leque (F7.1).
+    Tabela ADITIVA (create_all cria; nenhum ALTER em tabela existente)."""
+
+    __tablename__ = "familias_produto"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(255), nullable=False,
+                                      unique=True, index=True)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, server_default=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<FamiliaProduto id={self.id} {self.nome!r}>"
 
 
 # ==============================================================================
@@ -124,6 +150,11 @@ class Produto(Base):
 
     # Selo "Qualidade Belo Brasil" — marca própria do mercado (ligável à mão).
     marca_propria: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Rodada JM (B4): a FAMÍLIA de sabores a que o produto pertence — FK
+    # "solta" de propósito (o precedente de projetos_salvos.evento_id:
+    # SQLite não adiciona FK via ALTER; a integridade é do serviço).
+    familia_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     # Imagem tratada em disco (o banco guarda só o caminho).
     caminho_imagem: Mapped[str | None] = mapped_column(String(500))

@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from app.core.sanitize import REGRAS_PADRAO, separar_peso
+from app.core.sanitize import REGRAS_PADRAO, _canonizar_unidade, separar_peso
 from app.rendering.model import Regiao, Retangulo, TipoRegiao
 from app.rendering.text_fit import ajustar_texto
 from app.rendering.units import mm_para_px, px_para_mm
@@ -81,10 +81,23 @@ def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
 
 
 # uma PARTE do descritor é unidade quando é peso/volume ("100 g",
-# "1,5 L", "4x120 g", "395g") ou unidade solta de venda a peso ("kg")
+# "1,5 L", "4x120 g", "395g") ou unidade solta de venda a peso ("kg").
+# Rodada JM (B1.1/B1.2): a coluna Unidade da planilha é texto LIVRE —
+# a forma CRUA da tabela ("2 Kgs", "1 LT") e a metragem/contagem
+# ("30 m", "12 rolos") são unidade também: metade PROTEGIDA, nunca
+# qualificador sacrificável (QUARTUSDECIMUS §2 vale em toda grafia).
 _RE_PARTE_UNIDADE = re.compile(
-    r"^(?:\d+\s*x\s*)?\d+(?:[.,]\d+)?\s*(?:kg|g|mg|ml|l|un)\.?$"
-    r"|^(?:kg|g|ml|mg|un|l)\.?$", re.IGNORECASE)
+    r"^(?:\d+\s*x\s*)?\d+(?:[.,]\d+)?\s*"
+    r"(?:kgs?|kilos?|quilos?|grs?|g|mgs?|mls?|lts?|litros?|l|un"
+    r"|rolos?|folhas?|mts?|metros?|m)\.?$"
+    r"|^(?:kgs?|grs?|g|mls?|mgs?|lts?|un|l|m)\.?$", re.IGNORECASE)
+
+# T4 (DUODECIMUS) + Rodada JM: unidade SOLTA no fim do nome ("…Rezende
+# KG", vendido a peso sem número) desce ao descritor — nas grafias
+# canônicas E cruas. Constante de módulo: a régua é uma só e testável.
+UNIDADES_SOLTAS = frozenset(
+    {"kg", "g", "ml", "mg", "un", "l",
+     "kgs", "lts", "grs", "lt", "gr", "m"})
 
 
 def dividir_descritor(descritor: str | None,
@@ -270,12 +283,12 @@ def precedencia_do_nome(
     nome_atual, peso = separar_peso(nome)
     tokens = nome_atual.split()
     # T4 (DUODECIMUS): unidade SOLTA no fim ("…Rezende KG", vendido a
-    # peso sem número) desce ao descritor como o peso desce
-    _UNIDADES_SOLTAS = {"kg", "g", "ml", "mg", "un", "l"}
+    # peso sem número) desce ao descritor como o peso desce — canonizada
+    # pela régua única do sanitize ("LTS" → "L", "KGS" → "kg")
     if peso is None and len(tokens) > 1 \
-            and tokens[-1].lower() in _UNIDADES_SOLTAS:
+            and tokens[-1].lower() in UNIDADES_SOLTAS:
         solta = tokens.pop()
-        peso = "L" if solta.lower() == "l" else solta.lower()
+        peso = _canonizar_unidade(solta.lower(), REGRAS_PADRAO)
     siglas: list[str] = []
     if peso:
         while len(tokens) > 1 and tokens[-1].upper() in REGRAS_PADRAO.siglas:

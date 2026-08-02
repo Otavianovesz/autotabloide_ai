@@ -81,6 +81,16 @@ class ItemMesa:
     # OPCIONAL que vira uma região condicional (papel OBSERVACAO): só desenha
     # se preenchida; vazia não é problema no pré-voo (não-ocupável, lei da casa).
     observacao: str | None = None
+    # Rodada JM (B3): os CÓDIGOS de pendência do sanitize ("multiplos",
+    # "letra_isolada"…) viajam com o item VERMELHO — a curadoria usa
+    # (a pergunta "são 2 produtos?" nasce daqui). Aditivo: from_dict
+    # filtra chaves, projeto antigo abre normal.
+    pendencias: list = field(default_factory=list)
+    # Rodada JM (B4): a FAMÍLIA de sabores do produto casado —
+    # {"id", "nome", "membros": [{"produto_id","nome","imagem"}]}.
+    # Acende o "Sabores da família…" na estante; None = produto sem
+    # família (o caminho comum não muda). Congela com o projeto.
+    familia: dict | None = None
     # Identidade estável do item (invariante I1) — o mapa slot→item usa o uid.
     uid: str = field(default_factory=lambda: _uuid_mod.uuid4().hex)
 
@@ -1408,38 +1418,45 @@ def avisos_da_validade(validade: str | None, nome_layout: str | None = None,
     passar despercebida (o M-02: o marco publicado com validade de maio
     em julho).
 
+    Rodada JM (B2A): as guardas leem o PAR (início, fim) da régua única
+    `datas_da_validade` — o "já passou" compara com a data-FIM (o falso
+    positivo que gritaria o mês inteiro do Jornal morreu), o ano escrito
+    é respeitado e o "fora do mês" olha o INTERVALO, não a 1ª data.
+
     Validade sem data nenhuma ("enquanto durarem os estoques") passa em
     silêncio — as guardas são DE DATA."""
     import re as _re
     from datetime import date as _date
+
+    from app.core.validade import datas_da_validade
     if not (validade or "").strip():
         return []
-    m = _re.search(r"(\d{1,2})/(\d{1,2})", validade)
-    if not m:
+    if not _re.search(r"\d{1,2}/\d{1,2}", validade):
         return []                       # escolha legítima sem data
     hoje = hoje or _date.today()
-    try:
-        data = _date(hoje.year, int(m.group(2)), int(m.group(1)))
-    except ValueError:
+    de, ate = datas_da_validade(validade, hoje)
+    if de is None and ate is None:
         return [f"a validade “{validade}” tem uma data que não existe — "
                 "clique no 📅 na barra da Mesa"]
-    # a virada do ano: dezembro→janeiro conta como futuro, não passado
-    if data.month == 1 and hoje.month == 12:
-        data = data.replace(year=hoje.year + 1)
+    inicio = de or ate
+    fim = ate or de
     avisos: list[str] = []
-    if data < hoje:
+    if fim < hoje:
         avisos.append(f"a validade “{validade}” já passou — clique no 📅 "
                       "na barra da Mesa para corrigir")
-    elif data.month != hoje.month:
+    elif not ((inicio.year, inicio.month) <= (hoje.year, hoje.month)
+              <= (fim.year, fim.month)):
         avisos.append(f"a validade “{validade}” está fora do mês corrente "
                       "— confira no 📅 da barra da Mesa (pode ser "
                       "legítimo no Jornal)")
-    dia = dia_do_evento(evento) if evento else None
-    if dia is None:
-        dia = dia_pelo_nome(nome_layout)
-    if isinstance(dia, int) and data.weekday() != dia:
-        avisos.append(f"a validade “{validade}” não bate com o dia do "
-                      "encarte — confira no 📅 da barra da Mesa")
+    # o dia da semana só faz sentido para oferta de UM dia
+    if inicio == fim:
+        dia = dia_do_evento(evento) if evento else None
+        if dia is None:
+            dia = dia_pelo_nome(nome_layout)
+        if isinstance(dia, int) and inicio.weekday() != dia:
+            avisos.append(f"a validade “{validade}” não bate com o dia do "
+                          "encarte — confira no 📅 da barra da Mesa")
     return avisos
 
 
@@ -1648,6 +1665,34 @@ def montar_validade_oferta(de: str | None, ate: str | None) -> str | None:
     return None
 
 
+def normalizar_validade_tabela(texto: str | None) -> str | None:
+    """Rodada JM (B2A): o rodapé CRU da tabela ("OFERTAS VALIDAS
+    03/08/2026 ATÉ 27/08/2026") vira o vocabulário canônico da casa
+    ("OFERTA VÁLIDA DE 03/08 ATÉ 27/08") antes de entrar no chip e no
+    desenho. Sem data parseável → None (o chamador decide o que fazer
+    com o cru)."""
+    from app.core.validade import datas_da_validade
+    de, ate = datas_da_validade(texto)
+    if de is None and ate is None:
+        return None
+    return montar_validade_oferta(
+        de.strftime("%d/%m") if de else None,
+        ate.strftime("%d/%m") if ate else None)
+
+
+def validade_vence(atual: str | None, origem: str | None,
+                   da_tabela: str | None) -> bool:
+    """Rodada JM (B2A): a validade ESCRITA NA TABELA vence o vazio e o
+    palpite da CASCATA do calendário (documento > palpite) — mas NUNCA
+    sobrescreve em silêncio a escolha do dono (origem manual/projeto);
+    nesse caso o chamador avisa (I2) e o 📅 troca."""
+    if not (da_tabela or "").strip():
+        return False
+    if not (atual or "").strip():
+        return True
+    return origem == "cascata"
+
+
 def abreviar_para_tabloide(nome: str,
                            glossario: dict[str, str] | None = None) -> str:
     """RG-22: aplica as abreviações SÓ ao nome desenhado no tabloide — o
@@ -1705,10 +1750,28 @@ def categorias_ordenadas(session) -> list[str]:
 
 # --- item composto (F7.2, Etapa D do Bloco E): dois produtos, UM uid -------------
 
-def nome_composto(nome_a: str, nome_b: str) -> str:
-    """Monta o nome do composto: "Arroz Camil 5kg" + "Arroz Rei 5kg" →
-    "Arroz Camil e Rei 5kg" (prefixo e sufixo comuns preservados; os miolos
-    distintos entram com "e"). Sempre editável pelo humano no diálogo."""
+# Rodada JM (B3.4): tokens de EMBALAGEM que o dono manda declarar por
+# componente quando diferem ("Fugini (pouch) e Bonare (lata)")
+_EMBALAGENS = frozenset({
+    "lata", "pouch", "vidro", "vd", "tp", "pet", "sache", "sachê",
+    "pote", "caixeta", "garrafa", "tetra", "cartela", "bandeja",
+})
+
+
+def _embalagem_do_nome(tokens: list[str]) -> str | None:
+    """O token de embalagem conhecido do nome (minúsculo) — ou None."""
+    for tk in tokens:
+        if tk.lower() in _EMBALAGENS:
+            return tk.lower()
+    return None
+
+
+def _juntar_com_e(nome_a: str, nome_b: str,
+                  rotulo_a: str | None = None,
+                  rotulo_b: str | None = None) -> str:
+    """O miolo histórico do composto: prefixo/sufixo comuns preservados,
+    miolos distintos com "e" — agora com rótulo opcional por miolo (a
+    embalagem entre parênteses, B3.4)."""
     ta, tb = nome_a.split(), nome_b.split()
     pre = 0
     while pre < min(len(ta), len(tb)) and ta[pre].lower() == tb[pre].lower():
@@ -1721,13 +1784,114 @@ def nome_composto(nome_a: str, nome_b: str) -> str:
     miolo_b = " ".join(tb[pre:len(tb) - suf or None])
     if not miolo_a or not miolo_b:
         return f"{nome_a} e {nome_b}"
+    if rotulo_a:
+        miolo_a = f"{miolo_a} ({rotulo_a})"
+    if rotulo_b:
+        miolo_b = f"{miolo_b} ({rotulo_b})"
     partes = ta[:pre] + [f"{miolo_a} e {miolo_b}"] + (ta[len(ta) - suf:]
                                                       if suf else [])
     return " ".join(partes)
 
 
+def nome_composto(nome_a: str, nome_b: str) -> str:
+    """Monta o nome do composto — decisão do dono (03/08): com peso
+    COMUM aos dois, o peso sai do nome e vira descritor com "·"
+    ("Arroz Somar e Tio Bonini · 5 kg"); embalagens DIFERENTES por
+    componente entram entre parênteses ("Milho Verde Fugini (pouch) e
+    Bonare (lata) · 170 g"). Sem peso comum, o formato de sempre.
+    Sempre editável pelo humano no diálogo."""
+    from app.core.sanitize import separar_peso
+    na, pa = separar_peso(nome_a)
+    nb, pb = separar_peso(nome_b)
+    if not (pa and pb and pa == pb):
+        return _juntar_com_e(nome_a, nome_b)
+    ta, tb = na.split(), nb.split()
+    ea, eb = _embalagem_do_nome(ta), _embalagem_do_nome(tb)
+    rot_a = rot_b = None
+    if ea and eb and ea != eb:
+        # a embalagem sai do miolo e vira o rótulo entre parênteses
+        ta = [tk for tk in ta if tk.lower() != ea]
+        tb = [tk for tk in tb if tk.lower() != eb]
+        rot_a, rot_b = ea, eb
+    base = _juntar_com_e(" ".join(ta), " ".join(tb), rot_a, rot_b)
+    return f"{base} · {pa}"
+
+
 def eh_composto(it: ItemMesa) -> bool:
     return bool(it.origem_composto)
+
+
+# --- FAMÍLIAS de sabores (Rodada JM, B4) ---------------------------------------
+
+
+def nome_de_familia(nomes: list[str]) -> str:
+    """A sugestão de nome da família: o PREFIXO comum de tokens dos
+    membros ("Sardinha Coqueiro 125g Tomate" + "… Óleo" → "Sardinha
+    Coqueiro 125g"). Sem prefixo comum, o primeiro nome serve."""
+    listas = [n.split() for n in nomes if (n or "").strip()]
+    if not listas:
+        return ""
+    comum: list[str] = []
+    for tokens in zip(*listas):
+        if all(t.lower() == tokens[0].lower() for t in tokens):
+            comum.append(tokens[0])
+        else:
+            break
+    comum_txt = " ".join(comum).strip(" ·-")
+    return comum_txt or " ".join(listas[0])
+
+
+def criar_familia_de(produto_ids: list[int], nome: str) -> int:
+    """Cria (ou reusa) a família e liga os produtos — a porta única de
+    nascimento de família (Mesa e Almoxarifado chamam aqui)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
+    from app.core.repositories import FamiliaRepositorio, ProdutoRepositorio
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            fid = FamiliaRepositorio(s).obter_ou_criar(nome)
+            ProdutoRepositorio(s).definir_familia(list(produto_ids), fid)
+            s.commit()
+            return fid
+    finally:
+        db.engine.dispose()
+
+
+def familia_do_item(produto_id: int | None) -> dict | None:
+    """A família do produto, pronta para a UI: {"id","nome","membros"}
+    com caminhos de imagem ABSOLUTOS — None sem família/produto."""
+    if not produto_id:
+        return None
+    from app.core.models import Produto
+    from app.core.repositories import FamiliaRepositorio
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            p = s.get(Produto, produto_id)
+            if p is None or not p.familia_id:
+                return None
+            fam = FamiliaRepositorio(s)
+            membros = [{"produto_id": m.id,
+                        "nome": m.nome_sanitizado,
+                        "imagem": _imagem_absoluta(m.caminho_imagem)}
+                       for m in fam.membros(p.familia_id)]
+            return {"id": p.familia_id,
+                    "nome": fam.nome_de(p.familia_id) or "",
+                    "membros": membros}
+    finally:
+        db.engine.dispose()
+
+
+def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
+    """O CHECK vira o LEQUE: as fotos dos membros escolhidos entram no
+    ITEM (congela com o projeto — o imagens_json por-produto do RG-28
+    não entra aqui, I3) na ordem por produto_id (identidade, I1)."""
+    escolhidos = sorted(membros, key=lambda m: m.get("produto_id") or 0)
+    item.imagens = [m["imagem"] for m in escolhidos if m.get("imagem")]
+    if item.imagens:
+        item.arranjo = "LEQUE"
+    return item
 
 
 def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
@@ -1761,24 +1925,30 @@ def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
 
 
 def criar_como_composto(item: ItemMesa, nomes_componentes: list[str],
-                        mais18: bool, imagem_tratada: str | None,
+                        mais18: bool,
+                        imagens_tratadas: str | list | None,
                         categoria: str | None = None) -> ItemMesa:
     """RG-29: a linha com DUAS marcas ("Coração e Língua") já NASCE composta
     na conciliação — cada componente vira produto PRÓPRIO no banco (nunca um
     nome remendado), e o item da estante é o composto de sempre (F7.2:
     separável, rastreável, 1 slot → 1 uid).
 
-    A foto da curadoria vai ao PRIMEIRO componente (o segundo fica para a
-    curadoria contínua do Almoxarifado — avisado no pré-voo como sempre).
+    Rodada JM (B3.3): ``imagens_tratadas`` aceita a LISTA paralela aos
+    componentes (foto por componente); a string única dos chamadores
+    antigos segue valendo (vai ao 1º — o 2º fica para a curadoria do
+    Almoxarifado, avisado no pré-voo como sempre).
     """
     from app.core.modo import exigir_escrita
     exigir_escrita()                 # R-131: PC da loja não edita
+    if isinstance(imagens_tratadas, (str, type(None))):
+        imagens: list[str | None] = [imagens_tratadas, None]
+    else:
+        imagens = list(imagens_tratadas) + [None, None]
     subs: list[ItemMesa] = []
     for i, nome in enumerate(nomes_componentes[:2]):
         sub = ItemMesa(descricao=nome, preco=item.preco,
                        semaforo="VERMELHO", nome=nome)
-        subs.append(finalizar_criacao(sub, nome, mais18,
-                                      imagem_tratada if i == 0 else None,
+        subs.append(finalizar_criacao(sub, nome, mais18, imagens[i],
                                       categoria=categoria))
     comp = compor_itens(subs[0], subs[1], preco=item.preco)
     comp.descricao = item.descricao      # a linha ORIGINAL fica no rastro
@@ -1923,6 +2093,20 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                     msg = (f"{rot}: papel “Validade da oferta” sem data — "
                            "clique no 📅 na barra da Mesa, ao lado de "
                            "Exportar")
+                elif reg.papel_texto == PapelTexto.LIVRE and fixo:
+                    # Rodada JM (B2A): o período gravado no molde ("do
+                    # dia 1º ao 27") só vira o REAL quando a validade
+                    # tem par de datas — sem par, o texto fixo mentiria
+                    from app.core.validade import (_RE_PERIODO_FIXO,
+                                                   datas_da_validade)
+                    if _RE_PERIODO_FIXO.search(fixo):
+                        de_, ate_ = datas_da_validade(
+                            (d.texto_legal if d else None) or "")
+                        if not (de_ and ate_ and de_ != ate_):
+                            msg = (f"{rot}: o texto tem período gravado "
+                                   "(“do dia … ao …”) e a validade não diz "
+                                   "o período — clique no 📅 na barra da "
+                                   "Mesa e escolha “De … até …”")
                 elif reg.papel_texto == PapelTexto.DICA and not fixo:
                     msg = f"{rot}: papel “Fica a Dica” sem texto — gere a dica pela IA"
                 elif reg.papel_texto == PapelTexto.LEGAL and not fixo:
@@ -1960,6 +2144,27 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
 
 # --- importar + conciliar -----------------------------------------------------
 
+def classificar_preco_ocr(texto_preco: str | None
+                          ) -> tuple[str | None, str | None]:
+    """Rodada JM (B2B): a regra nomeada do filtro do import — devolve
+    ``(preco, multi_preco)`` a partir do campo "preco" do OCR. Preço em
+    TEXTO ("S. OFERTA") vira o canônico "SUPER OFERTA"; promoção com
+    mecânica (%, leve-X, brinde) segue como multi_preco cru (R-070); o
+    resto é preço numérico de sempre."""
+    from app.qt.telas.colagem import preco_texto_oferta
+
+    texto = (texto_preco or "").strip()
+    canonico = preco_texto_oferta(texto)
+    if canonico:
+        return None, canonico
+    if texto and preco_decimal(texto) is None and (
+            "%" in texto or any(t in texto.lower() for t in
+                                ("leve", "pague", "ganhe",
+                                 "desconto", "brinde"))):
+        return None, texto
+    return texto_preco, None
+
+
 def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
     """Lê a fonte (foto → OCR; texto → parse) e concilia tudo com o banco."""
     caminho = Path(caminho)
@@ -1996,16 +2201,9 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
         linhas = []
         multi_precos: list[str | None] = []
         for ln in tabela.linhas:
-            texto = (ln.preco or "").strip()
-            if texto and preco_decimal(texto) is None and (
-                    "%" in texto or any(t in texto.lower() for t in
-                                        ("leve", "pague", "ganhe",
-                                         "desconto", "brinde"))):
-                linhas.append((ln.descricao, None, None))
-                multi_precos.append(texto)
-            else:
-                linhas.append((ln.descricao, ln.preco, None))
-                multi_precos.append(None)
+            preco, mp = classificar_preco_ocr(ln.preco)
+            linhas.append((ln.descricao, preco, None))
+            multi_precos.append(mp)
         validade = tabela.validade_oferta
         return conciliar_linhas(linhas, status_cb, validade=validade,
                                 aviso=aviso_cache,
@@ -2044,23 +2242,33 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
             # de lote roda sobre os vereditos (duas linhas nunca casam
             # verdes com o mesmo produto em silêncio); a 2ª monta os
             # itens da Mesa
-            from app.ai.conciliacao import exclusividade_de_lote
+            from app.ai.conciliacao import (categoria_dos_candidatos,
+                                            exclusividade_de_lote)
+            from app.core.sanitize import sanitizar
             vereditos = []
             for i, (desc, preco, ean) in enumerate(linhas, 1):
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
                 vereditos.append(conc.conciliar(desc))
             exclusividade_de_lote(vereditos)
+            houve_categoria = False
+            cache_familias: dict[int, dict] = {}     # B4: 1 consulta/família
             for i, ((desc, preco, ean), v) in enumerate(
                     zip(linhas, vereditos), 1):
                 p = v.produto
                 # F13/D5 (C-01): o acervo se conserta SOZINHO a cada
                 # importação — produto casado SEM categoria ganha a do
-                # vizinho (o índice já está quente; humano nunca é
-                # vencido: só escreve onde está VAZIO). No PC da loja
-                # (somente leitura) pula sem drama — é enriquecimento
-                # oportunista, não conteúdo da oferta.
+                # vizinho (humano nunca é vencido: só escreve onde está
+                # VAZIO). No PC da loja (somente leitura) pula sem drama.
+                # Rodada JM (B1.6): a categoria sai dos candidatos que o
+                # veredito JÁ carrega (nada de refazer fuzzy+embedding);
+                # o match EXATO vem com um candidato só (ele mesmo) — só
+                # nele a busca de vizinhos roda de verdade. Um commit
+                # por LOTE, não por item.
                 if p is not None and p.categoria is None:
-                    cat, _sc = conc.categoria_do_vizinho(desc)
+                    cat, _sc = categoria_dos_candidatos(
+                        v.candidatos, conc.limiares.amarelo)
+                    if not cat and v.via == "exato":
+                        cat, _sc = conc.categoria_do_vizinho(desc)
                     if cat:
                         try:
                             from app.core.repositories import (
@@ -2069,14 +2277,16 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                             ProdutoRepositorio(session).editar(
                                 p.id, categoria=cat,
                                 categoria_origem="vizinho")
-                            session.commit()
-                            session.refresh(p)
+                            houve_categoria = True
                         except Exception:
                             session.rollback()
                 mp = (multi_precos[i - 1] if multi_precos
                       and i - 1 < len(multi_precos) else None)
                 dp = (descontos[i - 1] if descontos
                       and i - 1 < len(descontos) else None)
+                # B1.5/B3: o VERMELHO nasce sanitizado e com as
+                # pendências do sanitize a bordo (uma chamada só)
+                san = None if p is not None else sanitizar(desc, conc.regras)
                 itens.append(ItemMesa(
                     descricao=desc,
                     preco=preco,
@@ -2084,7 +2294,12 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     desconto_pct=dp,                         # Q2 (declarado)
                     ean=ean or (p.ean if p else None),
                     semaforo=v.semaforo.value,
-                    nome=p.nome_sanitizado if p else desc,
+                    # Rodada JM (B1.5): o item NOVO nasce com o nome
+                    # SANITIZADO (acentos/unidades/caixa) — a descrição
+                    # CRUA fica em `descricao` (alias/identidade, I1)
+                    nome=p.nome_sanitizado if p else san.nome_sanitizado,
+                    pendencias=([pd.codigo for pd in san.pendencias]
+                                if san else []),
                     produto_id=p.id if p else None,
                     imagem=_imagem_absoluta(p.caminho_imagem) if p else None,
                     mais18=bool(p.selo_mais18) if p else False,
@@ -2104,7 +2319,18 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     categoria=(p.categoria.nome
                                if p and p.categoria else None),   # F8
                     imagens=imagens_do_produto(p) if p else [],   # RG-28
+                    # B4: a família viaja com o item casado (cache por
+                    # lote — irmãos da mesma família = 1 consulta)
+                    familia=(_familia_em_lote(
+                        session, p.familia_id, cache_familias)
+                        if p is not None
+                        and getattr(p, "familia_id", None) else None),
                 ))
+            if houve_categoria:
+                try:
+                    session.commit()          # 1 commit por lote (B1.6)
+                except Exception:
+                    session.rollback()
         # I2 (frota F12): a degradação do conciliador (embeddings mortos)
         # sobe até a tela — antes ficava engolida e o dono acreditava que
         # a camada de significado tinha trabalhado
@@ -2114,6 +2340,23 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
         db.engine.dispose()
     return ResultadoMesa(itens=itens, validade_oferta=validade, aviso=aviso,
                          caminho_fonte=caminho_fonte)
+
+
+def _familia_em_lote(session, familia_id: int, cache: dict) -> dict | None:
+    """B4: o dict da família DENTRO da sessão do lote (o cache evita a
+    consulta repetida quando vários irmãos aparecem na mesma tabela)."""
+    if familia_id in cache:
+        return cache[familia_id]
+    from app.core.repositories import FamiliaRepositorio
+    fam = FamiliaRepositorio(session)
+    dado = {"id": familia_id,
+            "nome": fam.nome_de(familia_id) or "",
+            "membros": [{"produto_id": m.id,
+                         "nome": m.nome_sanitizado,
+                         "imagem": _imagem_absoluta(m.caminho_imagem)}
+                        for m in fam.membros(familia_id)]}
+    cache[familia_id] = dado
+    return dado
 
 
 def importar_varios(caminhos, status_cb: StatusCb, progresso_cb=None):
@@ -2170,10 +2413,11 @@ def montar_pelo_chat(texto: str, status_cb: StatusCb) -> ResultadoMesa:
     REUSANDO a conciliação (parse de colagem + conciliar_linhas) — não um pipeline
     novo. É sempre rascunho para AJUSTAR (nunca publicado direto, I2)."""
     from app.qt.telas.colagem import (
-        linhas_para_tuplas, multi_precos_de, parse_colagem)
+        descontos_de, linhas_para_tuplas, multi_precos_de, parse_colagem)
     linhas = parse_colagem(texto)
     return conciliar_linhas(linhas_para_tuplas(linhas), status_cb,
-                            multi_precos=multi_precos_de(linhas))
+                            multi_precos=multi_precos_de(linhas),
+                            descontos=descontos_de(linhas))
 
 
 def ordenar_por_prioridade(pares, foco=None):
@@ -2591,6 +2835,62 @@ class PropostaCriacao:
     # RG-29: DUAS marcas na mesma linha → nomes dos componentes (a criação
     # nasce composta; lista vazia = produto único de sempre)
     componentes: list[str] = field(default_factory=list)
+    # Rodada JM (B3): a linha PARECE 2 produtos (a pendência "multiplos"
+    # do sanitize dividiu limpo) — a curadoria PERGUNTA "são 2
+    # produtos?" com a sugestão nos campos; quem decide é o humano.
+    possivel_composto: bool = False
+    sugestao_componentes: list[str] = field(default_factory=list)
+    # True quando os componentes vieram do LM (a curadoria pré-marca o
+    # check — e DESMARCAR cancela o composto: a IA nunca decide sozinha)
+    componentes_da_ia: bool = False
+
+
+def dividir_em_dois(descricao: str | None) -> list[str]:
+    """Rodada JM (B3.1): a SUGESTÃO determinística para a linha com
+    duas marcas num preço — corta no primeiro " e ", replica o peso
+    comum do fim e o TIPO (1º token) no 2º componente, e sanitiza os
+    dois. É sugestão: quem decide é o humano na curadoria.
+
+    BARRA na linha = sabores/variantes (caso de FAMÍLIA), nunca composto
+    de marcas → lista vazia. Sem " e " idem."""
+    import re as _re
+
+    from app.core.sanitize import sanitizar, separar_peso
+    texto = (descricao or "").strip()
+    if not texto or "/" in texto:
+        return []
+    m = _re.search(r"\s+e\s+", texto, flags=_re.IGNORECASE)
+    if not m:
+        return []
+    esq, dir_ = texto[:m.start()].strip(), texto[m.end():].strip()
+    esq_nome, esq_peso = separar_peso(esq)
+    dir_nome, dir_peso = separar_peso(dir_)
+    peso = dir_peso or esq_peso        # o peso do fim da LINHA é comum
+    if not esq_nome.strip() or not dir_nome.strip():
+        return []
+    tipo = esq_nome.split()[0]
+    tokens_dir = {t.lower() for t in dir_nome.split()}
+    if len(tipo) >= 3 and tipo.lower() not in tokens_dir:
+        dir_nome = f"{tipo} {dir_nome}"
+    sufixo = f" {peso}" if peso else ""
+    comp_a = sanitizar(f"{esq_nome}{sufixo}").nome_sanitizado
+    comp_b = sanitizar(f"{dir_nome}{sufixo}").nome_sanitizado
+    if not comp_a or not comp_b:
+        return []
+    return [comp_a, comp_b]
+
+
+def deve_revisar_no_lote(proposta: "PropostaCriacao") -> str | None:
+    """Rodada JM (B3): a política da fila em lote numa função só — o
+    motivo pelo qual o item NÃO é criado calado (None = pode criar).
+    Perda de palavra (C-09) e "parece 2 produtos" sem componentes
+    confirmados seguram o item para a curadoria; composto por chute
+    nunca nasce."""
+    if proposta.tokens_perdidos:
+        return "a IA descartou palavra do nome"
+    if proposta.possivel_composto and len(proposta.componentes) < 2:
+        return "parece 2 produtos no mesmo preço — confirme na curadoria"
+    return None
 
 
 def marcas_do_acervo() -> list[str]:
@@ -2627,6 +2927,7 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     conserta o bug latente em que ``enriquecer(desc, None)`` estourava
     AttributeError em vez de degradar.
     """
+    from app.core.mais18 import eh_bebida_alcoolica
     if motor is None:
         from app.core.aprendizado import ordenar_tipo_marca
         from app.core.sanitize import sanitizar
@@ -2638,15 +2939,29 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
             nome = ordenar_tipo_marca(nome, marcas_do_acervo())
         except Exception:
             pass
-        return PropostaCriacao(nome=nome, mais18=False,
-                               categoria=None)
+        # Rodada JM (B3): a pendência "multiplos" do sanitize vira a
+        # PERGUNTA da curadoria (sugestão determinística; o humano
+        # decide) — e o +18 heurístico entra (era False cravado)
+        sugestao = (dividir_em_dois(descricao)
+                    if any(pd.codigo == "multiplos"
+                           for pd in res.pendencias) else [])
+        return PropostaCriacao(nome=nome,
+                               mais18=eh_bebida_alcoolica(nome),
+                               categoria=None,
+                               possivel_composto=len(sugestao) == 2,
+                               sugestao_componentes=sugestao)
     from app.ai.enriquecimento import enriquecer
     enr = enriquecer(descricao, motor)
-    return PropostaCriacao(nome=enr.nome_sanitizado, mais18=enr.mais18,
-                           categoria=enr.categoria,
-                           tokens_perdidos=list(enr.tokens_perdidos),
-                           componentes=[c.nome_sanitizado
-                                        for c in enr.componentes])
+    comps = [c.nome_sanitizado for c in enr.componentes]
+    return PropostaCriacao(
+        nome=enr.nome_sanitizado,
+        # a heurística só LIGA o +18 — nunca desliga o que a IA ligou
+        mais18=enr.mais18 or eh_bebida_alcoolica(enr.nome_sanitizado),
+        categoria=enr.categoria,
+        tokens_perdidos=list(enr.tokens_perdidos),
+        componentes=comps,
+        possivel_composto=len(comps) >= 2,
+        componentes_da_ia=len(comps) >= 2)
 
 
 def candidatos_do_acervo(nome: str, limite: int = 2) -> list[str]:
@@ -2829,7 +3144,11 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
             repo = ProdutoRepositorio(session)
             res = repo.importar(item.descricao, preco=item.preco)
             produto = res.produto
-            repo.editar(produto.id, nome_sanitizado=nome, selo_mais18=mais18)
+            # Rodada JM (B3.5): bebida_alcoolica TAMBÉM é gravada — a
+            # regra do selo automático (selos.py) e o Excel leem ELA;
+            # gravar só selo_mais18 deixava o round-trip reverter o +18
+            repo.editar(produto.id, nome_sanitizado=nome,
+                        selo_mais18=mais18, bebida_alcoolica=mais18)
             if categoria:                # IA sem palpite deixa vazio (→ "Outros")
                 repo.editar(produto.id, categoria=categoria,
                             categoria_origem="ia")

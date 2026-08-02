@@ -105,6 +105,12 @@ class PapelTexto(str, Enum):
                            # edição VIVA do projeto; condicional (sem dado não
                            # desenha — rótulo que não é sempre verdade não
                            # pode estar na estrutura)
+    OFERTA = "OFERTA"      # Rodada JM (B2B): o preço-texto do item
+                           # ("SUPER OFERTA" dentro da estrela do Jornal) —
+                           # puxa `dados.multi_preco`; cai no texto_fixo do
+                           # dono; vazio = a forma nem desenha (D2).
+                           # ATENÇÃO: from_dict é ESTRITO — o membro nasce
+                           # junto de qualquer layout que o use.
 
 
 class Alinhamento(str, Enum):

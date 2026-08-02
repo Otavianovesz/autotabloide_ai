@@ -75,7 +75,8 @@ _COLUNAS_NOVAS: dict[str, dict[str, str]] = {
     "produtos": {"categoria_origem": "VARCHAR(10)",    # F8.1
                  "ean": "VARCHAR(14)",                 # RG-41
                  "imagens_json": "TEXT",               # RG-28
-                 "excluido_em": "DATETIME"},           # F2 passo 81
+                 "excluido_em": "DATETIME",            # F2 passo 81
+                 "familia_id": "INTEGER"},             # Rodada JM (B4)
     # FASE 2: evento vira entidade (o TEXTO `evento` fica por compat — a
     # verdade é o id); FK "solta" de propósito: SQLite não adiciona FK via
     # ALTER — a integridade é do serviço de eventos
@@ -90,13 +91,14 @@ _COLUNAS_NOVAS: dict[str, dict[str, str]] = {
 # F13/E7 (D-11): a VERSÃO do schema — suba ao mexer em _COLUNAS_NOVAS ou
 # _INDICES_NOVOS. 0 = banco pré-versão (legado); o init de um banco
 # existente com versão menor tira backup ANTES de migrar.
-VERSAO_SCHEMA = 2
+VERSAO_SCHEMA = 3                       # Rodada JM (B4): famílias de sabores
 
 # F13/E9 (D-10): create_all com checkfirst PULA tabela existente — índice
 # novo declarado no modelo nunca chegava a banco antigo. O migrador
 # aprende CREATE INDEX (idempotente). (tabela, nome, coluna)
 _INDICES_NOVOS: tuple = (
     ("produtos", "ix_produtos_excluido_em", "excluido_em"),
+    ("produtos", "ix_produtos_familia_id", "familia_id"),   # Rodada JM (B4)
     ("layouts", "ix_layouts_excluido_em", "excluido_em"),
     ("layouts", "ix_layouts_nome", "nome"),
     ("projetos_salvos", "ix_projetos_salvos_excluido_em", "excluido_em"),

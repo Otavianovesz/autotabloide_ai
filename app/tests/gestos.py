@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QMessageBox,
+    QPushButton,
     QWidget,
 )
 
@@ -213,7 +214,12 @@ def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
         for b in botoes:
             if b.hasFocus():
                 visto.botao_com_foco = b.text()
-            if b.isDefault():
+            # Rodada JM: findChildren(QAbstractButton) pega TAMBÉM
+            # QCheckBox/QRadioButton, que não têm isDefault() — a
+            # AttributeError aqui era engolida pelo laço do Qt e o
+            # exec() ficava aberto até o timeout (a doença que o
+            # comentário abaixo já descrevia)
+            if isinstance(b, QPushButton) and b.isDefault():
                 visto.botao_padrao = b.text()
         if tecla is not None:
             QTest.keyClick(caixa, tecla)

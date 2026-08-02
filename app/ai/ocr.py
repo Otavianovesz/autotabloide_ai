@@ -41,6 +41,12 @@ PROMPT_OCR = (
     "TEXTO CORRIDO do cabeçalho (ex: 'leve 3 sonhos e ganhe 25% de "
     "desconto' vira uma linha) — mas SÓ promoção com mecânica concreta "
     "(%, leve-X, brinde); slogan e frase de efeito não são oferta. "
+    # Rodada JM (B2B): a tabela do dono escreve "S. OFERTA" na coluna de
+    # preço quando o valor varia no mês — é preço em TEXTO, não slogan
+    'EXCEÇÃO: se a COLUNA DE PREÇO da linha diz "S. OFERTA", "S.OFERTA" '
+    'ou "SUPER OFERTA", isso É o preço da linha — transcreva no campo '
+    '"preco" exatamente como está (nunca pule a linha nem use null). '
+    "Ignore também códigos de coluna curtos no meio da linha (ex: T-1). "
     "Leia a imagem:"
 )
 

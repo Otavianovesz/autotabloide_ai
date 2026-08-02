@@ -746,11 +746,24 @@ class ConciliacaoDialog(QDialog):
     def _curadoria(self, linha: int, proposta: servico.PropostaCriacao) -> None:
         self._overlay.esconder()
         self._pre_buscar_proximo(self.itens[linha].uid)   # RG-02b
-        dlg = CuradoriaDialog(proposta.nome, proposta.candidatos, self,
-                              tokens_perdidos=proposta.tokens_perdidos)
+        # Rodada JM (B3): a pergunta "são 2 produtos?" + o +18 visível —
+        # a sugestão vem da IA (pré-marcada) ou do sanitize (desmarcada)
+        dlg = CuradoriaDialog(
+            proposta.nome, proposta.candidatos, self,
+            tokens_perdidos=proposta.tokens_perdidos,
+            possivel_composto=(proposta.possivel_composto
+                               or len(proposta.componentes) >= 2),
+            componentes=(proposta.componentes
+                         or proposta.sugestao_componentes),
+            componentes_da_ia=proposta.componentes_da_ia,
+            mais18=proposta.mais18)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         proposta.nome = dlg.nome_final()   # A2: a correção humana vale
+        # B3: o humano é a fonte final do composto e do +18 — desmarcar
+        # cancela o que a IA sugeriu; marcar cria os dois
+        proposta.componentes = dlg.componentes_finais()
+        proposta.mais18 = dlg.mais18_final()
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             self._cadastrar(linha, proposta, None)
@@ -781,10 +794,11 @@ class ConciliacaoDialog(QDialog):
                 estado["motor"] = servico._motor_se_disponivel()
             proposta = self._propostas.get(item.uid) or \
                 servico.enriquecer_descricao(item.descricao, estado["motor"])
-            if proposta.tokens_perdidos:
-                # F13/D6 (C-09): a política do enriquecer_banco (RG-20)
-                # vale no lote — nome que PERDEU palavra não é cadastrado
-                # em silêncio; o item FICA vermelho e é nomeado no fim
+            # F13/D6 (C-09) + Rodada JM (B3): a política do lote virou
+            # função nomeada — perda de palavra E "parece 2 produtos"
+            # sem confirmação seguram o item para a curadoria (composto
+            # NUNCA nasce por chute); nomeado no fim, I2
+            if servico.deve_revisar_no_lote(proposta):
                 self._para_revisar.append(item.descricao)
                 return item
             if len(proposta.componentes) >= 2:      # RG-29: nasce composto

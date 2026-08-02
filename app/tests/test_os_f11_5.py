@@ -743,7 +743,10 @@ def test_f7_68_69_73_adversarial_itens_de_colagem_e_multiimport(
         return (d.nome, str(d.preco_por))
 
     antes = {sid: _foto(sid) for sid in ("c0", "c1", "c2")}
-    assert antes["c0"][0] == "Colado A" and antes["c2"][0] == "Importado C"
+    # Rodada JM (B1.5): o item novo nasce SANITIZADO — "Colado A" ganha a
+    # caixa da casa ("a" é artigo, minúsculo no meio/fim). O teste é de
+    # VÍNCULO (I1/I5): o que importa é o par certo na célula certa.
+    assert antes["c0"][0] == "Colado a" and antes["c2"][0] == "Importado C"
     m._itens.reverse()                             # #69: reordenar a estante
     m._recarregar_lista()
     assert {sid: _foto(sid) for sid in ("c0", "c1", "c2")} == antes

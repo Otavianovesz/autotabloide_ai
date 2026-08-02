@@ -45,11 +45,28 @@ class Semaforo(str, Enum):
 
 # Peso normalizado (ex.: "1,5L", "380g") — removido antes de comparar, pois a
 # unidade compartilhada infla o score e casa produtos diferentes.
-_PESO_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:kg|mg|g|ml|l)\b", re.IGNORECASE)
+# Rodada JM (B1.1): a tabela real do dono escreve "5 Kgs", "1 LT",
+# "5 LTS" — os PLURAIS/grafias cruas casam também (longas antes das
+# curtas: "kgs" antes de "kg", senão o \b final barra o plural).
+_PESO_RE = re.compile(
+    r"\b\d+(?:[.,]\d+)?\s*"
+    r"(?:kgs?|kilos?|quilos?|mgs?|mls?|grs?|lts?|litros?|g|l)\b",
+    re.IGNORECASE)
 
 # fator para a base canônica (g / ml) — o desempate de irmãos compara
 # grandezas na mesma régua ("1 kg" == "1000 g")
-_FATOR_PESO = {"kg": 1000.0, "g": 1.0, "mg": 0.001, "l": 1000.0, "ml": 1.0}
+_FATOR_PESO = {
+    "kg": 1000.0, "kgs": 1000.0, "kilo": 1000.0, "kilos": 1000.0,
+    "quilo": 1000.0, "quilos": 1000.0,
+    "g": 1.0, "gr": 1.0, "grs": 1.0,
+    "mg": 0.001, "mgs": 0.001,
+    "l": 1000.0, "lt": 1000.0, "lts": 1000.0,
+    "litro": 1000.0, "litros": 1000.0,
+    "ml": 1.0, "mls": 1.0,
+}
+# unidades que são VOLUME (base canônica "ml"); o resto é massa ("g")
+_UNIDADES_VOLUME = frozenset(
+    {"l", "lt", "lts", "litro", "litros", "ml", "mls"})
 
 
 def _peso_canonico(texto: str) -> tuple[float, str] | None:
@@ -69,7 +86,7 @@ def _peso_canonico(texto: str) -> tuple[float, str] | None:
     uni = m2.group(2)
     if uni not in _FATOR_PESO:
         return None
-    base = "ml" if uni in ("l", "ml") else "g"
+    base = "ml" if uni in _UNIDADES_VOLUME else "g"
     return valor * _FATOR_PESO[uni], base
 
 
@@ -87,6 +104,7 @@ def _peso_do_produto(produto: "Produto") -> tuple[float, str] | None:
 _GENERICOS = frozenset({
     "de", "da", "do", "das", "dos", "e", "com", "para", "por", "tipo",
     "und", "un", "cx", "kit", "pct", "pet", "lt", "vd", "tp", "kg", "ml",
+    "kgs", "lts", "grs", "mls", "mgs", "litro", "litros",   # Rodada JM
 })
 
 
@@ -222,6 +240,10 @@ class Conciliador:
         self.limiares = limiares or limiares_de_config(session)
         self.regras = regras
         self._corpus_cache: dict[str, int] | None = None   # 1× por lote (F12)
+        # Rodada JM (B1.6): a VIDA do motor é checada 1× por lote — era
+        # 1 GET (timeout 3 s) por item ambíguo; em 42 itens do Jornal,
+        # minutos só perguntando se o LM Studio está de pé
+        self._motor_vivo: bool | None = None
         self._status = status_cb or (lambda _m: None)
         # o índice em memória: (ids, matriz numpy L2-normalizada) ou None
         self._indice_cache: tuple[list[int], object] | None = None
@@ -459,15 +481,22 @@ class Conciliador:
         D4 não herda o ponto cego C-03 que veio consertar). Devolve
         (nome_da_categoria | None, score); abaixo do piso (padrão: o
         limiar do amarelo) não há palpite. UMA fonte para o lote, a
-        conciliação e a criação (a lição do B6: nunca três receitas)."""
+        conciliação e a criação (a lição do B6: nunca três receitas).
+        Rodada JM (B1.6): o miolo virou `categoria_dos_candidatos` —
+        quem JÁ tem a lista do veredito não refaz fuzzy+embedding."""
         piso = self.limiares.amarelo if piso is None else piso
-        for cand in self._candidatos(nome_bruto):
-            if cand.score < piso:
-                break                     # ordenado: dali para baixo não serve
-            cat = getattr(cand.produto, "categoria", None)
-            if cat is not None:
-                return cat.nome, float(cand.score)
-        return None, 0.0
+        return categoria_dos_candidatos(self._candidatos(nome_bruto), piso)
+
+    def _motor_ok(self) -> bool:
+        """Rodada JM (B1.6): o GET de vida do motor vale para o LOTE
+        inteiro (a vida do cache é a vida do Conciliador — um por
+        importação). Se o LM cair NO MEIO do lote, o juiz falha e o
+        item degrada a amarelo pelo caminho de sempre (I2)."""
+        if self.motor is None:
+            return False
+        if self._motor_vivo is None:
+            self._motor_vivo = bool(self.motor.disponivel())
+        return self._motor_vivo
 
     # --- "juiz" IA (só nos ambíguos; usa 3–5 candidatos, nunca o banco todo) ---
 
@@ -558,7 +587,7 @@ class Conciliador:
                          melhor.score / 100, "similaridade alta", "fuzzy"))
 
         if melhor.score >= self.limiares.amarelo:
-            if self.motor is not None and self.motor.disponivel():
+            if self._motor_ok():
                 veredito = self._juiz(nome_bruto, cands)
                 if veredito is not None:
                     return _rebaixar_se_divergente(veredito)
@@ -567,6 +596,22 @@ class Conciliador:
 
         return Veredito(nome_bruto, Semaforo.VERMELHO, None, cands,
                         melhor.score / 100, "abaixo do limiar — provável novo", "novo")
+
+
+def categoria_dos_candidatos(candidatos: list[Candidato],
+                             piso: float) -> tuple[str | None, float]:
+    """Rodada JM (B1.6): a categoria do vizinho a partir de uma lista de
+    candidatos JÁ CALCULADA (ordenada por score) — o veredito da
+    conciliação carrega os top-5; refazer fuzzy+embedding por item era
+    metade da "demora" que o dono notou. Abaixo do ``piso`` não há
+    palpite (mesma régua do `categoria_do_vizinho`, uma fonte só)."""
+    for cand in candidatos or []:
+        if cand.score < piso:
+            break                     # ordenado: dali para baixo não serve
+        cat = getattr(cand.produto, "categoria", None)
+        if cat is not None:
+            return cat.nome, float(cand.score)
+    return None, 0.0
 
 
 def exclusividade_de_lote(vereditos: list[Veredito]) -> None:

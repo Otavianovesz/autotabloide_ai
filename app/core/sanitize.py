@@ -85,8 +85,15 @@ class RegrasSanitizacao:
     # A expansão roda ANTES da caixa — o resultado ganha a formatação normal.
     glossario_siglas: tuple[tuple[str, str], ...] = ()
 
+    # Rodada JM (B1.5): correções de grafia EXTRAS do dono (Config
+    # 'sanitizacao.ortografia'), somadas ao vocabulário de mercado de
+    # `app/core/ortografia.py` (extras vencem colisão).
+    ortografia: tuple[tuple[str, str], ...] = ()
+
     # Caracteres claramente lixo a remover.
-    lixo_chars: str = "®©™°"
+    # Rodada JM (B1.4): "<"/">" — o separador "<>" do documento do dono
+    # nunca é nome de produto (vale para OCR e colagem).
+    lixo_chars: str = "®©™°<>"
 
 
 REGRAS_PADRAO = RegrasSanitizacao()
@@ -143,6 +150,27 @@ def _regex_unidades(regras: RegrasSanitizacao) -> re.Pattern[str]:
     corpo = "|".join(re.escape(k) for k in chaves)
     # número (com , ou . decimal) seguido, opcionalmente com espaço, da unidade
     return re.compile(rf"(\d+(?:[.,]\d+)?)\s*(?:{corpo})\b", re.IGNORECASE)
+
+
+# Rodada JM (B1.2): METRAGEM ("30M" do papel higiênico/alumínio) exige
+# 2+ DÍGITOS — "3M" com um dígito é MARCA (a fita adesiva), nunca metro.
+# O caso-limite escrito com a regra (§6).
+_RE_METRAGEM = re.compile(r"\b(\d{2,})\s*(?:mts|mt|metros|metro|m)\b",
+                          re.IGNORECASE)
+# contagem de venda no FIM do nome ("12 Rolos", "2 Folhas", "10 un") —
+# desce ao descritor como o peso desce; nunca é colada ("12rolos" não
+# é grafia de encarte)
+_RE_CONTAGEM_FIM = re.compile(
+    r"(\d+)\s*(rolos?|folhas?|unidades?|unid|und|un)\.?$", re.IGNORECASE)
+# metragem no FIM, com multiplicador opcional ("12 x 30M")
+_RE_METRAGEM_FIM = re.compile(
+    r"(\d+\s*[xX×]\s*)?(\d{2,})\s*(?:mts|mt|metros|metro|m)\.?$",
+    re.IGNORECASE)
+
+
+def _normalizar_metragem(texto: str) -> str:
+    """Cola número à metragem e canoniza ("30 M" → "30m")."""
+    return _RE_METRAGEM.sub(lambda m: f"{m.group(1)}m", texto)
 
 
 def _canonizar_unidade(bruta: str, regras: RegrasSanitizacao) -> str:
@@ -281,8 +309,10 @@ def formatar_nome(texto: str, regras: RegrasSanitizacao = REGRAS_PADRAO) -> str:
     ``150ml``), caixa Title Case e siglas. NÃO reordena nem detecta pendências.
     Usado na 2ª etapa do enriquecimento: a IA cuida do sentido, isto do acabamento.
     """
-    limpo = _limpar(texto, regras)
-    com_unidades = _normalizar_unidades(limpo, regras)
+    from app.core.ortografia import corrigir_acentos
+
+    limpo = corrigir_acentos(_limpar(texto, regras), regras.ortografia)
+    com_unidades = _normalizar_metragem(_normalizar_unidades(limpo, regras))
     expandido = _expandir_glossario(com_unidades, regras)
     return _aplicar_caixa(expandido, regras)
 
@@ -305,7 +335,7 @@ def separar_peso(
     for m in _regex_unidades(regras).finditer(base):
         ultimo = m
     if ultimo is None or ultimo.end() != len(base):
-        return texto, None
+        return _separar_medida_nao_peso(texto, base, regras)
     numero = ultimo.group(1).replace(".", ",")
     unidade_bruta = ultimo.group(0)[len(ultimo.group(1)):].strip()
     unidade = _canonizar_unidade(unidade_bruta, regras)
@@ -322,13 +352,50 @@ def separar_peso(
     return nome, f"{prefixo}{numero} {unidade}"
 
 
+def _separar_medida_nao_peso(
+    texto: str, base: str, regras: RegrasSanitizacao
+) -> tuple[str, str | None]:
+    """Rodada JM (B1.2/B1.3): os três cortes que o Jornal pediu quando o
+    FIM da linha não é peso — metragem no fim ("Papel Aluminio 30M"),
+    contagem no fim ("12 Rolos") e peso no INÍCIO ("1 LT INTE GRAL",
+    sobra de coluna/divisão). O peso no MEIO segue intocado — a lei da
+    camada (a ordem dos tokens nunca muda) não abre exceção."""
+    m = _RE_METRAGEM_FIM.search(base)
+    if m:
+        nome = base[:m.start()].rstrip(" -–·")
+        if nome:
+            prefixo = (m.group(1) or "").replace(" ", "").replace("X", "x")
+            return nome, f"{prefixo}{m.group(2)} m"
+    m = _RE_CONTAGEM_FIM.search(base)
+    if m:
+        nome = base[:m.start()].rstrip(" -–·")
+        if nome:
+            contagem = m.group(2).lower()
+            if contagem in ("unid", "und", "unidade", "unidades"):
+                contagem = "un"
+            return nome, f"{m.group(1)} {contagem}"
+    m = _regex_unidades(regras).match(base)
+    if m and m.end() < len(base):
+        nome = base[m.end():].lstrip(" -–·")
+        # preposição órfã do corte ("200g de Presunto" → "Presunto")
+        nome = re.sub(r"^(?:de|da|do)\s+", "", nome, flags=re.IGNORECASE)
+        if nome:
+            numero = m.group(1).replace(".", ",")
+            unidade_bruta = m.group(0)[len(m.group(1)):].strip()
+            unidade = _canonizar_unidade(unidade_bruta, regras)
+            return nome, f"{numero} {unidade}"
+    return texto, None
+
+
 def sanitizar(
     nome_bruto: str, regras: RegrasSanitizacao = REGRAS_PADRAO
 ) -> ResultadoSanitizacao:
     """Sanitiza um nome cru aplicando só as regras determinísticas."""
-    limpo = _limpar(nome_bruto, regras)
+    from app.core.ortografia import corrigir_acentos
+
+    limpo = corrigir_acentos(_limpar(nome_bruto, regras), regras.ortografia)
     peso_valor, peso_unidade = _extrair_peso(limpo, regras)
-    com_unidades = _normalizar_unidades(limpo, regras)
+    com_unidades = _normalizar_metragem(_normalizar_unidades(limpo, regras))
     expandido = _expandir_glossario(com_unidades, regras)
     nome = _aplicar_caixa(expandido, regras)
 

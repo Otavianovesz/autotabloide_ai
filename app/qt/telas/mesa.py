@@ -50,6 +50,11 @@ class MesaTela(QWidget):
         # o mapa slot→uid mora no CANVAS (D5: undo versiona {layout, mapa});
         # aqui, `_mapa` é um proxy — ver a property abaixo
         self._validade: str | None = None
+        # Rodada JM (B2A): de ONDE a validade veio — "cascata" (palpite
+        # do calendário), "manual" (escolha do dono/projeto) ou "tabela"
+        # (escrita no documento). A tabela vence a cascata; a escolha
+        # humana nunca é sobrescrita em silêncio (validade_vence).
+        self._validade_origem: str | None = None
         # F13-TER/D1: a edição REAL do Jornal ("Nº 178 · ANO 42")
         self._edicao: str | None = None
         self._registro_selos: list[dict] = []   # RG-33: cache por recomposição
@@ -456,6 +461,7 @@ class MesaTela(QWidget):
         if dlg.exec() != ValidadeDialog.DialogCode.Accepted:
             return
         self._validade = dlg.valor()
+        self._validade_origem = "manual"          # a escolha do dono (B2A)
         self._atualizar_chip_validade()
         self._marcar_salvo(False)
         if self._mapa:
@@ -782,6 +788,7 @@ class MesaTela(QWidget):
                 getattr(self, "_evento", None) or self._layout_nome)
             if sugestao:
                 self._validade = sugestao
+                self._validade_origem = "cascata"      # palpite (B2A)
         self._atualizar_chip_validade()
         # RG-08: assinatura do documento carregado — o showEvent compara com
         # o banco e re-sincroniza se o Ateliê editou este layout
@@ -966,6 +973,7 @@ class MesaTela(QWidget):
                 evento or self._layout_nome)
             if sugestao:
                 self._validade = sugestao
+                self._validade_origem = "cascata"      # palpite (B2A)
                 self._atualizar_chip_validade()
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia da "
                                     "campanha) — edite se precisar.")
@@ -1062,6 +1070,9 @@ class MesaTela(QWidget):
         if callable(self.ao_documento):
             self.ao_documento(p.nome)    # título da janela (passo 77)
         self._validade = p.validade_oferta
+        # projeto salvo = decisão do dono congelada — a tabela não
+        # sobrescreve em silêncio (B2A)
+        self._validade_origem = "manual" if p.validade_oferta else None
         self._atualizar_chip_validade()
         self._edicao = getattr(p, "edicao", None)    # F13-TER/D1
         self._edicao_lbl.setText(
@@ -1163,18 +1174,23 @@ class MesaTela(QWidget):
                            f"fora (prosa sem preço): {mostra}"
                            + ("…" if len(balde) > 3 else ""))
         if tuplas:
+            from app.qt.telas.colagem import descontos_de
             self._importar_tuplas(tuplas, multi_precos_de(confirmadas),
+                                  descontos=descontos_de(confirmadas),
                                   aviso=aviso_balde)
 
     def _importar_tuplas(self, tuplas, multi_precos=None,
-                         aviso=None) -> None:
+                         descontos=None, aviso=None) -> None:
         """Concilia tuplas (descricao, preco, ean) em worker → estante (o mesmo
         _conciliar do multi-arquivo). 'Dados primeiro, fotos depois': os itens
         nascem sem foto e a busca em lote fica para depois (R-053).
-        `multi_precos` (paralelo) leva a promoção "N por R$X" ao ItemMesa."""
+        `multi_precos` (paralelo) leva a promoção "N por R$X" ao ItemMesa;
+        `descontos` (paralelo, Rodada JM/B2B) leva o "20% de desconto"
+        declarado — era código morto: a colagem reconhecia e ninguém passava."""
         trab = Trabalhador(
-            lambda st, t=tuplas, mp=multi_precos, av=aviso:
-            servico.conciliar_linhas(t, st, multi_precos=mp, aviso=av))
+            lambda st, t=tuplas, mp=multi_precos, dp=descontos, av=aviso:
+            servico.conciliar_linhas(t, st, multi_precos=mp,
+                                     descontos=dp, aviso=av))
         trab.status.connect(self._overlay.mostrar)
         trab.ok.connect(self._conciliar)
         trab.erro.connect(self._falhou)
@@ -1198,19 +1214,38 @@ class MesaTela(QWidget):
         self._marcar_salvo(False)
         mostrar_toast(self, f"{len(novos)} item(ns) do banco na estante.")
 
+    def _adotar_validade_da_tabela(self, cru: str | None) -> bool:
+        """Rodada JM (B2A): a validade escrita na tabela, NORMALIZADA
+        para o vocabulário da casa, entra pela regra `validade_vence` —
+        vence o vazio e a cascata do calendário; a escolha do dono fica
+        de pé com um toast dizendo como trocar (I2). Devolve True se
+        adotou."""
+        if not (cru or "").strip():
+            return False
+        canonica = servico.normalizar_validade_tabela(cru) or cru.strip()
+        if servico.validade_vence(self._validade,
+                                  self._validade_origem, canonica):
+            self._validade = canonica
+            self._validade_origem = "tabela"
+            self._atualizar_chip_validade()
+            mostrar_toast(self, "Validade veio da tabela: "
+                                f"“{self._validade}”.")
+            return True
+        if canonica != self._validade:
+            mostrar_toast(self, f"A tabela diz “{canonica}” — mantive a "
+                                f"sua “{self._validade}”; clique no 📅 "
+                                "para trocar.")
+        return False
+
     def _conciliar(self, resultado: servico.ResultadoMesa) -> None:
         self._overlay.esconder()
         if resultado.aviso:            # RG-04: o cache-hit do OCR fica visível
             mostrar_toast(self, resultado.aviso)
         # Auditoria do dono (validade): a validade ESCRITA NA TABELA (o caso
-        # do jornal do mês) era extraída pelo parser e IGNORADA aqui — só
-        # valia ao reabrir projeto. A da tabela MANDA; uma já definida à mão
-        # não é sobrescrita em silêncio.
-        if resultado.validade_oferta and not self._validade:
-            self._validade = resultado.validade_oferta
-            self._atualizar_chip_validade()
-            mostrar_toast(self, "Validade veio da tabela: "
-                                f"“{self._validade}”.")
+        # do jornal do mês) era extraída pelo parser e ou era IGNORADA (a
+        # cascata preenchia antes) ou sobrescrevia até escolha manual (a
+        # linha pós-diálogo, sem guarda). Agora: UMA regra (validade_vence).
+        self._adotar_validade_da_tabela(resultado.validade_oferta)
         dlg = ConciliacaoDialog(resultado, self)
         if getattr(dlg, "_tela_cheia", False):
             dlg.showMaximized()        # R-052: fonte-foto abre em tela cheia
@@ -1253,9 +1288,11 @@ class MesaTela(QWidget):
             self._itens = verdes
 
         # DECIMUS: a conciliação sem validade própria NÃO apaga a que a
-        # cascata do D1 já pôs no chip (o dlg devolve None nesse caso)
-        if dlg.validade:
-            self._validade = dlg.validade
+        # cascata do D1 já pôs no chip (o dlg devolve None nesse caso).
+        # Rodada JM (B2A): o dlg.validade é o MESMO cru da tabela — passa
+        # pela MESMA regra (antes sobrescrevia até escolha manual, calado)
+        if dlg.validade and self._validade_origem != "tabela":
+            self._adotar_validade_da_tabela(dlg.validade)
         self._atualizar_chip_validade()
         self._recarregar_lista()
         self.btn_preencher.setEnabled(bool(self._itens))
@@ -1611,6 +1648,9 @@ class MesaTela(QWidget):
         self._itens = [servico.ItemMesa.from_dict(d)
                        for d in estado.get("itens", [])]
         self._validade = estado.get("validade")
+        # rascunho recuperado: tratado como escolha do dono — conservador
+        # de propósito (a tabela avisa em vez de sobrescrever, B2A)
+        self._validade_origem = "manual" if self._validade else None
         self._edicao = estado.get("edicao") or None     # F13-TER/D1
         self._evento = estado.get("evento") or None     # F13/D7
         self._atualizar_chip_validade()  # DECIMUS: o chip acompanha
@@ -1754,6 +1794,39 @@ class MesaTela(QWidget):
 
     # --- OS F11.5 #50/#51 (R-082): variações do mesmo produto -----------------
 
+    def _sabores_da_familia(self, linha: int) -> None:
+        """Rodada JM (B4): o CHECK de sabores — o dono marca quais
+        sabores da família estão na oferta e o item vira o leque."""
+        if not (0 <= linha < len(self._itens)):
+            return
+        it = self._itens[linha]
+        fam = it.familia or {}
+        membros = fam.get("membros") or []
+        if not membros:
+            mostrar_toast(self, "A família deste produto está vazia.")
+            return
+        from app.qt.telas.sabores_dialog import SaboresDialog
+        dlg = SaboresDialog(fam.get("nome") or (it.nome or ""), membros,
+                            marcados={it.produto_id}, parent=self)
+        if dlg.exec() != SaboresDialog.DialogCode.Accepted:
+            return
+        escolhidos = dlg.escolhidos()
+        if not escolhidos:
+            mostrar_toast(self, "Nenhum sabor marcado — o item ficou "
+                                "como estava.")
+            return
+        servico.aplicar_sabores(it, escolhidos)
+        sem_foto = [m["nome"] for m in escolhidos if not m.get("imagem")]
+        aviso = (f" ({len(sem_foto)} sem foto — o pré-voo avisa)"
+                 if sem_foto else "")
+        self._recarregar_lista()
+        self._marcar_salvo(False)
+        if self._mapa:
+            self.area.canvas.atualizar_dados(self._dados_por_slot())
+            self.area.canvas.viewport().update()
+        mostrar_toast(self, f"“{it.nome}” com {len(escolhidos)} sabor(es) "
+                            f"no leque{aviso}.")
+
     def _sugerir_variacoes(self) -> None:
         """Detecta prováveis variações (sabores/tamanhos da MESMA marca
         conhecida) e pergunta, grupo a grupo, se agrupa num slot só (o modo
@@ -1810,6 +1883,28 @@ class MesaTela(QWidget):
         mostrar_toast_desfazer(
             self, f"“{base.nome}” virou multi com {len(base.imagens)} foto(s).",
             _desfazer)
+        # Rodada JM (B4): famílias nascem do USO — o agrupamento aceito
+        # de produtos reais ainda sem família vira família do acervo
+        # se o dono quiser (a porta única criar_familia_de)
+        pids = [it.produto_id for it in grupo if it.produto_id]
+        sem_familia = all(not it.familia for it in grupo)
+        if len(pids) == len(grupo) and sem_familia:
+            from app.qt.design.componentes import perguntar
+            sugestao = servico.nome_de_familia(
+                [it.nome or "" for it in grupo])
+            if sugestao and perguntar(
+                    self, "Guardar como família?",
+                    f"Quer guardar estes {len(grupo)} como a família "
+                    f"“{sugestao}” no acervo? Na próxima importação o "
+                    "app já oferece o check de sabores.",
+                    sim="Guardar família", nao="Agora não"):
+                try:
+                    servico.criar_familia_de(pids, sugestao)
+                    mostrar_toast(self, f"Família “{sugestao}” guardada "
+                                        "no acervo.")
+                except Exception as e:
+                    mostrar_toast(self, f"Não deu para guardar a família: "
+                                        f"{e}", tipo="erro")
 
     def _publicar(self) -> None:
         """R-139/140/141/142: hub dos formatos sociais + vídeo (reusa o
@@ -2264,6 +2359,15 @@ class MesaTela(QWidget):
                                  "Fotos deste item (sabores)…")
         a_fotos.setToolTip("Várias fotos na mesma célula — a IA sugere os "
                            "termos, você escolhe cada foto")
+        # Rodada JM (B4): o CHECK de sabores da FAMÍLIA do acervo — só
+        # aparece quando o produto casado pertence a uma família
+        a_sabores = None
+        if it is not None and it.familia:
+            a_sabores = menu.addAction(
+                icone("imagem", tamanho=16),
+                f"Sabores da família “{it.familia.get('nome', '')}”…")
+            a_sabores.setToolTip("Marque quais sabores estão na oferta — "
+                                 "as fotos viram o leque da célula")
         a_editar = menu.addAction(icone("texto", tamanho=16),
                                   "Editar nome e preço")
         # R-070: promoção por quantidade (campo qtd+valor) — casca do multi-preço
@@ -2312,6 +2416,8 @@ class MesaTela(QWidget):
                             if 0 <= ix.row() < len(self._itens)]
             for alvo in (selecionados or [it]):
                 self.duplicar_item(alvo)
+        elif a_sabores is not None and escolha == a_sabores:
+            self._sabores_da_familia(linha)
         elif escolha == a_fotos:
             self._fotos_do_item(li)
         elif escolha == a_editar:
@@ -2866,6 +2972,7 @@ class MesaTela(QWidget):
                 getattr(self, "_evento", None) or self._layout_nome)
             if sugestao:
                 self._validade = sugestao
+                self._validade_origem = "cascata"      # palpite (B2A)
                 self._atualizar_chip_validade()
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia "
                                     "da campanha) — edite se precisar.")

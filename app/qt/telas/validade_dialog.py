@@ -83,6 +83,26 @@ class ValidadeDialog(QDialog):
         linha.addWidget(self.data_outra, 1)
         raiz.addLayout(linha)
 
+        # Rodada JM (B2A): o par DE/ATÉ arbitrário — o Jornal vale do
+        # dia 3 ao 27 e não havia como dizer isso sem digitar à mão
+        linha2 = QHBoxLayout()
+        self.op_de_ate = QRadioButton("De")
+        self.data_de = QDateEdit(QDate(self._hoje.year, self._hoje.month,
+                                       self._hoje.day))
+        fim_de_ate = self._hoje + timedelta(days=6)
+        self.data_ate = QDateEdit(QDate(fim_de_ate.year, fim_de_ate.month,
+                                        fim_de_ate.day))
+        for de_ou_ate in (self.data_de, self.data_ate):
+            de_ou_ate.setCalendarPopup(True)
+            de_ou_ate.setDisplayFormat("dd/MM/yyyy")
+            de_ou_ate.dateChanged.connect(self._mudou_de_ate)
+        linha2.addWidget(self.op_de_ate)
+        linha2.addWidget(self.data_de, 1)
+        linha2.addWidget(QLabel("até"))
+        linha2.addWidget(self.data_ate, 1)
+        raiz.addLayout(linha2)
+        self.op_de_ate.toggled.connect(lambda _c: self._validar_de_ate())
+
         if not sugerida:
             self.op_hoje.setChecked(True)
 
@@ -94,6 +114,21 @@ class ValidadeDialog(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         raiz.addWidget(botoes)
+        self._b_usar = b_usar
+
+    def _mudou_de_ate(self, _d) -> None:
+        self.op_de_ate.setChecked(True)
+        self._validar_de_ate()
+
+    def _validar_de_ate(self) -> None:
+        """Até antes do De = intervalo impossível — o "Usar" desabilita
+        com a explicação no tooltip (nunca um período de trás p/ frente)."""
+        invalido = (self.op_de_ate.isChecked()
+                    and self.data_ate.date() < self.data_de.date())
+        self._b_usar.setEnabled(not invalido)
+        self._b_usar.setToolTip(
+            "O “até” está antes do “de” — inverta as datas."
+            if invalido else "")
 
     def valor(self) -> str | None:
         """A validade escolhida, no vocabulário que o app já fala
@@ -112,4 +147,11 @@ class ValidadeDialog(QDialog):
         if self.op_outra.isChecked():
             d = self.data_outra.date()
             return f"SOMENTE {d.day():02d}/{d.month():02d}"
+        if self.op_de_ate.isChecked():
+            from app.qt.telas.servico import montar_validade_oferta
+            de = self.data_de.date()
+            ate = self.data_ate.date()
+            return montar_validade_oferta(
+                f"{de.day():02d}/{de.month():02d}",
+                f"{ate.day():02d}/{ate.month():02d}")
         return None

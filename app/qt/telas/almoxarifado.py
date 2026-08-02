@@ -968,6 +968,21 @@ class AlmoxarifadoTela(QWidget):
         a_kit = menu.addAction(icone("impressora", tamanho=16),
                                "Kit ponta-de-gôndola…")
         menu.addSeparator()
+        # Rodada JM (B4): sabores viram FAMÍLIA — 2+ selecionados ligam;
+        # 1 selecionado que JÁ tem família desliga
+        a_familia = a_desligar = None
+        if len(selecao) >= 2:
+            a_familia = menu.addAction(
+                icone("caixa", tamanho=16),
+                f"Ligar {len(selecao)} como família de sabores…")
+            a_familia.setToolTip("Cada sabor segue produto completo; na "
+                                 "importação o app oferece o check de "
+                                 "sabores e o leque de fotos")
+        elif servico.familia_do_item(
+                self.modelo._linhas[selecao[0]].get("id")):
+            a_desligar = menu.addAction(icone("restaurar", tamanho=16),
+                                        "Desligar da família")
+        menu.addSeparator()
         rotulo = (f"Excluir {len(selecao)} produtos" if len(selecao) > 1
                   else "Excluir")
         a_del = menu.addAction(icone("lixeira", tamanho=16), rotulo)
@@ -989,6 +1004,10 @@ class AlmoxarifadoTela(QWidget):
         elif escolha == a_kit:
             self._selecionou(index)
             self._cartaz_relampago(kit=True)
+        elif a_familia is not None and escolha == a_familia:
+            self._ligar_familia(selecao)
+        elif a_desligar is not None and escolha == a_desligar:
+            self._desligar_familia(self.modelo._linhas[selecao[0]]["id"])
         elif escolha == a_del:
             from app.qt.design.componentes import confirmar_destrutivo
             if confirmar_destrutivo(              # passo 78: verbo no botão
@@ -997,6 +1016,46 @@ class AlmoxarifadoTela(QWidget):
                     f"Excluir {len(selecao)} produto(s)"):
                 ids = [self.modelo._linhas[r]["id"] for r in selecao]
                 self._excluir(ids)
+
+    def _ligar_familia(self, selecao: list[int]) -> None:
+        """Rodada JM (B4): os selecionados viram uma FAMÍLIA de sabores
+        — o nome sugerido é o prefixo comum, editável no diálogo."""
+        from PySide6.QtWidgets import QInputDialog
+        linhas = [self.modelo._linhas[r] for r in selecao]
+        nomes = [d.get("nome") or "" for d in linhas]
+        sugestao = servico.nome_de_familia(nomes)
+        nome, ok = QInputDialog.getText(
+            self, "Família de sabores",
+            "Nome da família (o que os sabores têm em comum):",
+            text=sugestao)
+        if not ok or not nome.strip():
+            return
+        try:
+            servico.criar_familia_de([d["id"] for d in linhas],
+                                     nome.strip())
+        except Exception as e:
+            mostrar_toast(self, f"Não deu para ligar a família: {e}",
+                          tipo="erro")
+            return
+        mostrar_toast(self, f"Família “{nome.strip()}” com "
+                            f"{len(linhas)} sabor(es) ligada.")
+
+    def _desligar_familia(self, produto_id: int) -> None:
+        from app.core.database import Database
+        from app.core.repositories import ProdutoRepositorio
+        try:
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    ProdutoRepositorio(s).definir_familia(
+                        [produto_id], None)
+                    s.commit()
+            finally:
+                db.engine.dispose()
+        except Exception as e:
+            mostrar_toast(self, f"Não deu para desligar: {e}", tipo="erro")
+            return
+        mostrar_toast(self, "Produto desligado da família.")
 
     def _excluir(self, ids: list[int]) -> None:
         """RG-05: exclusão fora do thread da UI (com acervo grande, o commit

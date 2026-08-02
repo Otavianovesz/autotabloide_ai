@@ -15,6 +15,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -37,7 +38,11 @@ _MINIATURA = 148
 class CuradoriaDialog(QDialog):
     def __init__(self, nome_produto: str, candidatos: list[str], parent=None,
                  *, nome_editavel: bool = True,
-                 tokens_perdidos: list[str] | None = None):
+                 tokens_perdidos: list[str] | None = None,
+                 possivel_composto: bool = False,
+                 componentes: list[str] | None = None,
+                 componentes_da_ia: bool = False,
+                 mais18: bool = False):
         super().__init__(parent)
         self.setWindowTitle("Escolher imagem")
         self.escolha: tuple[str, str | None] = ("nenhuma", None)
@@ -70,6 +75,39 @@ class CuradoriaDialog(QDialog):
             self.aviso_tokens.setStyleSheet(f"color: {tk.ALERTA};")
         else:
             self.aviso_tokens.hide()
+
+        # Rodada JM (B3.2): "são 2 produtos?" — a linha com duas marcas
+        # num preço PERGUNTA em vez de criar remendo; a decisão é SEMPRE
+        # do humano (a IA sugere e pré-marca; desmarcar cancela)
+        comps = list(componentes or [])
+        self.chk_composto = QCheckBox(
+            "São 2 produtos (criar os dois e compor)")
+        self.chk_composto.setToolTip(
+            "Cada um vira um produto próprio no acervo e a célula "
+            "mostra os dois juntos — separável a qualquer momento")
+        self.comp_1 = QLineEdit(comps[0] if len(comps) > 0 else "")
+        self.comp_2 = QLineEdit(comps[1] if len(comps) > 1 else "")
+        for campo in (self.comp_1, self.comp_2):
+            campo.setPlaceholderText("nome do produto…")
+        self._aviso_composto = QLabel(
+            "Esta linha parece ter 2 produtos no mesmo preço.")
+        self._aviso_composto.setProperty("papel", "legenda")
+        if possivel_composto:
+            self.chk_composto.setChecked(bool(componentes_da_ia))
+            self.chk_composto.toggled.connect(self._habilitar_composto)
+            self._habilitar_composto(self.chk_composto.isChecked())
+        else:
+            for w in (self._aviso_composto, self.chk_composto,
+                      self.comp_1, self.comp_2):
+                w.hide()
+
+        # Rodada JM (B3.5): o +18 automático é VISÍVEL e editável (I2) —
+        # antes `proposta.mais18` viajava invisível até o banco
+        self.chk_mais18 = QCheckBox("+18 (bebida alcoólica)")
+        self.chk_mais18.setChecked(bool(mais18))
+        self.chk_mais18.setToolTip(
+            "Grava bebida alcoólica no produto — o selo +18 entra "
+            "sozinho em toda peça (decisão travada da casa)")
 
         # A3 (ORDEM_F5_8): re-busca com termo editável (o antídoto do caso
         # "Mococa → unhas de manicure")
@@ -184,6 +222,14 @@ class CuradoriaDialog(QDialog):
         lay.setSpacing(t.ESP_2)
         lay.addWidget(titulo)
         lay.addWidget(self.aviso_tokens)   # RG-20: aviso nominal da perda
+        lay.addWidget(self._aviso_composto)      # B3.2: "parece 2 produtos"
+        lay.addWidget(self.chk_composto)
+        linha_comp = QHBoxLayout()
+        linha_comp.setSpacing(t.ESP_2)
+        linha_comp.addWidget(self.comp_1, 1)
+        linha_comp.addWidget(self.comp_2, 1)
+        lay.addLayout(linha_comp)
+        lay.addWidget(self.chk_mais18)           # B3.5: +18 visível
         lay.addWidget(dica)
         lay.addLayout(caixa_busca)
         lay.addWidget(self.lista, 1)
@@ -206,6 +252,23 @@ class CuradoriaDialog(QDialog):
 
         from app.qt.design.polimento import ordenar_tab
         ordenar_tab(self)               # FASE 1 (passo 66): Tab visual
+
+    def _habilitar_composto(self, ligado: bool) -> None:
+        self.comp_1.setEnabled(ligado)
+        self.comp_2.setEnabled(ligado)
+
+    def componentes_finais(self) -> list[str]:
+        """B3.2: os DOIS nomes confirmados pelo humano — [] quando o
+        check está desmarcado (produto único de sempre) ou algum campo
+        ficou vazio (composto pela metade não existe)."""
+        if not self.chk_composto.isChecked():
+            return []
+        a = self.comp_1.text().strip()
+        b = self.comp_2.text().strip()
+        return [a, b] if a and b else []
+
+    def mais18_final(self) -> bool:
+        return self.chk_mais18.isChecked()
 
     # --- nome final (A2) ----------------------------------------------------------
 

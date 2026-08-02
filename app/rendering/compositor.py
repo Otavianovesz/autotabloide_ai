@@ -153,11 +153,14 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
         # tem o resto GRAVADO na arte ("Ofertas válidas" era
         # redundante três vezes e cobria o texto curvo do selo). Sem
         # data no texto, cai no completo (guarda: nunca em silêncio).
+        # Rodada JM (B2A): a data é a ÚLTIMA (o FIM da oferta) — num
+        # período "DE 03/08 ATÉ 27/08" o selo diz até quando vale
+        # (27/08), não o dia em que começou.
         if getattr(reg, "so_data", False) and texto:
             import re as _re
-            m = _re.search(r"\d{1,2}/\d{1,2}", texto)
-            if m:
-                return m.group(0)
+            datas = _re.findall(r"\d{1,2}/\d{1,2}", texto)
+            if datas:
+                return datas[-1]
         return texto
     if papel == PapelTexto.OBSERVACAO:
         # R-071: a observação do item; condicional — vazia devolve "" (a região
@@ -182,7 +185,20 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
         # condicional — sem dado a região fica MUDA (nunca um número
         # de edição mentindo; o pré-voo avisa que falta)
         return (getattr(dados, "edicao", None) or "") if dados else ""
-    return fixo or validade
+    if papel == PapelTexto.OFERTA:
+        # Rodada JM (B2B): o preço-texto do ITEM enche a estrela
+        # ("SUPER OFERTA"); sem dado vale o rótulo fixo do dono;
+        # vazio = a forma nem desenha (o D2 do Splash preservado)
+        mp = (getattr(dados, "multi_preco", None) or "") if dados else ""
+        return mp or fixo
+    # Rodada JM (B2A, decisão do dono 03/08): o texto fixo com período
+    # gravado ("do dia 1º ao 27" nas manchetes do Jornal) escreve o
+    # período REAL da validade; sem o padrão ou sem par de datas, o
+    # fixo volta intacto — layouts antigos compõem byte-idêntico.
+    if fixo:
+        from app.core.validade import texto_com_periodo_vivo
+        return texto_com_periodo_vivo(fixo, validade)
+    return validade
 
 
 # ==============================================================================
@@ -643,7 +659,16 @@ def _desenhar_preco(
 ) -> None:
     # R-070: multi-preço ("3 por R$10") é TEXTO — desenha na região POR/ÚNICO
     # (a região DE segue mostrando o preço antigo em Decimal, se houver).
+    # Rodada JM (B2B): o preço-texto ganha a MESMA forma do preço
+    # numérico ("SUPER OFERTA" sai DENTRO da pílula/estrela do encarte,
+    # como o publicado do dono) — antes retornava antes da forma e o
+    # texto saía pelado. A guarda L9 da camada vale igual.
     if reg.papel_preco != PapelPreco.DE and dados.multi_preco:
+        if reg.forma_preco != FormaPreco.TEXTO:
+            if not (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
+                    and getattr(base, "_tem_camada", False)):
+                _desenhar_forma_preco(base, reg, dpi)
+            reg = _regiao_palco_da_forma(reg)
         _desenhar_texto(base, draw, reg, dados.multi_preco, dpi, fontes_dir)
         return
 

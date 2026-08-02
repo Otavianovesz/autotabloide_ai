@@ -745,9 +745,11 @@ def _jornal_p1() -> list[Slot]:
                    nome="Fio"),
             # a estrela SUPER OFERTA (24 pontas no modelo) sai como
             # medalhão de pétalas VERDE — a aproximação declarada.
-            # D2: etiqueta OPCIONAL — nasce VAZIA (vazia = a forma nem
-            # desenha); o dono escolhe o rótulo (a inspeção põe o real)
-            _legal(384, 296, 106, 106, papel=PapelTexto.LIVRE,
+            # Rodada JM (B2B): papel OFERTA — o preço-texto do item do
+            # herói ("SUPER OFERTA") enche a estrela SOZINHO; o D2
+            # continua: sem dado e sem rótulo do dono, a forma nem
+            # desenha (texto_fixo nasce vazio e segue editável)
+            _legal(384, 296, 106, 106, papel=PapelTexto.OFERTA,
                    fonte=_F_ARCHIVO, texto="",
                    nome="Splash", rot=-8.0, tam=11.5, cor="#F7F3E9"),
             # a legenda da capa = nome + descritor do produto do hero

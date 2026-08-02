@@ -145,6 +145,17 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
                     f"preço “{preco_amb}” não foi entendido — confira "
                     "(ex.: 5,00; ou use “2 por 5,00” se for promoção)."))
             continue
+        # Rodada JM (B2B): "…<> S. OFERTA" no fim da linha é PREÇO-TEXTO
+        # (o valor varia no mês; a forma escreve SUPER OFERTA) — vem
+        # ANTES do balde: a linha real tinha "<>"/"." e morria como
+        # prosa-com-número, engolida
+        m_so = _RE_SUPER_OFERTA_FIM.search(raw)
+        if m_so is not None:
+            nome_so = _limpar_nome_de_tabela(raw[:m_so.start()])
+            if nome_so:
+                linhas.append(LinhaColada(nome_so, None, True,
+                                          multi_preco="SUPER OFERTA"))
+                continue
         nome, preco = _nome_preco(raw)
         nome = _limpar_nome_de_tabela(nome)
         if not nome:
@@ -188,7 +199,37 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
         if not valido:
             aviso = f"preço “{preco}” não foi entendido — confira (ex.: 5,00)"
         linhas.append(LinhaColada(nome, preco, valido, aviso))
+    _remover_codigos_de_coluna(linhas)
     return linhas
+
+
+# Rodada JM (B1.4): o código de coluna do documento ("T-1") — token
+# curto LETRA(S)-NÚMERO na BORDA do nome. A remoção é por FREQUÊNCIA no
+# lote: só quando o padrão se repete em ≥3 nomes E ≥30% das linhas ele é
+# coluna do documento; um "B-12" isolado (a vitamina) é nome e FICA — o
+# caso-limite escrito com a regra.
+_RE_CODIGO_COLUNA = re.compile(r"^[A-Za-z]{1,3}-\d{1,3}$")
+
+
+def _remover_codigos_de_coluna(linhas: list[LinhaColada]) -> None:
+    if len(linhas) < 3:
+        return
+    com_codigo = 0
+    for li in linhas:
+        tokens = li.nome.split()
+        if tokens and (_RE_CODIGO_COLUNA.match(tokens[0])
+                       or _RE_CODIGO_COLUNA.match(tokens[-1])):
+            com_codigo += 1
+    if com_codigo < 3 or com_codigo < 0.3 * len(linhas):
+        return
+    for li in linhas:
+        tokens = li.nome.split()
+        while tokens and _RE_CODIGO_COLUNA.match(tokens[-1]):
+            tokens.pop()
+        while tokens and _RE_CODIGO_COLUNA.match(tokens[0]):
+            tokens.pop(0)
+        if tokens:
+            li.nome = " ".join(tokens)
 
 
 _RE_SUFIXO_PRECO = re.compile(
@@ -209,6 +250,9 @@ def _limpar_nome_de_tabela(nome: str | None) -> str:
     # Passarinho) não tem underscores e fica
     limpo = re.sub(r"_+\s*[àáa]\s*(?=_|\d)", " ", nome,
                    flags=re.IGNORECASE)
+    # Rodada JM (B1.4): o "<>" do documento do Jornal é separador
+    # visual entre nome e preço — nunca é nome de produto
+    limpo = re.sub(r"[<>]+", " ", limpo)
     limpo = re.sub(r"[_]{2,}", " ", limpo)
     limpo = re.sub(r"\s{2,}", " ", limpo).strip(" _.·–-\t")
     while True:
@@ -246,6 +290,21 @@ def descontos_de(linhas: list[LinhaColada]):
 
 _RE_N_POR = re.compile(r"\b(\d+)\s*por\s*(R\$\s*)?(\d[\d.]*(?:[.,]\d{2})?)", re.I)
 _RE_LEVE = re.compile(r"\bleve\s*(\d+)\s*pague\s*(\d+)\b", re.I)
+
+# Rodada JM (B2B, decisão do dono 03/08): "S. OFERTA" no lugar do preço
+# = o preço VARIA no mês e o cartaz escreve SUPER OFERTA dentro da forma.
+_RE_SUPER_OFERTA = re.compile(r"^s\.?\s*oferta$|^super\s+oferta$", re.I)
+_RE_SUPER_OFERTA_FIM = re.compile(r"(s\.?\s*oferta|super\s+oferta)\s*$", re.I)
+
+
+def preco_texto_oferta(texto: str | None) -> str | None:
+    """Reconhece as grafias da tabela ("S. OFERTA", "S.OFERTA", "SUPER
+    OFERTA") e devolve o CANÔNICO "SUPER OFERTA" — ou None. Slogans
+    ("OFERTA DO DIA") e formatos com dono próprio nunca casam."""
+    t = (texto or "").strip().strip("<>_ .·–-")
+    if not t:
+        return None
+    return "SUPER OFERTA" if _RE_SUPER_OFERTA.match(t.strip()) else None
 
 
 @dataclass

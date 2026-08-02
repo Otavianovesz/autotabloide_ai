@@ -91,8 +91,14 @@ Regras:
 
 # --- RG-20: a REGRA DURA — nenhuma palavra do bruto pode sumir ---------------------
 
+# Rodada JM (B1.5): unidades e siglas de embalagem são stopwords — a
+# canonização "5 LTS"→"5L" nunca deve gritar; já "PÓ" (2 letras, palavra
+# de verdade) PRECISA gritar quando a IA o descarta — por isso o limiar
+# de tamanho desceu de 3 para 2 nas duas guardas abaixo.
 _STOPWORDS = {"de", "da", "do", "das", "dos", "com", "em", "e", "para", "por",
-              "a", "o", "as", "os", "un", "und", "cx", "pct"}
+              "a", "o", "as", "os", "un", "und", "cx", "pct",
+              "tp", "lv", "kg", "ml", "lt", "gr", "mg",
+              "kgs", "lts", "grs", "mls", "mgs"}
 
 
 def _normalizar_token(t: str) -> str:
@@ -115,7 +121,7 @@ def tokens_perdidos(bruto: str, sanitizado: str) -> list[str]:
     perdidos = []
     for original in bruto.split():
         tok = _normalizar_token(original)
-        if len(tok) < 3 or tok in _STOPWORDS:
+        if len(tok) < 2 or tok in _STOPWORDS:
             continue
         if not any(tok in cand or cand in tok for cand in alvo if cand):
             perdidos.append(original)
@@ -134,7 +140,7 @@ def tokens_inventados(bruto: str, sanitizado: str,
     inventados = []
     for original in sanitizado.split():
         tok = _normalizar_token(original)
-        if len(tok) < 3 or tok in _STOPWORDS or tok in liberados:
+        if len(tok) < 2 or tok in _STOPWORDS or tok in liberados:
             continue
         if not any(tok in cand or cand in tok for cand in base if cand):
             inventados.append(original)
