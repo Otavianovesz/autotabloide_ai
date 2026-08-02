@@ -387,8 +387,20 @@ class ConciliacaoDialog(QDialog):
                 cel_imp.setToolTip(item.descricao + "\n(duplo clique edita)")
                 self.tabela.setItem(i, 1, cel_imp)
                 self.tabela.setItem(i, 2, QTableWidgetItem(item.preco or "—"))
-                banco = (item.nome if item.produto_id
-                         else (item.candidato_nome or "—"))
+                # QUINTUSDECIMUS/J21: a linha NOVA nunca perde a seta —
+                # o recarregar trocava "→ nome a criar" pelo top-1 do
+                # fuzzy SEM a seta (a cerveja do dono virava "Doce de
+                # Leite" na vitrine). Vermelho mostra SEMPRE o que será
+                # criado; candidato de vermelho só existe no Vincular…
+                if item.produto_id:
+                    banco = item.nome
+                elif item.semaforo == "VERMELHO":
+                    # o _recarregar roda no __init__ antes da fila nascer
+                    prop = getattr(self, "_propostas", {}).get(item.uid)
+                    alvo = (prop.nome if prop else item.nome) or ""
+                    banco = f"→ {alvo}" if alvo else "—"
+                else:
+                    banco = item.candidato_nome or "—"
                 cel_banco = QTableWidgetItem(banco)
                 # ADENDO 30/07: a MINIATURA do palpite responde "é este
                 # mesmo?" num relance; o tooltip lista os candidatos
@@ -452,7 +464,27 @@ class ConciliacaoDialog(QDialog):
                 self._overlay.mostrar("Reconferindo no banco…")
                 self._trabalhos.rodar(trab)
         elif col == 2:
+            # QUINTUSDECIMUS/J18: o preço editado é AVALIADO na hora —
+            # "de X por Y" separa (por = preço, de = riscado); número
+            # limpa a pendência; ilegível avisa (nunca fica calado)
             item.preco = "" if texto in ("", "—") else texto
+            dp = servico.preco_de_por(item.preco)
+            if dp:
+                item.preco_de, item.preco = dp
+                item.preco_de_da_tabela = True
+            entendido = (not item.preco
+                         or servico.preco_decimal(item.preco) is not None)
+            if entendido:
+                if "preco_ilegivel" in (item.pendencias or []):
+                    item.pendencias.remove("preco_ilegivel")
+                    if item.semaforo == "AMARELO" and item.produto_id:
+                        item.semaforo = "VERDE"
+                        item.motivo = ""
+                    self._recarregar()
+            else:
+                mostrar_toast(self, f"Preço “{item.preco}” não entendido "
+                                    "— use 5,99 ou “de 8,49 por 6,90”.",
+                              tipo="erro")
 
     def _acoes(self, linha: int, item: servico.ItemMesa) -> QWidget:
         caixa = QWidget()
@@ -505,8 +537,48 @@ class ConciliacaoDialog(QDialog):
             h.addWidget(criar)
             h.addWidget(ignorar)
         else:
-            h.addWidget(QLabel("—"))
+            # QUINTUSDECIMUS/J17: o VERDE era a única linha SEM PORTA
+            # NENHUMA — e era a linha do Arroz que o dono citou duas
+            # vezes. Verde quer dizer "eu resolvo se você não disser
+            # nada", nunca "você não pode mais falar".
+            trocar = QPushButton("Trocar…")
+            trocar.setToolTip("Não é este produto — vincular a OUTRO do "
+                              "acervo (candidatos ou busca)")
+            trocar.clicked.connect(
+                lambda _=False, li=linha, b=trocar:
+                self._menu_vinculo(li, b))
+            separar = QPushButton("Separar em 2")
+            separar.setToolTip("Esta linha são DOIS produtos num preço — "
+                               "criar os dois e compor (Camil e Rei)")
+            separar.clicked.connect(
+                lambda _=False, li=linha: self._separar_em_dois(li))
+            h.addWidget(trocar)
+            h.addWidget(separar)
         return caixa
+
+    def _separar_em_dois(self, linha: int) -> None:
+        """J17: a porta "são 2 produtos" para a linha JÁ CASADA — ignora
+        o casamento e abre a curadoria com a pergunta ligada e a
+        sugestão determinística nos campos (o humano decide os nomes)."""
+        item = self.itens[linha]
+        det = servico.dividir_em_dois(item.descricao)
+        proposta = servico.PropostaCriacao(
+            nome=item.nome or item.descricao,
+            mais18=item.mais18, categoria=item.categoria,
+            possivel_composto=True,
+            sugestao_componentes=det,
+            componentes=det,          # pré-preenche os 2 campos editáveis
+            # o CLIQUE em "Separar em 2" já é a decisão do dono — o
+            # check nasce marcado (desmarcar continua cancelando)
+            componentes_da_ia=True)
+        trab = Trabalhador(lambda st, n=proposta.nome, e=item.ean:
+                           servico.buscar_candidatos_para(n, st, ean=e))
+        trab.status.connect(self._overlay.mostrar)
+        trab.ok.connect(lambda cs, li=linha, p=proposta:
+                        self._curadoria(li, self._com_candidatos(p, cs)))
+        trab.erro.connect(self._falhou)
+        self._overlay.mostrar("Buscando imagem…")
+        self._trabalhos.rodar(trab)
 
     # --- ADENDO 30/07: o vínculo forçado ("é ESTE aqui") --------------------
 
@@ -573,26 +645,24 @@ class ConciliacaoDialog(QDialog):
     # --- R-053: aceitar todos os verdes (OS F11.5 #19/#22) -----------------------
 
     def _aceitar_verdes(self) -> None:
-        """Segue SÓ com os verdes; os pendentes ficam FORA (visível — nunca em
-        silêncio) e o Desfazer os traz de volta num clique."""
+        """QUINTUSDECIMUS/J20: o clique que descartava 31 de 42 linhas
+        em silêncio MORREU. "Aceitar os verdes" confirma os verdes e as
+        demais linhas PERMANECEM na tabela para o dono resolver — quem
+        lê o botão entende "resolve os fáceis e me deixa cuidar do
+        resto", e agora é isso que ele faz. Nada é removido; remoção de
+        linha é decisão explícita (Ignorar, linha a linha)."""
         verdes, amarelos, vermelhos = servico.separar_por_semaforo(self.itens)
-        fora = len(amarelos) + len(vermelhos)
-        if not verdes or not fora:
+        restam = len(amarelos) + len(vermelhos)
+        if not verdes:
             return
-        self._backup_verdes = list(self.itens)
-        self.itens = verdes
-        self._recarregar()
-        self.btn_desfazer_verdes.setVisible(True)
-        mostrar_toast(self, f"{len(verdes)} verdes aceitos — {fora} item(ns) "
-                            "ficaram FORA desta oferta (Desfazer traz de volta).")
+        mostrar_toast(self, f"{len(verdes)} verde(s) já estão aceitos e "
+                            f"entram na oferta. As {restam} linha(s) "
+                            "restantes continuam aqui para você resolver "
+                            "— nada foi descartado.")
 
     def _desfazer_verdes(self) -> None:
-        """#22: o inverso a um clique — a lista volta inteira."""
-        backup = getattr(self, "_backup_verdes", None)
-        if backup:
-            self.itens = list(backup)
-            self._backup_verdes = None
-            self._recarregar()
+        """J20: sem descarte, nada a desfazer — mantido para compat de
+        chamadores antigos; o botão não fica mais visível."""
         self.btn_desfazer_verdes.setVisible(False)
 
     # --- OS F11.5 #15: navegação por teclado ------------------------------------
@@ -748,6 +818,15 @@ class ConciliacaoDialog(QDialog):
         self._pre_buscar_proximo(self.itens[linha].uid)   # RG-02b
         # Rodada JM (B3): a pergunta "são 2 produtos?" + o +18 visível —
         # a sugestão vem da IA (pré-marcada) ou do sanitize (desmarcada)
+        item_cur = self.itens[linha]
+        # J13: os sabores DETECTADOS + o nome-base sugerido da família
+        base_fam, sabores_det = servico.familia_da_linha(item_cur.descricao)
+        # J23: posição na fila de vermelhos ("item n de N")
+        verm = [it for it in self.itens if it.semaforo == "VERMELHO"]
+        try:
+            pos = (verm.index(item_cur) + 1, len(verm))
+        except ValueError:
+            pos = None
         dlg = CuradoriaDialog(
             proposta.nome, proposta.candidatos, self,
             tokens_perdidos=proposta.tokens_perdidos,
@@ -756,14 +835,19 @@ class ConciliacaoDialog(QDialog):
             componentes=(proposta.componentes
                          or proposta.sugestao_componentes),
             componentes_da_ia=proposta.componentes_da_ia,
-            mais18=proposta.mais18)
+            mais18=proposta.mais18,
+            sabores=sabores_det,
+            nome_familia_sugerido=base_fam,
+            contexto=item_cur.descricao,
+            posicao=pos)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         proposta.nome = dlg.nome_final()   # A2: a correção humana vale
-        # B3: o humano é a fonte final do composto e do +18 — desmarcar
-        # cancela o que a IA sugeriu; marcar cria os dois
+        # B3/J13: o humano é a fonte final — a 3ª pergunta decide o
+        # destino: 2 produtos, família de sabores, ou um produto só
         proposta.componentes = dlg.componentes_finais()
         proposta.mais18 = dlg.mais18_final()
+        self._sabores_escolhidos = dlg.sabores_finais()
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             self._cadastrar(linha, proposta, None)
@@ -842,8 +926,15 @@ class ConciliacaoDialog(QDialog):
     def _cadastrar(self, linha: int, proposta: servico.PropostaCriacao,
                    tratada: str | None) -> None:
         item = self.itens[linha]
+        sabores = getattr(self, "_sabores_escolhidos", None)
+        self._sabores_escolhidos = None
 
-        def _executar(st, it=item, p=proposta, tr=tratada):
+        def _executar(st, it=item, p=proposta, tr=tratada, sab=sabores):
+            if sab:                       # J13: "são sabores" → FAMÍLIA
+                nome_fam, lista = sab
+                return servico.criar_familia_de_sabores(
+                    it, nome_fam, lista, p.mais18, tr,
+                    categoria=p.categoria)
             if len(p.componentes) >= 2:             # RG-29: nasce composto
                 return servico.criar_como_composto(
                     it, p.componentes, p.mais18, tr, categoria=p.categoria)

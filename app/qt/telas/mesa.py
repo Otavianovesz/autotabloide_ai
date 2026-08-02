@@ -1174,13 +1174,15 @@ class MesaTela(QWidget):
                            f"fora (prosa sem preço): {mostra}"
                            + ("…" if len(balde) > 3 else ""))
         if tuplas:
-            from app.qt.telas.colagem import descontos_de
+            from app.qt.telas.colagem import descontos_de, precos_de_de
             self._importar_tuplas(tuplas, multi_precos_de(confirmadas),
                                   descontos=descontos_de(confirmadas),
+                                  precos_de=precos_de_de(confirmadas),
                                   aviso=aviso_balde)
 
     def _importar_tuplas(self, tuplas, multi_precos=None,
-                         descontos=None, aviso=None) -> None:
+                         descontos=None, precos_de=None,
+                         aviso=None) -> None:
         """Concilia tuplas (descricao, preco, ean) em worker → estante (o mesmo
         _conciliar do multi-arquivo). 'Dados primeiro, fotos depois': os itens
         nascem sem foto e a busca em lote fica para depois (R-053).
@@ -1188,9 +1190,11 @@ class MesaTela(QWidget):
         `descontos` (paralelo, Rodada JM/B2B) leva o "20% de desconto"
         declarado — era código morto: a colagem reconhecia e ninguém passava."""
         trab = Trabalhador(
-            lambda st, t=tuplas, mp=multi_precos, dp=descontos, av=aviso:
+            lambda st, t=tuplas, mp=multi_precos, dp=descontos,
+            pde=precos_de, av=aviso:
             servico.conciliar_linhas(t, st, multi_precos=mp,
-                                     descontos=dp, aviso=av))
+                                     descontos=dp, precos_de=pde,
+                                     aviso=av))
         trab.status.connect(self._overlay.mostrar)
         trab.ok.connect(self._conciliar)
         trab.erro.connect(self._falhou)
@@ -1228,6 +1232,12 @@ class MesaTela(QWidget):
             self._validade = canonica
             self._validade_origem = "tabela"
             self._atualizar_chip_validade()
+            # QUINTUSDECIMUS/J24: a manchete é DERIVADA — recompõe no
+            # instante em que a validade chega, não quando alguém
+            # aperta outro botão (quem exportasse antes do
+            # auto-preencher publicava "1º ao 27" com a tabela dizendo 3)
+            self.area.canvas.atualizar_dados(self._dados_por_slot())
+            self.area.canvas.viewport().update()
             mostrar_toast(self, "Validade veio da tabela: "
                                 f"“{self._validade}”.")
             return True
@@ -1653,6 +1663,17 @@ class MesaTela(QWidget):
         self._validade_origem = "manual" if self._validade else None
         self._edicao = estado.get("edicao") or None     # F13-TER/D1
         self._evento = estado.get("evento") or None     # F13/D7
+        # QUINTUSDECIMUS/J2: a restauração pulava o carregar_layout — a
+        # cascata D1 não rodava e o chip ficava "sem data" com layout
+        # carregado (a 1ª tela que o arquiteto viu). Mesma cascata das
+        # outras portas.
+        if not self._validade:
+            sugestao = servico.sugerir_validade(
+                self._evento or estado.get("layout_nome")
+                or self._layout_nome)
+            if sugestao:
+                self._validade = sugestao
+                self._validade_origem = "cascata"
         self._atualizar_chip_validade()  # DECIMUS: o chip acompanha
         if estado.get("layout"):
             self._layout = LayoutDef.from_dict(estado["layout"])
@@ -2805,6 +2826,13 @@ class MesaTela(QWidget):
             d = self._dados_de(por_uid[uid], abrev or None)
             ov = self._overrides.get(sid)
             dados[sid] = servico.aplicar_override(d, ov) if ov else d
+        # QUINTUSDECIMUS/J24: a validade da PÁGINA viaja mesmo SEM slot
+        # ocupado — a chave "__pagina__" nunca casa um slot (nada
+        # desenha por ela), mas o _campo_vivo_da_pagina do compositor a
+        # enxerga e a manchete/textos vivos ganham o período REAL antes
+        # do auto-preencher.
+        if self._validade:
+            dados["__pagina__"] = servico.dados_de_pagina(self._validade)
         return dados
 
     def _auto_preencher(self) -> None:

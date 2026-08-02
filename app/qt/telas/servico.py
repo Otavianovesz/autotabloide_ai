@@ -12,6 +12,7 @@ nome sai só sanitizado); sem rede → item sem candidatos de imagem.
 
 from __future__ import annotations
 
+import re
 import tempfile
 import uuid as _uuid_mod
 from dataclasses import dataclass, field
@@ -86,6 +87,13 @@ class ItemMesa:
     # (a pergunta "são 2 produtos?" nasce daqui). Aditivo: from_dict
     # filtra chaves, projeto antigo abre normal.
     pendencias: list = field(default_factory=list)
+    # QUINTUSDECIMUS/J18: o "de" veio DA TABELA ("de 18,81 por 6,90") —
+    # quando True, o de/por e o % calculado desenham no tabloide (o
+    # preco_de do BANCO continua só painel/cartaz, como sempre foi)
+    preco_de_da_tabela: bool = False
+    # QUINTUSDECIMUS: o MOTIVO do semáforo (a frase do veredito) viaja
+    # até a tela — o amarelo diz POR QUÊ (tooltip da Situação)
+    motivo: str = ""
     # Rodada JM (B4): a FAMÍLIA de sabores do produto casado —
     # {"id", "nome", "membros": [{"produto_id","nome","imagem"}]}.
     # Acende o "Sabores da família…" na estante; None = produto sem
@@ -757,6 +765,12 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         nome,
         selos_extra=extras,
         preco_por=preco_decimal(it.preco),
+        # QUINTUSDECIMUS/J18: o "de" que veio DA TABELA desenha no
+        # tabloide (riscado + % calculado onde o layout tiver as
+        # regiões) — o preco_de do BANCO segue só painel/cartaz, para
+        # não mudar páginas existentes por baixo do dono
+        preco_de=(preco_decimal(it.preco_de)
+                  if getattr(it, "preco_de_da_tabela", False) else None),
         multi_preco=it.multi_preco,          # R-070: "3 por R$10"
         observacao=it.observacao,            # R-071: "limite 2 por cliente"
         imagem_path=it.imagem,
@@ -776,6 +790,20 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                      if validade else None),
         edicao=edicao,                       # F13-TER/D1: a edição viva
     )
+
+
+def dados_de_pagina(validade: str | None):
+    """QUINTUSDECIMUS/J24: um DadosProduto "de página" que carrega SÓ o
+    texto_legal (a validade formatada) — vai no dict sob a chave
+    "__pagina__", que nunca casa slot algum: nada desenha por ele, mas
+    os textos de página (manchete viva, rodapé) o enxergam via
+    `_campo_vivo_da_pagina` mesmo com a página ainda vazia."""
+    from app.rendering.compositor import DadosProduto
+    return DadosProduto(
+        "", texto_legal=(validade
+                         if (validade or "").upper().startswith("OFERTA")
+                         else (f"Ofertas válidas {validade}"
+                               if validade else None)))
 
 
 def dados_cartaz_de_item(it: "ItemMesa", *,
@@ -2144,25 +2172,49 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
 
 # --- importar + conciliar -----------------------------------------------------
 
+# QUINTUSDECIMUS/J18: "de X por Y" é o padrão-mãe do varejo — preço de
+# PRIMEIRA classe, nunca exceção rejeitada. Y é o preço; X é o riscado.
+_RE_DE_POR = re.compile(
+    r"\bde\s*(?:R\$\s*)?(\d[\d.,]*)\s*(?:por|->|→)\s*(?:R\$\s*)?"
+    r"(\d[\d.,]*)", re.IGNORECASE)
+
+
+def preco_de_por(texto: str | None) -> tuple[str, str] | None:
+    """Reconhece "de X por Y" (com ou sem R$) → ``(de, por)`` — os dois
+    validados pelo P0.3. Sem o padrão (ou com número inválido) → None;
+    a guarda P0.3b do `preco_decimal` segue intocada."""
+    m = _RE_DE_POR.search(texto or "")
+    if not m:
+        return None
+    de, por = m.group(1), m.group(2)
+    if preco_decimal(de) is None or preco_decimal(por) is None:
+        return None
+    return de, por
+
+
 def classificar_preco_ocr(texto_preco: str | None
-                          ) -> tuple[str | None, str | None]:
-    """Rodada JM (B2B): a regra nomeada do filtro do import — devolve
-    ``(preco, multi_preco)`` a partir do campo "preco" do OCR. Preço em
-    TEXTO ("S. OFERTA") vira o canônico "SUPER OFERTA"; promoção com
-    mecânica (%, leve-X, brinde) segue como multi_preco cru (R-070); o
-    resto é preço numérico de sempre."""
+                          ) -> tuple[str | None, str | None, str | None]:
+    """Rodada JM (B2B) + J18: a regra nomeada do filtro do import —
+    devolve ``(preco, multi_preco, preco_de)`` a partir do campo
+    "preco" do OCR. "de X por Y" vira preço Y com o "de" X a bordo;
+    preço em TEXTO ("S. OFERTA") vira o canônico "SUPER OFERTA";
+    promoção com mecânica (%, leve-X, brinde) segue multi_preco cru
+    (R-070); o resto é o preço numérico de sempre."""
     from app.qt.telas.colagem import preco_texto_oferta
 
     texto = (texto_preco or "").strip()
+    dp = preco_de_por(texto)
+    if dp:
+        return dp[1], None, dp[0]
     canonico = preco_texto_oferta(texto)
     if canonico:
-        return None, canonico
+        return None, canonico, None
     if texto and preco_decimal(texto) is None and (
             "%" in texto or any(t in texto.lower() for t in
                                 ("leve", "pague", "ganhe",
                                  "desconto", "brinde"))):
-        return None, texto
-    return texto_preco, None
+        return None, texto, None
+    return texto_preco, None, None
 
 
 def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
@@ -2200,15 +2252,18 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
         # dono faz ("R$ 20%"); o preço numérico segue o caminho de sempre
         linhas = []
         multi_precos: list[str | None] = []
+        precos_de: list[str | None] = []
         for ln in tabela.linhas:
-            preco, mp = classificar_preco_ocr(ln.preco)
+            preco, mp, pde = classificar_preco_ocr(ln.preco)
             linhas.append((ln.descricao, preco, None))
             multi_precos.append(mp)
+            precos_de.append(pde)
         validade = tabela.validade_oferta
         return conciliar_linhas(linhas, status_cb, validade=validade,
                                 aviso=aviso_cache,
                                 caminho_fonte=str(caminho),
-                                multi_precos=multi_precos)
+                                multi_precos=multi_precos,
+                                precos_de=precos_de)
 
     status_cb("Lendo a tabela…")
     from app.scripts.importar_tabela import parse_tabela_ean
@@ -2219,7 +2274,8 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
 
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                      aviso=None, caminho_fonte=None,
-                     multi_precos=None, descontos=None) -> ResultadoMesa:
+                     multi_precos=None, descontos=None,
+                     precos_de=None) -> ResultadoMesa:
     """Concilia uma lista de tuplas ``(descricao, preco, ean)`` com o banco —
     o MESMO caminho que ``importar_ofertas`` usa. A COLAGEM (R-050, Fase 7)
     reusa isto: o parser de colagem produz as tuplas e cai aqui, sem duplicar
@@ -2242,7 +2298,9 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
             # de lote roda sobre os vereditos (duas linhas nunca casam
             # verdes com o mesmo produto em silêncio); a 2ª monta os
             # itens da Mesa
-            from app.ai.conciliacao import (categoria_dos_candidatos,
+            from app.ai.conciliacao import (PISO_CANDIDATO_EXIBIDO,
+                                            Semaforo,
+                                            categoria_dos_candidatos,
                                             exclusividade_de_lote)
             from app.core.sanitize import sanitizar
             vereditos = []
@@ -2284,9 +2342,34 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                       and i - 1 < len(multi_precos) else None)
                 dp = (descontos[i - 1] if descontos
                       and i - 1 < len(descontos) else None)
+                pde = (precos_de[i - 1] if precos_de
+                       and i - 1 < len(precos_de) else None)
                 # B1.5/B3: o VERMELHO nasce sanitizado e com as
-                # pendências do sanitize a bordo (uma chamada só)
-                san = None if p is not None else sanitizar(desc, conc.regras)
+                # pendências a bordo. QUINTUSDECIMUS/J9: o sanitize roda
+                # para TODOS — linha que parece 2 produtos ("multiplos")
+                # casada VERDE desce a AMARELO com o motivo dito (duas
+                # marcas nunca viram uma em silêncio); o match
+                # EXATO/alias fica: é aprendizado confirmado pelo dono.
+                san = sanitizar(desc, conc.regras)
+                if (v.semaforo == Semaforo.VERDE and v.via != "exato"
+                        and any(pd.codigo == "multiplos"
+                                for pd in san.pendencias)):
+                    v.semaforo = Semaforo.AMARELO
+                    v.motivo = ("a linha parece ter 2 produtos no mesmo "
+                                "preço — confira antes de aceitar "
+                                "(o Criar abre a pergunta)")
+                # J18: preço ILEGÍVEL nunca sai verde calado — a recusa
+                # do P0.3b vira pendência dita (era um `—` silencioso
+                # nos dois destaques da página do dono)
+                pendencias = [pd.codigo for pd in san.pendencias]
+                if ((preco or "").strip() and mp is None and dp is None
+                        and preco_decimal(preco) is None):
+                    pendencias.append("preco_ilegivel")
+                    if v.semaforo == Semaforo.VERDE:
+                        v.semaforo = Semaforo.AMARELO
+                    v.motivo = (f"o preço «{preco}» não foi entendido — "
+                                "corrija na coluna Preço"
+                                + (f" · {v.motivo}" if v.motivo else ""))
                 itens.append(ItemMesa(
                     descricao=desc,
                     preco=preco,
@@ -2298,8 +2381,8 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     # SANITIZADO (acentos/unidades/caixa) — a descrição
                     # CRUA fica em `descricao` (alias/identidade, I1)
                     nome=p.nome_sanitizado if p else san.nome_sanitizado,
-                    pendencias=([pd.codigo for pd in san.pendencias]
-                                if san else []),
+                    pendencias=pendencias,
+                    motivo=v.motivo,
                     produto_id=p.id if p else None,
                     imagem=_imagem_absoluta(p.caminho_imagem) if p else None,
                     mais18=bool(p.selo_mais18) if p else False,
@@ -2308,11 +2391,18 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     score=v.confianca,
                     candidato_nome=(v.candidatos[0].produto.nome_sanitizado
                                     if v.candidatos else ""),
+                    # J11: a VITRINE só mostra candidato plausível — o
+                    # motor segue com os top-5 por dentro
                     candidatos=[{"produto_id": c.produto.id,
                                  "nome": c.produto.nome_sanitizado,
                                  "score": round(float(c.score), 1)}
-                                for c in (v.candidatos or [])],
-                    preco_de=_preco_texto(p.preco_atual) if p else None,
+                                for c in (v.candidatos or [])
+                                if c.score >= PISO_CANDIDATO_EXIBIDO],
+                    # J18: o "de" DA TABELA vence o preço vigente do
+                    # banco (o documento manda; o banco é o fallback)
+                    preco_de=(pde or (_preco_texto(p.preco_atual)
+                                      if p else None)),
+                    preco_de_da_tabela=bool(pde),
                     unidade=(f"{_qtd_texto(p.peso_valor)}{p.peso_unidade}"
                              if p and p.peso_valor is not None and p.peso_unidade
                              else None),
@@ -2413,11 +2503,13 @@ def montar_pelo_chat(texto: str, status_cb: StatusCb) -> ResultadoMesa:
     REUSANDO a conciliação (parse de colagem + conciliar_linhas) — não um pipeline
     novo. É sempre rascunho para AJUSTAR (nunca publicado direto, I2)."""
     from app.qt.telas.colagem import (
-        descontos_de, linhas_para_tuplas, multi_precos_de, parse_colagem)
+        descontos_de, linhas_para_tuplas, multi_precos_de, parse_colagem,
+        precos_de_de)
     linhas = parse_colagem(texto)
     return conciliar_linhas(linhas_para_tuplas(linhas), status_cb,
                             multi_precos=multi_precos_de(linhas),
-                            descontos=descontos_de(linhas))
+                            descontos=descontos_de(linhas),
+                            precos_de=precos_de_de(linhas))
 
 
 def ordenar_por_prioridade(pares, foco=None):
@@ -2880,6 +2972,70 @@ def dividir_em_dois(descricao: str | None) -> list[str]:
     return [comp_a, comp_b]
 
 
+def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
+    """QUINTUSDECIMUS/J13: o detector de SABORES da linha — o que vem
+    DEPOIS da medida é sabor ("SARDINHA COQUEIRO 125 g TOMATE / OLEO e
+    LIMÃO" → base "Sardinha Coqueiro 125g", sabores ["Tomate", "Óleo",
+    "Limão"]); o que vem ANTES é marca (o "ARROZ SOMAR e TIO BONINI
+    5 Kgs" devolve zero sabores — é caso de 2 PRODUTOS, não família).
+    Determinístico; a decisão final é a 3ª pergunta na curadoria."""
+    from app.core.sanitize import REGRAS_PADRAO, _regex_unidades, sanitizar
+    texto = (descricao or "").strip()
+    if not texto:
+        return "", []
+    ultimo = None
+    for m in _regex_unidades(REGRAS_PADRAO).finditer(texto):
+        ultimo = m
+    if ultimo is None:
+        return sanitizar(texto).nome_sanitizado, []
+    base = sanitizar(texto[:ultimo.end()]).nome_sanitizado
+    rabo = texto[ultimo.end():]
+    partes = re.split(r"\s*/\s*|\s+e\s+", rabo, flags=re.IGNORECASE)
+    sabores: list[str] = []
+    for p in partes:
+        p = p.strip(" .,-–")
+        if p and any(c.isalpha() for c in p):
+            nome = sanitizar(p).nome_sanitizado
+            if nome:
+                sabores.append(nome)
+    return base, (sabores if len(sabores) >= 2 else [])
+
+
+def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
+                             sabores: list[str], mais18: bool,
+                             imagem_tratada: str | None,
+                             categoria: str | None = None) -> ItemMesa:
+    """J13: a resposta "são SABORES do mesmo produto" — cria um produto
+    COMPLETO por sabor ("Sardinha Coqueiro 125g Tomate"…), liga todos à
+    FAMÍLIA (B4) e o item da estante vira o leque. A foto da curadoria
+    vai ao 1º sabor; os demais completam pelo Almoxarifado (avisado —
+    o pré-voo cobre, I2)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
+    ids: list[int] = []
+    for i, sabor in enumerate(sabores):
+        nome = f"{nome_familia} {sabor}".strip()
+        sub = ItemMesa(descricao=nome, preco=item.preco,
+                       semaforo="VERMELHO", nome=nome)
+        finalizar_criacao(sub, nome, mais18,
+                          imagem_tratada if i == 0 else None,
+                          categoria=categoria)
+        ids.append(sub.produto_id)
+    criar_familia_de(ids, nome_familia)
+    fam = familia_do_item(ids[0])
+    item.produto_id = ids[0]
+    item.semaforo = "VERDE"
+    item.via = "novo"
+    item.mais18 = mais18
+    item.nome = nome_familia
+    item.familia = fam
+    if fam:
+        aplicar_sabores(item, fam["membros"])
+    item.imagem = next((m["imagem"] for m in (fam or {}).get("membros", [])
+                        if m.get("imagem")), None)
+    return item
+
+
 def deve_revisar_no_lote(proposta: "PropostaCriacao") -> str | None:
     """Rodada JM (B3): a política da fila em lote numa função só — o
     motivo pelo qual o item NÃO é criado calado (None = pode criar).
@@ -2953,6 +3109,12 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     from app.ai.enriquecimento import enriquecer
     enr = enriquecer(descricao, motor)
     comps = [c.nome_sanitizado for c in enr.componentes]
+    # QUINTUSDECIMUS/J1 — a lei: a IA SOMA, nunca substitui. O detector
+    # determinístico ("multiplos" + dividir_em_dois) continua valendo
+    # com o LM ligado — na máquina do dono a IA devolvia zero
+    # componentes e o sinal pronto era descartado; a pergunta "são 2
+    # produtos?" nunca aparecia (o mesmo `or` que o mais18 já tinha).
+    det = dividir_em_dois(descricao)
     return PropostaCriacao(
         nome=enr.nome_sanitizado,
         # a heurística só LIGA o +18 — nunca desliga o que a IA ligou
@@ -2960,7 +3122,10 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
         categoria=enr.categoria,
         tokens_perdidos=list(enr.tokens_perdidos),
         componentes=comps,
-        possivel_composto=len(comps) >= 2,
+        possivel_composto=len(comps) >= 2 or len(det) == 2,
+        sugestao_componentes=det,
+        # o check só nasce PRÉ-MARCADO quando a IA deu os componentes;
+        # sugestão da régua = desmarcado (o humano decide)
         componentes_da_ia=len(comps) >= 2)
 
 

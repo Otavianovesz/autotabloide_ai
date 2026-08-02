@@ -38,17 +38,19 @@ def test_preco_texto_oferta_nas_tres_grafias():
 
 def test_classificar_preco_ocr():
     """A regra nomeada do filtro do import: preço-texto vira multi_preco
-    canônico; promoção com mecânica segue como era; número é número."""
+    canônico; promoção com mecânica segue como era; número é número.
+    (QUINTUSDECIMUS/J18: a tupla ganhou o 3º campo — o "de" riscado.)"""
     from app.qt.telas.servico import classificar_preco_ocr
 
-    assert classificar_preco_ocr("S. OFERTA") == (None, "SUPER OFERTA")
-    assert classificar_preco_ocr("SUPER OFERTA") == (None, "SUPER OFERTA")
+    assert classificar_preco_ocr("S. OFERTA") == (None, "SUPER OFERTA", None)
+    assert classificar_preco_ocr("SUPER OFERTA") \
+        == (None, "SUPER OFERTA", None)
     assert classificar_preco_ocr("20% de desconto") \
-        == (None, "20% de desconto")
+        == (None, "20% de desconto", None)
     assert classificar_preco_ocr("leve 3 pague 2") \
-        == (None, "leve 3 pague 2")
-    assert classificar_preco_ocr("5,99") == ("5,99", None)
-    assert classificar_preco_ocr(None) == (None, None)
+        == (None, "leve 3 pague 2", None)
+    assert classificar_preco_ocr("5,99") == ("5,99", None, None)
+    assert classificar_preco_ocr(None) == (None, None, None)
 
 
 def test_colagem_super_oferta_nao_vai_ao_balde():

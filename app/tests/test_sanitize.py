@@ -78,7 +78,13 @@ def test_prefixo_suspeito():
 
 
 def test_letra_isolada():
-    r = sanitizar("OLE O de SOJA LIZA 900 ml")
+    # QUINTUSDECIMUS/J16: "OLE O" virou bigrama CONHECIDO — o corretor
+    # JUNTA em vez de só avisar (melhor que pendência)
+    r_oleo = sanitizar("OLE O de SOJA LIZA 900 ml")
+    assert r_oleo.nome_sanitizado.startswith("Óleo")
+    assert not any(p.codigo == "letra_isolada" for p in r_oleo.pendencias)
+    # letra isolada DESCONHECIDA segue avisando
+    r = sanitizar("PRESUNT O COZIDO SADIA 200 g")
     assert any(p.codigo == "letra_isolada" for p in r.pendencias)
 
 
@@ -106,5 +112,7 @@ def test_divisao_da_fixture():
     limpos = [r for r in resultados if not r.precisa_ia]
     pendentes = [r for r in resultados if r.precisa_ia]
     assert len(resultados) == 42
-    assert len(limpos) == 24
-    assert len(pendentes) == 18
+    # J16: o "OLE O" da fixture agora sai LIMPO (o bigrama junta) — 24→25
+    assert len(limpos) == 25
+    # J16: o "OLE O" saiu dos pendentes (o bigrama junta) — 18→17
+    assert len(pendentes) == 17

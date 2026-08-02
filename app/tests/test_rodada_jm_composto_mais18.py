@@ -120,15 +120,16 @@ def test_curadoria_pergunta_sao_dois_produtos():
     finally:
         dlg.deleteLater()
 
-    # com IA: componentes vieram do LM → check pré-marcado; DESMARCAR
-    # cancela o composto (antes a IA decidia sozinha e invisível)
+    # com IA: componentes vieram do LM → "2 produtos" pré-marcado;
+    # escolher "É um produto só" CANCELA (QUINTUSDECIMUS/J13: o check
+    # virou a 3ª pergunta em rádios — cancelar é escolher outra resposta)
     dlg2 = CuradoriaDialog("Coração e Língua", [],
                            possivel_composto=True,
                            componentes=["Coração", "Língua"],
                            componentes_da_ia=True)
     try:
         assert dlg2.chk_composto.isChecked()
-        dlg2.chk_composto.setChecked(False)
+        dlg2.rb_um.setChecked(True)
         assert dlg2.componentes_finais() == []
     finally:
         dlg2.deleteLater()

@@ -41,6 +41,9 @@ class LinhaColada:
     # "sem preço"): é um FORMATO de promoção, não um valor. O "2x 5,00" proibido
     # nunca chega aqui — não casa o padrão (segue rejeitado pelo P0.3).
     multi_preco: str | None = None
+    # QUINTUSDECIMUS/J18: o "de" do padrão "de X por Y" — o riscado da
+    # oferta; `preco` leva o "por" (o preço que vale)
+    preco_de: str | None = None
 
 
 def _eh_lixo(linha: str) -> bool:
@@ -123,6 +126,19 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
         raw = raw.lstrip("▶•·◦> ").rstrip()
         if not raw.strip() or _eh_lixo(raw):
             continue
+        # QUINTUSDECIMUS/J18: "de X por Y" ANTES do multi-preço — o
+        # _RE_N_POR mastigava "…5,99 por 4,99" como "99 por R$ 4,99"
+        # (o 99 do de virava quantidade). O padrão-mãe do varejo tem
+        # precedência: por = preço, de = riscado. Régua única de servico.
+        from app.qt.telas.servico import _RE_DE_POR, preco_de_por
+        dp_linha = preco_de_por(raw)
+        if dp_linha is not None:
+            m_dp = _RE_DE_POR.search(raw)
+            nome_dp = _limpar_nome_de_tabela(raw[:m_dp.start()])
+            if nome_dp:
+                linhas.append(LinhaColada(nome_dp, dp_linha[1], True,
+                                          preco_de=dp_linha[0]))
+                continue
         # passo 62: multi-preço PRIMEIRO — "Sabão;3 por R$10" é promoção, não
         # um preço "não entendido" (o split ingênuo cairia em vermelho falso).
         multi = _split_multi(raw)
@@ -279,6 +295,12 @@ def descontos_de(linhas: list[LinhaColada]):
     """Q2: lista de descontos declarados PARALELA às tuplas (mesma
     ordem) — o "20% de desconto" do Lanche viaja ao ItemMesa."""
     return [li.desconto_pct for li in linhas]
+
+
+def precos_de_de(linhas: list[LinhaColada]):
+    """J18: lista dos "de" (riscados) PARALELA às tuplas — o "de 18,81
+    por 6,90" viaja inteiro ao ItemMesa (por = preço, de = riscado)."""
+    return [li.preco_de for li in linhas]
 
 
 # ----------------------------------------------------------------------------

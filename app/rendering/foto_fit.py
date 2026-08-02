@@ -218,13 +218,22 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
     if not getattr(foto, "zona_flex", False):
         return None
     textos = [r for r in vis if r.tipo in _TIPOS_REALOCAVEIS]
+    # QUINTUSDECIMUS/J25: um ADORNO-FILETE (o "Fio" das linhas do
+    # Jornal — 6 px de altura) é SEPARADOR, não roupa: a foto pode
+    # crescer sob ele sem descolar arte nenhuma. O ADORNO de verdade
+    # (a cesta da Terça) continua vestindo a célula e barrando o plano.
+    def _e_filete(r: Regiao) -> bool:
+        return (r.tipo == TipoRegiao.ADORNO
+                and min(r.rect.larg_mm, r.rect.alt_mm) <= 2.0)
     if any(r.tipo not in _TIPOS_REALOCAVEIS
-           and r.tipo != TipoRegiao.IMAGEM for r in vis):
+           and r.tipo != TipoRegiao.IMAGEM and not _e_filete(r)
+           for r in vis):
         return None                     # célula vestida — a âncora é da arte
     # rotação DE VERDADE (a data deitada a 90°) barra o plano; o charme
-    # de -1,5° das pílulas é cosmético — o conteúdo gira em torno do
-    # centro do rect substituto do mesmo jeito (I1)
-    if any(abs((r.rotacao_graus + 180.0) % 360.0 - 180.0) > 5.0
+    # decorativo das inclinações do encarte (−6°/−8° dos carimbos do
+    # Jornal, J25) é cosmético — o conteúdo gira em torno do centro do
+    # rect substituto do mesmo jeito (I1)
+    if any(abs((r.rotacao_graus + 180.0) % 360.0 - 180.0) > 8.5
            for r in [foto] + textos):
         return None
     rf = foto.rect

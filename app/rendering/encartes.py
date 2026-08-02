@@ -715,14 +715,17 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
         x = 64 + c * 198
         rot = -6.0 if (c % 2 == 0) else 5.0
         slots.append(_slot(f"{pref}-l{inicio + c}", [
-            # F13-TER: a foto sobe até o fio da linha (recolado)
-            _img(x + 4, y - 20, 178, 116),
+            # F13-TER: a foto sobe até o fio da linha (recolado).
+            # J25: zona_flex — o FIO é filete separador, não "veste" a
+            # célula (a guarda do foto_fit aprendeu a diferença)
+            _img(x + 4, y - 20, 178, 116, flex=True),
             Regiao(TipoRegiao.ADORNO, _r(x, y - 20, 186, 6),
                    nome="Fio"),
-            _nome(x + 8, y + 96, 170, 24, fonte=_F_FRAUNCES,
-                  tam=11.0, cor=_J_INK),
-            _sub(x + 8, y + 120, 170, 16, fonte=_F_FRA_IT,
-                 tam=8.5, cor=_J_GRAY),
+            # J26: nome 11→12,5 e descritor 8,5→10 — o teste do celular
+            _nome(x + 8, y + 94, 170, 26, fonte=_F_FRAUNCES,
+                  tam=12.5, cor=_J_INK),
+            _sub(x + 8, y + 120, 170, 18, fonte=_F_FRA_IT,
+                 tam=10.0, cor=_J_GRAY),
             _preco(x + 45, y + 147, 96, 42, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=20.0, tam_cent=12.6,
@@ -752,11 +755,20 @@ def _jornal_p1() -> list[Slot]:
             _legal(384, 296, 106, 106, papel=PapelTexto.OFERTA,
                    fonte=_F_ARCHIVO, texto="",
                    nome="Splash", rot=-8.0, tam=11.5, cor="#F7F3E9"),
-            # a legenda da capa = nome + descritor do produto do hero
-            _nome(78, 574, 376, 24, fonte=_F_FRA_IT,
-                  tam=9.4, cor=_J_GRAY),
-            _sub(78, 600, 376, 18, fonte=_F_FRA_IT,
-                 tam=8.0, cor=_J_GRAY),
+            # QUINTUSDECIMUS/J19: a célula-herói DESENHA PREÇO — o
+            # carimbo das chamadas, um degrau maior (a hierarquia do
+            # herói), no vão entre o Splash e a legenda
+            _preco(384, 466, 106, 48, fonte=_F_FRAUNCES, rot=-6.0,
+                   forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
+                   cor=_J_LARD, tam=24.0, tam_cent=14.5,
+                   centavos_na_base=True),
+            # J26: a legenda do herói era o MENOR texto da página
+            # inteira — sobe para o corpo das chamadas (o maior produto
+            # nunca tem o menor nome)
+            _nome(78, 570, 376, 30, fonte=_F_FRAUNCES,
+                  tam=15.0, cor=_J_INK),
+            _sub(78, 602, 376, 20, fonte=_F_FRA_IT,
+                 tam=10.5, cor=_J_GRAY),
         ], origem=(74, 328)),
     ]
     splash = next(r for r in slots[0].regioes if r.nome == "Splash")
@@ -768,11 +780,15 @@ def _jornal_p1() -> list[Slot]:
         rot = -5.0 if i % 2 else 4.0
         dy = 20 if i <= 2 else 18
         slots.append(_slot(f"jp1-ch{i}", [
-            _img(x, y - dy, 112, 112 + dy),
-            _nome(x + 112, y + 14, 168, 26, fonte=_F_FRAUNCES,
-                  tam=13.0, cor=_J_INK),
-            _sub(x + 112, y + 42, 168, 18, fonte=_F_FRA_IT,
-                 tam=9.4, cor=_J_GRAY),
+            # J25: a foto da chamada enche a zona (zona_flex — a régua
+            # da QUARTUSDECIMUS chega ao Jornal)
+            _img(x, y - dy, 112, 112 + dy, flex=True),
+            # J26: corpos acima do rascunho de jornal — legíveis no
+            # celular (nome 13→14,5; descritor 9,4→10,5)
+            _nome(x + 112, y + 14, 168, 28, fonte=_F_FRAUNCES,
+                  tam=14.5, cor=_J_INK),
+            _sub(x + 112, y + 44, 168, 19, fonte=_F_FRA_IT,
+                 tam=10.5, cor=_J_GRAY),
             _preco(x + 146, y + 72, 100, 44, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=21.0, tam_cent=13.2,

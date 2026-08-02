@@ -42,7 +42,11 @@ class CuradoriaDialog(QDialog):
                  possivel_composto: bool = False,
                  componentes: list[str] | None = None,
                  componentes_da_ia: bool = False,
-                 mais18: bool = False):
+                 mais18: bool = False,
+                 sabores: list[str] | None = None,
+                 nome_familia_sugerido: str = "",
+                 contexto: str = "",
+                 posicao: tuple[int, int] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Escolher imagem")
         self.escolha: tuple[str, str | None] = ("nenhuma", None)
@@ -76,12 +80,20 @@ class CuradoriaDialog(QDialog):
         else:
             self.aviso_tokens.hide()
 
-        # Rodada JM (B3.2): "são 2 produtos?" — a linha com duas marcas
-        # num preço PERGUNTA em vez de criar remendo; a decisão é SEMPRE
-        # do humano (a IA sugere e pré-marca; desmarcar cancela)
+        # QUINTUSDECIMUS/J13 — a TERCEIRA pergunta: a linha com mais de
+        # um item pergunta O QUE ela é. A diferença entre "2 produtos" e
+        # "2 sabores" é uma pergunta, não um algoritmo — o dono decide
+        # com um rádio. (B3.2 evoluída; `chk_composto` agora É o rádio
+        # "2 produtos" — mesma API isChecked/setChecked.)
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
         comps = list(componentes or [])
-        self.chk_composto = QCheckBox(
-            "São 2 produtos (criar os dois e compor)")
+        sabs = list(sabores or [])
+        tem_multi = possivel_composto or len(sabs) >= 2
+        self._aviso_composto = QLabel(
+            "Esta linha parece ter MAIS DE UM item:")
+        self._aviso_composto.setProperty("papel", "legenda")
+        self.chk_composto = QRadioButton(
+            "São 2 produtos diferentes (criar os dois e compor)")
         self.chk_composto.setToolTip(
             "Cada um vira um produto próprio no acervo e a célula "
             "mostra os dois juntos — separável a qualquer momento")
@@ -89,16 +101,38 @@ class CuradoriaDialog(QDialog):
         self.comp_2 = QLineEdit(comps[1] if len(comps) > 1 else "")
         for campo in (self.comp_1, self.comp_2):
             campo.setPlaceholderText("nome do produto…")
-        self._aviso_composto = QLabel(
-            "Esta linha parece ter 2 produtos no mesmo preço.")
-        self._aviso_composto.setProperty("papel", "legenda")
-        if possivel_composto:
-            self.chk_composto.setChecked(bool(componentes_da_ia))
-            self.chk_composto.toggled.connect(self._habilitar_composto)
-            self._habilitar_composto(self.chk_composto.isChecked())
+        self.rb_sabores = QRadioButton(
+            "São SABORES do mesmo produto (criar a família)")
+        self.rb_sabores.setToolTip(
+            "Um produto por sabor, ligados à família — a célula mostra "
+            "o leque; a foto escolhida vai ao 1º sabor")
+        self.nome_familia = QLineEdit(nome_familia_sugerido)
+        self.nome_familia.setPlaceholderText("nome da família…")
+        self.chks_sabores = [QCheckBox(s) for s in sabs]
+        for c in self.chks_sabores:
+            c.setChecked(True)
+        self.rb_um = QRadioButton("É um produto só (o nome é assim mesmo)")
+        self._grupo_multi = QButtonGroup(self)
+        for rb in (self.chk_composto, self.rb_sabores, self.rb_um):
+            self._grupo_multi.addButton(rb)
+        if tem_multi:
+            # a IA/gesto que JÁ decidiu pré-marca "2 produtos"; sabores
+            # detectados sem decisão pré-marcam nada além do neutro
+            if componentes_da_ia:
+                self.chk_composto.setChecked(True)
+            else:
+                self.rb_um.setChecked(True)
+            for rb in (self.chk_composto, self.rb_sabores, self.rb_um):
+                rb.toggled.connect(self._habilitar_multi)
+            if not sabs:
+                self.rb_sabores.hide()
+                self.nome_familia.hide()
+            self._habilitar_multi()
         else:
-            for w in (self._aviso_composto, self.chk_composto,
-                      self.comp_1, self.comp_2):
+            for w in ([self._aviso_composto, self.chk_composto,
+                       self.comp_1, self.comp_2, self.rb_sabores,
+                       self.nome_familia, self.rb_um]
+                      + self.chks_sabores):
                 w.hide()
 
         # Rodada JM (B3.5): o +18 automático é VISÍVEL e editável (I2) —
@@ -220,22 +254,48 @@ class CuradoriaDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(t.ESP_4, t.ESP_4, t.ESP_4, t.ESP_4)
         lay.setSpacing(t.ESP_2)
+        # QUINTUSDECIMUS/J23: o diálogo DIZ de onde veio e quantas
+        # faltam — numa sessão de 42 itens, o dono precisa do contexto
+        self._contexto = QLabel("")
+        self._contexto.setProperty("papel", "legenda")
+        self._contexto.setWordWrap(True)
+        partes_ctx = []
+        if contexto:
+            partes_ctx.append(f"Linha importada: “{contexto}”")
+        if posicao:
+            partes_ctx.append(f"item {posicao[0]} de {posicao[1]}")
+        if partes_ctx:
+            self._contexto.setText("  ·  ".join(partes_ctx))
+        else:
+            self._contexto.hide()
+
         lay.addWidget(titulo)
+        lay.addWidget(self._contexto)            # J23: contexto + n de N
         lay.addWidget(self.aviso_tokens)   # RG-20: aviso nominal da perda
-        lay.addWidget(self._aviso_composto)      # B3.2: "parece 2 produtos"
+        lay.addWidget(self._aviso_composto)      # J13: a 3ª pergunta
         lay.addWidget(self.chk_composto)
         linha_comp = QHBoxLayout()
         linha_comp.setSpacing(t.ESP_2)
         linha_comp.addWidget(self.comp_1, 1)
         linha_comp.addWidget(self.comp_2, 1)
         lay.addLayout(linha_comp)
+        lay.addWidget(self.rb_sabores)
+        linha_sab = QHBoxLayout()
+        linha_sab.setSpacing(t.ESP_2)
+        linha_sab.addWidget(self.nome_familia, 1)
+        for c in self.chks_sabores:
+            linha_sab.addWidget(c)
+        lay.addLayout(linha_sab)
+        lay.addWidget(self.rb_um)
         lay.addWidget(self.chk_mais18)           # B3.5: +18 visível
         lay.addWidget(dica)
         lay.addLayout(caixa_busca)
         lay.addWidget(self.lista, 1)
         lay.addWidget(vazio, 1)
         lay.addLayout(botoes)
-        self.resize(720, 520)
+        # J23: o diálogo em que o dono escolhe 42 fotos seguidas merece
+        # espaço — miniaturas maiores, botões nunca cortados
+        self.resize(1040, 680)
 
         from app.qt.design.carregando import OverlayOcupado
         from app.qt.workers import GerenciadorTrabalhos
@@ -253,19 +313,35 @@ class CuradoriaDialog(QDialog):
         from app.qt.design.polimento import ordenar_tab
         ordenar_tab(self)               # FASE 1 (passo 66): Tab visual
 
-    def _habilitar_composto(self, ligado: bool) -> None:
-        self.comp_1.setEnabled(ligado)
-        self.comp_2.setEnabled(ligado)
+    def _habilitar_multi(self, *_a) -> None:
+        dois = self.chk_composto.isChecked()
+        sab = self.rb_sabores.isChecked()
+        self.comp_1.setEnabled(dois)
+        self.comp_2.setEnabled(dois)
+        self.nome_familia.setEnabled(sab)
+        for c in self.chks_sabores:
+            c.setEnabled(sab)
+
+    # compat com o chamador antigo (B3.2)
+    _habilitar_composto = _habilitar_multi
 
     def componentes_finais(self) -> list[str]:
-        """B3.2: os DOIS nomes confirmados pelo humano — [] quando o
-        check está desmarcado (produto único de sempre) ou algum campo
-        ficou vazio (composto pela metade não existe)."""
+        """B3.2/J13: os DOIS nomes confirmados pelo humano — [] quando
+        a resposta não é "2 produtos" ou algum campo ficou vazio."""
         if not self.chk_composto.isChecked():
             return []
         a = self.comp_1.text().strip()
         b = self.comp_2.text().strip()
         return [a, b] if a and b else []
+
+    def sabores_finais(self) -> tuple[str, list[str]] | None:
+        """J13: (nome da família, sabores MARCADOS) quando a resposta é
+        "são sabores" — None nas demais respostas ou sem 2+ marcados."""
+        if not self.rb_sabores.isChecked():
+            return None
+        nome = self.nome_familia.text().strip()
+        marcados = [c.text() for c in self.chks_sabores if c.isChecked()]
+        return (nome, marcados) if nome and len(marcados) >= 2 else None
 
     def mais18_final(self) -> bool:
         return self.chk_mais18.isChecked()

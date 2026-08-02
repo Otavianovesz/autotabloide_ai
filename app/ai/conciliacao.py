@@ -68,6 +68,12 @@ _FATOR_PESO = {
 _UNIDADES_VOLUME = frozenset(
     {"l", "lt", "lts", "litro", "litros", "ml", "mls"})
 
+# QUINTUSDECIMUS/J11: candidato abaixo deste piso NÃO se exibe ao dono
+# (ração de gato como sugestão para molho de tomate é pior que lista
+# vazia — parece defeito e é armadilha de clique). O motor segue
+# calculando os top-5 por dentro; a régua vale para a VITRINE.
+PISO_CANDIDATO_EXIBIDO = 70.0
+
 
 def _peso_canonico(texto: str) -> tuple[float, str] | None:
     """O peso do TEXTO na base canônica: (valor, 'g'|'ml') — None sem
@@ -580,9 +586,15 @@ class Conciliador:
                                    f"({', '.join(sorted(div))}) — confira a marca")
             return veredito
 
+        def _guardas_do_verde(veredito: Veredito) -> Veredito:
+            """S1 (divergência de marca) + J10 (peso/volume) — as duas
+            guardas que impedem um verde calado errado."""
+            return _rebaixar_se_peso_diverge(
+                _rebaixar_se_divergente(veredito), nome_bruto)
+
         melhor = cands[0]
         if melhor.score >= self.limiares.verde:
-            return _rebaixar_se_divergente(
+            return _guardas_do_verde(
                 Veredito(nome_bruto, Semaforo.VERDE, melhor.produto, cands,
                          melhor.score / 100, "similaridade alta", "fuzzy"))
 
@@ -590,12 +602,40 @@ class Conciliador:
             if self._motor_ok():
                 veredito = self._juiz(nome_bruto, cands)
                 if veredito is not None:
-                    return _rebaixar_se_divergente(veredito)
+                    return _guardas_do_verde(veredito)
             return Veredito(nome_bruto, Semaforo.AMARELO, melhor.produto, cands,
                             melhor.score / 100, "provável — conferência humana", "fuzzy")
 
         return Veredito(nome_bruto, Semaforo.VERMELHO, None, cands,
                         melhor.score / 100, "abaixo do limiar — provável novo", "novo")
+
+
+def _rebaixar_se_peso_diverge(veredito: Veredito,
+                              nome_bruto: str) -> Veredito:
+    """QUINTUSDECIMUS/J10: peso/volume divergente entre a oferta e o
+    candidato REBAIXA o verde a amarelo — o Kitubaina de 1,6 L casou
+    calado com o cadastro de 1,3 L. O desempate do ADENDO 30/07 escolhe
+    ENTRE candidatos; esta guarda REJEITA quando até o melhor diverge.
+    Só age quando os DOIS lados têm medida (sem medida não há prova).
+    O match EXATO/alias não passa por aqui — a escolha do dono vale."""
+    if veredito.semaforo != Semaforo.VERDE or veredito.produto is None:
+        return veredito
+    pq = _peso_canonico(nome_bruto)
+    pp = _peso_do_produto(veredito.produto)
+    if pq is None or pp is None or pq == pp:
+        return veredito
+    m = _PESO_RE.search(nome_bruto)
+    lado_oferta = m.group(0).strip() if m else "?"
+    p = veredito.produto
+    if p.peso_valor is not None and p.peso_unidade:
+        lado_banco = f"{p.peso_valor:g}{p.peso_unidade}"
+    else:
+        m2 = _PESO_RE.search(p.nome_sanitizado or "")
+        lado_banco = m2.group(0).strip() if m2 else "?"
+    veredito.semaforo = Semaforo.AMARELO
+    veredito.motivo = (f"o peso/volume não bate ({lado_oferta} × "
+                       f"{lado_banco}) — confira se é o mesmo produto")
+    return veredito
 
 
 def categoria_dos_candidatos(candidatos: list[Candidato],

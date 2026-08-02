@@ -43,6 +43,8 @@ ACENTOS_MERCADO: dict[str, str] = {
     "pure": "purê",
     "algodao": "algodão",
     "linguica": "linguiça",
+    # QUINTUSDECIMUS/J16 — typos de OCR medidos na tabela real
+    "picoca": "pipoca",
 }
 
 # Palavra quebrada no espaço errado pelo OCR — bigrama conhecido volta a
@@ -50,6 +52,7 @@ ACENTOS_MERCADO: dict[str, str] = {
 BIGRAMAS_QUEBRADOS: dict[str, str] = {
     "inte gral": "integral",
     "de sinfetante": "desinfetante",
+    "ole o": "óleo",                # J16: "OLE O de SOJA" da tabela real
 }
 
 _RE_BORDAS = re.compile(r"^(\W*)(.*?)(\W*)$", re.DOTALL)

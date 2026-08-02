@@ -438,21 +438,21 @@ def _conciliacao(itens):
 
 
 def test_f7_19_22_aceitar_verdes_e_desfazer(raiz_env):
-    """#19/#21/#22 (R-053): o botão reduz a lista AOS verdes (por uid), o
-    contador diz "verdes aceitos/para revisar/novos", e o Desfazer devolve a
-    lista INTEIRA — tudo por conteúdo."""
+    """QUINTUSDECIMUS/J20 (contrato NOVO, de propósito): "Aceitar todos
+    os verdes" NUNCA remove linha — na máquina do dono o clique
+    descartava 31 de 42 em silêncio e o Jornal saía 3/4 vazio. Os
+    verdes já contam como aceitos e as demais linhas PERMANECEM."""
     from app.qt.telas.servico import ItemMesa
     v1 = ItemMesa("Arroz 5kg", "24,90", "VERDE", "Arroz 5kg")
     v2 = ItemMesa("Feijão 1kg", "7,99", "VERDE", "Feijão 1kg")
     am = ItemMesa("Óleo 900ml", "6,49", "AMARELO", "Óleo 900ml")
     dlg = _conciliacao([v1, am, v2])
     assert "1 para revisar" in dlg._resumo.text()
-    assert dlg.btn_verdes.isVisible() or dlg.btn_verdes.isVisibleTo(dlg)
     dlg._aceitar_verdes()
-    assert [it.uid for it in dlg.itens] == [v1.uid, v2.uid]   # SÓ os verdes
-    assert "2 verdes aceitos" in dlg._resumo.text()
-    assert "0 para revisar" in dlg._resumo.text()
-    dlg._desfazer_verdes()
+    # NADA some: as 3 linhas continuam, na mesma ordem (por uid, I1)
+    assert [it.uid for it in dlg.itens] == [v1.uid, am.uid, v2.uid]
+    assert "1 para revisar" in dlg._resumo.text()
+    dlg._desfazer_verdes()                     # compat: não muda nada
     assert [it.uid for it in dlg.itens] == [v1.uid, am.uid, v2.uid]
     dlg.done(0)
 
