@@ -99,6 +99,9 @@ class CanvasView(QGraphicsView):
         # os badges e achou que eram a página)
         self.badges_de_papel = True
         self.ao_soltar_imagem = None     # R-038: callable(slot_id, caminho) → Mesa
+        # RODADA-125 v3 (o pedido literal do dono: "pegar da tabela ali
+        # da direita e colocar no slot que eu quiser") — a Mesa liga
+        self.ao_soltar_item = None       # callable(slot_id, uid) → Mesa
         self.setAcceptDrops(True)        # R-038: arrastar PNG/JPG sobre a célula
         self._pagina_atual = 0           # D8.4: UMA página por vez, navegável
         # RG-55 (Fase 4): a região efetivamente CLICADA. Com o trio da célula
@@ -1509,12 +1512,24 @@ class CanvasView(QGraphicsView):
 
     def dragEnterEvent(self, ev) -> None:  # noqa: N802 (Qt)
         if (ev.mimeData().hasFormat(self._MIME_TROCA)
+                or ev.mimeData().hasFormat(self._MIME_ITEM)
                 or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
         else:
             super().dragEnterEvent(ev)
 
     def dragMoveEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        if ev.mimeData().hasFormat(self._MIME_ITEM):
+            # v3: o cursor É o feedback — aceita só sobre célula que
+            # RECEBE produto (a régua ocupável da grade; célula da
+            # arte/decorativa mostra o proibido)
+            slot = self._slot_no_ponto(
+                self.mapToScene(ev.position().toPoint()))
+            if slot is not None and self._slot_recebe_produto(slot):
+                ev.acceptProposedAction()
+            else:
+                ev.ignore()
+            return
         if (ev.mimeData().hasFormat(self._MIME_TROCA)
                 or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
@@ -1522,6 +1537,9 @@ class CanvasView(QGraphicsView):
             super().dragMoveEvent(ev)
 
     _MIME_TROCA = "application/x-autotabloide-trocar-slot"
+    # v3: o arrasto ESTANTE→célula carrega o uid do item (identidade,
+    # I1 — nunca índice de linha)
+    _MIME_ITEM = "application/x-autotabloide-item-uid"
 
     def dropEvent(self, ev) -> None:  # noqa: N802 (Qt)
         # OS F11.5 #36 (R-057): o drop do gesto Alt+arrastar → TROCA as células
@@ -1530,6 +1548,21 @@ class CanvasView(QGraphicsView):
             self.soltar_troca(self.mapToScene(ev.position().toPoint()), origem)
             ev.acceptProposedAction()
             return
+        # v3: o item da ESTANTE solto na célula — o dono escolhe o slot
+        if ev.mimeData().hasFormat(self._MIME_ITEM):
+            uid = bytes(ev.mimeData().data(self._MIME_ITEM)) \
+                .decode("utf-8").splitlines()[0].strip()
+            slot = self._slot_no_ponto(
+                self.mapToScene(ev.position().toPoint()))
+            if uid and slot is not None:
+                if callable(self.ao_soltar_item):
+                    self.ao_soltar_item(slot.id, uid)
+                else:
+                    self.atribuir_uid_ao_slot(slot.id, uid)
+            from PySide6.QtCore import Qt as _Qt
+            ev.setDropAction(_Qt.DropAction.CopyAction)
+            ev.accept()
+            return
         cam = self._caminho_imagem_do_evento(ev)
         if cam is None:
             super().dropEvent(ev)
@@ -1537,6 +1570,39 @@ class CanvasView(QGraphicsView):
         ponto = self.mapToScene(ev.position().toPoint())
         self.soltar_imagem(ponto, cam)
         ev.acceptProposedAction()
+
+    @staticmethod
+    def _slot_recebe_produto(slot) -> bool:
+        """A régua ocupável DA GRADE (a lei do A7: a regra mora lá, uma
+        vez só) — célula fixa/decorativa nunca recebe produto: o item
+        entraria no mapa e sumiria da página em silêncio (I2)."""
+        from app.rendering.grade import ocupaveis
+        return bool(ocupaveis([slot]))
+
+    def atribuir_uid_ao_slot(self, sid: str, uid: str) -> bool:
+        """v3 — o caminho oficial "atribuir UM item a UM slot" (antes só
+        havia ordem/lote: auto-preencher, reordenar, encher página).
+        Unicidade explícita: 1 uid = 1 célula (quem quer o produto 2×
+        tem o gesto oficial: duplicar o item, uid novo). Undo unificado
+        no molde do trocar_conteudo_slots — NUNCA um caminho paralelo
+        de composição (a lição do Modo Pai da F12)."""
+        lay = self._layout
+        slot = next((s for pg in (lay.paginas if lay else [])
+                     for s in pg.slots if s.id == sid), None)
+        if slot is None or not self._slot_recebe_produto(slot):
+            self._avisar_info("Esta célula é da arte — não recebe produto.")
+            return False
+        if self.mapa.get(sid) == uid:
+            return False                          # já está aqui: no-op
+        for s_ant in [s for s, u in self.mapa.items() if u == uid]:
+            self.mapa.pop(s_ant, None)            # 1 uid = 1 célula
+        self.mapa[sid] = uid
+        self._registrar_hist()
+        if callable(self.ao_restaurar):
+            self.ao_restaurar()
+        self._compor_fundo()
+        self.viewport().update()
+        return True
 
     def soltar_troca(self, ponto_cena, sid_origem: str) -> bool:
         """OS F11.5 #36 (R-057): o fim do gesto "arrastar um item SOBRE o

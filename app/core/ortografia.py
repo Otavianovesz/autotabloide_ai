@@ -50,6 +50,9 @@ ACENTOS_MERCADO: dict[str, str] = {
     "limpoll": "Limpol",
     "waffer": "wafer",
     "jonad": "Jonas",
+    # v3 (a 3ª prova): o OCR alterna FUJINI/FUGINI — a marca real é
+    # Fugini (com G); sem a correção a divisão canônica não a reconhece
+    "fujini": "Fugini",
 }
 
 # Palavra quebrada no espaço errado pelo OCR — bigrama conhecido volta a

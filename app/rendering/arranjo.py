@@ -82,28 +82,70 @@ def _grade(camada, imagens, w, h) -> None:
 
 
 def _leque(camada, imagens, w, h) -> None:
+    """RODADA-125 v3 ("continua minúsculo e ruim"): o leque virou
+    VITRINE — a 1ª foto (o produto da oferta) DOMINA (~80% da zona) e
+    fica NA FRENTE (antes ia ao FUNDO da pilha e todas tinham o mesmo
+    fator 0,72); as demais, um degrau menores, ATRÁS, na MESMA base,
+    abrindo para as pontas com leve inclinação — cada uma mostra um
+    "ombro" que ainda lê como outro produto."""
     n = len(imagens)
-    fits = [_contain(img, w * 0.72, h * 0.92) for img in imagens]
-    larg = max(f.width for f in fits)
-    passo = min(larg * 0.6, (w - larg) / (n - 1)) if n > 1 else 0
-    span = passo * (n - 1) + larg
-    x0 = (w - span) / 2
-    for i, f in enumerate(fits):
-        ang = (i / (n - 1) - 0.5) * 14 if n > 1 else 0  # leque suave: -7°..+7°
-        peca = f.rotate(ang, expand=True, resample=Image.BICUBIC) if ang else f
-        cx = x0 + i * passo + (larg - peca.width) / 2
-        cy = (h - peca.height) / 2
-        camada.paste(peca, (round(cx), round(cy)), peca)  # paste clipa na camada
+    dom = _contain(imagens[0], w * 0.80, h * 0.95)
+    base = h * 0.985
+    fatia = w * 0.14                    # o ombro visível de cada traseira
+    x_dom = (w - dom.width) / 2
+    traseiras = []
+    for k, img in enumerate(imagens[1:]):
+        f = _contain(img, dom.width * 0.72, h * 0.80)
+        ang = 7.0 if k % 2 == 0 else -7.0
+        f = f.rotate(ang, expand=True, resample=Image.BICUBIC)
+        nivel = 1 + k // 2
+        if k % 2 == 0:                  # esquerda
+            x = x_dom - fatia * nivel
+        else:                           # direita
+            x = x_dom + dom.width + fatia * nivel - f.width
+        traseiras.append((f, max(0.0, min(x, w - f.width))))
+    for f, x in reversed(traseiras):    # as mais distantes primeiro
+        camada.paste(f, (round(x), round(max(0, base - f.height))), f)
+    camada.paste(dom, (round(x_dom),
+                       round(max(0, base - dom.height))), dom)
 
 
 def compor_imagens(
     imagens: list[Image.Image], larg: int, alt: int, modo: ModoArranjo = ModoArranjo.LEQUE
 ) -> Image.Image:
-    """Devolve uma camada RGBA (larg×alt) com as imagens compostas no modo dado."""
+    """Devolve uma camada RGBA (larg×alt) com as imagens compostas no modo dado.
+
+    v3 (o funil único de N fotos): (a) TODA imagem entra CROPADA pela
+    bbox do alfa — a margem transparente do canvas quadrado do acervo
+    fazia as fotos de trás "sumirem" (a fatia visível era transparência);
+    (b) o TETO do caber é por GEOMETRIA da zona: célula pequena mostra
+    menos fotos GRANDES em vez de N minúsculas (a Nivea desenhava 6 —
+    a galeria RG-28 furava o teto porque só 3 dos 5 caminhos aparavam)."""
     camada = Image.new("RGBA", (larg, alt), (0, 0, 0, 0))
-    imgs = [im.convert("RGBA") for im in imagens]
+    imgs = []
+    for im in imagens:
+        rgba = im.convert("RGBA")
+        bb = rgba.getchannel("A").getbbox()
+        if bb:
+            rgba = rgba.crop(bb)
+        imgs.append(rgba)
     if not imgs:
         return camada
+    if len(imgs) > 1:
+        dom = _contain(imgs[0], larg * 0.80, alt * 0.95)
+        fatia = larg * 0.14
+        n_max = max(2, 1 + int((larg * 0.92 - dom.width) / fatia)) \
+            if fatia > 0 else len(imgs)
+        if len(imgs) > n_max:
+            # seleção espaçada (as PONTAS sempre entram — a mesma
+            # régua do selecionar_fotos_da_celula do serviço)
+            idx = [round(i * (len(imgs) - 1) / (n_max - 1))
+                   for i in range(n_max)]
+            vistos: list[int] = []
+            for k in idx:
+                if k not in vistos:
+                    vistos.append(k)
+            imgs = [imgs[k] for k in vistos]
     if len(imgs) == 1:
         _colar_centro(camada, imgs[0], 0, 0, larg, alt)
     elif modo == ModoArranjo.LADO_A_LADO:

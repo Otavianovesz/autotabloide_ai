@@ -32,9 +32,11 @@ def test_dividir_em_dois_nas_linhas_reais():
 
     assert dividir_em_dois("ARROZ SOMAR e TIO BONINI 5 Kgs") \
         == ["Arroz Somar 5kg", "Arroz Tio Bonini 5kg"]
-    # o tipo (1º token) replica no 2º componente; o peso comum idem
+    # o tipo (1º token) replica no 2º componente; o peso comum idem.
+    # v3 (contrato atualizado DE PROPÓSITO): FUJINI é typo do OCR — a
+    # ortografia corrige para a marca real Fugini já na divisão
     assert dividir_em_dois("MOLHO TOMATE FUJINI e CAJAMAR 340g") \
-        == ["Molho Tomate Fujini 340g", "Molho Cajamar 340g"]
+        == ["Molho Tomate Fugini 340g", "Molho Cajamar 340g"]
     # BARRA = sabores/variantes (família), NUNCA composto de marcas
     assert dividir_em_dois("SARDINHA COQUEIRO 125 g TOMATE/OLEO E LIMÃO") \
         == []

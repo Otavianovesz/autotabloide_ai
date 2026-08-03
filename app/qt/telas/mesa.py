@@ -40,6 +40,43 @@ from app.rendering.compositor import DadosProduto, compor_pagina
 _COR = {"VERDE": t.SUCESSO, "AMARELO": t.ALERTA, "VERMELHO": t.PERIGO}
 
 
+class EstanteLista(QListWidget):
+    """RODADA-125 v3 — a estante que ARRASTA para a página (o pedido
+    literal do dono: "pegar da tabela ali da direita e colocar no slot
+    que eu quiser"). O ``mimeData`` anexa o UID do item (identidade,
+    I1 — nunca índice de linha) ao MIME interno do InternalMove: os
+    dois gestos convivem — soltar DENTRO da lista reordena (R-055),
+    soltar na CÉLULA atribui. O ``startDrag`` mostra a linha real
+    (o retrato do widget — o delegate padrão arrastava um fantasma
+    em branco, pois todo o conteúdo vive em setItemWidget)."""
+
+    MIME_UID = "application/x-autotabloide-item-uid"
+
+    def mimeData(self, items):  # noqa: N802 (Qt)
+        md = super().mimeData(items)
+        uids = [str(it.data(Qt.ItemDataRole.UserRole) or "")
+                for it in items]
+        uids = [u for u in uids if u]
+        if uids:
+            md.setData(self.MIME_UID, "\n".join(uids).encode("utf-8"))
+        return md
+
+    def startDrag(self, actions):  # noqa: N802 (Qt)
+        from PySide6.QtGui import QDrag
+        item = self.currentItem()
+        w = self.itemWidget(item) if item is not None else None
+        if item is None or w is None:
+            super().startDrag(actions)
+            return
+        drag = QDrag(self)
+        drag.setMimeData(self.mimeData([item]))
+        pix = w.grab()
+        drag.setPixmap(pix)
+        drag.setHotSpot(pix.rect().center())
+        drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction,
+                  Qt.DropAction.MoveAction)
+
+
 class MesaTela(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -280,7 +317,7 @@ class MesaTela(QWidget):
         # --- corpo: canvas + itens ----------------------------------------------
         self.area = EditorCanvas()
 
-        self.lista = QListWidget()
+        self.lista = EstanteLista()
         self.lista.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.lista.itemDoubleClicked.connect(self._editar_item)
         # F13/D9 (VC-024): estante → canvas — selecionar a linha ACENDE a
@@ -407,6 +444,8 @@ class MesaTela(QWidget):
             lambda _sid: self._editar_itens_fixos()
         # R-038: arrastar um PNG/JPG sobre a célula troca a foto do item (uid)
         self.area.canvas.ao_soltar_imagem = self._soltar_imagem
+        # v3: arrastar o ITEM da estante para a célula que o dono quiser
+        self.area.canvas.ao_soltar_item = self._soltar_item
         # F13/D9 (VC-024): canvas → estante — clicar a célula destaca a
         # linha do item (guarda anti-laço: _sinc_estante, o padrão do
         # painel de camadas)
@@ -668,6 +707,43 @@ class MesaTela(QWidget):
         self._marcar_salvo(False)
         mostrar_toast(self, "Override aplicado só nesta célula."
                       if ov else "Célula voltou a seguir o item.")
+
+    def _soltar_item(self, slot_id: str, uid: str) -> None:
+        """RODADA-125 v3 — o drop do item da estante na célula. A
+        semântica do gesto "colocar ESTE item AQUI": alvo vazio =
+        entra; alvo ocupado por OUTRO = substitui (o deslocado volta à
+        fila, com toast — nada some em silêncio, I2); item que JÁ está
+        noutra célula + alvo ocupado = TROCA (a intenção clara de
+        swap); mesmo slot = nada. Tudo pelo caminho oficial do canvas
+        (undo unificado — nunca composição paralela, a lição F12)."""
+        canvas = self.area.canvas
+        it = next((i for i in self._itens if i.uid == uid), None)
+        if it is None:
+            return
+        atual = canvas.mapa.get(slot_id)
+        if atual == uid:
+            return                                     # já está aqui
+        origem = next((s for s, u in canvas.mapa.items() if u == uid),
+                      None)
+        if origem is not None and atual:
+            # os DOIS lados na grade → troca declarada (o irmão do
+            # Alt+arrastar, com o mesmo undo)
+            if canvas.trocar_conteudo_slots(origem, slot_id):
+                mostrar_toast(self, "Itens trocados de célula "
+                                    "(Ctrl+Z desfaz).")
+                self._recarregar_lista()
+                self._marcar_salvo(False)
+            return
+        deslocado = next((i for i in self._itens if i.uid == atual),
+                         None) if atual else None
+        if canvas.atribuir_uid_ao_slot(slot_id, uid):
+            if deslocado is not None:
+                mostrar_toast(self, f"“{deslocado.nome}” saiu da célula "
+                                    "e voltou à estante (Ctrl+Z desfaz).")
+            else:
+                mostrar_toast(self, f"“{it.nome}” entrou na célula.")
+            self._recarregar_lista()
+            self._marcar_salvo(False)
 
     def _soltar_imagem(self, slot_id: str, caminho: str) -> None:
         """R-038: uma foto solta sobre a célula troca a imagem do ITEM daquele
@@ -2311,7 +2387,13 @@ class MesaTela(QWidget):
             extras = []
             if servico.eh_composto(it):
                 extras.append("composto (2 em 1)")          # F7.2
-            if it.imagens:
+            # v3 (a Sardinha): a linha diz a LACUNA da família — "3
+            # sabores · 1 com foto" acende onde antes "1 fotos" mentia
+            sabs = getattr(it, "sabores", None) or []
+            n_fotos = len(it.imagens or []) or (1 if it.imagem else 0)
+            if sabs and n_fotos < len(sabs):
+                extras.append(f"{len(sabs)} sabores · {n_fotos} com foto ⚠")
+            elif it.imagens:
                 extras.append(f"{len(it.imagens)} fotos")   # F7.1: modo multi
             elif not it.imagem:
                 extras.append("sem foto")
@@ -2672,9 +2754,18 @@ class MesaTela(QWidget):
     # --- fotos em lote (RG-03): "editar primeiro, fotos depois" ---------------------
 
     def _sem_foto(self) -> list[servico.ItemMesa]:
-        """Itens do lote: verdes com produto no banco e SEM foto nenhuma."""
-        return [it for it in self._itens
-                if it.produto_id and not it.imagem and not it.imagens]
+        """Itens do lote: verdes com produto no banco e SEM foto nenhuma
+        — v3: a FAMÍLIA com menos fotos que sabores também conta (a
+        Sardinha "tinha 1 foto" e o lote a pulava)."""
+        saida = []
+        for it in self._itens:
+            if not it.produto_id:
+                continue
+            n_fotos = len(it.imagens or []) or (1 if it.imagem else 0)
+            sabs = getattr(it, "sabores", None) or []
+            if n_fotos == 0 or (sabs and n_fotos < len(sabs)):
+                saida.append(it)
+        return saida
 
     def _fotos_em_lote(self) -> None:
         fila = [it.uid for it in self._sem_foto()]

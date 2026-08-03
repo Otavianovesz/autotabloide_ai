@@ -376,10 +376,18 @@ class ConciliacaoDialog(QDialog):
 
     # --- tabela -----------------------------------------------------------------
 
-    def _chip(self, semaforo: str) -> QLabel:
+    def _chip(self, semaforo: str, motivo: str | None = None) -> QLabel:
+        # RODADA-125 v3 (achado da frota): TODO motivo do motor ("por
+        # que casou", "2 de 3 sabores sem foto") era gravado no item e
+        # NUNCA mostrado — o J9 mandava o amarelo DIZER por quê e o
+        # campo ficou letra morta. O chip fala pelo tooltip; motivo de
+        # atenção (sem foto) ganha o ⓘ visível sem hover.
+        extra = " ⓘ" if motivo and "SEM FOTO" in motivo.upper() else ""
         chip = QLabel(f'<span style="color:{_COR[semaforo]}">●</span> '
-                      f'{_ROTULO[semaforo]}')
+                      f'{_ROTULO[semaforo]}{extra}')
         chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if motivo:
+            chip.setToolTip(motivo)
         return chip
 
     def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
@@ -394,7 +402,9 @@ class ConciliacaoDialog(QDialog):
         try:
             self.tabela.setRowCount(len(self.itens))
             for i, item in enumerate(self.itens):
-                self.tabela.setCellWidget(i, 0, self._chip(item.semaforo))
+                self.tabela.setCellWidget(
+                    i, 0, self._chip(item.semaforo,
+                                     getattr(item, "motivo", None)))
                 # passo 55: nome longo elide na célula, mas o tooltip tem TUDO
                 cel_imp = QTableWidgetItem(item.descricao)
                 cel_imp.setToolTip(item.descricao + "\n(duplo clique edita)")

@@ -728,7 +728,10 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # J26: nome 11→12,5 e descritor 8,5→10 — o teste do celular
             _nome(x + 8, y + 94, 170, 26, fonte=_F_FRAUNCES,
                   tam=12.5, cor=_J_INK),
-            _sub(x + 8, y + 120, 170, 18, fonte=_F_FRA_IT,
+            # v3 ("ele come informações"): o descritor ganha a 2ª
+            # LINHA (18→26px, até o fio do preço em y+147) — a marca E
+            # os sabores cabem juntos; a tesoura vira último recurso
+            _sub(x + 8, y + 120, 170, 26, fonte=_F_FRA_IT,
                  tam=10.0, cor=_J_GRAY),
             _preco(x + 45, y + 147, 96, 42, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,

@@ -69,23 +69,54 @@ def _norm(s: str) -> str:
     return (s or "").lower().replace(" ", "").replace(",", ".")
 
 
+_CONECTORES = ("e", "ou", "com")
+
+
 def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
     """Monta o descritor final: excedente do nome (na ordem do nome) +
     o descritor que o item já tinha — sem duplicar conteúdo.
 
     RODADA-125 v2 (achado da frota): o ``existente`` entra FATIADO em
     " · " — comparado inteiro, "Diversos · 500ml" nunca continha o
-    "500 ml" já emitido e a página saía "500 ml · Diversos · 500ml"."""
-    saida: list[str] = []
+    "500 ml" já emitido e a página saía "500 ml · Diversos · 500ml".
+
+    v3: (a) o dedupe é por TOKENS, nunca por substring da concatenação
+    — a unidade curta "g" era substring de "fugini" e sumia em
+    silêncio (furava a QUARTUSDECIMUS §2 por dentro); (b) partes com
+    CONECTOR na borda se FUNDEM ("Fujini e" + "Cajamar" → "Fujini e
+    Cajamar" — o " · " nunca cai no meio da frase)."""
     pedacos: list[str] = []
     for p in partes:
         pedacos.extend((p or "").split(" · "))
     if existente:
         pedacos.extend(existente.split(" · "))
+    saida: list[str] = []
+    tokens_vistos: set[str] = set()
     for p in pedacos:
         p = (p or "").strip(" ·")
-        if p and _norm(p) not in _norm(" ".join(saida)):
+        if not p:
+            continue
+        toks = [_norm(t) for t in p.split()]
+        # a parte inteira sem espaços também conta como "token": o
+        # "500ml" colado casa com o "500 ml" já emitido (e vice-versa)
+        if all(t in tokens_vistos for t in toks) \
+                or _norm(p) in tokens_vistos:
+            continue                     # tudo já dito — parte redundante
+        if saida and saida[-1].split()[-1].lower() in _CONECTORES:
+            saida[-1] = f"{saida[-1]} {p}"       # "Fujini e" + "Cajamar"
+        elif saida and p.split()[0].lower() in _CONECTORES:
+            saida[-1] = f"{saida[-1]} {p}"       # "Fujini" + "e Cajamar"
+        else:
             saida.append(p)
+        tokens_vistos.update(toks)
+        tokens_vistos.add(_norm(p))
+    # conector órfão na cauda ("… e") cai — nunca imprime frase manca
+    while saida and saida[-1].split()[-1].lower() in _CONECTORES:
+        resto = saida[-1].rsplit(None, 1)[0] if " " in saida[-1] else ""
+        if resto:
+            saida[-1] = resto
+        else:
+            saida.pop()
     return " · ".join(saida) or None
 
 
@@ -146,33 +177,67 @@ def dividir_descritor(descritor: str | None,
     return (" · ".join(quals) or None), (" · ".join(prot) or None)
 
 
+def _compactar_enumeracao(parte: str) -> str | None:
+    """v3: a enumeração de sabores que não cabe vira CONTAGEM antes de
+    sumir ("Tomate, Óleo ou Limão" → "3 sabores") — informação
+    resumida é melhor que informação comida (a queixa da 3ª prova)."""
+    if " ou " not in parte:
+        return None
+    itens = [s for s in re.split(r",\s*|\s+ou\s+", parte) if s.strip()]
+    if len(itens) < 2:
+        return None
+    return f"{len(itens)} sabores"
+
+
+def descritor_que_cabe_ex(descritor: str | None, unidade: str | None,
+                          reg: Regiao, dpi: int,
+                          fontes_dir: str | Path,
+                          ) -> tuple[str | None, str | None]:
+    """v3 — devolve ``(texto_que_sai, o_que_foi_cortado)``. A escada
+    antes da tesoura: (1) o completo; (2) enumeração de sabores vira
+    contagem ("3 sabores"); (3) qualificadores caem do FIM um a um (a
+    MARCA, primeira na hierarquia canônica, sobrevive enquanto der);
+    (4) só a unidade. O que caiu volta NOMEADO no 2º campo — o corte
+    NUNCA é mudo (I2): o pré-voo/revisora anunciam."""
+    texto = descritor or unidade
+    if not texto:
+        return None, None
+    fontes_dir = Path(fontes_dir)
+    if _cabe(texto, reg, reg.rect, dpi, fontes_dir):
+        return texto, None
+    partes = [p.strip() for p in texto.split(" · ") if p.strip()]
+    # (2) a forma compacta da enumeração — tenta ANTES de cortar
+    compactas = list(partes)
+    resumiu = False
+    for i, p in enumerate(compactas):
+        c = _compactar_enumeracao(p)
+        if c:
+            compactas[i] = c
+            resumiu = True
+    if resumiu:
+        cand = " · ".join(compactas)
+        if _cabe(cand, reg, reg.rect, dpi, fontes_dir):
+            return cand, None            # nada sumiu — só resumiu
+    base = compactas if resumiu else partes
+    qual, unidade_txt = dividir_descritor(" · ".join(base), unidade)
+    partes_q = qual.split(" · ") if qual else []
+    cortadas: list[str] = []
+    while partes_q:
+        cortadas.insert(0, partes_q.pop())
+        cand = " · ".join(partes_q + ([unidade_txt] if unidade_txt else []))
+        if cand and _cabe(cand, reg, reg.rect, dpi, fontes_dir):
+            return cand, " · ".join(cortadas)
+    return (unidade_txt or texto), (" · ".join(cortadas) or None)
+
+
 def descritor_que_cabe(descritor: str | None, unidade: str | None,
                        reg: Regiao, dpi: int,
                        fontes_dir: str | Path) -> str | None:
-    """O texto que o SUBTITULO desenha: o descritor completo se couber
-    sem elipse; senão o QUALIFICADOR sai e a unidade fica — reticências
-    em cima do número ("BB-X · 10…") é preço errado na vitrine. Se nem
-    a unidade sozinha cabe, ela vai mesmo assim (região pequena demais
-    é caso de calibração; elipsar a unidade seria pior)."""
-    texto = descritor or unidade
-    if not texto:
-        return None
-    fontes_dir = Path(fontes_dir)
-    if _cabe(texto, reg, reg.rect, dpi, fontes_dir):
-        return texto
-    # RODADA-125 v2: antes de guilhotinar o qualificador INTEIRO, os
-    # qualificadores saem do FIM um a um — a MARCA vem primeiro na
-    # hierarquia canônica e sobrevive quando cabe ("Mon Bijou ·
-    # Proteção ou Classico · 5 L" apertado vira "Mon Bijou · 5 L",
-    # nunca mais o "5 L" mudo da 2ª prova do dono)
-    qual, unidade_txt = dividir_descritor(texto, unidade)
-    partes_q = qual.split(" · ") if qual else []
-    while partes_q:
-        partes_q.pop()
-        cand = " · ".join(partes_q + ([unidade_txt] if unidade_txt else []))
-        if cand and _cabe(cand, reg, reg.rect, dpi, fontes_dir):
-            return cand
-    return unidade_txt or texto
+    """O texto que o SUBTITULO desenha (o wrapper histórico — quem
+    precisa saber O QUE caiu usa ``descritor_que_cabe_ex``)."""
+    texto, _cortado = descritor_que_cabe_ex(descritor, unidade, reg,
+                                            dpi, fontes_dir)
+    return texto
 
 
 def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
@@ -290,21 +355,22 @@ def _tirar_peso_repetido(tokens: list[str], unidade: str | None,
 
 
 def _descer_marca(tokens: list[str], marcas: tuple[str, ...],
-                  ) -> tuple[list[str], list[str]]:
+                  ) -> tuple[list[str], list[str], list[str]]:
     """A REGRA CANÔNICA da célula (decisão do dono na 2ª prova): a
     linha grande diz O QUE É; a MARCA desce ao descritor — SEMPRE, não
     só quando falta espaço (era a causa do "sem padrão": Triângulo
     ficava grande numa célula e Parmalat descia na outra).
 
-    Devolve ``(tokens_do_tipo, partes_do_descritor)``. O span vai da
-    1ª marca reconhecida à última, engolindo conectores ("e"/"ou") e
-    parênteses de embalagem — "Fugini (pouch) e Bonare (lata)" desce
-    INTEIRO. O que vem DEPOIS da marca (sabor/qualificador) desce
-    junto, na ordem. Marca no token 0 não divide (não existe tipo
-    antes — o nome É a marca); sem marca reconhecida, nada muda (F9:
-    a régua reconhece, nunca inventa)."""
+    Devolve ``(tokens_do_tipo, partes_do_descritor, pesos_do_resto)``.
+    O span vai da 1ª marca reconhecida à última, engolindo conectores
+    ("e"/"ou") e parênteses de embalagem — "Fugini (pouch) e Bonare
+    (lata)" desce INTEIRO. O que vem DEPOIS da marca (sabor/
+    qualificador) desce junto, na ordem; o PESO escondido no resto sai
+    à parte (v3 — quem o põe no FIM é a junção). Marca no token 0 não
+    divide (não existe tipo antes — o nome É a marca); sem marca
+    reconhecida, nada muda (F9: a régua reconhece, nunca inventa)."""
     if not marcas or len(tokens) < 2:
-        return tokens, []
+        return tokens, [], []
     chaves = [t.lower().strip("().,;:·") for t in tokens]
     alvos = [tuple(m.lower().split()) for m in marcas if m]
 
@@ -322,7 +388,19 @@ def _descer_marca(tokens: list[str], marcas: tuple[str, ...],
             ini, fim = i, j
             break
     if ini is None:
-        return tokens, []
+        return tokens, [], []
+    # v3 (a 3ª prova: "Molho Tomate Fujini e · Cajamar"): o tipo NUNCA
+    # termina em conector — quando o padrão é [X, e/ou, MARCA], o "X e"
+    # desce JUNTO (o X antes do conector é a marca-irmã que a régua não
+    # reconheceu; "Tipo e Marca" não existe no vocabulário do mercado)
+    while ini >= 2 and chaves[ini - 1] in ("e", "ou"):
+        ini -= 2
+    # …e a régua do passo 5 vale aqui também: preposição/artigo/par
+    # consagrado nunca fica órfão no fim do tipo ("Farinha de | X e M")
+    while ini > 1 and _corte_parte_marca(tokens[ini - 1], tokens[ini]):
+        ini -= 1
+    if ini < 1:
+        return tokens, [], []
     # estende: (rótulo) → [e|ou (rótulo)? marca (rótulo)?]*
     while fim < len(tokens):
         if tokens[fim].startswith("(") and tokens[fim].endswith(")"):
@@ -333,9 +411,19 @@ def _descer_marca(tokens: list[str], marcas: tuple[str, ...],
             continue
         break
     marca_txt = " ".join(tokens[ini:fim])
-    resto = " ".join(tokens[fim:]).strip(" ·")
+    # v3: o peso escondido DENTRO do resto sai e canoniza ("600g Coco
+    # e Leite" → resto "Coco e Leite", peso "600 g" — quem o põe no
+    # FIM é a junção; antes a parte descia crua com o peso na frente)
+    resto_toks = [t for t in tokens[fim:] if t != "·"]
+    pesos_resto = []
+    for t in resto_toks:
+        if _RE_PARTE_UNIDADE.match(t):
+            _x, pf = separar_peso(f"x {t}")
+            pesos_resto.append(pf or t)      # canonizado ("600g"→"600 g")
+    resto = " ".join(t for t in resto_toks
+                     if not _RE_PARTE_UNIDADE.match(t)).strip(" ·")
     partes = [marca_txt] + ([resto] if resto else [])
-    return tokens[:ini], partes
+    return tokens[:ini], partes, pesos_resto
 
 
 def _corte_parte_marca(ultimo: str, descido: str) -> bool:
@@ -431,17 +519,25 @@ def precedencia_do_nome(
     # unidade já desce ao descritor) e a embalagem colada a ele desce
     tokens, partes_meio = _tirar_peso_repetido(tokens, unidade)
     # a REGRA CANÔNICA: a marca reconhecida desce ao descritor SEMPRE
-    tokens, partes_marca = _descer_marca(tokens, marcas)
+    tokens, partes_marca, pesos_resto = _descer_marca(tokens, marcas)
     partes_desc.extend(partes_marca)
     partes_desc.extend(partes_meio)
     partes_desc.extend(siglas)
-    # v2: quando a unidade do dado JÁ é este peso, quem o escreve é o
-    # descritor0 — no FIM, a ordem canônica (marca · sabores · peso);
-    # anexar aqui o punha no meio ("Mabel · 600 g · Coco ou Leite")
+    # v3: o PESO fecha o descritor SEMPRE — depois dos sabores do
+    # descritor0, nunca no meio ("Mabel · Coco ou Leite · 600 g"); os
+    # pesos do resto da marca e o do C2 entram na cauda, deduplicados
+    # contra a unidade que o descritor0 já carrega
+    cauda_pesos = list(pesos_resto)
     if peso and not _mesmo_peso_exibido(peso, unidade):
-        partes_desc.append(peso)
+        cauda_pesos.append(peso)
     nome_atual = " ".join(tokens)
-    desc_atual = _juntar_descritor(partes_desc, descritor0)
+
+    def _montar_descritor(partes_frente: list[str]) -> str | None:
+        return _juntar_descritor(
+            partes_frente + ([descritor0] if descritor0 else [])
+            + cauda_pesos, None)
+
+    desc_atual = _montar_descritor(partes_desc)
 
     rects: dict[str, Retangulo] = {}
     rect_nome = reg_nome.rect
@@ -501,8 +597,8 @@ def precedencia_do_nome(
         if _cabe(candidato, reg_nome, rect_nome, dpi, fontes_dir):
             return NomeAjustado(
                 candidato,
-                _juntar_descritor([" ".join(excedente)] + pesos_meio
-                                  + partes_desc, descritor0),
+                _montar_descritor([" ".join(excedente)] + pesos_meio
+                                  + partes_desc),
                 rects)
 
     # K3, a palavra do dono na reauditoria: "na dúvida entre cortar a
@@ -519,7 +615,6 @@ def precedencia_do_nome(
     # a revisora/pré-voo acusam pela flag
     return NomeAjustado(
         " ".join(tokens),
-        _juntar_descritor([" ".join(excedente)] + pesos_meio + partes_desc,
-                          descritor0)
+        _montar_descritor([" ".join(excedente)] + pesos_meio + partes_desc)
         if excedente or pesos_meio or partes_desc else desc_atual,
         rects, elipsa=True)

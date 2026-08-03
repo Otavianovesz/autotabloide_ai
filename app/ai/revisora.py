@@ -112,12 +112,17 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                 from app.rendering.nome_fit import precedencia_do_nome
                 from app.rendering.text_fit import piso_do_celular
                 dpi = getattr(layout, "dpi", 300)
+                # v3 (achado da frota): a simulação roda com as MESMAS
+                # marcas do desenho — sem elas a revisora via OUTRA
+                # página (a hierarquia canônica muda nome e descritor)
+                # e nenhum corte real era anunciado
                 aj = precedencia_do_nome(
                     d.nome, getattr(d, "descritor", None),
                     getattr(d, "unidade", None), slot.regioes, dpi,
                     Path(fontes_dir),
                     piso_pt=piso_do_celular(
-                        getattr(layout, "largura_mm", 0)))
+                        getattr(layout, "largura_mm", 0)),
+                    marcas=getattr(d, "marcas_nome", ()))
                 if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
@@ -129,7 +134,7 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                 # no desenho do SUBTITULO nunca é silencioso — a MESMA
                 # decisão do desenho (descritor_que_cabe), anunciada
                 from app.rendering.model import TipoRegiao
-                from app.rendering.nome_fit import descritor_que_cabe
+                from app.rendering.nome_fit import descritor_que_cabe_ex
                 reg_sub = next(
                     (r for r in slot.regioes
                      if r.tipo == TipoRegiao.SUBTITULO and r.visivel),
@@ -139,13 +144,21 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                 uni_f = (None if aj is not None and aj.descritor_saiu
                          else getattr(d, "unidade", None))
                 cheio = desc_f or uni_f
+                if aj is not None and aj.descritor_saiu \
+                        and (getattr(d, "descritor", None) or "").strip():
+                    # v3: o passo 4 calou a 2ª linha INTEIRA — com a
+                    # hierarquia canônica ela carrega marca/sabores;
+                    # o desenho declarou, alguém tem que anunciar
+                    avisos.append(
+                        f"{rot}: a 2ª linha saiu para o nome caber — "
+                        f"perdeu “{d.descritor}”.")
                 if reg_sub is not None and cheio:
-                    vai = descritor_que_cabe(desc_f, uni_f, reg_sub,
-                                             dpi, Path(fontes_dir))
-                    if vai and vai != cheio:
+                    vai, cortado = descritor_que_cabe_ex(
+                        desc_f, uni_f, reg_sub, dpi, Path(fontes_dir))
+                    if cortado:
                         avisos.append(
-                            f"{rot}: o descritor não coube inteiro no "
-                            f"espaço — “{cheio}” vai sair como “{vai}”.")
+                            f"{rot}: o descritor não coube — perdeu "
+                            f"“{cortado}” (sai “{vai}”).")
             except Exception:
                 pass
     return avisos

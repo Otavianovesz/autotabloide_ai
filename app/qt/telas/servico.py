@@ -799,6 +799,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         descritor=descritor,                 # F13-BIS/T2
         desconto_pct=getattr(it, "desconto_pct", None),   # Q2
         marcas_nome=marcas_nome,             # v2: a hierarquia canônica
+        sabores=tuple(getattr(it, "sabores", None) or ()),   # v3
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
         # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
@@ -2148,6 +2149,15 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                         avisos.append(
                             f"{rotulo} ({nome}): foto com nota RUIM{idx} — "
                             + "; ".join(av.motivos))
+        # RODADA-125 v3 (a Sardinha): a célula que ANUNCIA N sabores e
+        # só tem M fotos fala no pré-voo — 3 telas prometiam esse
+        # aviso e nenhuma cumpria (promessa falsa fere a I2)
+        sabs = tuple(getattr(d, "sabores", ()) or ())
+        if sabs and caminhos and len(caminhos) < len(sabs):
+            avisos.append(
+                f"{rotulo} ({nome}): anuncia {len(sabs)} sabores e só "
+                f"{len(caminhos)} têm foto — complete as fotos da "
+                "família (botão direito → Sabores da família)")
         if d.preco_por is None and not d.multi_preco \
                 and not getattr(d, "desconto_pct", None):
             # R-070: multi-preço TEM preço; Q2: desconto declarado idem
@@ -3351,6 +3361,21 @@ def conjunto_do_acervo(descricao: str) -> dict | None:
             "rotulos": rotulos, "membros": membros}
 
 
+def _motivo_fotos_do_conjunto(membros: list[dict]) -> str | None:
+    """RODADA-125 v3 (a Sardinha da 3ª prova): o conjunto casou os 3
+    sabores mas 2 não tinham foto — a célula mostrou UMA lata e o dono
+    achou que os sabores foram ignorados. O item nasce dizendo o que
+    falta (I2), com o caminho para completar."""
+    sem = [m["nome"] for m in membros if not m.get("imagem")]
+    if not sem:
+        return None
+    return (f"família casada, mas {len(sem)} de {len(membros)} sabores "
+            f"SEM FOTO ({', '.join(sem[:3])}"
+            + ("…" if len(sem) > 3 else "")
+            + ") — complete pelo Almoxarifado ou botão direito → "
+            "Sabores da família")
+
+
 def item_do_conjunto(desc: str, preco, ean, conjunto: dict,
                      mp=None, dp=None) -> ItemMesa:
     """Monta o ItemMesa VERDE do conjunto reconhecido — a linha vira
@@ -3385,8 +3410,13 @@ def item_do_conjunto(desc: str, preco, ean, conjunto: dict,
                      if m.get("imagem")), None),
         imagens=fotos, arranjo="LEQUE" if fotos else None,
         sabores=list(conjunto["rotulos"]), via="conjunto",
-        motivo=(f"linha casada com a família já criada "
-                f"({n} sabores) — nada foi recriado"))
+        # v3: sabor sem foto vira PENDÊNCIA dita (a Sardinha parecia
+        # "ignorada" porque 2 de 3 latas nem existiam no acervo)
+        pendencias=(["sabor_sem_foto"]
+                    if _motivo_fotos_do_conjunto(membros) else []),
+        motivo=(_motivo_fotos_do_conjunto(membros)
+                or (f"linha casada com a família já criada "
+                    f"({n} sabores) — nada foi recriado")))
     item.familia = familia_do_item(membros[0]["id"])
     item.mais18 = item.mais18 or eh_bebida_alcoolica_nome(
         conjunto["base"])

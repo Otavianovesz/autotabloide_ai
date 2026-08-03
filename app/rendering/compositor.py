@@ -96,6 +96,10 @@ class DadosProduto:
     # tem SUBTITULO ("Leite Integral" grande + "Parmalat · 1L"). Vazio
     # = comportamento de sempre (testes/latitude antigos intactos).
     marcas_nome: tuple[str, ...] = ()
+    # v3: os SABORES declarados viajam também COMO LISTA (não só
+    # dissolvidos na prosa do descritor) — o pré-voo compara com as
+    # fotos e acusa "anuncia 3 sabores, só 1 tem foto" (a Sardinha)
+    sabores: tuple[str, ...] = ()
 
 
 def percentual_desconto(preco_de: "Decimal | None",

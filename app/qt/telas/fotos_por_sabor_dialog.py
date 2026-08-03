@@ -137,7 +137,7 @@ class FotosPorSaborDialog(QDialog):
         botoes.button(QDialogButtonBox.StandardButton.Ok).setText("Concluir")
         botoes.button(
             QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
-        botoes.accepted.connect(self.accept)
+        botoes.accepted.connect(self._concluir)
         botoes.rejected.connect(self.reject)
 
         raiz = QVBoxLayout(self)
@@ -269,6 +269,26 @@ class FotosPorSaborDialog(QDialog):
             self._resumo.setText(
                 f"{n} de {total} com foto — o que ficar vazio "
                 "aparece no pré-voo")
+
+    def _concluir(self) -> None:
+        """RODADA-125 v3 (a Sardinha nasceu com 2 sabores sem foto e
+        SEM RASTRO): concluir com espaço vazio PERGUNTA — aviso com
+        escolha, nunca veto (F9)."""
+        vazios = [self._rotulos[i] for i, f in enumerate(self._fotos)
+                  if not (f or (self._existentes[i] or {}).get("tem_foto"))]
+        if vazios:
+            from app.qt.design.componentes import perguntar
+            ok = perguntar(
+                self, "Sabores sem foto",
+                f"Ainda faltam {len(vazios)} foto(s): "
+                f"{', '.join(vazios[:4])}"
+                + ("…" if len(vazios) > 4 else "") + ".\n"
+                "Dá para completar depois pelo botão direito → "
+                "Sabores da família.",
+                sim="Concluir assim mesmo", nao="Voltar às fotos")
+            if not ok:
+                return
+        self.accept()
 
     def _falhou(self, msg: str) -> None:
         self._overlay.esconder()
