@@ -385,6 +385,10 @@ class AlmoxarifadoTela(QWidget):
         self.foto = QLabel("—")
         self.foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.foto.setFixedHeight(170)
+        # LUPA (pedido do dono): duplo clique na foto do painel amplia
+        self._foto_caminho: str | None = None
+        self.foto.setToolTip("Duplo clique amplia (confira a gramatura)")
+        self.foto.mouseDoubleClickEvent = lambda _ev: self._ampliar_foto()
         # OS F11.5 #27/#28 (R-085): a NOTA da foto (boa/atenção/ruim) com os
         # motivos no tooltip — pequena demais liga o aviso do upscale
         self.nota_foto = QLabel("")
@@ -638,13 +642,21 @@ class AlmoxarifadoTela(QWidget):
                 220, 164, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             self.foto.setPixmap(pm)
+            self._foto_caminho = d["imagem"]     # LUPA: o original
             self._mostrar_nota_foto(d["imagem"])
         else:
             self.foto.setPixmap(QPixmap())
             self.foto.setText("sem imagem")
+            self._foto_caminho = None
             self.nota_foto.setText("")
             self.nota_foto.setToolTip("")
         self._carregando = False
+
+    def _ampliar_foto(self) -> None:
+        """LUPA (pedido do dono): a foto do produto em tamanho real —
+        a gramatura do rótulo se confere aqui."""
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, self._foto_caminho)
 
     def _mostrar_nota_foto(self, caminho: str) -> None:
         """OS F11.5 #27/#28 (R-085): a nota da foto, com cor por faixa e os

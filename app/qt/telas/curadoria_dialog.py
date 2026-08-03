@@ -235,11 +235,27 @@ class CuradoriaDialog(QDialog):
         self.usar.setProperty("tipo", "primario")
         self.usar.setEnabled(False)
         self.usar.clicked.connect(self._usar)
+        # LUPA (pedido do dono, 02/08): conferir a GRAMATURA no rótulo
+        # exige ver a foto GRANDE — botão, tecla Espaço e botão direito
+        self.btn_lupa = QPushButton(" Ampliar")
+        self.btn_lupa.setIcon(icone("busca", tamanho=16))
+        self.btn_lupa.setToolTip("Vê a foto selecionada em tamanho real "
+                                 "— para conferir a gramatura no rótulo "
+                                 "(atalho: Espaço)")
+        self.btn_lupa.setEnabled(False)
+        self.btn_lupa.clicked.connect(self._ampliar)
+        from PySide6.QtGui import QKeySequence, QShortcut
+        atalho_lupa = QShortcut(QKeySequence(Qt.Key.Key_Space),
+                                self.lista, self._ampliar)
+        atalho_lupa.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.lista.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lista.customContextMenuRequested.connect(self._menu_lista)
 
         botoes = QHBoxLayout()
         botoes.setSpacing(t.ESP_2)
-        for b in (arquivo, colar, url, acervo, self.btn_ajustar,
-                  self.btn_refinar):
+        for b in (arquivo, colar, url, acervo, self.btn_lupa,
+                  self.btn_ajustar, self.btn_refinar):
             botoes.addWidget(b)
         botoes.addStretch(1)
         botoes.addWidget(sem)
@@ -407,6 +423,27 @@ class CuradoriaDialog(QDialog):
         self.usar.setEnabled(tem)
         self.btn_ajustar.setEnabled(tem)
         self.btn_refinar.setEnabled(tem)
+        self.btn_lupa.setEnabled(tem)
+
+    def _ampliar(self) -> None:
+        """LUPA: a foto selecionada em tamanho real — o gesto de conferir
+        a gramatura antes de escolher."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, sel[0].data(Qt.ItemDataRole.UserRole))
+
+    def _menu_lista(self, pos) -> None:
+        item = self.lista.itemAt(pos)
+        if item is None:
+            return
+        self.lista.setCurrentItem(item)
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        menu.addAction("Ampliar (ver a gramatura)", self._ampliar)
+        menu.addAction("Usar esta", self._usar)
+        menu.exec(self.lista.mapToGlobal(pos))
 
     def _trocar_candidato(self, novo_caminho: str) -> None:
         """#46: o candidato selecionado passa a apontar para a versão

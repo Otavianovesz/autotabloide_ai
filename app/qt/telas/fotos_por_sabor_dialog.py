@@ -83,6 +83,10 @@ class FotosPorSaborDialog(QDialog):
             mini.setFixedSize(_MINIATURA + 24, _MINIATURA + 24)
             mini.setProperty("papel", "legenda")
             mini.setFrameShape(QFrame.Shape.StyledPanel)
+            mini.setToolTip("Duplo clique amplia (confira a gramatura)")
+            mini.setCursor(Qt.CursorShape.PointingHandCursor)
+            mini.mouseDoubleClickEvent = (
+                lambda _ev, k=i: self._ampliar(k))
             self._minis.append(mini)
             buscar = QPushButton(" Buscar…")
             buscar.setIcon(icone("busca", tamanho=15))
@@ -210,6 +214,12 @@ class FotosPorSaborDialog(QDialog):
         self._fotos[i] = caminho
         self._mostrar(i, caminho)
         self._atualizar_resumo()
+
+    def _ampliar(self, i: int) -> None:
+        """LUPA: a foto do espaço em tamanho real (gramatura legível)."""
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, self._fotos[i],
+                       titulo=self._rotulos[i])
 
     def _limpar(self, i: int) -> None:
         self._fotos[i] = None

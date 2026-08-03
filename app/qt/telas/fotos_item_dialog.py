@@ -73,6 +73,10 @@ class FotosItemDialog(QDialog):
             ([item.imagem] if item.imagem else [])
         for cam in iniciais:
             self._adicionar_na_lista(cam)
+        # LUPA (pedido do dono): duplo clique amplia — a gramatura do
+        # rótulo se confere em tamanho real
+        self.lista.itemDoubleClicked.connect(
+            lambda it: self._ampliar(it))
 
         subir = QPushButton("◀ Antes")
         subir.setToolTip("Move a foto selecionada uma posição para trás")
@@ -174,6 +178,10 @@ class FotosItemDialog(QDialog):
         linha = self.lista.currentRow()
         if linha >= 0:
             self.lista.takeItem(linha)
+
+    def _ampliar(self, item) -> None:
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, item.data(Qt.ItemDataRole.UserRole))
 
     def caminhos(self) -> list[str]:
         return [self.lista.item(i).data(Qt.ItemDataRole.UserRole)
