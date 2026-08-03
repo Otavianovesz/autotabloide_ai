@@ -865,21 +865,32 @@ class ConciliacaoDialog(QDialog):
         proposta.componentes = dlg.componentes_finais()
         proposta.mais18 = dlg.mais18_final()
         self._sabores_escolhidos = dlg.sabores_finais()
-        # SEXTUSDECIMUS/M2+M5: linha MULTI (sabores ou 2 produtos) → a
-        # tela de UM ESPAÇO POR FOTO (decisão 2 do dono) — cada produto
-        # nasce com a SUA foto (L14: ou fecha o N, ou não oferece).
+        # SEXTUSDECIMUS/M2+M5 + RODADA-125 Onda 2: linha MULTI → a tela
+        # de UM ESPAÇO POR FOTO. Com MARCAS E SABORES juntos (o Biscoito
+        # Bulnez e Adoralle × Cream Cracker/Leite/…), os espaços são o
+        # CARTESIANO (decisão do dono: uma foto por item declarado); e
+        # quem JÁ EXISTE no acervo aparece "✓ já no acervo" — nunca se
+        # recria (a pergunta dele sobre duplicatas).
         # Cancelar cancela: o item segue vermelho, nada nasce pela metade.
         sab = self._sabores_escolhidos
         rotulos = (sab[1] if sab
                    else (proposta.componentes
                          if len(proposta.componentes) >= 2 else None))
+        if sab and len(proposta.componentes) >= 2 and len(sab[1]) >= 2:
+            rotulos = servico.rotulos_marcas_x_sabores(
+                proposta.componentes, sab[1])
+            self._sabores_escolhidos = (sab[0], rotulos)
         if rotulos and len(rotulos) >= 2:
             from app.qt.telas.fotos_por_sabor_dialog import (
                 FotosPorSaborDialog,
             )
+            base = sab[0] if sab else ""
+            existentes = [servico.membro_do_acervo(
+                f"{base} {r}".strip() if sab else r) for r in rotulos]
             fdlg = FotosPorSaborDialog(
-                sab[0] if sab else "", rotulos, self,
-                titulo=(sab[0] if sab else proposta.nome))
+                base, rotulos, self,
+                titulo=(sab[0] if sab else proposta.nome),
+                existentes=existentes)
             if fdlg.exec() != QDialog.DialogCode.Accepted:
                 self._sabores_escolhidos = None
                 return

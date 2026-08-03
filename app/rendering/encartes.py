@@ -1081,11 +1081,17 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path,
             slots=builder(),
             arquivo_camada=camada,
             arquivo_fundo=str(caminho),
-            # F13-BIS §3.7.2: as seções ficam DESLIGADAS no Jornal — o
-            # contorno padrão é alienígena sobre o papel creme/laranja
-            # (as divisórias da própria arte fazem o papel do N-05);
-            # um estilo de seção POR ENCARTE é assunto do G
+            # F13-BIS §3.7.2: as seções nascem DESLIGADAS — o contorno
+            # genérico é alienígena sobre o papel creme/laranja.
+            # RODADA-125 Onda 2 (decisão do dono, 03/08): o JORNAL tem
+            # o SEU estilo de seção ("um jeito próprio, bonitinho") —
+            # o cabeçalho tipográfico do broadsheet, MEDIDO na folga
+            # real entre fileiras (sem folga, não desenha). O dono liga
+            # com o "Agrupar por categoria" (a régua nova só liga onde
+            # há estilo próprio) ou no toggle da página.
             secoes_ligadas=False,
+            estilo_secoes=("JORNAL" if chave == "jornal-do-mes"
+                           else None),
         ))
     avisos_fluxo: list[str] = []
     if secoes and chave == "jornal-do-mes":

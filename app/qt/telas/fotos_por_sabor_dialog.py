@@ -46,12 +46,17 @@ class FotosPorSaborDialog(QDialog):
     def __init__(self, base: str, rotulos: list[str], parent=None, *,
                  pre: list[str | None] | None = None,
                  titulo: str | None = None,
+                 existentes: list[dict | None] | None = None,
                  buscador=None, tratador=None):
         super().__init__(parent)
         # ``base`` semeia a busca ("{base} {rótulo}"); no COMPOSTO os
         # rótulos JÁ são nomes completos — base vazia, busca pelo rótulo
+        # RODADA-125 Onda 2: ``existentes`` (paralela) marca quem JÁ
+        # está no acervo — o espaço nasce "✓" e ninguém recria nada
         self._base = base
         self._rotulos = list(rotulos)
+        self._existentes = list(existentes or []) + \
+            [None] * len(self._rotulos)
         self._fotos: list[str | None] = list(pre or []) + \
             [None] * len(self._rotulos)
         self._fotos = self._fotos[:len(self._rotulos)]
@@ -105,6 +110,17 @@ class FotosPorSaborDialog(QDialog):
             cl.addWidget(arquivo)
             cl.addWidget(limpar)
             grade.addWidget(cartao, i // 3, i % 3)
+            ex = self._existentes[i]
+            if ex is not None:
+                titulo.setText(f"{rotulo}  ✓ já no acervo")
+                titulo.setToolTip(f"Casado com “{ex['nome']}” — não "
+                                  "será recriado; buscar aqui TROCA a "
+                                  "foto dele")
+                if ex.get("imagem"):
+                    self._mostrar(i, ex["imagem"])
+                    mini.setToolTip("Foto atual do acervo — buscar "
+                                    "aqui a substitui (a antiga vira "
+                                    "versão)")
             if self._fotos[i]:
                 self._mostrar(i, self._fotos[i])
 
@@ -243,7 +259,9 @@ class FotosPorSaborDialog(QDialog):
         self._minis[i].setToolTip(Path(caminho).name)
 
     def _atualizar_resumo(self) -> None:
-        n = sum(1 for f in self._fotos if f)
+        # coberto = foto nova NESTA tela OU membro do acervo que já tem
+        n = sum(1 for i, f in enumerate(self._fotos)
+                if f or (self._existentes[i] or {}).get("tem_foto"))
         total = len(self._rotulos)
         if n == total:
             self._resumo.setText(f"✓ {n} de {total} com foto")

@@ -1966,7 +1966,10 @@ def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
     M3: os NOMES dos sabores escolhidos viajam também — o descritor da
     célula os anuncia ("Tomate, Óleo ou Limão")."""
     escolhidos = sorted(membros, key=lambda m: m.get("produto_id") or 0)
-    item.imagens = [m["imagem"] for m in escolhidos if m.get("imagem")]
+    # RODADA-125: a régua do CABER — até MAX_FOTOS_CELULA todas entram;
+    # acima, a seleção espaçada (o descritor segue falando por TODOS)
+    item.imagens = selecionar_fotos_da_celula(
+        [m["imagem"] for m in escolhidos if m.get("imagem")])
     base = (item.familia or {}).get("nome") or item.nome or ""
     item.sabores = [sabor_do_membro(m.get("nome") or "", base)
                     for m in escolhidos]
@@ -3098,6 +3101,76 @@ def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
     return base, (sabores if len(sabores) >= 2 else [])
 
 
+def membro_do_acervo(nome: str) -> dict | None:
+    """RODADA-125 Onda 2 (a pergunta do dono: "como ele não correlaciona
+    o que já existe?"): procura o produto que este NOME JÁ É no acervo —
+    nome bruto exato → alias aprendido → CHAVE NATURAL do sanitizado (a
+    régua conservadora do caça-duplicatas: marca diferente nunca casa).
+    Devolve {"id","nome","tem_foto"} ou None."""
+    from app.core.models import Produto
+    from app.core.portabilidade import chave_natural
+    from app.core.repositories import ProdutoRepositorio
+    from app.core.sanitize import sanitizar
+
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            repo = ProdutoRepositorio(s)
+            p = (repo.buscar_por_nome_bruto(nome)
+                 or repo.buscar_por_alias(nome))
+            if p is None:
+                alvo = chave_natural(
+                    sanitizar(nome).nome_sanitizado, "")
+                for cand in s.query(Produto).filter(
+                        Produto.excluido_em.is_(None)):
+                    if chave_natural(cand.nome_sanitizado or "",
+                                     "") == alvo:
+                        p = cand
+                        break
+            if p is None or p.excluido_em is not None:
+                return None
+            return {"id": p.id, "nome": p.nome_sanitizado,
+                    "tem_foto": bool(p.caminho_imagem),
+                    "imagem": _imagem_absoluta(p.caminho_imagem)}
+    finally:
+        db.engine.dispose()
+
+
+def rotulos_marcas_x_sabores(marcas: list[str],
+                             sabores: list[str]) -> list[str]:
+    """RODADA-125 Onda 2 (a decisão do dono, 03/08): a linha "Bulnez e
+    Adoralle · Cream Cracker/Leite/Maisena" declara o CARTESIANO — um
+    produto por (marca × sabor), marca-major ("Bulnez Cream Cracker",
+    "Bulnez Leite", …, "Adoralle Maisena")."""
+    if not marcas:
+        return list(sabores)
+    if not sabores:
+        return list(marcas)
+    return [f"{m} {s}".strip() for m in marcas for s in sabores]
+
+
+# a régua do CABER (decisão do dono): até 4 fotos a célula mostra
+# todas; acima disso a seleção espaçada pega as pontas (marcas
+# diferentes, na geração marca-major) e o DESCRITOR fala por todos
+MAX_FOTOS_CELULA = 4
+
+
+def selecionar_fotos_da_celula(imagens: list, max_n: int = MAX_FOTOS_CELULA
+                               ) -> list:
+    """"Isso se couber; se não, dê um jeito de selecionar adequadamente"
+    — espaçamento uniforme sobre a lista (pega a 1ª, a última e o meio:
+    com cartesiano marca-major, marcas diferentes entram)."""
+    if len(imagens) <= max_n:
+        return list(imagens)
+    idx = [round(i * (len(imagens) - 1) / (max_n - 1))
+           for i in range(max_n)]
+    vistos: list = []
+    for k in idx:
+        if imagens[k] not in vistos:
+            vistos.append(imagens[k])
+    return vistos
+
+
 def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
                              sabores: list[str], mais18: bool,
                              imagem_tratada: str | list | None,
@@ -3118,6 +3191,30 @@ def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
     ids: list[int] = []
     for i, sabor in enumerate(sabores):
         nome = f"{nome_familia} {sabor}".strip()
+        # Onda 2 (anti-duplicata): o sabor que JÁ EXISTE no acervo é
+        # CASADO, nunca recriado — reimportar/sabores novos SOMAM à
+        # família. Foto nova de membro existente é ingerida NO
+        # existente (a curadoria não-destrutiva preserva a anterior
+        # como versão) — a grafia diferente nunca mais vira duplicata.
+        exist = membro_do_acervo(nome)
+        if exist is not None:
+            if fotos[i]:
+                from app.core.repositories import ProdutoRepositorio
+                from app.images.biblioteca import biblioteca_da_config
+                bib = biblioteca_da_config()
+                bib.ingerir(exist["id"], fotos[i])
+                db_e = Database().init()
+                try:
+                    with db_e.Session() as s_e:
+                        ProdutoRepositorio(s_e).editar(
+                            exist["id"],
+                            caminho_imagem=bib.caminho_relativo(
+                                exist["id"]))
+                        s_e.commit()
+                finally:
+                    db_e.engine.dispose()
+            ids.append(exist["id"])
+            continue
         sub = ItemMesa(descricao=nome, preco=item.preco,
                        semaforo="VERMELHO", nome=nome)
         finalizar_criacao(sub, nome, mais18, fotos[i],

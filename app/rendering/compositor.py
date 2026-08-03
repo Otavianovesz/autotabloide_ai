@@ -1137,9 +1137,24 @@ def compor_pagina(
             # F13-QUATER/A4: o estilo DA PÁGINA vence o global (o
             # Jornal em fluxo compõe JORNAL sem tocar a Config)
             estilo = getattr(pagina, "estilo_secoes", None) or estilo
+            # RODADA-125: o estilo JORNAL no estático mede a FOLGA real
+            # acima de cada bloco — as caixas viajam POR REGIÃO visível
+            # (o bbox de slot mentia: o slot de textos do jornal
+            # atravessa a página e o subtítulo da manchete sumia da
+            # régua, que riscava o texto)
+            caixas = []
+            for _s in pagina.slots:
+                for _r in _s.regioes:
+                    if not getattr(_r, "visivel", True):
+                        continue
+                    caixas.append((
+                        _r.rect.x_mm, _r.rect.y_mm,
+                        _r.rect.x_mm + _r.rect.larg_mm,
+                        _r.rect.y_mm + _r.rect.alt_mm))
             desenhar_secoes(base, secoes, dpi_ef, cor=cor,
                             espessura_mm=esp, fontes_dir=fontes_dir,
-                            estilo=estilo, cores_por_categoria=por_cat)
+                            estilo=estilo, cores_por_categoria=por_cat,
+                            caixas_pagina_mm=caixas)
 
     draw = ImageDraw.Draw(base)
     for i, slot in enumerate(pagina.slots):

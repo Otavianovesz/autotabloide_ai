@@ -294,6 +294,32 @@ CADEIA DO CONSERTO para a linha do Biscoito sair "Biscoito Cream Cracker Bulnez 
 
 **TOTAL: 131 achados numerados.**
 
+
+## ADENDO DA ONDA 2 (executada em 03/08 — as decisões do dono)
+
+132. O slot de textos do jornal ATRAVESSA a página e cegava a régua de folga
+     (o bbox por slot escondia o subtítulo da manchete; o fio riscou o texto
+     na 1ª tentativa) — consertado: as caixas viajam POR REGIÃO visível.
+133. O Jornal estático de 42 células é DENSO (folgas reais de 2,4 mm entre
+     fileiras): o cabeçalho de seção NÃO cabe entre fileiras — a régua nova
+     cala em vez de riscar. EVOLUÇÃO NOMEADA (Onda 3): o gerador do Jornal
+     reservar ~4 mm acima da fileira que inicia seção, aí o cabeçalho
+     tipográfico aparece em todas.
+134. Cabeçalho por categoria DEDUPADO no estático: só o maior run fala
+     (a página do dono tinha "BEBIDAS" 2× por fragmentação).
+135. Vizinho LARGO acima (manchete/subtítulo — território editorial) exige
+     respiro dobrado: melhor calar que riscar texto.
+
+**Onda 2 EXECUTADA**: anti-duplicata (membro_do_acervo casa bruto→alias→
+chave natural; criar_familia_de_sabores casa existentes e cria só o que
+falta — reimportar é idempotente, foto nova de membro existente vira
+versão no próprio); cartesiano marcas×sabores (rotulos_marcas_x_sabores,
+marca-major) com a régua do caber (MAX_FOTOS_CELULA=4 +
+selecionar_fotos_da_celula espaçada — pega as duas marcas); a tela de
+N espaços mostra "✓ já no acervo" com a foto atual; o Jornal ganhou
+estilo_secoes="JORNAL" próprio no pacote (o Agrupar agora liga NELE) com
+o cabeçalho medido na folga.
+
 ## AS ONDAS DE EXECUÇÃO
 
 **Onda 1 — JÁ EXECUTADA nesta rodada (o commit desta data):**

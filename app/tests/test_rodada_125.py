@@ -77,3 +77,132 @@ def test_agrupar_nao_liga_secoes_em_encarte_que_veta():
     assert fluxo.secoes_ligadas is True
     aplicar_secoes_do_agrupar([jornal, fluxo], False)
     assert fluxo.secoes_ligadas is False
+
+
+def _raiz(tmp_path, monkeypatch):
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
+    r = SystemRoot(tmp_path / "raiz")
+    Database(r).init().engine.dispose()
+    return r
+
+
+def test_onda2_sabor_existente_e_casado_nunca_recriado(tmp_path,
+                                                       monkeypatch):
+    """A pergunta do dono: "quando já existe um sabor no banco... como
+    ele não correlaciona o que já existe?" — agora correlaciona: o
+    existente é CASADO (mesmo com grafia diferente, pela chave), só o
+    novo nasce; reimportar não duplica nada."""
+    from app.core.models import Produto
+    from app.qt.telas import servico
+    from app.tests import acervo
+
+    _raiz(tmp_path, monkeypatch)
+    f1 = tmp_path / "branco.png"
+    acervo.foto_de_bancada(f1, (240, 240, 240))
+    # o dono já tinha criado o Branco (com foto) numa sessão anterior
+    it0 = servico.ItemMesa("X", "4,94", "VERMELHO", "X")
+    servico.finalizar_criacao(it0, "Bis Lacta Xtra 45g Branco", False,
+                              str(f1))
+    id_branco = it0.produto_id
+
+    # hoje a linha traz Branco + Oreo — o Branco NÃO pode renascer
+    item = servico.ItemMesa("BIS EXTRA 45 g BRANCO e OREO", "4,94",
+                            "VERMELHO", "Bis")
+    servico.criar_familia_de_sabores(
+        item, "Bis Lacta Xtra 45g", ["Branco", "Oreo"], False, None)
+    from app.core.database import Database
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            ativos = s.query(Produto).filter(
+                Produto.excluido_em.is_(None)).all()
+            assert len(ativos) == 2, (
+                f"duplicou: {[p.nome_sanitizado for p in ativos]}")
+            branco = s.get(Produto, id_branco)
+            assert branco.familia_id, "o existente não entrou na família"
+    finally:
+        db.engine.dispose()
+
+    # reimportar a MESMA linha: continua 2 (idempotente)
+    item2 = servico.ItemMesa("BIS EXTRA 45 g BRANCO e OREO", "4,94",
+                             "VERMELHO", "Bis")
+    servico.criar_familia_de_sabores(
+        item2, "Bis Lacta Xtra 45g", ["Branco", "Oreo"], False, None)
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            n = s.query(Produto).filter(
+                Produto.excluido_em.is_(None)).count()
+            assert n == 2, "reimportar recriou produto"
+    finally:
+        db.engine.dispose()
+
+
+def test_onda2_cartesiano_e_a_regua_do_caber():
+    """A decisão do dono: Bulnez e Adoralle × Cream Cracker/Leite/
+    Maisena = 6 itens ("o ideal é ter as 6 fotos, isso se couber; se
+    não, selecionar adequadamente")."""
+    from app.qt.telas.servico import (
+        MAX_FOTOS_CELULA,
+        rotulos_marcas_x_sabores,
+        selecionar_fotos_da_celula,
+    )
+
+    rot = rotulos_marcas_x_sabores(
+        ["Bulnez", "Adoralle"], ["Cream Cracker", "Leite", "Maisena"])
+    assert len(rot) == 6
+    assert rot[0] == "Bulnez Cream Cracker"
+    assert rot[3] == "Adoralle Cream Cracker"    # marca-major
+    # 6 fotos numa célula de 4: a seleção espaçada pega as DUAS marcas
+    fotos = [f"foto_{r}" for r in rot]
+    sel = selecionar_fotos_da_celula(fotos)
+    assert len(sel) == MAX_FOTOS_CELULA
+    assert any("Bulnez" in f for f in sel)
+    assert any("Adoralle" in f for f in sel)
+    # 4 ou menos: todas entram
+    assert selecionar_fotos_da_celula(fotos[:3]) == fotos[:3]
+
+
+def test_onda2_secao_do_jornal_medida_na_folga(tmp_path):
+    """A seção PRÓPRIA do Jornal ("bonitinho mas tem que funcionar"):
+    o cabeçalho tipográfico desenha NA FOLGA entre fileiras — e quando
+    a folga não existe, NÃO desenha (ausente é melhor que por cima do
+    conteúdo, a lição das fotos)."""
+    from PIL import Image
+    from app.rendering.secoes import Secao, desenhar_secoes
+    from app.rendering.model import Retangulo
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+
+    def _pinta(folga_mm, larg_vizinho=100):
+        base = Image.new("RGB", (400, 400), (245, 240, 230))
+        # fileira de cima termina em y=40mm; o bloco da seção começa
+        # em 40+folga (dpi=25 ≈ 1mm por px)
+        sec = Secao(categoria="Mercearia", titulo="Mercearia",
+                    retangulos=[Retangulo(20, 40 + folga_mm, 300, 60)],
+                    n_celulas=3)
+        caixas = [(20, 10, 20 + larg_vizinho, 40),
+                  (20, 40 + folga_mm, 320, 100 + folga_mm)]
+        desenhar_secoes(base, [sec], 25, fontes_dir=fontes,
+                        estilo="JORNAL", caixas_pagina_mm=caixas)
+        return base
+
+    def _tinta(im, y0=0, y1=400):
+        return sum(1 for p in im.crop((15, y0, 350, y1)).getdata()
+                   if p[0] < 120 and p[1] < 120)
+
+    # folga de 8mm com vizinho ESTREITO (célula comum): desenha na folga
+    com = _pinta(8.0)
+    assert _tinta(com, 40, 53) > 50, "o cabeçalho não desenhou na folga"
+    assert _tinta(com, 0, 39) == 0, "invadiu a fileira de cima"
+    # SEM folga (0.5mm): não desenha nada — nem por cima do vizinho
+    assert _tinta(_pinta(0.5)) == 0, "desenhou sem folga"
+    # vizinho LARGO (manchete/subtítulo — território editorial): a
+    # mesma folga de 8mm NÃO basta — melhor calar que riscar texto
+    assert _tinta(_pinta(8.0, larg_vizinho=290)) == 0, (
+        "riscou a área editorial (a manchete da prova real)")
