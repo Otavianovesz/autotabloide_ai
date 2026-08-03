@@ -40,10 +40,35 @@ def _colar_centro(camada, img, x, y, w, h) -> None:
 
 
 def _lado_a_lado(camada, imagens, w, h) -> None:
+    """RODADA-125 (o dono, 03/08): "fica duas coisas pequenininhas" —
+    o fatiamento em N colunas morreu. Agora é VITRINE EM CAMADAS: fotos
+    GRANDES (n=2 → ~75% da zona) sobrepostas de leve, a 1ª na FRENTE e
+    maior, as de trás um degrau menores e um fio mais altas; todas
+    apoiadas na mesma base (produtos "no chão"). O paste clipa na
+    camada — nada vaza (a lei do módulo)."""
     n = len(imagens)
-    cel = w / n
-    for i, img in enumerate(imagens):
-        _colar_centro(camada, img, i * cel, 0, cel, h)
+    fator = 0.55 + 0.40 / n              # n=2→0,75 · n=3→0,68 da zona
+    fits = [
+        _contain(img, w * fator * (1 - 0.07 * i), h * (0.96 - 0.05 * i))
+        for i, img in enumerate(imagens)
+    ]
+    passo = (w * 0.98 - fits[0].width) / (n - 1) if n > 1 else 0
+    passo = max(passo, fits[0].width * 0.35)     # sobrepõe, nunca empilha
+    span = passo * (n - 1) + fits[0].width
+    esc_span = min(1.0, (w * 0.99) / span)       # zona estreita: encolhe junto
+    if esc_span < 1.0:
+        fits = [f.resize((max(1, round(f.width * esc_span)),
+                          max(1, round(f.height * esc_span))))
+                for f in fits]
+        passo *= esc_span
+        span = passo * (n - 1) + fits[0].width
+    x0 = (w - span) / 2
+    base = h * 0.98
+    for i in range(n - 1, -1, -1):               # de trás para a frente
+        f = fits[i]
+        cx = x0 + i * passo
+        cy = base - f.height - (h * 0.02 * i)    # o de trás, um fio acima
+        camada.paste(f, (round(cx), round(max(0, cy))), f)
 
 
 def _grade(camada, imagens, w, h) -> None:

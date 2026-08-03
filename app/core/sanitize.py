@@ -349,7 +349,18 @@ def separar_peso(
     nome = resto.rstrip(" -–·")
     if not nome:
         return texto, None          # o "nome" era só o peso: não separa
-    return nome, f"{prefixo}{numero} {unidade}"
+    peso = f"{prefixo}{numero} {unidade}"
+    # RODADA-125 (a página do dono, 03/08): a oferta MULTI-TAMANHO traz
+    # DOIS pesos consecutivos no fim ("Milho Pipoca Yoki 400g 500g",
+    # "Kitubaina 1,5L 1,6L", "Creme Dental 90g 102g") — sem isto o 2º
+    # ficava no nome e o descritor saía "400 g · 500g" com grafia
+    # mista. Os dois descem JUNTOS: "400 g ou 500 g". Só o fim
+    # imediato: peso no meio segue intocado (a lei da camada).
+    if not prefixo:
+        nome2, peso2 = separar_peso(nome, regras)
+        if peso2 and "x" not in peso2:
+            return nome2, f"{peso2} ou {peso}"
+    return nome, peso
 
 
 def _separar_medida_nao_peso(

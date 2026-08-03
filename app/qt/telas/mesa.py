@@ -2918,10 +2918,10 @@ class MesaTela(QWidget):
             mapa.update({s.id: it.uid for s, it in zip(demais, resto)})
         else:
             mapa = {slot.id: it.uid for slot, it in zip(slots, fila)}
-        # F8.2: agrupar liga as seções em TODAS as páginas (por página o
-        # humano pode desligar depois — B3); desagrupar desliga
-        for pag in self._layout.paginas:
-            pag.secoes_ligadas = self.chk_agrupar.isChecked()
+        # F8.2 + RODADA-125: o agrupar só liga o DESENHO onde a página
+        # tem estilo próprio — a régua nomeada explica (servico)
+        servico.aplicar_secoes_do_agrupar(self._layout.paginas,
+                                          self.chk_agrupar.isChecked())
         self._mapa = mapa
         self._aplicar_mapa()
         extra = len(self._itens) - len(self._mapa)

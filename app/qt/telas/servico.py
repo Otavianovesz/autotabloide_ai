@@ -800,6 +800,23 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     )
 
 
+def aplicar_secoes_do_agrupar(paginas, agrupar: bool) -> None:
+    """RODADA-125 (achado 1 das seções): o agrupar SÓ liga o DESENHO de
+    seções onde a página define estilo PRÓPRIO — os encartes da
+    biblioteca (o Jornal) nascem com ``secoes_ligadas=False`` de
+    propósito e o toggle antigo os ligava no CONTORNO global: chips por
+    cima de títulos, molduras cortando colunas (as fotos do dono,
+    03/08). Sem estilo próprio, agrupar vale como ORDENAÇÃO da fila.
+    Desagrupar desliga em todas (o toggle por página, B3, segue
+    mandando depois)."""
+    for pag in paginas:
+        if agrupar:
+            if getattr(pag, "estilo_secoes", None):
+                pag.secoes_ligadas = True
+        else:
+            pag.secoes_ligadas = False
+
+
 def dados_de_pagina(validade: str | None):
     """QUINTUSDECIMUS/J24: um DadosProduto "de página" que carrega SÓ o
     texto_legal (a validade formatada) — vai no dict sob a chave

@@ -641,17 +641,40 @@ def test_adversarial_multi_imagem_por_conteudo(raiz_tmp, tmp_path):
                          modo_arranjo=modo)
         return compor_pagina(layout, layout.paginas[0], {slot0.id: d})
 
-    # 1. LADO_A_LADO: terço a terço, NA ORDEM da lista
-    img = _compor(tres, ModoArranjo.LADO_A_LADO)
-    for i in range(3):
-        assert _cor_em(img, layout, slot0, (i + 0.5) / 3, 0.5) == rgb[i], \
-            f"terço {i}: a foto não é a da posição {i} da lista!"
+    # 1+2. LADO_A_LADO (RODADA-125, contrato editado de propósito: o
+    # desenho virou VITRINE EM CAMADAS — a identidade I5 se afirma pela
+    # ORDEM esquerda→direita dos CENTROIDES de cada cor e pelas TRÊS
+    # cores visíveis; inverter a lista inverte os centroides)
+    def _centroides_x(imagem):
+        reg_i = next(r for r in slot0.regioes
+                     if r.tipo == TipoRegiao.IMAGEM)
+        xa = round(mm_para_px(reg_i.rect.x_mm, layout.dpi))
+        ya = round(mm_para_px(reg_i.rect.y_mm, layout.dpi))
+        xb = round(mm_para_px(reg_i.rect.x_mm + reg_i.rect.larg_mm,
+                              layout.dpi))
+        yb = round(mm_para_px(reg_i.rect.y_mm + reg_i.rect.alt_mm,
+                              layout.dpi))
+        rec = imagem.crop((xa, ya, xb, yb))
+        somas = {c: [0, 0] for c in rgb}
+        for py in range(0, rec.height, 2):
+            for px in range(0, rec.width, 2):
+                p = rec.getpixel((px, py))[:3]
+                if p in somas:
+                    somas[p][0] += px
+                    somas[p][1] += 1
+        return {c: (s[0] / s[1] if s[1] else None)
+                for c, s in somas.items()}
 
-    # 2. trocar a ORDEM da lista troca os pixels (a ordem é conteúdo)
-    invertida = list(reversed(tres))
-    img2 = _compor(invertida, ModoArranjo.LADO_A_LADO)
-    for i in range(3):
-        assert _cor_em(img2, layout, slot0, (i + 0.5) / 3, 0.5) == rgb[2 - i]
+    img = _compor(tres, ModoArranjo.LADO_A_LADO)
+    cx = _centroides_x(img)
+    for c in rgb:
+        assert cx[c] is not None, f"a vitrine engoliu a cor {c}!"
+    assert cx[rgb[0]] < cx[rgb[1]] < cx[rgb[2]], \
+        f"a ordem esquerda→direita não é a da lista: {cx}"
+    img2 = _compor(list(reversed(tres)), ModoArranjo.LADO_A_LADO)
+    cx2 = _centroides_x(img2)
+    assert cx2[rgb[2]] < cx2[rgb[1]] < cx2[rgb[0]], \
+        "inverter a lista tinha de inverter as posições (I5)"
 
     # 3. LEQUE: as TRÊS cores aparecem (sobreposição não engole ninguém)
     img3 = _compor(tres, ModoArranjo.LEQUE)
@@ -688,14 +711,15 @@ def test_adversarial_multi_imagem_por_conteudo(raiz_tmp, tmp_path):
         assert Path(cam).exists()
         assert Path(cam).read_bytes() == bytes_originais[k], \
             f"foto {k} do congelado não é byte-idêntica (ordem trocada?)"
-    # e compõe do congelado com os pixels na ordem certa
+    # e compõe do congelado com a ordem certa (RODADA-125: os
+    # centroides afirmam a identidade na vitrine em camadas)
     d = DadosProduto("Multi", preco_por=Decimal("1"),
                      imagens=[ImagemSlot(c) for c in reaberto["imagens"]],
                      modo_arranjo=ModoArranjo.LADO_A_LADO)
     img4 = compor_pagina(p.layout, p.layout.paginas[0], {slot0.id: d})
-    for i in range(3):
-        assert _cor_em(img4, p.layout, p.layout.paginas[0].slots[0],
-                       (i + 0.5) / 3, 0.5) == rgb[i]
+    cx4 = _centroides_x(img4)
+    assert all(cx4[c] is not None for c in rgb)
+    assert cx4[rgb[0]] < cx4[rgb[1]] < cx4[rgb[2]]
 
     # 5. duplicar: o duplicado tem as PRÓPRIAS cópias, mesma ordem
     pid2 = projetos.duplicar_projeto(pid, "Multi Adv 2")
