@@ -230,6 +230,16 @@ class CuradoriaDialog(QDialog):
                                     "(restaurar/apagar)")
         self.btn_refinar.setEnabled(False)
         self.btn_refinar.clicked.connect(self._refinar_candidato)
+        # ESTÚDIO na curadoria (pedido do dono, 03/08): a "melhor versão
+        # de design" a um clique — antes só existia no Almoxarifado
+        self.btn_estudio = QPushButton(" Estúdio")
+        self.btn_estudio.setIcon(icone("lampada", tamanho=16))
+        self.btn_estudio.setToolTip(
+            "Foto → packshot de design: recorte + luz + sombra + "
+            "enquadramento (e o refino de IA, se o gerador estiver "
+            "ligado nas Configurações)")
+        self.btn_estudio.setEnabled(False)
+        self.btn_estudio.clicked.connect(self._estudio_candidato)
         self.usar = QPushButton(" Usar esta")
         self.usar.setIcon(icone("check_circulo", cor=t.ACENTO_TEXTO, tamanho=16))
         self.usar.setProperty("tipo", "primario")
@@ -255,7 +265,7 @@ class CuradoriaDialog(QDialog):
         botoes = QHBoxLayout()
         botoes.setSpacing(t.ESP_2)
         for b in (arquivo, colar, url, acervo, self.btn_lupa,
-                  self.btn_ajustar, self.btn_refinar):
+                  self.btn_estudio, self.btn_ajustar, self.btn_refinar):
             botoes.addWidget(b)
         botoes.addStretch(1)
         botoes.addWidget(sem)
@@ -424,6 +434,43 @@ class CuradoriaDialog(QDialog):
         self.btn_ajustar.setEnabled(tem)
         self.btn_refinar.setEnabled(tem)
         self.btn_lupa.setEnabled(tem)
+        self.btn_estudio.setEnabled(tem)
+
+    def _estudio_candidato(self) -> None:
+        """ESTÚDIO: o candidato vira packshot de design (degrau 1 + o
+        gerador quando ligado) — a troca é in-place, como no Ajustar."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.telas import servico as _svc
+        if not _svc.garantir_modelo_recorte(self):      # CA-01
+            return
+        from app.qt.workers import Trabalhador
+        cam = sel[0].data(Qt.ItemDataRole.UserRole)
+        trab = Trabalhador(lambda st, c=cam:
+                           _svc.aprimorar_no_estudio(c, st))
+        trab.status.connect(self._overlay.mostrar)
+
+        def _pronto(res):
+            self._overlay.esconder()
+            caminho, aviso = res
+            self._trocar_candidato(caminho)
+            from app.qt.design.toast import mostrar_toast
+            if aviso:
+                mostrar_toast(self, aviso)     # degrau 2 degradou: honesto
+            else:
+                mostrar_toast(self, "Packshot do Estúdio pronto — "
+                                    "“Usar esta” para aplicar.",
+                              tipo="sucesso")
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda m: (self._overlay.esconder(),
+                                     self._falhou_estudio(m)))
+        self._trabalhos.rodar(trab)
+
+    def _falhou_estudio(self, msg: str) -> None:
+        from app.qt.design.toast import mostrar_toast
+        mostrar_toast(self, msg, tipo="erro")
 
     def _ampliar(self) -> None:
         """LUPA: a foto selecionada em tamanho real — o gesto de conferir

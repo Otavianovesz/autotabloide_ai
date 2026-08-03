@@ -160,6 +160,47 @@ def recortar_conteudo(img: Image.Image) -> Image.Image:
     return img if bbox is None else img.crop(bbox)
 
 
+def normalizar_luz(rgba: Image.Image) -> Image.Image:
+    """SEXTUSDECIMUS-ESTÚDIO: corrige exposição/branco do produto
+    (autocontrast no RGB, alfa intacto) — o "de vitrine" sem IA
+    generativa. Vivia só no Estúdio do Almoxarifado; agora é régua da
+    camada de imagem e roda também no caminho da curadoria."""
+    from PIL import ImageOps
+    r, g, b, a = rgba.convert("RGBA").split()
+    rgb = ImageOps.autocontrast(Image.merge("RGB", (r, g, b)), cutoff=1)
+    r2, g2, b2 = rgb.split()
+    return Image.merge("RGBA", (r2, g2, b2, a))
+
+
+def recorte_suspeito(original: Image.Image,
+                     recortada: Image.Image) -> str | None:
+    """A queixa do dono (03/08): "o removedor está cortando boa parte
+    dos produtos" — e cortava CALADO. A régua nomeada do aviso (I2):
+
+    - a área opaca que sobrou é MÍNIMA perto da foto original
+      (< 8% — o recorte quase apagou a foto), ou
+    - o que sobrou é ESBURACADO (área opaca < 35% da própria caixa
+      envolvente — embalagem inteira é maciça; buraco é pedaço comido).
+
+    Devolve a frase do aviso ou None. Avisar, nunca travar (F9)."""
+    try:
+        alfa = recortada.convert("RGBA").getchannel("A")
+        opacos = sum(1 for v in alfa.getdata() if v > 128)
+        area_orig = max(1, original.width * original.height)
+        if opacos / area_orig < 0.08:
+            return ("O recorte quase apagou a foto — confira e use "
+                    "“Refinar…” (pincel) para restaurar o produto.")
+        bbox = alfa.getbbox()
+        if bbox:
+            area_bbox = max(1, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+            if opacos / area_bbox < 0.35:
+                return ("O recorte parece ter comido pedaços do produto "
+                        "— use “Refinar…” (pincel) para restaurar.")
+    except Exception:
+        return None
+    return None
+
+
 def normalizar(img: Image.Image, lado: int = 1000, padding_frac: float = 0.06) -> Image.Image:
     """Centraliza o conteúdo num quadrado ``lado``×``lado`` com padding padrão."""
     disponivel = lado * (1 - 2 * padding_frac)
@@ -177,17 +218,32 @@ def processar_imagem(
     modelo: str = "birefnet-general",
     lado: int = 1000,
     padding_frac: float = 0.06,
+    luz_de_vitrine: bool = False,
+    aviso_cb=None,
 ) -> Path:
     """Pipeline completo: remove fundo -> recorta -> normaliza -> salva PNG.
 
     R-095: se o detector de fundo-branco estiver LIGADO (Config) e a foto já
     tiver fundo branco uniforme, PULA o rembg (economiza tempo e não estraga foto
-    boa) — só normaliza."""
+    boa) — só normaliza.
+
+    SEXTUSDECIMUS-ESTÚDIO (03/08): ``luz_de_vitrine`` aplica a correção
+    de exposição do Estúdio (o aprimoramento que só existia no
+    Almoxarifado); ``aviso_cb(str)`` recebe o aviso da régua
+    ``recorte_suspeito`` quando o recorte comeu demais (I2 — antes
+    cortava calado)."""
+    original = Image.open(imagem).convert("RGBA")
     if _pular_rembg_fundo_branco(imagem):
-        sem_fundo = Image.open(imagem).convert("RGBA")
+        sem_fundo = original
     else:
         sem_fundo = remover_fundo(imagem, modelo)
+        if aviso_cb is not None:
+            aviso = recorte_suspeito(original, sem_fundo)
+            if aviso:
+                aviso_cb(aviso)
     justo = recortar_conteudo(sem_fundo)
+    if luz_de_vitrine:
+        justo = normalizar_luz(justo)
     normalizado = normalizar(justo, lado, padding_frac)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)

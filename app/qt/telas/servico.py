@@ -3300,11 +3300,16 @@ def preparar_criacao(descricao: str, status_cb: StatusCb,
     return proposta
 
 
-def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
-    """Baixa (se URL), remove o fundo + recorta/normaliza. Devolve o tratado.
+def tratar_imagem(fonte: str, status_cb: StatusCb,
+                  aviso_cb=None) -> str:
+    """Baixa (se URL), remove o fundo + recorta + LUZ DE VITRINE +
+    normaliza. Devolve o tratado.
 
     ``fonte``: caminho de arquivo OU URL (o "colar URL" da curadoria).
-    """
+    SEXTUSDECIMUS-ESTÚDIO (03/08): a correção de exposição do Estúdio
+    roda AQUI também (a queixa do dono: colar foto ruim só passava o
+    removedor); ``aviso_cb`` recebe o aviso da régua do recorte-que-
+    comeu-o-produto (I2 — o corte nunca mais é calado)."""
     caminho = Path(fonte)
     if fonte.startswith(("http://", "https://")):
         status_cb("Baixando imagem…")
@@ -3323,8 +3328,34 @@ def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
     else:
         status_cb("Removendo fundo…")
     destino = Path(tempfile.mkdtemp(prefix="atb_tratada_")) / "tratada.png"
-    processar_imagem(caminho, destino, modelo=modelo)
+    processar_imagem(caminho, destino, modelo=modelo,
+                     luz_de_vitrine=True, aviso_cb=aviso_cb)
     return str(destino)
+
+
+def aprimorar_no_estudio(fonte: str, status_cb: StatusCb
+                         ) -> tuple[str, str | None]:
+    """ESTÚDIO na curadoria (pedido do dono, 03/08): a foto vira a
+    melhor versão de DESIGN — o packshot completo do degrau 1 (recorte
+    + luz + sombra sintética + enquadramento) e, se o gerador (degrau
+    2) estiver ligado na Config E houver GPU/modelo, o refino de IA por
+    cima. Sem GPU/modelo degrada COM aviso (a trava da F10: o degrau 2
+    nunca é requisito). Devolve ``(caminho, aviso|None)``."""
+    from PIL import Image
+
+    from app.images.estudio import packshot_degrau1, refinar_com_gerador
+
+    status_cb("Estúdio: compondo o packshot…")
+    pack = packshot_degrau1(Image.open(fonte))
+    aviso = None
+    if estudio_gerador_ligado():
+        status_cb("Estúdio: refinando com o gerador (IA)…")
+        refinado, aviso = refinar_com_gerador(pack)
+        if refinado is not None:
+            pack = refinado
+    destino = Path(tempfile.mkdtemp(prefix="atb_estudio_")) / "packshot.png"
+    pack.save(destino, "PNG")
+    return str(destino), aviso
 
 
 def estudio_gerador_ligado() -> bool:

@@ -892,10 +892,15 @@ class ConciliacaoDialog(QDialog):
         if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
             self._cadastrar(linha, proposta, None)      # cadastra SEM foto
             return
-        trab = Trabalhador(lambda st, v=valor: servico.tratar_imagem(v, st))
+        # ESTÚDIO (03/08): o corte que come o produto AVISA (I2)
+        avisos_rec: list[str] = []
+        trab = Trabalhador(lambda st, v=valor: servico.tratar_imagem(
+            v, st, aviso_cb=avisos_rec.append))
         trab.status.connect(self._overlay.mostrar)
-        trab.ok.connect(lambda tratada, li=linha, p=proposta:
-                        self._cadastrar(li, p, tratada))
+        trab.ok.connect(lambda tratada, li=linha, p=proposta,
+                        av=avisos_rec:
+                        (self._cadastrar(li, p, tratada),
+                         av and mostrar_toast(self, av[0], tipo="erro")))
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
 

@@ -197,15 +197,20 @@ class FotosPorSaborDialog(QDialog):
             if not _svc.garantir_modelo_recorte(self):      # CA-01
                 return
 
+        avisos_rec: list[str] = []
+
         def _trabalho(st, f=fonte):
             if tratador is not None:
                 return tratador(f)
             from app.qt.telas import servico
-            return servico.tratar_imagem(f, st)
+            return servico.tratar_imagem(f, st,
+                                         aviso_cb=avisos_rec.append)
 
         trab = Trabalhador(_trabalho)
         trab.status.connect(self._overlay.mostrar)
-        trab.ok.connect(lambda cam, k=i: self._pronta(k, cam))
+        trab.ok.connect(lambda cam, k=i, av=avisos_rec:
+                        (self._pronta(k, cam),
+                         av and mostrar_toast(self, av[0], tipo="erro")))
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
 
