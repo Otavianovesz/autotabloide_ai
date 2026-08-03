@@ -33,20 +33,27 @@ def _celula_estreita(tmp_path, larg=42):
 
 
 def test_v3_descritor_nunca_come_calado(tmp_path):
-    """A queixa-mãe: o corte do descritor era MUDO. Agora (1) a
-    enumeração vira contagem antes da tesoura ("3 sabores"); (2) o que
-    cai volta NOMEADO — o pré-voo/revisora anunciam (I2)."""
+    """A LEI do dono (4ª prova): informação de venda sai POR EXTENSO —
+    a forma compacta "N sabores" foi VETADA (risco legal). A escada:
+    o CORPO CEDE até o piso duro e o texto sai INTEIRO; só num caso
+    patológico a tesoura corta — e o que cai volta NOMEADO (I2)."""
     from app.rendering.nome_fit import descritor_que_cabe_ex
 
-    reg, fontes = _celula_estreita(tmp_path)
+    # célula APERTADA mas realista (a linha do Jornal tem 36px/3
+    # linhas): o completo sai INTEIRO — o corpo cede, nada é comido
+    reg, fontes = _celula_estreita(tmp_path, larg=60)
     completo = "Coqueiro · Tomate, Óleo ou Limão · 125 g"
     texto, cortado = descritor_que_cabe_ex(completo, "125 g", reg, 96,
                                            fontes)
-    assert "125 g" in texto              # a unidade NUNCA sai
-    if texto != completo:
-        # ou resumiu ("3 sabores") ou cortou COM nome do que caiu
-        assert "3 sabores" in texto or cortado, (
-            f"cortou em silêncio: {texto!r} / cortado={cortado!r}")
+    assert texto == completo and cortado is None, (texto, cortado)
+    assert "sabores" not in texto        # a compacta MORREU (vetada)
+    # o caso patológico (caixa minúscula): corta, mas NOMEIA o que caiu
+    reg3, _ = _celula_estreita(tmp_path, larg=14)
+    texto3, cortado3 = descritor_que_cabe_ex(completo, "125 g", reg3,
+                                             96, fontes)
+    assert "125 g" in texto3             # a unidade NUNCA sai
+    if texto3 != completo:
+        assert cortado3, "cortou em silêncio"
     # numa região LARGA nada é tocado
     reg2, _ = _celula_estreita(tmp_path, larg=200)
     texto2, cortado2 = descritor_que_cabe_ex(completo, "125 g", reg2,

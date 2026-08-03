@@ -1978,6 +1978,18 @@ def juntar_com_ou(nomes: list[str]) -> str:
     return ", ".join(limpos[:-1]) + " ou " + limpos[-1]
 
 
+def juntar_com_e_texto(nomes: list[str]) -> str:
+    """v4: o irmão do juntar_com_ou para MARCAS que somam ("Bulnez e
+    Adoralle", "A, B e C") — o conjunto oferece as duas, não uma OU
+    outra."""
+    limpos = [n for n in (nomes or []) if n]
+    if not limpos:
+        return ""
+    if len(limpos) == 1:
+        return limpos[0]
+    return ", ".join(limpos[:-1]) + " e " + limpos[-1]
+
+
 def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
     """O CHECK vira o LEQUE: as fotos dos membros escolhidos entram no
     ITEM (congela com o projeto — o imagens_json por-produto do RG-28
@@ -3340,9 +3352,14 @@ def conjunto_do_acervo(descricao: str) -> dict | None:
         sufixo = f" {bp}" if bp else ""
         nomes = [f"{bn} {m} {s}{sufixo}".strip()
                  for m in marcas_mx for s in sabores_mx]
-        base = base_mx
+        # v4 (a lei do dono: o Biscoito DIZ as marcas): a base do item
+        # carrega as marcas ("Biscoito Bulnez e Adoralle 270g") — a
+        # hierarquia canônica as desce ao descritor; e os SABORES
+        # exibidos são os FATORADOS (Cream Cracker, Leite ou Água e
+        # Sal), nunca os N×M rótulos do cartesiano por extenso
+        base = f"{bn} {juntar_com_e_texto(marcas_mx)}{sufixo}".strip()
         tipo = "familia"
-        rotulos = rotulos_marcas_x_sabores(marcas_mx, sabores_mx)
+        rotulos = list(sabores_mx)
     elif len(sabores) >= 2:
         nomes = [f"{base} {s}".strip() for s in sabores]
         tipo, rotulos = "familia", list(sabores)

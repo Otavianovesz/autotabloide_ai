@@ -723,15 +723,16 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
                    nome="Fio"),
             # F13-TER: a foto sobe até o fio da linha (recolado).
             # J25: zona_flex — o FIO é filete separador, não "veste" a
-            # célula (a guarda do foto_fit aprendeu a diferença)
-            _img(x + 4, y - 20, 178, 116, flex=True),
-            # J26: nome 11→12,5 e descritor 8,5→10 — o teste do celular
-            _nome(x + 8, y + 94, 170, 26, fonte=_F_FRAUNCES,
-                  tam=12.5, cor=_J_INK),
-            # v3 ("ele come informações"): o descritor ganha a 2ª
-            # LINHA (18→26px, até o fio do preço em y+147) — a marca E
-            # os sabores cabem juntos; a tesoura vira último recurso
-            _sub(x + 8, y + 120, 170, 26, fonte=_F_FRA_IT,
+            # célula (a guarda do foto_fit aprendeu a diferença).
+            # v4 (a LEI do dono, 4ª prova): NENHUMA informação é comida
+            # — a foto cede 16 px ao BLOCO DE TEXTO (116→100)
+            _img(x + 4, y - 20, 178, 100, flex=True),
+            # v4: nome maior (12,5→13,5, caixa 30 px) e o descritor com
+            # ATÉ 3 LINHAS (36 px) — marcas E sabores por extenso; a
+            # forma "N sabores" foi VETADA pelo dono (risco legal)
+            _nome(x + 8, y + 80, 170, 30, fonte=_F_FRAUNCES,
+                  tam=13.5, cor=_J_INK),
+            _sub(x + 8, y + 110, 170, 36, fonte=_F_FRA_IT,
                  tam=10.0, cor=_J_GRAY),
             _preco(x + 45, y + 147, 96, 42, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
@@ -795,9 +796,11 @@ def _jornal_p1() -> list[Slot]:
             # v2: largura 168→162 — em x+112, 168 terminava em x+280 e
             # o passo entre chamadas é 274: o fim do texto entrava 6 px
             # na zona de foto da vizinha (que desenha DEPOIS e cobria)
+            # v4: o descritor da chamada ganha a 2ª linha (19→26 px,
+            # até o topo do carimbo) — a lei do dono vale na capa
             _nome(x + 112, y + 14, 162, 28, fonte=_F_FRAUNCES,
                   tam=14.5, cor=_J_INK),
-            _sub(x + 112, y + 44, 162, 19, fonte=_F_FRA_IT,
+            _sub(x + 112, y + 44, 162, 26, fonte=_F_FRA_IT,
                  tam=10.5, cor=_J_GRAY),
             _preco(x + 146, y + 72, 100, 44, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,

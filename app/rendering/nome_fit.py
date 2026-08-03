@@ -177,49 +177,34 @@ def dividir_descritor(descritor: str | None,
     return (" · ".join(quals) or None), (" · ".join(prot) or None)
 
 
-def _compactar_enumeracao(parte: str) -> str | None:
-    """v3: a enumeração de sabores que não cabe vira CONTAGEM antes de
-    sumir ("Tomate, Óleo ou Limão" → "3 sabores") — informação
-    resumida é melhor que informação comida (a queixa da 3ª prova)."""
-    if " ou " not in parte:
-        return None
-    itens = [s for s in re.split(r",\s*|\s+ou\s+", parte) if s.strip()]
-    if len(itens) < 2:
-        return None
-    return f"{len(itens)} sabores"
+# v4 (a LEI do dono, 4ª prova): informação de venda sai POR EXTENSO —
+# a forma compacta "N sabores" foi VETADA ("não fica bom e pode dar
+# processo"); antes de QUALQUER tesoura o CORPO CEDE até o piso duro
+# (o espelho do K3 do nome: legível-pequeno > cortado)
+_PISO_DURO_DESCRITOR = 6.0
 
 
 def descritor_que_cabe_ex(descritor: str | None, unidade: str | None,
                           reg: Regiao, dpi: int,
                           fontes_dir: str | Path,
                           ) -> tuple[str | None, str | None]:
-    """v3 — devolve ``(texto_que_sai, o_que_foi_cortado)``. A escada
-    antes da tesoura: (1) o completo; (2) enumeração de sabores vira
-    contagem ("3 sabores"); (3) qualificadores caem do FIM um a um (a
-    MARCA, primeira na hierarquia canônica, sobrevive enquanto der);
-    (4) só a unidade. O que caiu volta NOMEADO no 2º campo — o corte
-    NUNCA é mudo (I2): o pré-voo/revisora anunciam."""
+    """v4 — devolve ``(texto_que_sai, o_que_foi_cortado)``. A escada:
+    (1) o completo no corpo da região; (2) o completo com o CORPO
+    CEDENDO até o piso duro (a lei do dono: NENHUMA informação é
+    comida — o layout dá o espaço, a letra diminui); (3) só num caso
+    patológico (nem no piso coube) a tesoura corta do FIM — e o que
+    caiu volta NOMEADO no 2º campo (I2: o pré-voo/revisora anunciam)."""
     texto = descritor or unidade
     if not texto:
         return None, None
     fontes_dir = Path(fontes_dir)
     if _cabe(texto, reg, reg.rect, dpi, fontes_dir):
         return texto, None
-    partes = [p.strip() for p in texto.split(" · ") if p.strip()]
-    # (2) a forma compacta da enumeração — tenta ANTES de cortar
-    compactas = list(partes)
-    resumiu = False
-    for i, p in enumerate(compactas):
-        c = _compactar_enumeracao(p)
-        if c:
-            compactas[i] = c
-            resumiu = True
-    if resumiu:
-        cand = " · ".join(compactas)
-        if _cabe(cand, reg, reg.rect, dpi, fontes_dir):
-            return cand, None            # nada sumiu — só resumiu
-    base = compactas if resumiu else partes
-    qual, unidade_txt = dividir_descritor(" · ".join(base), unidade)
+    if reg.tamanho_min_pt > _PISO_DURO_DESCRITOR:
+        reg_piso = replace(reg, tamanho_min_pt=_PISO_DURO_DESCRITOR)
+        if _cabe(texto, reg_piso, reg.rect, dpi, fontes_dir):
+            return texto, None           # coube inteiro, corpo reduzido
+    qual, unidade_txt = dividir_descritor(texto, unidade)
     partes_q = qual.split(" · ") if qual else []
     cortadas: list[str] = []
     while partes_q:

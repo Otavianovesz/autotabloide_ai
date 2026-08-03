@@ -847,10 +847,20 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         # F13-BIS/T2: a linha de descritor do modelo (fallback: unidade)
         # QUARTUSDECIMUS §2: se o completo não cabe na largura, o
         # QUALIFICADOR sai e a unidade fica — nunca "BB-X · 10…"
-        from app.rendering.nome_fit import descritor_que_cabe
-        _desenhar_texto(base, draw, reg,
+        # v4 (a lei do dono): o DESENHO cede o corpo até o MESMO piso
+        # duro da régua — sem isto o ajustar_texto elipsaria o texto
+        # que a régua aprovou em corpo reduzido
+        from dataclasses import replace as _rep
+
+        from app.rendering.nome_fit import (
+            _PISO_DURO_DESCRITOR,
+            descritor_que_cabe,
+        )
+        reg_sub = (reg if reg.tamanho_min_pt <= _PISO_DURO_DESCRITOR
+                   else _rep(reg, tamanho_min_pt=_PISO_DURO_DESCRITOR))
+        _desenhar_texto(base, draw, reg_sub,
                         descritor_que_cabe(dados.descritor, dados.unidade,
-                                           reg, dpi, fontes_dir) or "",
+                                           reg_sub, dpi, fontes_dir) or "",
                         dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.ADORNO:
         # F13-TER/V2: o fundo volta por cima da foto (cesta/toldo/banda)

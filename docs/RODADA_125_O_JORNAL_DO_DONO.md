@@ -1064,3 +1064,42 @@ Rodada JM); provado que NÃO é o código novo: um teste mínimo que só
 cria a Mesa (sem nada da v3) crasha idêntico. Na companhia do módulo
 irmão (como na suíte real): 78 verdes exit 0. Os placares oficiais
 saem da suíte completa, por junit.
+
+## RODADA v4 — A LEI DO DONO: INFORMAÇÃO COMPLETA SEMPRE (03/08)
+
+A 4ª prova veio com a decisão que fecha a série: **"vamos ter que
+aumentar os tamanhos das escritas e melhorar esse layout para que não
+seja comida mais nenhuma informação de qualquer forma"** — e a forma
+compacta "3 sabores"/"8 sabores" da v3 foi **VETADA** ("não fica bom e
+pode dar processo" — informação de venda é obrigação legal, sai POR
+EXTENSO). O Biscoito tem que dizer as marcas.
+
+### O que mudou
+
+- **O layout dá o espaço** (gerador do Jornal, pacote reimportado):
+  nas células de linha a foto cede 16 px ao bloco de texto (116→100),
+  o nome cresce (12,5→13,5 pt, caixa 30 px) e o descritor ganha ATÉ 3
+  LINHAS (36 px); nas chamadas da capa o descritor ganha a 2ª linha
+  (19→26 px).
+- **A forma compacta morreu** (`_compactar_enumeracao` removida da
+  escada — decisão do dono REVERTE a régua v3 do builder; registrado).
+- **O corpo cede antes de qualquer tesoura** (`_PISO_DURO_DESCRITOR` =
+  6 pt): o descritor sai INTEIRO em corpo reduzido — o espelho do K3
+  do nome ("na dúvida entre cortar e diminuir o corpo, diminui o
+  corpo"); o DESENHO usa o mesmo piso (sem isso o compositor elipsaria
+  o que a régua aprovou). A tesoura sobrou só para o caso patológico —
+  e segue NOMEANDO o que caiu (I2).
+- **O cartesiano fatorado**: o item do conjunto marcas×sabores carrega
+  as marcas no NOME ("Biscoito Bulnez e Adoralle 270g" — a hierarquia
+  as desce ao descritor) e exibe os SABORES fatorados por extenso —
+  na página: "Biscoito / Bulnez e Adoralle · C. Cracker, Leite, Agua
+  e Sal ou Maisena · 270 g". `juntar_com_e_texto` novo (marcas somam,
+  sabores alternam).
+
+### Prova no pixel (jm-prova-p1/p2)
+
+"Sardinha / Coqueiro · Tomate, Óleo ou Limão · 125 g", "Amaciante /
+Mon Bijou · Proteção ou Classico · 5 L", "Sabão em Pó / Omo · Lavagem
+Perfeita · Caixeta · 1,6kg", "Azeite / Gallo · Extra Virgem Clássico ·
+500ml", e o Biscoito completo — 42 itens, 0 sem foto, 0 sobras,
+NENHUMA informação comida.

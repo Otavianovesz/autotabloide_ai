@@ -533,8 +533,13 @@ def test_v2_biscoito_conjunto_cartesiano_do_acervo(tmp_path, monkeypatch):
     assert len(cj["membros"]) == 6
     item = servico.item_do_conjunto(linha, "8,99", None, cj)
     assert item.semaforo == "VERDE" and item.via == "conjunto"
-    # rótulos marca-major no descritor da célula
-    assert any("Bulnez" in r for r in item.sabores)
+    # v4 (a lei do dono: o Biscoito DIZ as marcas): o nome carrega
+    # "Bulnez e Adoralle" (a hierarquia as desce ao descritor) e os
+    # SABORES exibidos são os FATORADOS por extenso — nunca os 6
+    # rótulos do cartesiano nem a contagem "8 sabores" (vetada)
+    assert "Bulnez e Adoralle" in item.nome, item.nome
+    assert len(item.sabores) == 3
+    assert not any("Bulnez" in s for s in item.sabores)
     # parcial não inventa: sem um dos 6, o conjunto cala
     linha2 = "BISCOITO BULNEZ e ADORALLE 270 g CREAM CRACKER/LEITE/MAISENA"
     assert servico.conjunto_do_acervo(linha2) is None
