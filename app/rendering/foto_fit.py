@@ -256,9 +256,22 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
             min(r.rect.y_mm for r in todas),
             max(r.rect.x_mm + r.rect.larg_mm for r in todas),
             max(r.rect.y_mm + r.rect.alt_mm for r in todas))
-    cands = [c for c in (_plano_lateral(foto, textos, bbox, prop),
-                         _plano_vertical(foto, textos, bbox, prop),
-                         _plano_misto(foto, textos, bbox, prop)) if c]
+    # RODADA-125 v2 (a capa do Kolynos): célula LATERAL — os textos do
+    # template vivem AO LADO da foto (centro fora da faixa horizontal
+    # da zona). O plano nunca INVERTE a identidade da célula: o misto/
+    # vertical empilhavam o título no vão e jogavam a foto deitada
+    # embaixo (a chamada quebrada da 2ª prova). Aqui valem só o
+    # lateral e o abraço.
+    eh_lateral = bool(textos) and all(
+        (r.rect.x_mm + r.rect.larg_mm / 2) < rf.x_mm
+        or (r.rect.x_mm + r.rect.larg_mm / 2) > rf.x_mm + rf.larg_mm
+        for r in textos)
+    planos = ((_plano_lateral(foto, textos, bbox, prop),)
+              if eh_lateral else
+              (_plano_lateral(foto, textos, bbox, prop),
+               _plano_vertical(foto, textos, bbox, prop),
+               _plano_misto(foto, textos, bbox, prop)))
+    cands = [c for c in planos if c]
     if cands:
         melhor = max(cands, key=lambda c: c.area)
         if melhor.area >= GANHO_MINIMO * area_atual:

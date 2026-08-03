@@ -45,6 +45,7 @@ class CuradoriaDialog(QDialog):
                  mais18: bool = False,
                  sabores: list[str] | None = None,
                  nome_familia_sugerido: str = "",
+                 marcas_detectadas: list[str] | None = None,
                  contexto: str = "",
                  posicao: tuple[int, int] | None = None):
         super().__init__(parent)
@@ -111,10 +112,26 @@ class CuradoriaDialog(QDialog):
         self.chks_sabores = [QCheckBox(s) for s in sabs]
         for c in self.chks_sabores:
             c.setChecked(True)
+        # RODADA-125 v2 (o Biscoito): a 4ª resposta — MARCAS × SABORES.
+        # Antes o cartesiano era código morto: exigia "2 produtos" E
+        # "sabores" marcados juntos, mas os rádios são exclusivos.
+        self._marcas_detectadas = list(marcas_detectadas or [])
+        n_cart = len(self._marcas_detectadas) * len(sabs)
+        self.rb_cartesiano = QRadioButton(
+            f"São {len(self._marcas_detectadas)} MARCAS × {len(sabs)} "
+            f"SABORES (criar os {n_cart}, todos da mesma família)"
+            if n_cart else "São MARCAS × SABORES")
+        self.rb_cartesiano.setToolTip(
+            "Um produto por combinação marca+sabor "
+            f"({', '.join(self._marcas_detectadas)}) — quem já existe "
+            "no acervo é casado, nunca recriado")
         self.rb_um = QRadioButton("É um produto só (o nome é assim mesmo)")
         self._grupo_multi = QButtonGroup(self)
-        for rb in (self.chk_composto, self.rb_sabores, self.rb_um):
+        for rb in (self.chk_composto, self.rb_sabores,
+                   self.rb_cartesiano, self.rb_um):
             self._grupo_multi.addButton(rb)
+        if not (len(self._marcas_detectadas) >= 2 and len(sabs) >= 2):
+            self.rb_cartesiano.hide()
         if tem_multi:
             # a IA/gesto que JÁ decidiu pré-marca "2 produtos"; sabores
             # detectados sem decisão pré-marcam nada além do neutro
@@ -122,7 +139,8 @@ class CuradoriaDialog(QDialog):
                 self.chk_composto.setChecked(True)
             else:
                 self.rb_um.setChecked(True)
-            for rb in (self.chk_composto, self.rb_sabores, self.rb_um):
+            for rb in (self.chk_composto, self.rb_sabores,
+                       self.rb_cartesiano, self.rb_um):
                 rb.toggled.connect(self._habilitar_multi)
             if not sabs:
                 self.rb_sabores.hide()
@@ -131,7 +149,7 @@ class CuradoriaDialog(QDialog):
         else:
             for w in ([self._aviso_composto, self.chk_composto,
                        self.comp_1, self.comp_2, self.rb_sabores,
-                       self.nome_familia, self.rb_um]
+                       self.nome_familia, self.rb_cartesiano, self.rb_um]
                       + self.chks_sabores):
                 w.hide()
 
@@ -306,6 +324,7 @@ class CuradoriaDialog(QDialog):
         linha_comp.addWidget(self.comp_2, 1)
         lay.addLayout(linha_comp)
         lay.addWidget(self.rb_sabores)
+        lay.addWidget(self.rb_cartesiano)        # v2: a 4ª resposta
         linha_sab = QHBoxLayout()
         linha_sab.setSpacing(t.ESP_2)
         linha_sab.addWidget(self.nome_familia, 1)
@@ -347,11 +366,12 @@ class CuradoriaDialog(QDialog):
     def _habilitar_multi(self, *_a) -> None:
         dois = self.chk_composto.isChecked()
         sab = self.rb_sabores.isChecked()
+        cart = self.rb_cartesiano.isChecked()
         self.comp_1.setEnabled(dois)
         self.comp_2.setEnabled(dois)
-        self.nome_familia.setEnabled(sab)
+        self.nome_familia.setEnabled(sab or cart)
         for c in self.chks_sabores:
-            c.setEnabled(sab)
+            c.setEnabled(sab or cart)
 
     # compat com o chamador antigo (B3.2)
     _habilitar_composto = _habilitar_multi
@@ -373,6 +393,19 @@ class CuradoriaDialog(QDialog):
         nome = self.nome_familia.text().strip()
         marcados = [c.text() for c in self.chks_sabores if c.isChecked()]
         return (nome, marcados) if nome and len(marcados) >= 2 else None
+
+    def cartesiano_final(self) -> tuple[str, list[str], list[str]] | None:
+        """RODADA-125 v2 (o Biscoito): ``(nome da família, MARCAS,
+        SABORES marcados)`` quando a resposta é "marcas × sabores" —
+        None nas demais respostas ou com menos de 2×2."""
+        if not self.rb_cartesiano.isChecked():
+            return None
+        nome = self.nome_familia.text().strip()
+        marcados = [c.text() for c in self.chks_sabores if c.isChecked()]
+        if not (nome and len(self._marcas_detectadas) >= 2
+                and len(marcados) >= 2):
+            return None
+        return nome, list(self._marcas_detectadas), marcados
 
     def mais18_final(self) -> bool:
         return self.chk_mais18.isChecked()

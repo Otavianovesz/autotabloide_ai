@@ -45,6 +45,11 @@ ACENTOS_MERCADO: dict[str, str] = {
     "linguica": "linguiça",
     # QUINTUSDECIMUS/J16 — typos de OCR medidos na tabela real
     "picoca": "pipoca",
+    # RODADA-125 v2 (a 2ª prova do dono, 03/08) — grafias erradas que
+    # a página imprimiu: marca e produto com forma certa ÚNICA
+    "limpoll": "Limpol",
+    "waffer": "wafer",
+    "jonad": "Jonas",
 }
 
 # Palavra quebrada no espaço errado pelo OCR — bigrama conhecido volta a
@@ -54,6 +59,13 @@ BIGRAMAS_QUEBRADOS: dict[str, str] = {
     "de sinfetante": "desinfetante",
     "ole o": "óleo",                # J16: "OLE O de SOJA" da tabela real
     "to scana": "toscana",          # K3: "AZEITONA VERDE TO SCANA"
+    # RODADA-125 v2: a 2ª prova do dono
+    "todo s": "todos",              # "1 Kg TODO S" (TODOS partido)
+    # o "em" engolido pela tabela — os dois compostos consagrados
+    "leite po": "leite em pó",
+    "leite pó": "leite em pó",
+    "sabao po": "sabão em pó",
+    "sabão pó": "sabão em pó",
 }
 
 _RE_BORDAS = re.compile(r"^(\W*)(.*?)(\W*)$", re.DOTALL)

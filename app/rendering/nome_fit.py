@@ -71,9 +71,18 @@ def _norm(s: str) -> str:
 
 def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
     """Monta o descritor final: excedente do nome (na ordem do nome) +
-    o descritor que o item já tinha — sem duplicar conteúdo."""
+    o descritor que o item já tinha — sem duplicar conteúdo.
+
+    RODADA-125 v2 (achado da frota): o ``existente`` entra FATIADO em
+    " · " — comparado inteiro, "Diversos · 500ml" nunca continha o
+    "500 ml" já emitido e a página saía "500 ml · Diversos · 500ml"."""
     saida: list[str] = []
-    for p in partes + ([existente] if existente else []):
+    pedacos: list[str] = []
+    for p in partes:
+        pedacos.extend((p or "").split(" · "))
+    if existente:
+        pedacos.extend(existente.split(" · "))
+    for p in pedacos:
         p = (p or "").strip(" ·")
         if p and _norm(p) not in _norm(" ".join(saida)):
             saida.append(p)
@@ -151,7 +160,18 @@ def descritor_que_cabe(descritor: str | None, unidade: str | None,
     fontes_dir = Path(fontes_dir)
     if _cabe(texto, reg, reg.rect, dpi, fontes_dir):
         return texto
-    _qual, unidade_txt = dividir_descritor(texto, unidade)
+    # RODADA-125 v2: antes de guilhotinar o qualificador INTEIRO, os
+    # qualificadores saem do FIM um a um — a MARCA vem primeiro na
+    # hierarquia canônica e sobrevive quando cabe ("Mon Bijou ·
+    # Proteção ou Classico · 5 L" apertado vira "Mon Bijou · 5 L",
+    # nunca mais o "5 L" mudo da 2ª prova do dono)
+    qual, unidade_txt = dividir_descritor(texto, unidade)
+    partes_q = qual.split(" · ") if qual else []
+    while partes_q:
+        partes_q.pop()
+        cand = " · ".join(partes_q + ([unidade_txt] if unidade_txt else []))
+        if cand and _cabe(cand, reg, reg.rect, dpi, fontes_dir):
+            return cand
     return unidade_txt or texto
 
 
@@ -221,7 +241,9 @@ def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
 # K3 (QUINTUSDECIMUS): pares do mercado que NUNCA se separam — o mesmo
 # critério conservador do vocabulário da ortografia: só entra o
 # inequívoco no domínio; na dúvida, fica de fora.
-_PARES_DO_MERCADO = {("extra", "virgem"), ("mon", "bijou")}
+_PARES_DO_MERCADO = {("extra", "virgem"), ("mon", "bijou"),
+                     # v2: "Açúcar Cristal DOCE / DIA · 2kg" na página
+                     ("doce", "dia")}
 
 # §15.2: palavras que ABREM par com a seguinte e nunca encerram um nome
 # de produto sozinhas — artigo/preposição/conjunção ("Alface | A Peça",
@@ -230,6 +252,90 @@ _PARES_DO_MERCADO = {("extra", "virgem"), ("mon", "bijou")}
 _ABRE_PAR = {"a", "o", "à", "ao", "de", "do", "da", "dos", "das",
              "em", "com", "e", "sem", "sob", "para", "p/",
              "tio", "tia"}
+
+
+def _mesmo_peso_exibido(token: str, unidade: str | None) -> bool:
+    """O token do nome é o MESMO peso da unidade do dado? ("104g" ×
+    "104 g", "1,6kg" × "1.6 Kg") — a comparação da exibição, espaços/
+    vírgula/caixa fora."""
+    if not unidade or not _RE_PARTE_UNIDADE.match(token or ""):
+        return False
+    return _norm(token) == _norm(unidade)
+
+
+def _tirar_peso_repetido(tokens: list[str], unidade: str | None,
+                         ) -> tuple[list[str], list[str]]:
+    """RODADA-125 v2 (as 5 células "…1,6kg / … · 1,6kg"): o peso que
+    mora no MEIO do nome do banco e é IGUAL à unidade sai da linha
+    grande — a unidade já o leva ao descritor. O token de EMBALAGEM
+    colado ao peso ("104g Tubo") desce junto, como qualificador. Só a
+    EXIBIÇÃO muda; o banco fica intacto (a lei da camada do sanitize
+    segue de pé)."""
+    from app.core.sanitize import EMBALAGENS
+    saida: list[str] = []
+    partes: list[str] = []
+    i = 0
+    while i < len(tokens):
+        tk = tokens[i]
+        if _mesmo_peso_exibido(tk, unidade):
+            if i + 1 < len(tokens) and tokens[i + 1].lower() in EMBALAGENS:
+                partes.append(tokens[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+        saida.append(tk)
+        i += 1
+    return saida, partes
+
+
+def _descer_marca(tokens: list[str], marcas: tuple[str, ...],
+                  ) -> tuple[list[str], list[str]]:
+    """A REGRA CANÔNICA da célula (decisão do dono na 2ª prova): a
+    linha grande diz O QUE É; a MARCA desce ao descritor — SEMPRE, não
+    só quando falta espaço (era a causa do "sem padrão": Triângulo
+    ficava grande numa célula e Parmalat descia na outra).
+
+    Devolve ``(tokens_do_tipo, partes_do_descritor)``. O span vai da
+    1ª marca reconhecida à última, engolindo conectores ("e"/"ou") e
+    parênteses de embalagem — "Fugini (pouch) e Bonare (lata)" desce
+    INTEIRO. O que vem DEPOIS da marca (sabor/qualificador) desce
+    junto, na ordem. Marca no token 0 não divide (não existe tipo
+    antes — o nome É a marca); sem marca reconhecida, nada muda (F9:
+    a régua reconhece, nunca inventa)."""
+    if not marcas or len(tokens) < 2:
+        return tokens, []
+    chaves = [t.lower().strip("().,;:·") for t in tokens]
+    alvos = [tuple(m.lower().split()) for m in marcas if m]
+
+    def _casa(i: int) -> int | None:
+        for alvo in sorted(alvos, key=len, reverse=True):
+            j = i + len(alvo)
+            if j <= len(chaves) and tuple(chaves[i:j]) == alvo:
+                return j
+        return None
+
+    ini = fim = None
+    for i in range(1, len(tokens)):          # 0 nunca: tipo não pode sumir
+        j = _casa(i)
+        if j is not None:
+            ini, fim = i, j
+            break
+    if ini is None:
+        return tokens, []
+    # estende: (rótulo) → [e|ou (rótulo)? marca (rótulo)?]*
+    while fim < len(tokens):
+        if tokens[fim].startswith("(") and tokens[fim].endswith(")"):
+            fim += 1
+            continue
+        if chaves[fim] in ("e", "ou") and _casa(fim + 1):
+            fim = _casa(fim + 1)
+            continue
+        break
+    marca_txt = " ".join(tokens[ini:fim])
+    resto = " ".join(tokens[fim:]).strip(" ·")
+    partes = [marca_txt] + ([resto] if resto else [])
+    return tokens[:ini], partes
 
 
 def _corte_parte_marca(ultimo: str, descido: str) -> bool:
@@ -251,6 +357,7 @@ def precedencia_do_nome(
     dpi: int,
     fontes_dir: str | Path,
     piso_pt: float | None = None,
+    marcas: tuple[str, ...] = (),
 ) -> NomeAjustado | None:
     """A cadeia dos 6 passos para UMA célula. Devolve None quando não há
     o que decidir (sem região NOME visível, ou nome vazio) — o
@@ -306,7 +413,9 @@ def precedencia_do_nome(
     # embalagem nunca se omite
     partes_desc: list[str] = []
     nome_atual, peso = separar_peso(nome)
-    tokens = nome_atual.split()
+    # o composto "Arroz Somar e Tio Bonini · 5 kg" deixa um "·" órfão
+    # quando o peso sai — cai aqui, antes da tokenização
+    tokens = [t for t in nome_atual.split() if t != "·"]
     # T4 (DUODECIMUS): unidade SOLTA no fim ("…Rezende KG", vendido a
     # peso sem número) desce ao descritor como o peso desce — canonizada
     # pela régua única do sanitize ("LTS" → "L", "KGS" → "kg")
@@ -318,8 +427,18 @@ def precedencia_do_nome(
     if peso:
         while len(tokens) > 1 and tokens[-1].upper() in REGRAS_PADRAO.siglas:
             siglas.insert(0, tokens.pop())
+    # RODADA-125 v2: o peso do MEIO igual à unidade sai da exibição (a
+    # unidade já desce ao descritor) e a embalagem colada a ele desce
+    tokens, partes_meio = _tirar_peso_repetido(tokens, unidade)
+    # a REGRA CANÔNICA: a marca reconhecida desce ao descritor SEMPRE
+    tokens, partes_marca = _descer_marca(tokens, marcas)
+    partes_desc.extend(partes_marca)
+    partes_desc.extend(partes_meio)
     partes_desc.extend(siglas)
-    if peso:
+    # v2: quando a unidade do dado JÁ é este peso, quem o escreve é o
+    # descritor0 — no FIM, a ordem canônica (marca · sabores · peso);
+    # anexar aqui o punha no meio ("Mabel · 600 g · Coco ou Leite")
+    if peso and not _mesmo_peso_exibido(peso, unidade):
         partes_desc.append(peso)
     nome_atual = " ".join(tokens)
     desc_atual = _juntar_descritor(partes_desc, descritor0)
@@ -363,18 +482,27 @@ def precedencia_do_nome(
     # par JUNTO; idem o par consagrado do mercado ("Extra | Virgem")
     tokens = nome_atual.split()
     excedente: list[str] = []
+    pesos_meio: list[str] = []
     while len(tokens) > 1:
         tk = tokens.pop()
         excedente.insert(0, tk)            # a sigla desce COM o resto
         while len(tokens) > 1 and _corte_parte_marca(tokens[-1],
                                                      excedente[0]):
             excedente.insert(0, tokens.pop())
+        # v2 (achado da frota): o corte pode deixar o candidato
+        # TERMINANDO em peso ("Detg. Limpol 500ml" após descer
+        # "Diversos") — re-separa a cada passo; o peso vai ao
+        # descritor, nunca fica na linha grande
+        cand_nome, cand_peso = separar_peso(" ".join(tokens))
+        if cand_peso:
+            pesos_meio.append(cand_peso)
+            tokens = cand_nome.split()
         candidato = " ".join(tokens)
         if _cabe(candidato, reg_nome, rect_nome, dpi, fontes_dir):
             return NomeAjustado(
                 candidato,
-                _juntar_descritor([" ".join(excedente)] + partes_desc,
-                                  descritor0),
+                _juntar_descritor([" ".join(excedente)] + pesos_meio
+                                  + partes_desc, descritor0),
                 rects)
 
     # K3, a palavra do dono na reauditoria: "na dúvida entre cortar a
@@ -391,6 +519,7 @@ def precedencia_do_nome(
     # a revisora/pré-voo acusam pela flag
     return NomeAjustado(
         " ".join(tokens),
-        _juntar_descritor([" ".join(excedente)] + partes_desc, descritor0)
-        if excedente or partes_desc else desc_atual,
+        _juntar_descritor([" ".join(excedente)] + pesos_meio + partes_desc,
+                          descritor0)
+        if excedente or pesos_meio or partes_desc else desc_atual,
         rects, elipsa=True)

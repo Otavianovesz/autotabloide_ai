@@ -379,3 +379,308 @@ o cabeçalho medido na folga.
 3. As seções DESENHADAS no Jornal: quer o visual do próprio jornal
    (fio + título tipográfico, como o fluxo por seções já desenha) ou o
    Jornal SEM seções desenhadas (só a ordenação por categoria)?
+
+## INVENTÁRIO v2 — A 2ª PROVA DO DONO (03/08, a frota de 6 auditores)
+
+O dono recompôs o Jornal depois das 3 ondas e mandou as fotos da 2ª
+prova com ~20 apontamentos diretos. A frota v2 (6 auditores lendo o
+código real) transformou cada queixa em causa+conserto. Os relatórios
+íntegros abaixo; a execução em "AS ONDAS v2" no fim.
+
+**O CONFLITO K2 (declarado para a reauditoria):** o K2 do arquiteto
+(JQ-BIS) mandou desenhar o preço inline DENTRO do carimbo ("SUPER
+OFERTA · R$ 18,81"). Na 2ª prova o dono decidiu o contrário: "a super
+oferta tem o valor junto (não pode ter, tem que ser só o super
+oferta)". A decisão do DONO vence (é o selo humano): o carimbo desenha
+SÓ o texto; o valor extraído (L4) segue vivo no item — Excel, cartaz e
+painel continuam enxergando o preço. O teste
+`test_k2_carimbo_so_com_o_texto_por_pixel` teve o contrato INVERTIDO
+de propósito (tinta idêntica com e sem preco_por) e o comentário no
+compositor documenta o conflito.
+
+
+### V-A · A HIERARQUIA DO NOME NA CÉLULA (o 'sem padrão nenhum')
+
+AUDITORIA — HIERARQUIA DO NOME NA CÉLULA (linha grande × descritor)
+
+DIAGNÓSTICO-MÃE (0): hoje a divisão nome-grande/descritor é decidida por GEOMETRIA, nunca por SEMÂNTICA. `precedencia_do_nome` (C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\rendering\nome_fit.py:246) só desce tokens ao descritor quando o nome NÃO CABE (passos 1-2 na linha 331 devolvem o nome inteiro se couber; o passo 5 na linha 364 poda do fim, um a um, até caber). Resultado: em célula larga a marca fica na linha grande ("Leite Int. L.V." + "Triângulo"), em célula apertada desce ("Leite Integral" + "Parmalat · L.V. · 1L") — o "sem padrão" que o dono viu é exatamente isso. A marca do produto NUNCA entra de propósito no descritor: `dados_para_desenho` (app/qt/telas/servico.py:768-771) monta o descritor só com sabores + "marca própria" + unidade. A estrutura tipo/marca/sabor que a IA devolve (`ProdutoEnriquecido.tipo/marca/sabor`, app/ai/enriquecimento.py:44-46) é DESCARTADA — só o `nome_sanitizado` plano sobrevive no ItemMesa.
+
+REGRA CANÔNICA PROPOSTA (uma só, para os 3 casos):
+- LINHA GRANDE (região NOME) = TIPO do produto (o "o que é": "Leite Integral", "Açúcar Cristal", "Batata", "Arroz", "Milho Verde").
+- DESCRITOR (região SUBTITULO) = MARCA · qualificador/embalagem (siglas protegidas L.V./TP…) · peso/unidade — nesta ordem, com o dedupe do `_juntar_descritor` de sempre.
+- COMPOSTO: tipo COMUM na linha grande ("Arroz"); "Marca A e Marca B (embalagens)" abre o descritor ("Somar e Tio Bonini · 5 kg").
+- FAMÍLIA: nome-base/tipo na linha grande; sabores "A, B ou C" (M3, já existe) + marca + peso no descritor.
+- A cadeia geométrica dos 6 passos do nome_fit segue existindo, mas como REDE DE SEGURANÇA depois da divisão semântica, nunca como o critério.
+
+ACHADOS E CONSERTOS:
+
+1. A divisão semântica não existe (a causa do "sem padrão" Triângulo × Parmalat). Causa: nome_fit.py:331 (retorno cedo quando cabe) + servico.py:768 (descritor sem marca). Conserto: criar `dividir_nome_canonico(nome, marcas_conhecidas, regras)` (módulo novo app/core/nome_celula.py ou no próprio nome_fit) que usa `extrair_marca` (app/core/aprendizado.py:30) + `separar_peso` (app/core/sanitize.py:320) + siglas de REGRAS_PADRAO para devolver (linha_grande=TIPO, partes=[marca, qualificador, siglas, peso]); nunca inventa — sem marca CONHECIDA no acervo, comportamento atual (F9: a IA/regra não inventa marca).
+
+2. Ponto único de aplicação: `dados_para_desenho` (servico.py:739-800). Causa: é a montagem OFICIAL das 3 portas (Mesa/export/Modo Pai) e é onde o descritor nasce (linha 768). Conserto: chamar a divisão canônica ali, fundindo marca ao descritor ANTES de sabores/"marca própria"/unidade; passar `marcas_do_acervo()` (servico.py:~3420) carregada 1× POR LOTE/página (a lição de desempenho da Rodada JM — nunca 1 query por item).
+
+3. "Doce Dia" partida ao meio ("Açúcar Cristal Doce" + "Dia · 2kg"). Causa: nome_fit.py:364-371 poda token a token e `_corte_parte_marca` (nome_fit.py:235) só conhece `_PARES_DO_MERCADO` hardcoded {extra virgem, mon bijou} (linha 224) e `_ABRE_PAR` (linha 230) — "Doce Dia" não está em lista nenhuma. Conserto: o passo 5 recebe as marcas conhecidas e trata cada marca do acervo como BLOCO indivisível (o span da marca desce inteiro ou fica inteiro); com o item 1 aplicado, a marca já nem chega ao passo 5. Deixar de manter pares hardcoded — o acervo É a lista.
+
+4. "Batata 104g Tubo" + "Pringles · 104g" (peso no meio + duplicado). Causa: `separar_peso` (sanitize.py:337, `ultimo.end() != len(base)`) só corta peso no FIM — "104g" seguido de "Tubo" fica no nome grande, e a unidade do dado repete "104g" no descritor. Conserto: no bloco C2 do nome_fit (nome_fit.py:307-325) descer também "peso + embalagem" quando o que segue o peso é SÓ token de embalagem conhecido; e acrescentar "tubo" ao `_EMBALAGENS` (servico.py:1808-1811, hoje não tem). Resultado canônico: "Batata" grande + "Pringles · tubo · 104 g".
+
+5. Composto desequilibrado ("Arroz Somar" grande + "e Tio Bonini T1 · 5 kg" pequeno). Causa: `nome_composto` (servico.py:1849-1870) devolve UMA string plana ("Arroz Somar e Tio Bonini · 5 kg") que o passo 5 depois re-corta por geometria — "e" está em `_ABRE_PAR` (nome_fit.py:230), então "e Tio Bonini" desce junto e "Somar" fica órfã na linha grande. Conserto: `nome_composto` passa a devolver o PAR (nome=prefixo comum de tipo, ex. "Arroz"; descritor="Somar e Tio Bonini · 5 kg") — o `_juntar_com_e` (servico.py:1822) já calcula o prefixo comum, é só não recolar; chamadores (criar_como_composto/curadoria) gravam o descritor no item. O humano segue podendo editar no diálogo.
+
+6. "Milho Verde Fugini" + "Pouch e Bonare 170g Lata" (confuso). Causa: mesma raiz do 5 — o nome composto com parênteses "Fugini (pouch) e Bonare (lata) · 170 g" vira string plana e o passo 5 do nome_fit a fatia em ponto arbitrário; `_juntar_descritor` (nome_fit.py:72) ainda faz strip de "·" e embaralha a leitura. Conserto: com o par do item 5, a linha grande é "Milho Verde" e o descritor nasce pronto "Fugini (pouch) e Bonare (lata) · 170 g" — o nome_fit não re-corta descritor, só o mede (`descritor_que_cabe`, nome_fit.py:140, já protege a unidade).
+
+7. Resíduo "T1" no descritor do composto. Causa: a limpa de código de coluna da colagem (JQ-BIS) reconhece "T-1" por frequência; a grafia sem hífen "T1" escapou e viajou até o nome do componente. Conserto: a regex da limpa por frequência (app/qt/telas/…colagem) aceita a variante sem hífen com o MESMO critério conservador (>=3 e >=30% do lote; "Vitamina B-12"/"B12" isolada fica — caso-limite escrito no teste).
+
+8. Siglas de embalagem na linha grande ("Leite Int. L.V."). Causa: o abreviador RG-22 (`abreviar_para_tabloide`, servico.py:1749) roda ANTES de qualquer divisão e a sigla L.V. só desce se o passo 5 geométrico rodar. Conserto: na divisão canônica (item 1), sigla de embalagem conhecida (REGRAS_PADRAO.siglas) SEMPRE vai ao lado protegido do descritor (a regra do dono de 27/07 "embalagem nunca se omite" já vive em `dividir_descritor`, nome_fit.py:103 — passa a valer também na partição inicial, não só no sacrifício).
+
+9. A estrutura da IA morre na praia. Causa: `enriquecer_descricao` (servico.py:3452) e o caminho determinístico (`ordenar_tipo_marca`, app/core/aprendizado.py:93) garantem a ORDEM Tipo+Marca+Sabor+Peso no nome plano, mas tipo/marca separados do `ProdutoEnriquecido` não persistem no ItemMesa/Produto. Conserto (mínimo, sem schema novo): a divisão canônica RE-EXTRAI marca do nome plano com o acervo (item 1) — funciona porque a ordem da casa garante marca na posição 2; alternativa maior (persistir `marca` no Produto) fica NOMEADA para o arquiteto, não é pré-requisito.
+
+10. Testes obrigatórios da mudança (lei da bancada): teste por PIXEL/conteúdo (I5) com os 5 casos reais do dono como fixtures — Leite Triângulo×Parmalat saindo com a MESMA hierarquia, "Doce Dia" nunca partida, "Batata"+"Pringles · tubo · 104 g", "Arroz"+"Somar e Tio Bonini · 5 kg", "Milho Verde"+"Fugini (pouch) e Bonare (lata) · 170 g"; guardiões nonus/quartusdecimus/duodecimus verdes (contratos antigos que mudarem de propósito, listados); os DOIS estados IA ligada/desligada (lei L12 — a régua soma).
+
+ORDEM DE ATAQUE SUGERIDA: 1→2 (a régua e o ponto único), depois 5→6 (composto devolve par), 3 (marca-bloco no passo 5 como rede), 4+8 (peso-no-meio e siglas), 7 (T1), 10 (testes) — o item 9 só se o arquiteto quiser persistência.
+
+
+### V-B · O PESO DUPLICADO nome×descritor (as 5 células)
+
+AUDITORIA — PESO/QUALIFICADOR DUPLICADO nome×descritor (Jornal, células de linha com NOME+SUBTITULO). Diagnóstico central: nas 5 células o peso está NO MEIO do nome do banco ("Sabão Pó Omo 1,6kg Caixeta L. Perfeita", "Detg. Limpoll 500ml Diversos", "Waffer Bulnez 60g Chocolate", "Sabonete Nivea 85g Diversos", "Batata 104g Tubo Pringles"). O `separar_peso` só corta peso no FIM (lei da camada); o passo 5 do `precedencia_do_nome` desce o rabo ("Caixeta L. Perfeita", "Diversos", "Pringles"...) ao descritor, o peso FICA na linha grande, e a `unidade` do dado entra sempre no descritor de trabalho → "…1,6kg / … · 1,6kg".
+
+1. O strip do peso roda UMA vez, antes do encurtamento — causa: C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\rendering\nome_fit.py:308 (`nome_atual, peso = separar_peso(nome)` só no início; o laço do passo 5, linhas 364-378, nunca re-separa). Depois que o passo 5 desce "Diversos"/"Caixeta L. Perfeita", o candidato passa a TERMINAR em peso ("Detg. Limpoll 500ml") e ninguém o tira. Conserto: dentro do laço do passo 5, rodar `separar_peso(candidato)` (e a régua de unidade solta) a cada corte; o peso extraído se junta a `partes_desc` — o `_juntar_descritor`/`_norm` já dedupe contra a unidade.
+
+2. Peso no MEIO nunca sai da linha, mesmo com a unidade no descritor — causa: nome_fit.py:302-325 (só fim/solta) + o caso "Batata 104g Tubo" onde nem após o passo 5 o peso fica no fim. Conserto: no ramo COM SUBTITULO, remover do nome o token cujo `_norm` seja igual ao `_norm(unidade)` (ou casável por `_RE_PARTE_UNIDADE` com o mesmo valor) quando o descritor final já carrega essa unidade — dedução por IGUALDADE com a unidade do dado, não reordenação genérica (a lei da camada segue de pé para o resto).
+
+3. `_juntar_descritor` compara o `existente` INTEIRO, não parte a parte — causa: nome_fit.py:72-80 (`for p in partes + ([existente]...)`: "Diversos · 500ml" vira UMA string; `_norm("diversos·500ml")` nunca está contido em "500 ml" já emitido → sai "500 ml · Diversos · 500ml"). Atinge item BEM formado (peso no fim + sabor no descritor): o strip do C2 gera "500 ml" e o descritor0 re-traz "500ml" atrás do sabor. Conserto: fatiar `existente` em `split(" · ")` e deduplicar parte a parte (aproveitar `_norm` por parte, nos dois sentidos).
+
+4. Passo 5 sacrifica a MARCA antes do qualificador quando a ordem do banco está errada — causa: nome_fit.py:364-371 pop do FIM assume ordem Tipo+Marca+Sabor+Peso; em "Batata 104g Tubo Pringles" o fim é a marca → o Jornal imprimiu "Batata 104g Tubo / Pringles · 104g" (marca no descritor, peso na linha). Conserto: é sintoma do achado 6 (nome do banco fora da ordem travada); com o banco na ordem, o pop volta a descer sabor/embalagem primeiro. Paliativo opcional: ao re-separar o peso (achado 1), tentar caber o nome de novo antes de descer mais tokens.
+
+5. "Diversos" como sabor-vago no descritor — causa: o texto vem do NOME do banco (rabo descido pelo passo 5), não de `it.sabores`; a montagem do descritor em C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\qt\telas\servico.py:768-771 (`juntar_com_ou(sabores) + marca própria + unidade`) não filtra nada. "Diversos" sozinho ("Diversos · 500ml", "Diversos · 85g") não diz NADA ao cliente — é resíduo da coluna do OCR ("sabores/tipos diversos"). Vale? Meio: informa que há variedade, mas é vago. Sugestão: lista pequena de vagos ("diversos", "vários", "sortidos", "variados") que o descritor reescreve para "vários tipos" ou omite — decisão do dono; e a curadoria/importação deveria oferecer transformar "Diversos" em pergunta de sabores (a 3ª pergunta J13/J22 já existe).
+
+6. Nomes do banco guardam peso NO MEIO (fora da ordem travada Tipo+Marca+Sabor+Peso) — causa: a criação do produto vermelho/manual usa a linha do OCR sanitizada SEM reordenar (servico.py:3721 `finalizar_criacao`, servico.py:2988 `criar_produto_manual`; C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\core\sanitize.py:331-332 e 372-373 declaram "peso no MEIO segue intocado"). Os 5 nomes citados são exatamente isso: "Sabão Pó Omo 1,6kg Caixeta L. Perfeita", "Detg. Limpoll 500ml Diversos", "Waffer Bulnez 60g Chocolate", "Sabonete Nivea 85g Diversos", "Batata 104g Tubo Pringles". Conserto: na PORTA DE NASCIMENTO (não em releitura em massa), quando `separar_peso` falha no fim mas a régua acha peso no meio, mover o peso para o FIM do nome sugerido (a decisão travada da sanitização manda nessa ordem) e mostrar ao dono na curadoria — nunca renomear produto existente em silêncio; para o acervo atual, uma higienização com prévia (como a do "Leite Pó Ninho").
+
+7. (Menor) `nome_com_unidade` só evita ANEXAR, nunca REMOVE — causa: C:\Users\otavi\Documents\Projetos_programação\autotabloide_ai\app\rendering\compositor.py:983-995 (guarda S2 impede "200g 200g", mas se o nome já traz a unidade E a célula tem SUBTITULO desenhando a mesma unidade, ninguém tira do nome — compositor.py:1194-1198 só suprime o ANEXO). Conserto: coberto pelos achados 1-2 no nome_fit; alternativa cirúrgica é a mesma dedução por igualdade aplicada em `precedencia_do_nome` antes dos passos 1-2, para o caso em que o nome CABE inteiro e nem entra no passo 5 (ex.: "Waffer Bulnez 60g" curto numa chamada larga → duplicaria mesmo sem encurtamento).
+
+8. (Menor) `descritor_que_cabe` pode duplicar unidade dentro do próprio SUBTITULO — causa: compositor.py:832-836 passa `dados.descritor` + `dados.unidade`; se o descritor vier sem a unidade (ex.: só "Diversos") o fallback não anexa a unidade (só usa `unidade` quando descritor é None, nome_fit.py:148) — inverso do bug: unidade SOME do SUBTITULO quando o item tem descritor qualificador-puro vindo de projeto velho congelado. Conserto: em `descritor_que_cabe`, juntar descritor+unidade com o `_juntar_descritor` consertado (achado 3) em vez de `descritor or unidade`.
+
+Nota de verificação: a cadeia roda para TODA célula em compositor.py:1244-1254; as linhas do Jornal têm NOME+SUBTITULO (encartes.py:708-733, `_jornal_linha`), então o caminho auditado é o único que desenha essas 5 células. Os testes atuais de nome_fit cobrem peso no FIM; nenhum cobre peso no meio + rabo descido (o cenário exato das 5 células) — o teste novo deve compor a célula e ler que "1,6kg" aparece UMA vez no par nome/descritor (por conteúdo, I5).
+
+
+### V-C · O FALSO MULTI-TAMANHO E O VOCABULÁRIO (Kitubaina/Limpoll/Waffer)
+
+1. FALSO MULTI-TAMANHO — a régua RODADA-125 junta erro de OCR como oferta de dois pesos. Causa: app/core/sanitize.py:353-363 (`separar_peso`) — a recursão nova pega DOIS pesos consecutivos no fim e devolve "peso2 ou peso" SEM nenhuma crítica de plausibilidade; o próprio comentário da linha 356 cita "Kitubaina 1,5L 1,6L" como caso legítimo, e o dono confirmou que o 1,6L era ruído de leitura. Conserto (a guarda proposta): antes de devolver o par, converter os dois à base canônica (o `_FATOR_PESO` de app/ai/conciliacao.py:58 já faz g/ml — extrair a uma função reutilizável ou replicar local) e, se a MESMA dimensão (g↔g, ml↔ml) tiver razão max/min ≤ ~1,15, fica UM só (o primeiro, a leitura da coluna principal) — nunca imprimir os dois.
+
+2. A SUSPEITA PRECISA SER DITA (I2) — `separar_peso` devolve tupla e não tem canal de pendência; se a guarda só descartar o 2º peso, o descarte é silencioso. Causa: sanitize.py:320-363 (assinatura) + `_detectar_pendencias` em sanitize.py:252-296 (não conhece peso duplicado). Conserto: espelhar a detecção em `_detectar_pendencias` sobre o `com_unidades` (regex de duas expressões de peso consecutivas no FIM, mesma dimensão, razão ≤1,15) → `Pendencia("peso_duplicado_suspeito", "dois volumes quase iguais (1,5L/1,6L) — provável erro de leitura; ficou 1,5L")` nomeando os DOIS valores; o item desce a amarelo e o humano decide.
+
+3. CASO-LIMITE DO LIMIAR, escrever no teste — "Creme Dental 90g 102g" (citado como REAL em sanitize.py:355) tem razão 1,133 ≤ 1,15 e cairia na guarda. Causa: o limiar ~1,15 engole um multi-tamanho verdadeiro. Conserto: manter o limiar (falso positivo é SEGURO porque vira pendência dita, não supressão calada — a lei da F9/L12) e gravar os dois lados no teste: 400g/500g (1,25) passa como par; 1,5L/1,6L (1,07) e 90g/102g (1,13) viram um-peso+pendência; unidades de DIMENSÃO diferente (30m, 12 rolos) nunca entram na conta.
+
+4. LIMPOLL→LIMPOL. Causa: app/core/ortografia.py:25-48 (`ACENTOS_MERCADO`) não tem a entrada — o mapa já é o canal de typo (precedente "picoca"→"pipoca", linha 47). Conserto: `"limpoll": "limpol"` (chave minúscula sem acento; a caixa do molde preserva "LIMPOLL"→"LIMPOL").
+
+5. WAFFER→WAFER. Causa: idem, ortografia.py:25-48. Conserto: `"waffer": "wafer"`.
+
+6. TIO JONAD→Tio Jonas. Causa: idem. Conserto: `"jonad": "jonas"` como token (o "Tio" fica intacto); se houver receio de colisão fora do contexto da marca, alternativa conservadora: bigrama `"tio jonad": "tio jonas"` em BIGRAMAS_QUEBRADOS (ortografia.py:52-57), que exige o par.
+
+7. TODO S→Todos (o S órfão do OCR). Causa: ortografia.py:52-57 — BIGRAMAS_QUEBRADOS não tem o par; hoje o "S" isolado ainda dispara `letra_isolada` em sanitize.py:279 (aviso, não conserto). Conserto: `"todo s": "todos"` no bigrama (mesmo mecanismo de "ole o"→"óleo", linha 55); o pendência letra_isolada morre junto.
+
+8. "LEITE PÓ"→"Leite em Pó". Causa: não é token — é INSERÇÃO de preposição; nenhum mapa atual cobre. O BIGRAMAS_QUEBRADOS aceita alvo com espaços (o `padrao.sub` da ortografia.py:96-104 troca substring por substring). Conserto: `"leite po": "leite em pó"` em BIGRAMAS_QUEBRADOS; a caixa final sai certa porque `_aplicar_caixa` (sanitize.py:228) baixa o "em" (palavras_minusculas) e titula o "Pó". Atenção colateral: o comentário de nome_fit.py:238-239 usa "Leite Pó" como exemplo de nome que encerra — atualizar o comentário, a régua em si não muda.
+
+9. "SABÃO PÓ"→"Sabão em Pó". Causa: idem à 8. Conserto: `"sabao po": "sabão em pó"`. GRAVE A PEQUENO: o casamento de bigrama (ortografia.py:97-99) é IGNORECASE mas SENSÍVEL a acento — "SABÃO PÓ" (já acentuado no bruto) não casa a chave "sabao po". Registrar as duas grafias ("sabao po" E "sabão pó") ou, melhor, normalizar o texto pela `_chave` antes do match de bigrama (conserto único que vale para todos os pares futuros).
+
+10. "DOCE DIA" par consagrado (a marca não se parte no corte K3). Causa: app/rendering/nome_fit.py:224 — `_PARES_DO_MERCADO = {("extra","virgem"), ("mon","bijou")}` não conhece a marca. Conserto: acrescentar `("doce", "dia")`; o `_corte_parte_marca` (nome_fit.py:235-243) passa a descer o par junto.
+
+11. GRAVE A PEQUENO — grafia mista no descritor do dono ("1,5 L · 1,6L"): quando o 2º peso NÃO passa por `separar_peso` (item cujo peso veio do campo estruturado e o "1,6L" ficou no nome), o descritor de nome_fit.py:80 concatena o formatado com o cru. A guarda do item 1 resolve o caminho principal; vale um teste que cubra também o caminho campo-estruturado+resto-no-nome (o `_peso_do_produto` de conciliacao.py:99-107 já lê os dois lados e serve de espelho para detectar o duplicado aí também).
+
+12. GRAVE A PEQUENO — dimensões diferentes na guarda: "400g 0,5kg" é o MESMO peso em unidades irmãs (razão 1,25 em base g... na verdade 400 vs 500 = 1,25; mas "1kg 1000g" = razão 1,0). A comparação da guarda deve ser feita SEMPRE em base canônica (g/ml), nunca na unidade escrita — razão 1,0 exata (mesmo valor em grafias diferentes) também é suspeita de OCR/coluna duplicada e fica UM.
+
+
+### V-D · A CAPA (Kolynos deslocado), o carimbo e as fotos cortadas
+
+AUDITORIA (branch polimento-pre-f12; NB: o working tree tem diff NÃO COMMITADO em compositor.py/nome_fit.py/ortografia.py/test_rodada_jq_ordem.py — "RODADA-125 v2" — que já ataca parte do pedido):
+
+1. CARIMBO "SUPER OFERTA" SEM O NÚMERO — JÁ CONSERTADO NO WORKING TREE, FALTA COMMIT+PROVA. Causa: app/rendering/compositor.py:672-678 (versão commitada ae0f2a3) anexava o valor ao preço-texto ("SUPER OFERTA · R$ 18,81") no ramo multi_preco de `_desenhar_preco` — o K2 da reauditoria. Conserto: o diff pendente já remove o append e desenha só `dados.multi_preco` (compositor.py:672-680 novo), com teste por pixel invertido de propósito (app/tests/test_rodada_jq_ordem.py:451-479, `test_k2_carimbo_so_com_o_texto_por_pixel`: tinta idêntica com e sem preco_por). Falta: recompor as provas — saida_f13/jm-prova-p1.png/p2.png AINDA mostram "· R$ 18,81" e "· R$ 6,90" no pixel — e commitar. O valor extraído (L4) segue no item para Excel/cartaz/painel; a estrela Splash do herói (papel OFERTA, compositor.py:188-193) já usava só o texto cru — nada a mexer lá.
+
+2. CHAMADA DA CAPA QUEBRADA (o Kolynos) — o `_plano_misto` do foto_fit destrói o arranjo lateral das jp1-ch. Causa: app/rendering/foto_fit.py:136-179 (`_plano_misto`) + app/rendering/encartes.py:782-796. A chamada é foto à ESQUERDA (zona 112×132, `flex=True`, encartes.py:785) com nome/descritor/preço à DIREITA; para foto DEITADA (larga, o creme dental fotografado na horizontal) a ocupação medida fica <85% (foto_fit.py:240-243) e o plano roda: o misto quase sempre vence por área (foto_fit.py:262-263) e REORDENA a célula — nome/descritor sobem ao TOPO do bbox na largura total (foto_fit.py:150-152; o bbox inclui o overhang decorativo da foto, y−dy = 20px ACIMA do miolo, então o título cai "no meio do vão"), a foto vai GRANDE embaixo-ESQUERDA (foto_fit.py:164-165, `fx=x0`, ancorada em `y1-h`) e a pílula do preço à DIREITA dela (foto_fit.py:177). CONFIRMADO POR PIXEL na prova commitada: "Arroz Tio Bonini" e "Leite Integral" já saem nesse arranjo (título flutuando no vão, carimbo embaixo). Conserto: em `plano_da_celula`, o plano candidato não pode INVERTER a identidade da célula — quando os textos do template vivem AO LADO da foto (centro dos textos fora da faixa vertical da foto), só valem `_plano_lateral` e o abraço; o misto/vertical ficam para células onde o texto já vive acima/abaixo. E o bbox do plano deve usar o miolo da célula (excluir o overhang y−dy da foto), senão qualquer plano põe texto no vão. Alternativa cirúrgica mínima (perde o Q1 nas chamadas): tirar o `flex=True` de encartes.py:785.
+
+3. NOME DA CHAMADA INVADE A CÉLULA VIZINHA (6 px). Causa: encartes.py:788-791 — nome/descritor em x+112 com largura 168 terminam em x+280, mas o passo entre chamadas é 274 (488→762); ch1/ch3 encostam na zona de foto de ch2/ch4 (o slot vizinho é desenhado depois e a foto cobre o fim do texto). Conserto: largura 162 (ou mover a coluna para x+108).
+
+4. FOTOS CORTADAS NAS CÉLULAS — três mecanismos reais, por linha:
+   a) Foto com zoom/foco ajustado: compositor.py:288-304 (`_imagem_enquadrada`) recorta o excedente na camada rw×rh — em zona estreita a foto sai decepada; e o gate do Q1 (compositor.py:1224-1225) EXCLUI foto com zoom≠1/foco≠0,5 do replanejamento, então ela nem ganha a zona maior. Conserto: no ASSENTAR com zoom, clampar o zoom ao que cabe (ou avisar no pré-voo, I2) — cortar produto nunca é silencioso.
+   b) Fotos novas do dono são JPG SEM ALFA (Salgados.jpg, Sonho.jpg, "Lanche na Chapa.jpg", "Pão de Queijo.jpg" — soltas na RAIZ do repo, fora do acervo): compositor.py:334-337 — sem canal A não há recorte pela bbox do alfa nem transparência; o quadro branco inteiro entra, cobre vizinhos e é "cortado" pelas bordas da zona. Conserto: ingerir pelo Estúdio (rembg degrau 1) antes de compor; no mínimo, bbox por fundo quase-branco quando mode!=RGBA + aviso de pré-voo.
+   c) O Fio das linhas do Jornal é desenhado DEPOIS da foto: encartes.py:721-723 — a foto sobe até y−20 (recolado F13-TER) e o ADORNO "Fio" (6px em y−20) vem depois na lista de regiões, riscando o topo do produto quando a foto enche a altura. Conserto: desenhar o filete ANTES da zona de foto (reordenar as regiões) ou iniciar a foto em y−14.
+
+5. GRAVETO DE HIGIENE: as fotos do dono e "Ativo 2.png"/croissant.png/"pão frances.png"/AutoTabloide.bat estão soltas na raiz do git (untracked) — acervo do dono sempre ficou FORA do git (regra das rodadas); mover para a pasta de imagens do app ou ignorar no .gitignore antes do próximo commit.
+
+Arquivos-chave: app/rendering/foto_fit.py (planos 91-205, gate 208-287), app/rendering/encartes.py (capa `_jornal_p1` 736-832, chamadas 778-796, linhas 708-733), app/rendering/compositor.py (`_desenhar_preco` 652-724, desenho de imagem 318-370, gate Q1 1210-1237), app/qt/telas/colagem.py:317-329 (`preco_texto_oferta`, o canônico — intocado, segue certo).
+
+
+### V-E · O CARTESIANO NÃO OFERECIDO (Bulnez e Adoralle × 3 sabores)
+
+1. "AGUA E SAL" é partido em dois sabores falsos — Causa: app/qt/telas/servico.py:3107 — `familia_da_linha` divide o rabo pós-medida com `re.split(r"\s*/\s*|\s+e\s+", ...)`, tratando TODO " e " como separador; para "C. CRACKER/LEITE/AGUA E SAL" devolve 4 sabores ["C. Cracker", "Leite", "Agua", "Sal"] em vez de 3. Conserto: dividir primeiro SÓ por "/"; dentro de cada segmento, só quebrar por " e " se o par não for sabor consagrado — vocabulário `_SABORES_COMPOSTOS` no padrão do `_PARES_DO_MERCADO` do K3 ("agua e sal", "doce de leite", "milho e ervilha", ...), protegendo o par ANTES do split (o "TOMATE / OLEO e LIMÃO" da Sardinha continua quebrando em 3 porque "oleo e limão" não está no vocabulário).
+
+2. dividir_em_dois devolve [] para a linha inteira — a barra do rabo veta as marcas da frente — Causa: app/qt/telas/servico.py:3066 — `if not texto or "/" in texto: return []`: o veto da barra (pensado para sabores) olha a LINHA INTEIRA, mas em "BISCOITO BULNEZ e ADORALLE 270 g C. CRACKER/LEITE/AGUA E SAL" a barra está no rabo de SABORES e o " e " das marcas está ANTES da medida. Conserto: cortar a linha na última medida (o mesmo `_regex_unidades` que `familia_da_linha` já usa) e aplicar o veto de "/" e a busca do " e " SÓ na cabeça pré-medida ("BISCOITO BULNEZ e ADORALLE 270 g") — aí devolve ["Biscoito Bulnez 270g", "Biscoito Adoralle 270g"].
+
+3. Sem componentes, a pergunta "são 2 produtos?" nunca nasce — Causa: app/qt/telas/servico.py:3481 e 3503 — `possivel_composto = len(comps)>=2 or len(det)==2`; com det=[] (achado 2) e a IA da máquina do dono devolvendo zero componentes, `possivel_composto=False` e `sugestao_componentes=[]`. Na curadoria os campos comp_1/comp_2 nascem vazios e o radio "São 2 produtos" fica sem sugestão. Conserto: o achado 2 já cura a régua; garantir por teste que esta linha real produz `possivel_composto=True` com os 2 nomes preenchidos (o cenário exato do J1/L2, agora com rabo de sabores).
+
+4. O CARTESIANO é inalcançável pela UI — os radios são mutuamente exclusivos — Causa: app/qt/telas/conciliacao_dialog.py:938 exige `sab and len(proposta.componentes)>=2 and len(sab[1])>=2`, mas `componentes_finais()` (curadoria_dialog.py:359-366) devolve [] se `chk_composto` não está marcado e `sabores_finais()` (curadoria_dialog.py:368-371) devolve None se `rb_sabores` não está marcado — e os dois são QRadioButton no MESMO QButtonGroup (curadoria_dialog.py:115-117). O dono nunca consegue dizer "2 marcas E 3 sabores" ao mesmo tempo: o ramo do cartesiano é código morto pela UI (a linha 924 ainda sobrescreve `proposta.componentes` com [] quando ele escolhe sabores). Conserto: quando o detector vê marcas (dividir na cabeça, achado 2) E sabores (rabo) na MESMA linha, a curadoria ganha a 4ª opção explícita "São 2 MARCAS × N SABORES (criar os 6)" — radio próprio que habilita comp_1/comp_2 E os checks de sabores juntos; `componentes_finais`/`sabores_finais` passam a responder também nesse estado, e o `_curadoria` monta os rótulos com o `rotulos_marcas_x_sabores` (servico.py:3158) que já existe pronto e hoje nunca roda por esse caminho.
+
+5. O nome sugerido da família carrega as DUAS marcas — Causa: app/qt/telas/servico.py:3105 — `base = sanitizar(texto[:ultimo.end()])` devolve "Biscoito Bulnez e Adoralle 270g" como `nome_familia_sugerido`; no cartesiano isso contaminaria os 6 nomes ("Biscoito Bulnez e Adoralle 270g Cream Cracker"). Conserto: quando a cabeça pré-medida divide em 2 marcas, `familia_da_linha` (ou uma irmã `marcas_e_sabores_da_linha`) devolve também as marcas separadas e a base SEM elas ("Biscoito 270g"), para a marca-major do `rotulos_marcas_x_sabores` gerar "Biscoito Bulnez Cream Cracker 270g" etc.
+
+6. conjunto_do_acervo nunca reconhece o conjunto de 6 — Causa: app/qt/telas/servico.py:3210-3215 — com sabores>=2 ele monta nomes "base+sabor" usando a base que contém as 2 marcas (achado 5) e com a divisão errada do "Agua e Sal" (achado 1); nenhum nome casa com o acervo e devolve None (o próprio docstring 3203-3204 nomeia a limitação marcas×sabores). Conserto: após os achados 1/2/5, acrescentar o ramo marcas×sabores — nomes = `rotulos_marcas_x_sabores(marcas, sabores)` com a base limpa — para que, criados os 6 uma vez, a reimportação da mesma linha nasça VERDE montada.
+
+7. Teste de regressão com a linha real do dono — Causa: nenhum teste cobre "BISCOITO BULNEZ e ADORALLE 270 g C. CRACKER/LEITE/AGUA E SAL" (a suíte tem Sardinha e Arroz, os casos puros de servico.py:3090-3094, não o misto). Conserto: teste L1 que afirma marcas=["Bulnez","Adoralle"] (via divisão da cabeça), sabores=["C. Cracker","Leite","Agua e Sal"] (3, não 4), e o gesto da curadoria com a 4ª opção produzindo os 6 rótulos do cartesiano — mais o caso-limite escrito de que "TOMATE/OLEO e LIMÃO" segue dando 3 sabores e "ARROZ SOMAR e TIO BONINI 5 Kgs" segue dando zero sabores e 2 componentes.
+
+
+### V-F · A PÁGINA COMO UM TODO (dica, ano/nº, o Amaciante mudo)
+
+AUDITORIA — a 2ª prova do Jornal (página como um todo). Lista numerada; caminhos absolutos a partir de C:/Users/otavi/Documents/Projetos_programação/autotabloide_ai/.
+
+1. K8 CONFIRMADO — o Fica a Dica desenha a VALIDADE por fallback. Causa: app/rendering/compositor.py:194-201 — `texto_composto_legal` não tem ramo próprio para PapelTexto.DICA; a região cai no rabo genérico (`if fixo: … return validade`). O slot `jp2-dica` do Jornal nasce SEM `texto=` (app/rendering/encartes.py:857), então `fixo=""` e a função devolve `validade` — a caixa editorial imprime "OFERTA VÁLIDA DE 03/08 ATÉ 27/08" de novo. Conserto: ramo explícito `if papel == PapelTexto.DICA: return fixo` (vazia não desenha nada — condicional como OBSERVACAO/EDICAO); o comentário "validade legada é último recurso" vale para LIVRE/LEGAL, nunca para a dica.
+
+2. K8 (a raiz de "a dica nunca nasce") — `gerar_dica` só existe atrás de um botão do editor. Causa: app/qt/painel_propriedades.py:200/609 — `_gerar_dica` roda apenas quando o dono seleciona a região DICA no editor de layout e clica o botão; o fluxo da Mesa (importar → compor → exportar) nunca chama app/ai/enriquecimento.py:426 (`gerar_dica`). Conserto: cascata igual à da validade/edição — ao montar a página (ou no salvar da Mesa), região DICA vazia + motor vivo ⇒ gerar com os nomes dos itens da página e gravar em `texto_fixo`; sem IA, cair no texto-padrão editorial (ver item 3).
+
+3. Inconsistência Quintou × Jornal no default da dica. Causa: o painel-dica do Quintou tem texto editorial default no tom do publicado (app/rendering/encartes.py:903-909), mas o `jp2-dica` do Jornal nasce mudo (encartes.py:857). Conserto: dar ao Jornal um default no mesmo espírito (1-2 frases genéricas de mês), para a degradação sem IA nunca imprimir validade nem vazio.
+
+4. Aviso do pré-voo da dica mente sobre o que sai no papel e não diz ONDE agir. Causa: app/qt/telas/servico.py:2194-2195 — o aviso "papel Fica a Dica sem texto — gere a dica pela IA" (a) contradiz a página, que na verdade desenha a validade (item 1); (b) viola a lição D3 ("a mensagem diz onde"): não existe caminho na Mesa para gerar a dica — só no editor de layout. Conserto: após o item 1/2, o aviso passa a ser verdadeiro; e a frase deve apontar o gesto real (ou o botão novo na Mesa).
+
+5. Ano/Nº — onde nasce (resposta ao mapeamento): o campo é `edicao` do projeto (app/core/projetos.py:48-49), desenhado pelo papel `PapelTexto.EDICAO` (app/rendering/model.py:104; compositor.py:183-187; região única em encartes.py:813), viaja por `dados_para_desenho(..., edicao=)` (servico.py:742/799) e `_campo_vivo_da_pagina` (compositor.py:1181); a sugestão vem de `sugerir_edicao` (servico.py:1520) a partir de `eventos.edicao_base`, realimentada por `registrar_edicao_publicada` no export (mesa.py:3113).
+
+6. Ano/Nº ausentes — o arranque a frio NUNCA destrava sozinho. Causa: servico.py:1540-1543 — sem base registrada, `sugerir_edicao` devolve None; a base só nasce quando o dono digita uma edição UMA vez e exporta (registrar_edicao_publicada, mesa.py:3113). Como ele nunca digitou (ver item 8), a região fica muda para sempre e o pré-voo só avisa (servico.py:2207-2209). Conserto: o aviso do pré-voo vira clicável/abre o diálogo `_editar_edicao`; ou, na primeira vez, sugerir "Nº 1 · ANO <ano>" explicitamente marcado como palpite editável.
+
+7. `sugerir_edicao` só considera o EVENTO, não o nome do layout. Causa: app/qt/telas/mesa.py:1003 — `servico.sugerir_edicao(evento)`; compare com a validade duas linhas acima (mesa.py:993-994), que cai para `evento or self._layout_nome`. Jornal composto sem campanha atribuída nunca recebe sugestão. Conserto: mesmo fallback (`evento or self._layout_nome`).
+
+8. O alvo de clique para digitar a edição é INVISÍVEL quando vazio. Causa: mesa.py:192 — `self._edicao_lbl = QLabel("")`; com `_edicao=None` o texto fica "" (mesa.py:520-521, 1107-1108): um label de largura zero com cursor de mão que ninguém encontra — o único jeito de nascer a 1ª edição está escondido. Conserto: placeholder permanente ("Edição: — (clique para definir)").
+
+9. A sugestão da edição roda SÓ no salvar, nunca no compor. Causa: mesa.py:1002-1008 — o bloco vive dentro de `_salvar_projeto`; a página composta/prevista antes do 1º salvamento sai sem Nº/ANO (e a lição J24 da manchete diz que texto de página é DERIVADO desde o primeiro instante). Conserto: rodar a mesma cascata ao carregar o layout/definir o evento (o espelho do que o J24 fez com a validade).
+
+10. A página 2 do Jornal não tem edição nem data de capa. Causa: encartes.py:835-861 — `_jornal_p2` só tem título + validade + dica; a única região EDICAO do encarte é da p1 (encartes.py:813). Jornal profissional repete nº/edição/data no rodapé de toda página (o "expediente"); não existe bloco de expediente algum no arquivo (grep por "expediente" = zero hits em app/). Conserto: região EDICAO (corpo pequeno, cinza) no cabeçalho/rodapé da p2 — o dado já viaja por `_campo_vivo_da_pagina`.
+
+11. Amaciante "Amaciante / 5 L" — por que a família casada pelo CONJUNTO mostra sabores e a casada pelo fluxo antigo NÃO. Causa: dois caminhos assimétricos. (a) Caminho do conjunto: `conjunto_do_acervo` → `item_do_conjunto` preenche `sabores=list(conjunto["rotulos"])` + leque (servico.py:3254-3264) — daí a Sardinha sair "Tomate, Óleo ou Limão". (b) Fluxo antigo (exato/alias/fuzzy com UM produto): o conciliar preenche apenas `familia=` (servico.py:2526-2531) e NUNCA `sabores` — `aplicar_sabores` (servico.py:1962) só roda pelo menu de contexto manual da estante ("Sabores da família…", mesa.py:2414-2421/1849), que o dono não descobre. O descritor (servico.py:768-771) então só tem a unidade ⇒ "5 L". Conserto: quando o conciliar casa item com produto que TEM `familia_id`, pré-preencher `sabores`/leque com TODOS os membros (ou ao menos acender pendência/toast "família com N sabores — marque quais estão na oferta"); a escolha fina continua do dono, mas o padrão nunca é o silêncio.
+
+12. Amaciante — a MARCA some do nome-base da família. Causa: `familia_da_linha` (servico.py:3089-3115) corta o base no fim da ÚLTIMA MEDIDA — numa linha "AMACIANTE 5 LTS MON BIJOU …" o base vira "Amaciante 5L" (a marca cai para o lado dos "sabores" ou some); `criar_familia_de_sabores` grava `item.nome = nome_familia` (servico.py:3403) e `item_do_conjunto` grava `nome=conjunto["base"]` (servico.py:3256) — a célula desenha "Amaciante / 5 L" sem Mon Bijou nem fragrâncias. Conserto: no detector, se houver token de MARCA CONHECIDA (extrair_marca/F9) depois da medida, puxá-lo para o base; e na curadoria J13 o campo "nome da família" deveria sugerir `nome_de_familia` dos membros (prefixo comum, servico.py:1880 — este preserva a marca) em vez do base cru da linha.
+
+13. O descritor nunca fala a marca. Causa: servico.py:768-771 — descritor = sabores · "marca própria" · unidade; não há campo marca. Quando o nome vira o base da família sem marca (item 12), a marca não tem NENHUM lugar para aparecer na célula. Conserto: ou garantir marca no nome-base (item 12), ou acrescentar a marca ao descritor quando o nome não a contém.
+
+14. Item casado com produto de família SÓ ganha o menu de sabores se `familia_id` existir no banco. Causa: servico.py:2528-2531 — `familia=None` para produto avulso antigo (pré-B4, ex.: o "Amaciante 5L" criado antes das famílias); mesa.py:2417 só oferece "Sabores da família…" com `it.familia` preenchido. O acervo velho nunca é convidado a virar família no fluxo de importação. Conserto: quando o casamento é com produto sem família mas a LINHA detecta sabores (`familia_da_linha`), oferecer "agrupar como família?" (a pergunta já existe no gesto de agrupar da Mesa, mesa.py:1942 — falta chamá-la aqui).
+
+15. (Menor) `sugerir_edicao` ignora `hoje` na chamada real e abre uma conexão própria de banco por chamada (servico.py:1530-1537) — inócuo hoje (1 chamada por salvar), mas se entrar na cascata do compor (item 9), reusar a sessão do lote como o `_familia_em_lote` faz.
+
+16. (Menor) O pré-voo da EDICAO avisa "defina a edição do jornal (Nº/Ano)" (servico.py:2208-2209) sem dizer ONDE — a mesma doença D3 do item 4; e o "onde" hoje é o label invisível do item 8. Os três consertos (4, 8, 16) se resolvem juntos.
+
+RESUMO DO PADRÃO: os três defeitos da página têm a mesma anatomia — o mecanismo existe (papel DICA + gerar_dica; papel EDICAO + sugerir_edicao; famílias + aplicar_sabores) mas o GATILHO no fluxo real da Mesa não existe ou está escondido: a dica só nasce por botão do editor, a edição só por um label invisível + base que nunca arranca, os sabores só por menu de contexto. O conserto transversal é o espelho do J24/DECIMUS: todo dado de página é DERIVADO e se auto-preenche na composição, com o dono editando por cima — nunca o contrário.
+
+## AS ONDAS v2 — O QUE FOI EXECUTADO (03/08, a resposta do builder)
+
+### Onda v2-A · A HIERARQUIA CANÔNICA (o "sem padrão nenhum" morre)
+
+A regra nova de motor, a decisão do dono: **a linha grande diz O QUE
+É; a MARCA desce ao descritor SEMPRE** — não só quando falta espaço
+(era a causa do Triângulo grande numa célula e o Parmalat descido na
+outra). O mecanismo:
+
+- **`app/core/marcas.py` (novo)** — o vocabulário de MARCAS do
+  mercado, o espelho conservador do `mais18.py`/`ortografia.py`: só
+  entra a palavra que nunca é tipo de produto (casos-limite escritos:
+  "Ninho", "União", "Brilhante" e "Todos" ficam FORA — ambíguos);
+  `marcas_no_nome` casa multi-palavra por janela com fronteira, a
+  grafia devolvida é a DO NOME. Motivo do seed: o banco real tinha
+  **116 produtos e ZERO marcas preenchidas** (medido) — sem seed, a
+  hierarquia seria letra morta na máquina do dono.
+- **`marcas_para_exibicao()`** (servico) = seed + `Produto.marca` do
+  acervo + `marcas.proprias` da Config, carregada **1× por lote**;
+  `dados_para_desenho(marcas=)` extrai as `marcas_nome` do item e o
+  `DadosProduto` as leva ao compositor.
+- **`nome_fit._descer_marca`** — a divisão canônica RODA SEMPRE que a
+  célula tem SUBTITULO: o span vai da 1ª à última marca (conectores
+  "e"/"ou" e parênteses de embalagem descem juntos — "Fugini (pouch)
+  e Bonare (lata)" inteiro); o que vem depois da marca desce como
+  qualificador; marca no token 0 não divide (o tipo não pode sumir);
+  sem marca conhecida, nada muda (F9). Célula SEM SUBTITULO fica
+  intacta (mover marca para lugar nenhum seria perda, I2).
+- **`finalizar_criacao` grava `Produto.marca`** — o acervo alimenta a
+  hierarquia sozinho daqui pra frente; e a higienização retroativa
+  gravou **42 marcas** nos produtos reais (relatório nominal na
+  sessão; backup `core_pre_v2_20260803.db`).
+- O composto sai equilibrado: "Arroz" grande + "Somar e Tio Bonini ·
+  5 kg" (o `_descer_marca` come o "·" órfão do formato do composto).
+
+### Onda v2-A · O PESO NUNCA DUPLICA (as 5 células)
+
+- **`_tirar_peso_repetido`** (nome_fit) — o peso que mora no MEIO do
+  nome do banco e é IGUAL à unidade sai da EXIBIÇÃO (a unidade já o
+  leva ao descritor); a embalagem colada a ele ("104g Tubo") desce
+  junto. O banco fica intacto — a lei da camada do sanitize segue.
+- **`_juntar_descritor` parte a parte** — o existente entra fatiado
+  em " · " (comparado inteiro, "Diversos · 500ml" nunca continha o
+  "500 ml" já emitido → "500 ml · Diversos · 500ml").
+- **O passo 5 re-separa o peso a cada corte** — "Detg. Limpol 500ml"
+  após descer "Diversos" termina em peso; agora ele desce ao
+  descritor em vez de ficar na linha grande.
+- **O peso do C2 não entra no meio** — quando a unidade já é o mesmo
+  peso, quem o escreve é o descritor0, no FIM (ordem canônica marca ·
+  sabores · peso; antes saía "Mabel · 600 g · Coco ou Leite").
+- **`descritor_que_cabe` corta qualificador POR PARTE** — a marca
+  sobrevive quando cabe ("Mon Bijou · 5 L" em vez do "5 L" mudo).
+- **`separar_peso` com a guarda do falso multi** — razão ≤1,10 na
+  mesma unidade é releitura do OCR ("1,5L 1,6L" → "1,5 L", o dono
+  confirmou); 90g/102g (razão 1,13) segue "ou" — dois tubos reais.
+
+### Onda v2-B · O BISCOITO (o cartesiano alcançável)
+
+- **`_SABORES_COMPOSTOS`** — "AGUA E SAL" é UM sabor: o split da
+  `familia_da_linha` virou dois tempos (barra primeiro; o " e " só
+  quebra fora do vocabulário consagrado). "TOMATE/OLEO e LIMÃO"
+  segue dando 3 (caso-limite escrito).
+- **`_cabeca_pre_medida`** — `dividir_em_dois` corta a linha na
+  última medida: a barra do RABO de sabores não veta mais o " e "
+  das marcas da frente (a linha real do dono agora dá 2 componentes).
+- **`marcas_e_sabores_da_linha`** — base LIMPA sem as marcas (o nome
+  de família nunca mais carrega "Bulnez e Adoralle") + marcas + sabores.
+- **A 4ª resposta na curadoria** — rádio próprio "São N MARCAS × M
+  SABORES (criar todos)": o gate antigo exigia dois rádios exclusivos
+  marcados juntos (o cartesiano era código morto pela UI).
+- **`conjunto_do_acervo` com o ramo marcas×sabores** — criados os 6
+  uma vez, a reimportação nasce VERDE montada; e `membro_do_acervo`
+  ganhou a reserva de tokens ORDENADOS (a ordem das palavras não
+  separa — as duas grafias de nascimento casam).
+
+### Onda v2-C · A PÁGINA
+
+- **A DICA nunca desenha validade** — ramo explícito no
+  `texto_composto_legal` (vazia não desenha NADA; o rabo genérico
+  imprimia a validade 2× na caixa do Fica a Dica); o `jp2-dica` do
+  Jornal nasce com default editorial no tom do publicado.
+- **A EDIÇÃO destrava** — a cascata roda no `carregar_layout` (o
+  espelho J24: texto de página é derivado desde o primeiro instante),
+  com fallback do nome do layout; o label nunca mais é invisível
+  ("Edição: — (definir)" quando o layout usa o papel); a p2 ganhou a
+  região EDICAO de expediente (condicional). O nº continua nascendo
+  do dono (número inventado é rótulo mentindo, §4 da TER).
+- **Item multi casado com produto de FAMÍLIA** ganha leque + sabores
+  na hora e o nome vira o base ("Amaciante / 5 L" mudo morreu); a
+  linha segue amarela (J9) — a escolha fina é do dono.
+- **T1 sem hífen** na limpa por frequência da colagem (mesmo critério
+  conservador; "B12" isolada fica).
+
+### Onda v2-D · A CAPA E AS FOTOS
+
+- **Célula LATERAL nunca inverte** (foto_fit) — chamada com textos AO
+  LADO da foto só aceita plano lateral/abraço; o misto empilhava o
+  título no vão e deitava a foto embaixo (o Kolynos da capa).
+- **Largura das chamadas 168→162** — o texto entrava 6 px na zona de
+  foto da vizinha (desenhada depois, cobria o fim).
+- **O Fio desenha ANTES da foto** — o filete é separador de fundo,
+  não risco por cima do produto.
+
+### O banco real (backup `core_pre_v2_20260803.db`)
+
+42 marcas gravadas (nominal); higienização cirúrgica nomeada pelo
+dono: "Leite em Pó Ninho…", "Sabão em Pó Omo…", "Wafer Bulnez…",
+"Detg. Limpol…", o " T1 " dos Arroz (ids 81/82) e o peso 1,6→1,5 do
+Kitubaina (id 71 — o erro de OCR confirmado). Pacote reimportado
+(8 chaves, upsert). Prova recomposta: **0 sem foto, 0 avisos, 0
+sobras nas 2 páginas** — o Arroz voltou a casar o conjunto após o T1.
+
+### Ficou de fora (nomeado)
+
+- "Todos"/"Ninho"/"3 Corações" fora do seed (ambíguas) — o Café e o
+  Açúcar Todos ganham hierarquia quando o dono as puser na Config ou
+  o acervo as aprender.
+- A ordem travada nos nomes NOVOS de membro de família (hoje nasce
+  "base + sabor" por compat; a reserva ordenada já casa as duas).
+- Cascata da DICA por IA na composição (o default editorial cobre a
+  degradação; gerar por IA segue no botão do editor).
+- J8 (medição da desaceleração), J3/J4 e K5-K9 — como antes.

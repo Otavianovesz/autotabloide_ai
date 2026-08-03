@@ -505,6 +505,26 @@ class MesaTela(QWidget):
 
     # --- edição do Jornal (F13-TER/D1) ----------------------------------------------
 
+    def _atualizar_lbl_edicao(self) -> None:
+        """RODADA-125 v2: o alvo de clique da edição NUNCA é invisível
+        — sem edição, num layout que USA o papel EDICAO, o label diz
+        "— (definir)" (antes era um QLabel de largura zero: o ÚNICO
+        caminho de nascer a 1ª edição estava escondido)."""
+        if self._edicao:
+            self._edicao_lbl.setText(f"Edição: {self._edicao}")
+            return
+        usa = False
+        try:
+            from app.rendering.model import PapelTexto, TipoRegiao
+            lay = self._layout
+            usa = any(
+                getattr(r, "papel_texto", None) == PapelTexto.EDICAO
+                for pg in (lay.paginas if lay else [])
+                for s in pg.slots for r in s.regioes)
+        except Exception:
+            usa = False
+        self._edicao_lbl.setText("Edição: — (definir)" if usa else "")
+
     def _editar_edicao(self) -> None:
         """O Nº/ANO REAL do Jornal ("Nº 178 · ANO 42") — muda por mês;
         vazio deixa a região EDICAO muda (o pré-voo avisa)."""
@@ -517,8 +537,7 @@ class MesaTela(QWidget):
         if not ok:
             return
         self._edicao = texto.strip() or None
-        self._edicao_lbl.setText(
-            f"Edição: {self._edicao}" if self._edicao else "")
+        self._atualizar_lbl_edicao()
         self._marcar_salvo(False)
         if self._mapa:
             self.area.canvas.atualizar_dados(self._dados_por_slot())
@@ -794,6 +813,17 @@ class MesaTela(QWidget):
                 self._validade = sugestao
                 self._validade_origem = "cascata"      # palpite (B2A)
         self._atualizar_chip_validade()
+        # RODADA-125 v2 (a 2ª prova: "segue sem o ano e a edição"): a
+        # EDIÇÃO roda a MESMA cascata no carregar — antes só o salvar
+        # sugeria e a página composta saía muda (a lição J24: texto de
+        # página é DERIVADO desde o primeiro instante). O fallback do
+        # nome do layout é o mesmo da validade.
+        if not self._edicao:
+            ed = servico.sugerir_edicao(
+                getattr(self, "_evento", None) or self._layout_nome)
+            if ed:
+                self._edicao = ed
+        self._atualizar_lbl_edicao()
         # RG-08: assinatura do documento carregado — o showEvent compara com
         # o banco e re-sincroniza se o Ateliê editou este layout
         self._assinatura_layout = json.dumps(layout.to_dict(), sort_keys=True)
@@ -998,12 +1028,14 @@ class MesaTela(QWidget):
                 self._atualizar_chip_validade()
                 mostrar_toast(self, f"Validade sugerida: “{sugestao}” (dia da "
                                     "campanha) — edite se precisar.")
-        # F13-TER/D1: a edição idem — sugerida da base registrada do evento
+        # F13-TER/D1: a edição idem — sugerida da base registrada do
+        # evento; v2: o nome do layout vale como fallback (o Jornal
+        # composto sem campanha atribuída nunca recebia sugestão)
         if not self._edicao:
-            ed = servico.sugerir_edicao(evento)
+            ed = servico.sugerir_edicao(evento or self._layout_nome)
             if ed:
                 self._edicao = ed
-                self._edicao_lbl.setText(f"Edição: {ed}")
+                self._atualizar_lbl_edicao()
                 mostrar_toast(self, f"Edição sugerida: “{ed}” — edite se "
                                     "precisar.")
         lay = self.area.canvas._layout or self._layout
@@ -1104,8 +1136,7 @@ class MesaTela(QWidget):
         self._validade_origem = "manual" if p.validade_oferta else None
         self._atualizar_chip_validade()
         self._edicao = getattr(p, "edicao", None)    # F13-TER/D1
-        self._edicao_lbl.setText(
-            f"Edição: {self._edicao}" if self._edicao else "")
+        self._atualizar_lbl_edicao()
         # F13/D7 (P-03, a 2ª linha): o evento do projeto VOLTA com ele —
         # p.evento chegava aqui e era ignorado (meta/pulso/{evento} mortos)
         self._evento = getattr(p, "evento", None) or None
@@ -2836,10 +2867,15 @@ class MesaTela(QWidget):
                   abreviacoes: dict | None = None) -> DadosProduto:
         # F12 (frota): a montagem virou a OFICIAL do serviço — Mesa, export
         # e Modo Pai compõem pela MESMA função (antes o Modo Pai divergia)
+        # v2: o vocabulário de marcas da hierarquia canônica carrega 1×
+        # por Mesa (a lição de desempenho JM — nunca 1 query por item)
+        if not hasattr(self, "_marcas_exibicao"):
+            self._marcas_exibicao = servico.marcas_para_exibicao()
         return servico.dados_para_desenho(it, abreviacoes,
                                           self._registro_selos,
                                           self._validade,
-                                          edicao=self._edicao)
+                                          edicao=self._edicao,
+                                          marcas=self._marcas_exibicao)
 
     def _dados_por_slot(self) -> dict[str, DadosProduto]:
         """Resolve o mapa slot→uid em slot→DadosProduto (o contrato do compositor).

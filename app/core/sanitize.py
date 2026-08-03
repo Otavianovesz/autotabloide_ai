@@ -152,6 +152,17 @@ def _regex_unidades(regras: RegrasSanitizacao) -> re.Pattern[str]:
     return re.compile(rf"(\d+(?:[.,]\d+)?)\s*(?:{corpo})\b", re.IGNORECASE)
 
 
+# Rodada JM (B3.4) → v2: tokens de EMBALAGEM do vocabulário do dono —
+# o composto os declara por componente ("Fugini (pouch) e Bonare
+# (lata)") e a exibição os desce ao descritor quando colados ao peso
+# ("Batata 104g Tubo" → "tubo" é qualificador, nunca tipo). Módulo
+# core: o rendering e o serviço leem a MESMA lista.
+EMBALAGENS = frozenset({
+    "lata", "pouch", "vidro", "vd", "tp", "pet", "sache", "sachê",
+    "pote", "caixeta", "garrafa", "tetra", "cartela", "bandeja",
+    "tubo",
+})
+
 # Rodada JM (B1.2): METRAGEM ("30M" do papel higiênico/alumínio) exige
 # 2+ DÍGITOS — "3M" com um dígito é MARCA (a fita adesiva), nunca metro.
 # O caso-limite escrito com a regra (§6).
@@ -359,8 +370,34 @@ def separar_peso(
     if not prefixo:
         nome2, peso2 = separar_peso(nome, regras)
         if peso2 and "x" not in peso2:
+            # RODADA-125 v2 (a 2ª prova): "Kitubaina 1,5L 1,6L" NÃO é
+            # multi-tamanho — o 2º quase-igual é RELEITURA do OCR (o
+            # dono confirmou: 1,6 era erro). Mesma unidade e razão
+            # ≤1,10 → fica só o primeiro; diferença real ("400g 500g"
+            # razão 1,25; Kolynos "90g 102g" razão 1,13 — dois tubos
+            # REAIS) segue "ou".
+            if _quase_o_mesmo_peso(peso2, peso):
+                return nome2, peso2
             return nome2, f"{peso2} ou {peso}"
     return nome, peso
+
+
+def _quase_o_mesmo_peso(a: str, b: str) -> bool:
+    """Dois pesos de MESMA unidade cuja razão é ≤1,10 — a assinatura do
+    OCR relendo o próprio número (nunca uma oferta de dois tamanhos)."""
+    try:
+        na, ua = a.rsplit(" ", 1)
+        nb, ub = b.rsplit(" ", 1)
+        if ua.lower() != ub.lower():
+            return False
+        va = float(na.replace(",", "."))
+        vb = float(nb.replace(",", "."))
+        if not va or not vb:
+            return False
+        razao = max(va, vb) / min(va, vb)
+        return razao <= 1.10
+    except (ValueError, AttributeError):
+        return False
 
 
 def _separar_medida_nao_peso(

@@ -448,9 +448,13 @@ def test_l4_importacao_junta_carimbo_e_numero(tmp_path, monkeypatch):
     assert "preco_ilegivel" not in item.pendencias
 
 
-def test_k2_carimbo_com_numero_por_pixel():
-    """K2: um carimbo sem número não é preço. Quando o item tem
-    multi_preco E preço numérico, a forma desenha OS DOIS."""
+def test_k2_carimbo_so_com_o_texto_por_pixel():
+    """CONTRATO INVERTIDO DE PROPÓSITO (RODADA-125 v2, decisão do DONO
+    em 03/08 — reverte o K2 do §12.3 do arquiteto): o carimbo SUPER
+    OFERTA sai SÓ com o texto — "não pode ter o valor junto"; o preço
+    varia no mês e não se imprime. O valor extraído (L4) segue no item
+    para Excel/cartaz/painel. O pixel prova: com ou sem preco_por, a
+    tinta do carimbo é IDÊNTICA."""
     from decimal import Decimal
 
     from app.rendering.compositor import DadosProduto, compor_pagina
@@ -466,12 +470,13 @@ def test_k2_carimbo_com_numero_por_pixel():
     so_carimbo = compor_pagina(
         lay, lay.paginas[0],
         {"c": DadosProduto("X", multi_preco="SUPER OFERTA")})
-    com_numero = compor_pagina(
+    com_preco_no_item = compor_pagina(
         lay, lay.paginas[0],
         {"c": DadosProduto("X", multi_preco="SUPER OFERTA",
                            preco_por=Decimal("6.90"))})
-    assert list(so_carimbo.getdata()) != list(com_numero.getdata()), \
-        "o número não entrou no carimbo"
+    assert list(so_carimbo.getdata()) == \
+        list(com_preco_no_item.getdata()), \
+        "o número vazou para o carimbo (a decisão do dono manda)"
 
 
 def test_l6_separar_em_dois_no_amarelo_com_multiplos():

@@ -255,8 +255,11 @@ def test_corrigir_acentos_junta_o_token_quebrado_conhecido():
 def test_sanitizar_passa_pela_ortografia():
     from app.core.sanitize import sanitizar
 
+    # v2 (a 2ª prova do dono): "SABAO PO" ganha o "em" pelo bigrama —
+    # "Sabão em Pó", nunca mais "Sabão Pó"
     r = sanitizar("SABAO PO OMO 1.6 Kgs CAIXETA")
-    assert r.nome_sanitizado == "Sabão Pó Omo 1,6kg Caixeta", r.nome_sanitizado
+    assert r.nome_sanitizado == "Sabão em Pó Omo 1,6kg Caixeta", \
+        r.nome_sanitizado
     r2 = sanitizar("ACUCAR CRISTAL DOCE DIA 2 Kgs")
     assert r2.nome_sanitizado == "Açúcar Cristal Doce Dia 2kg", r2.nome_sanitizado
 

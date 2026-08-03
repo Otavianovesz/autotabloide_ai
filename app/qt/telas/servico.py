@@ -739,7 +739,8 @@ def aplicar_override(dados, ov: dict):
 def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                        registro_selos: list | None = None,
                        validade: str | None = None,
-                       edicao: str | None = None):
+                       edicao: str | None = None,
+                       marcas: set[str] | frozenset[str] | None = None):
     """A montagem OFICIAL item→DadosProduto — a MESMA para Mesa, export e
     Modo Pai (frota F12: o Modo Pai montava a peça 'à mão' e imprimia
     DIFERENTE do export — sem multi-preço, sem selo +18, sem validade)."""
@@ -769,6 +770,14 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         juntar_com_ou(getattr(it, "sabores", None) or []) or None,
         "marca própria" if it.marca_propria else None,
         it.unidade) if p) or None
+    # RODADA-125 v2 — a REGRA CANÔNICA da célula: as marcas conhecidas
+    # do nome viajam no dado; a cadeia do nome_fit as desce ao
+    # descritor (e dedupa o peso repetido) SÓ onde há SUBTITULO — em
+    # célula sem descritor a marca fica no nome (nada some, I2)
+    marcas_nome: tuple[str, ...] = ()
+    if marcas:
+        from app.core.marcas import marcas_no_nome
+        marcas_nome = tuple(marcas_no_nome(nome, marcas))
     return DadosProduto(
         nome,
         selos_extra=extras,
@@ -789,6 +798,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         unidade=it.unidade,
         descritor=descritor,                 # F13-BIS/T2
         desconto_pct=getattr(it, "desconto_pct", None),   # Q2
+        marcas_nome=marcas_nome,             # v2: a hierarquia canônica
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
         # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
@@ -815,6 +825,15 @@ def aplicar_secoes_do_agrupar(paginas, agrupar: bool) -> None:
                 pag.secoes_ligadas = True
         else:
             pag.secoes_ligadas = False
+
+
+def marcas_para_exibicao() -> set[str]:
+    """RODADA-125 v2 — o vocabulário de marcas da REGRA CANÔNICA da
+    célula: o seed do mercado + as marcas do acervo + as próprias da
+    Config, normalizado. Carregar 1× POR LOTE/página (a lição de
+    desempenho da Rodada JM) e passar a ``dados_para_desenho``."""
+    from app.core.marcas import marcas_conhecidas
+    return marcas_conhecidas(tuple(marcas_do_acervo()))
 
 
 def dados_de_pagina(validade: str | None):
@@ -869,6 +888,7 @@ def dados_de_projeto_aberto(aberto):
     else:
         abrev = abreviacoes_tabloide()
         registro = selos_disponiveis()
+        mset = marcas_para_exibicao()        # v2: 1× por projeto aberto
         for sid, uid in (aberto.mapa or {}).items():
             it = por_uid.get(uid)
             if it is None:
@@ -876,7 +896,8 @@ def dados_de_projeto_aberto(aberto):
                 continue
             d = dados_para_desenho(it, abrev or None, registro,
                                    aberto.validade_oferta,
-                                   edicao=getattr(aberto, "edicao", None))
+                                   edicao=getattr(aberto, "edicao", None),
+                                   marcas=mset)
             ov = (aberto.overrides or {}).get(sid)
             dados[sid] = aplicar_override(d, ov) if ov else d
     for sid, d in dados.items():
@@ -1803,12 +1824,9 @@ def categorias_ordenadas(session) -> list[str]:
 
 # --- item composto (F7.2, Etapa D do Bloco E): dois produtos, UM uid -------------
 
-# Rodada JM (B3.4): tokens de EMBALAGEM que o dono manda declarar por
-# componente quando diferem ("Fugini (pouch) e Bonare (lata)")
-_EMBALAGENS = frozenset({
-    "lata", "pouch", "vidro", "vd", "tp", "pet", "sache", "sachê",
-    "pote", "caixeta", "garrafa", "tetra", "cartela", "bandeja",
-})
+# Rodada JM (B3.4) → v2: a lista de EMBALAGENS subiu ao core (o
+# rendering desce "tubo"/"caixeta" ao descritor pela MESMA régua)
+from app.core.sanitize import EMBALAGENS as _EMBALAGENS  # noqa: E402
 
 
 def _embalagem_do_nome(tokens: list[str]) -> str | None:
@@ -2530,6 +2548,21 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                         if p is not None
                         and getattr(p, "familia_id", None) else None),
                 ))
+                # RODADA-125 v2 (achado 11): a linha MULTI casada com
+                # UM produto de FAMÍLIA nunca mais sai muda ("Amaciante
+                # / 5 L" sem fragrância nenhuma) — o leque e os sabores
+                # dos membros entram na hora; a escolha fina segue do
+                # dono (a linha multi casada já desce a amarelo, J9)
+                it_v2 = itens[-1]
+                if (it_v2.familia
+                        and "multiplos" in (it_v2.pendencias or [])
+                        and not it_v2.sabores):
+                    aplicar_sabores(it_v2, it_v2.familia["membros"])
+                    # a célula fala pela FAMÍLIA — o nome vira o base
+                    # (o sabor específico do produto casado sairia
+                    # como se fosse o único da oferta)
+                    it_v2.nome = (it_v2.familia.get("nome")
+                                  or it_v2.nome)
             if houve_categoria:
                 try:
                     session.commit()          # 1 commit por lote (B1.6)
@@ -3051,18 +3084,33 @@ class PropostaCriacao:
     componentes_da_ia: bool = False
 
 
+def _cabeca_pre_medida(texto: str) -> str:
+    """RODADA-125 v2 (o Biscoito do dono): a linha se corta na ÚLTIMA
+    medida — o que vem antes é a CABEÇA (tipo+marcas+peso), o que vem
+    depois é rabo de sabores. As réguas de composto olham SÓ a cabeça:
+    a barra do rabo ("C. CRACKER/LEITE/AGUA E SAL") não pode vetar o
+    " e " das marcas da frente."""
+    from app.core.sanitize import REGRAS_PADRAO, _regex_unidades
+    ultimo = None
+    for m in _regex_unidades(REGRAS_PADRAO).finditer(texto):
+        ultimo = m
+    return texto[:ultimo.end()].strip() if ultimo else texto
+
+
 def dividir_em_dois(descricao: str | None) -> list[str]:
     """Rodada JM (B3.1): a SUGESTÃO determinística para a linha com
     duas marcas num preço — corta no primeiro " e ", replica o peso
     comum do fim e o TIPO (1º token) no 2º componente, e sanitiza os
     dois. É sugestão: quem decide é o humano na curadoria.
 
-    BARRA na linha = sabores/variantes (caso de FAMÍLIA), nunca composto
-    de marcas → lista vazia. Sem " e " idem."""
+    BARRA na CABEÇA = sabores/variantes (caso de FAMÍLIA), nunca
+    composto de marcas → lista vazia. Sem " e " idem. v2 (o Biscoito):
+    o veto e a busca do " e " valem na CABEÇA pré-medida — o rabo de
+    sabores não cala mais as marcas da frente."""
     import re as _re
 
     from app.core.sanitize import sanitizar, separar_peso
-    texto = (descricao or "").strip()
+    texto = _cabeca_pre_medida((descricao or "").strip())
     if not texto or "/" in texto:
         return []
     m = _re.search(r"\s+e\s+", texto, flags=_re.IGNORECASE)
@@ -3086,13 +3134,35 @@ def dividir_em_dois(descricao: str | None) -> list[str]:
     return [comp_a, comp_b]
 
 
+# RODADA-125 v2 (o Biscoito): sabores CONSAGRADOS que carregam " e "
+# dentro — o par nunca se parte no split ("AGUA E SAL" é UM sabor, não
+# dois). O mesmo critério conservador do _PARES_DO_MERCADO/ortografia:
+# só entra o inequívoco; comparação sem acento/caixa.
+_SABORES_COMPOSTOS = frozenset({
+    "agua e sal", "doce de leite", "milho e ervilha",
+    "coco e leite", "leite e mel",
+})
+
+
+def _sem_acento(t: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (t or "").lower())
+    return "".join(c for c in t if not unicodedata.combining(c)).strip()
+
+
 def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
     """QUINTUSDECIMUS/J13: o detector de SABORES da linha — o que vem
     DEPOIS da medida é sabor ("SARDINHA COQUEIRO 125 g TOMATE / OLEO e
     LIMÃO" → base "Sardinha Coqueiro 125g", sabores ["Tomate", "Óleo",
     "Limão"]); o que vem ANTES é marca (o "ARROZ SOMAR e TIO BONINI
     5 Kgs" devolve zero sabores — é caso de 2 PRODUTOS, não família).
-    Determinístico; a decisão final é a 3ª pergunta na curadoria."""
+    Determinístico; a decisão final é a 3ª pergunta na curadoria.
+
+    v2 (o Biscoito): o split é em DOIS TEMPOS — primeiro só a barra;
+    dentro de cada segmento o " e " só quebra se o segmento não for
+    sabor consagrado ("C. CRACKER/LEITE/AGUA E SAL" dá 3 sabores, não
+    4; "TOMATE/OLEO e LIMÃO" segue dando 3 porque "oleo e limão" não
+    está no vocabulário)."""
     from app.core.sanitize import REGRAS_PADRAO, _regex_unidades, sanitizar
     texto = (descricao or "").strip()
     if not texto:
@@ -3104,15 +3174,53 @@ def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
         return sanitizar(texto).nome_sanitizado, []
     base = sanitizar(texto[:ultimo.end()]).nome_sanitizado
     rabo = texto[ultimo.end():]
-    partes = re.split(r"\s*/\s*|\s+e\s+", rabo, flags=re.IGNORECASE)
+    segmentos: list[str] = []
+    for seg in re.split(r"\s*/\s*", rabo):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if _sem_acento(seg.strip(" .,-–")) in _SABORES_COMPOSTOS:
+            segmentos.append(seg)
+        else:
+            segmentos.extend(re.split(r"\s+e\s+", seg,
+                                      flags=re.IGNORECASE))
     sabores: list[str] = []
-    for p in partes:
+    for p in segmentos:
         p = p.strip(" .,-–")
         if p and any(c.isalpha() for c in p):
             nome = sanitizar(p).nome_sanitizado
             if nome:
                 sabores.append(nome)
     return base, (sabores if len(sabores) >= 2 else [])
+
+
+def marcas_e_sabores_da_linha(descricao: str | None,
+                              ) -> tuple[str, list[str], list[str]]:
+    """RODADA-125 v2 (o Biscoito completo): a linha "BISCOITO BULNEZ e
+    ADORALLE 270 g C. CRACKER/LEITE/AGUA E SAL" declara um CARTESIANO —
+    marcas na CABEÇA, sabores no rabo. Devolve ``(base_sem_marcas,
+    marcas, sabores)``; as marcas saem do vocabulário conhecido (F9:
+    nunca se inventa) e a base limpa alimenta os rótulos marca-major
+    ("Biscoito Bulnez Cream Cracker 270g"). Sem 2 marcas conhecidas na
+    cabeça, devolve a base de sempre e marcas=[]."""
+    from app.core.marcas import marcas_no_nome
+    from app.core.sanitize import sanitizar
+    base, sabores = familia_da_linha(descricao)
+    cabeca = _cabeca_pre_medida((descricao or "").strip())
+    marcas = marcas_no_nome(cabeca, marcas_para_exibicao()) \
+        if cabeca else []
+    if len(marcas) < 2:
+        return base, [], sabores
+    limpa = cabeca
+    for mc in marcas:
+        limpa = re.sub(rf"\s*\be\b\s+{re.escape(mc)}\b", " ", limpa,
+                       flags=re.IGNORECASE)
+        limpa = re.sub(rf"\b{re.escape(mc)}\b", " ", limpa,
+                       flags=re.IGNORECASE)
+    limpa = re.sub(r"\s{2,}", " ", limpa).strip(" e·-,")
+    base_limpa = sanitizar(limpa).nome_sanitizado or base
+    return base_limpa, [sanitizar(m).nome_sanitizado or m
+                        for m in marcas], sabores
 
 
 def membro_do_acervo(nome: str) -> dict | None:
@@ -3139,11 +3247,18 @@ def membro_do_acervo(nome: str) -> dict | None:
                 # a grafia da unidade não separa ("5kg" × "5 kg"):
                 # a comparação de reserva ignora TODO espaço
                 alvo_denso = _re.sub(r"\s+", "", alvo[0])
+                # v2 (o cartesiano do Biscoito): a ORDEM dos tokens
+                # também não separa — "Biscoito 270g Bulnez Cream
+                # Cracker" e "Biscoito Bulnez Cream Cracker 270g" são
+                # o MESMO produto (mesmo multiconjunto de palavras);
+                # a 3ª reserva compara os tokens ordenados
+                alvo_ord = "".join(sorted(alvo[0].split()))
                 for cand in s.query(Produto).filter(
                         Produto.excluido_em.is_(None)):
                     ch = chave_natural(cand.nome_sanitizado or "", "")
                     if (ch == alvo
-                            or _re.sub(r"\s+", "", ch[0]) == alvo_denso):
+                            or _re.sub(r"\s+", "", ch[0]) == alvo_denso
+                            or "".join(sorted(ch[0].split())) == alvo_ord):
                         p = cand
                         break
             if p is None or p.excluido_em is not None:
@@ -3200,14 +3315,25 @@ def conjunto_do_acervo(descricao: str) -> dict | None:
     e o item nasce VERDE montado (leque das fotos existentes, sabores
     no descritor), sem curadoria nenhuma. PARCIAL NÃO INVENTA: com
     qualquer membro faltando devolve None e o fluxo normal decide
-    (nada nasce verde calado). Marcas×sabores no mesmo conjunto ficam
-    nomeadas (dependem da grafia com que o dono criar os 6)."""
+    (nada nasce verde calado). v2 (o Biscoito): marcas×sabores no
+    mesmo conjunto agora casam — os rótulos marca-major do
+    ``rotulos_marcas_x_sabores`` procuram os 6 no acervo."""
+    from app.core.sanitize import separar_peso
     base, sabores = familia_da_linha(descricao)
     comps = dividir_em_dois(descricao)
+    base_mx, marcas_mx, sabores_mx = marcas_e_sabores_da_linha(descricao)
     # SABORES vencem quando os dois detectores disparam: o pós-medida é
     # o sinal mais específico ("MON BIJOU 5L PROTEÇÃO e CLASSICO" também
     # divide em 2, mas a divisão perde a marca do 2º)
-    if len(sabores) >= 2:
+    if len(marcas_mx) >= 2 and len(sabores_mx) >= 2:
+        bn, bp = separar_peso(base_mx)
+        sufixo = f" {bp}" if bp else ""
+        nomes = [f"{bn} {m} {s}{sufixo}".strip()
+                 for m in marcas_mx for s in sabores_mx]
+        base = base_mx
+        tipo = "familia"
+        rotulos = rotulos_marcas_x_sabores(marcas_mx, sabores_mx)
+    elif len(sabores) >= 2:
         nomes = [f"{base} {s}".strip() for s in sabores]
         tipo, rotulos = "familia", list(sabores)
     elif len(comps) >= 2:
@@ -3723,6 +3849,14 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
             # gravar só selo_mais18 deixava o round-trip reverter o +18
             repo.editar(produto.id, nome_sanitizado=nome,
                         selo_mais18=mais18, bebida_alcoolica=mais18)
+            # RODADA-125 v2: a MARCA reconhecida no nome é GRAVADA na
+            # criação (o banco real tinha 116 produtos e ZERO marcas —
+            # a hierarquia canônica da célula precisa dela; medido).
+            # Só o inequívoco entra (F9: reconhece, nunca inventa).
+            from app.core.marcas import marcas_no_nome
+            achadas = marcas_no_nome(nome, marcas_para_exibicao())
+            if achadas:
+                repo.editar(produto.id, marca=achadas[0])
             if categoria:                # IA sem palpite deixa vazio (→ "Outros")
                 repo.editar(produto.id, categoria=categoria,
                             categoria_origem="ia")

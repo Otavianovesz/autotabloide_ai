@@ -223,8 +223,10 @@ def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]
 # curto LETRA(S)-NÚMERO na BORDA do nome. A remoção é por FREQUÊNCIA no
 # lote: só quando o padrão se repete em ≥3 nomes E ≥30% das linhas ele é
 # coluna do documento; um "B-12" isolado (a vitamina) é nome e FICA — o
-# caso-limite escrito com a regra.
-_RE_CODIGO_COLUNA = re.compile(r"^[A-Za-z]{1,3}-\d{1,3}$")
+# caso-limite escrito com a regra. v2 (a 2ª prova): a grafia SEM hífen
+# ("T1", que escapou até o descritor do composto) entra no MESMO
+# critério conservador — "B12" isolada continua ficando.
+_RE_CODIGO_COLUNA = re.compile(r"^[A-Za-z]{1,3}-?\d{1,3}$")
 
 
 def _remover_codigos_de_coluna(linhas: list[LinhaColada]) -> None:

@@ -90,6 +90,12 @@ class DadosProduto:
     # DE DESCONTO", item sem preço) — o papel DESCONTO o desenha quando
     # não há de/por para calcular; a arte foi desenhada para isso
     desconto_pct: int | None = None
+    # RODADA-125 v2 — a REGRA CANÔNICA da célula: as marcas CONHECIDAS
+    # presentes no nome (extraídas na montagem oficial, 1× por lote);
+    # a cadeia do nome_fit as desce ao descritor SEMPRE que a célula
+    # tem SUBTITULO ("Leite Integral" grande + "Parmalat · 1L"). Vazio
+    # = comportamento de sempre (testes/latitude antigos intactos).
+    marcas_nome: tuple[str, ...] = ()
 
 
 def percentual_desconto(preco_de: "Decimal | None",
@@ -191,6 +197,13 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
         # vazio = a forma nem desenha (o D2 do Splash preservado)
         mp = (getattr(dados, "multi_preco", None) or "") if dados else ""
         return mp or fixo
+    if papel == PapelTexto.DICA:
+        # RODADA-125 v2 (K8 confirmado pela frota): a DICA é EDITORIAL —
+        # vazia NÃO desenha nada (condicional como OBSERVACAO); cair no
+        # rabo genérico imprimia a VALIDADE pela 2ª vez na caixa "Fica
+        # a Dica" da página do dono. A validade-legada como último
+        # recurso vale para LIVRE/LEGAL, nunca para a dica.
+        return fixo
     # Rodada JM (B2A, decisão do dono 03/08): o texto fixo com período
     # gravado ("do dia 1º ao 27" nas manchetes do Jornal) escreve o
     # período REAL da validade; sem o padrão ou sem par de datas, o
@@ -669,14 +682,15 @@ def _desenhar_preco(
                     and getattr(base, "_tem_camada", False)):
                 _desenhar_forma_preco(base, reg, dpi)
             reg = _regiao_palco_da_forma(reg)
-        # QUINTUSDECIMUS/K2: um carimbo sem número não é preço — quando
-        # o item TEM o valor, ele sai JUNTO ("SUPER OFERTA · R$ 6,90"),
-        # nunca no lugar (o cliente sabe quanto custa)
-        texto_mp = dados.multi_preco
-        if dados.preco_por is not None:
-            reais, centavos = _reais_centavos(dados.preco_por)
-            texto_mp = f"{texto_mp} · R$ {reais},{centavos}"
-        _desenhar_texto(base, draw, reg, texto_mp, dpi, fontes_dir)
+        # RODADA-125 v2 (DECISÃO DO DONO, 03/08 — reverte o K2 do §12.3):
+        # o carimbo SUPER OFERTA sai SÓ com o texto — "não pode ter o
+        # valor junto": o preço da super-oferta VARIA no mês e não se
+        # imprime (o dono conhece o próprio jornal). O valor extraído
+        # (L4) segue no ITEM — Excel/cartaz/painel o usam; só a TINTA
+        # do carimbo não o mostra. Conflito K2×dono documentado na
+        # RODADA_125 para a reauditoria.
+        _desenhar_texto(base, draw, reg, dados.multi_preco, dpi,
+                        fontes_dir)
         return
 
     valor = dados.preco_de if reg.papel_preco == PapelPreco.DE else dados.preco_por
@@ -1246,7 +1260,8 @@ def compor_pagina(
         piso_nome = piso_do_celular(layout.largura_mm)
         aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
                                       regioes_cel, dpi_ef, fontes_dir,
-                                      piso_pt=piso_nome)
+                                      piso_pt=piso_nome,
+                                      marcas=d.marcas_nome)
         rects_subst: dict = dict(rects_foto)
         if aj_nome is not None:
             d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,

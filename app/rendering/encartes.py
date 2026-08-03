@@ -715,12 +715,16 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
         x = 64 + c * 198
         rot = -6.0 if (c % 2 == 0) else 5.0
         slots.append(_slot(f"{pref}-l{inicio + c}", [
+            # v2 (fotos "cortadas" da 2ª prova): o FIO desenha ANTES da
+            # foto — vinha depois na lista e riscava o topo do produto
+            # quando a foto enchia a altura (o filete é separador de
+            # fundo, nunca risco por cima)
+            Regiao(TipoRegiao.ADORNO, _r(x, y - 20, 186, 6),
+                   nome="Fio"),
             # F13-TER: a foto sobe até o fio da linha (recolado).
             # J25: zona_flex — o FIO é filete separador, não "veste" a
             # célula (a guarda do foto_fit aprendeu a diferença)
             _img(x + 4, y - 20, 178, 116, flex=True),
-            Regiao(TipoRegiao.ADORNO, _r(x, y - 20, 186, 6),
-                   nome="Fio"),
             # J26: nome 11→12,5 e descritor 8,5→10 — o teste do celular
             _nome(x + 8, y + 94, 170, 26, fonte=_F_FRAUNCES,
                   tam=12.5, cor=_J_INK),
@@ -785,9 +789,12 @@ def _jornal_p1() -> list[Slot]:
             _img(x, y - dy, 112, 112 + dy, flex=True),
             # J26: corpos acima do rascunho de jornal — legíveis no
             # celular (nome 13→14,5; descritor 9,4→10,5)
-            _nome(x + 112, y + 14, 168, 28, fonte=_F_FRAUNCES,
+            # v2: largura 168→162 — em x+112, 168 terminava em x+280 e
+            # o passo entre chamadas é 274: o fim do texto entrava 6 px
+            # na zona de foto da vizinha (que desenha DEPOIS e cobria)
+            _nome(x + 112, y + 14, 162, 28, fonte=_F_FRAUNCES,
                   tam=14.5, cor=_J_INK),
-            _sub(x + 112, y + 44, 168, 19, fonte=_F_FRA_IT,
+            _sub(x + 112, y + 44, 162, 19, fonte=_F_FRA_IT,
                  tam=10.5, cor=_J_GRAY),
             _preco(x + 146, y + 72, 100, 44, fonte=_F_FRAUNCES, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
@@ -848,14 +855,27 @@ def _jornal_p2() -> list[Slot]:
             _legal(640, 72, 320, 22, papel=PapelTexto.VALIDADE,
                    fonte=_F_FRA_IT, nome="Validade",
                    tam=8.25, cor=_J_GRAY),
+            # v2 (a 2ª prova): o EXPEDIENTE — jornal profissional repete
+            # nº/edição em TODA página; o dado já viaja pela montagem
+            # oficial (condicional: sem edição fica mudo)
+            _legal(640, 94, 320, 18, papel=PapelTexto.EDICAO,
+                   fonte=_F_ARCHIVO, nome="Edição (expediente)",
+                   tam=7.5, cor=_J_GRAY),
         ], origem=(640, 48)),
         _slot("jp2-dica", [
             # F13-TER/N3: BLOCO EDITORIAL de verdade — a caixa da arte
             # cresceu (650,1188,366×114) e o corpo ganha 3-4 linhas
             # legíveis em coluna de jornal; o título é o chip verde da
             # própria arte (com o lápis)
+            # v2 (K8): a dica do Jornal nasce com DEFAULT editorial no
+            # tom do publicado (o espelho do painel do Quintou) — a
+            # degradação sem IA nunca mais imprime validade nem vazio;
+            # a IA/dono sobrescrevem pelo botão de sempre
             _legal(666, 1226, 336, 70, papel=PapelTexto.DICA,
                    fonte=_F_FRA_IT, nome="Fica a Dica",
+                   texto=("Monte o carrinho pelo Jornal do Mês: as "
+                          "ofertas valem o mês inteiro — aproveite "
+                          "para abastecer a despensa de uma vez só."),
                    tam=10.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
         ], origem=(650, 1188)),
     ]

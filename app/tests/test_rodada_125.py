@@ -14,8 +14,10 @@ def test_dois_pesos_no_fim_descem_juntos():
 
     assert separar_peso("MILHO PIPOCA YOKI 400g 500g") == \
         ("MILHO PIPOCA YOKI", "400 g ou 500 g")
+    # v2: o par quase-igual (razão ≤1,10) é RELEITURA do OCR — o dono
+    # confirmou o 1,6 como erro; ver test_v2_falso_multi_tamanho_do_ocr
     assert separar_peso("REFRIGERANTE KITUBAINA 1,5L 1,6L") == \
-        ("REFRIGERANTE KITUBAINA", "1,5 L ou 1,6 L")
+        ("REFRIGERANTE KITUBAINA", "1,5 L")
     assert separar_peso("CREME DENTAL KOLYNOS 90g 102g") == \
         ("CREME DENTAL KOLYNOS", "90 g ou 102 g")
     # um peso só: como sempre
@@ -344,3 +346,250 @@ def test_onda3b_dialogo_da_cesta(tmp_path, monkeypatch):
         assert nome == "Arroz Camil e Prato Fino"
     finally:
         dlg.done(0)
+
+
+def test_v2_falso_multi_tamanho_do_ocr():
+    """A 2ª prova: "Kitubaina 1,5 L · 1,6L" — o 1,6 era RELEITURA do
+    OCR (o dono confirmou). Razão ≤1,10 na mesma unidade = um peso só;
+    diferença real (Kolynos 90/102, razão 1,13 — dois tubos REAIS)
+    segue "ou"."""
+    from app.core.sanitize import separar_peso
+
+    assert separar_peso("REFRIGERANTE KITUBAINA 1,5L 1,6LT") == \
+        ("REFRIGERANTE KITUBAINA", "1,5 L")
+    assert separar_peso("CREME DENTAL KOLYNOS 90g 102g") == \
+        ("CREME DENTAL KOLYNOS", "90 g ou 102 g")
+
+
+def test_v2_vocabulario_da_segunda_prova():
+    """Limpoll→Limpol, Waffer→Wafer, JONAD→Jonas, TODO S→Todos,
+    Leite/Sabão ganham o "em"."""
+    from app.core.ortografia import corrigir_acentos
+
+    assert corrigir_acentos("DETG. LIMPOLL 500 ml") == \
+        "DETG. LIMPOL 500 ml"
+    assert corrigir_acentos("WAFFER BULNEZ 60g") == "WAFER BULNEZ 60g"
+    assert corrigir_acentos("TEMPERO TIO JONAD 1 Kg TODO S") == \
+        "TEMPERO TIO JONAS 1 Kg TODOS"
+    assert corrigir_acentos("LEITE PO NINHO 380g") == \
+        "LEITE EM PÓ NINHO 380g"
+    assert corrigir_acentos("SABAO PO OMO 1.6 Kgs") == \
+        "SABÃO EM PÓ OMO 1.6 Kgs"
+
+
+def _celula_de_linha(tmp_path):
+    """Uma célula generosa NOME+SUBTITULO (tudo cabe) — para provar que
+    a divisão da v2 é SEMÂNTICA, não geométrica."""
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    if not fontes.exists():
+        fontes.mkdir()
+        acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+    regioes = [
+        Regiao(tipo=TipoRegiao.NOME, rect=Retangulo(0, 0, 120, 14),
+               fonte=nome_f, tamanho_max_pt=14, tamanho_min_pt=9),
+        Regiao(tipo=TipoRegiao.SUBTITULO, rect=Retangulo(0, 14, 120, 8),
+               fonte=nome_f, tamanho_max_pt=9, tamanho_min_pt=6),
+    ]
+    return regioes, fontes
+
+
+def test_v2_hierarquia_canonica_da_celula(tmp_path):
+    """A REGRA CANÔNICA da 2ª prova ("não tem padrão nenhum nas
+    nomenclaturas... Cadê a hierarquia?"): a linha grande diz O QUE É;
+    a MARCA conhecida desce ao descritor SEMPRE — mesmo quando o nome
+    caberia inteiro. Os casos são as células reais da página dele."""
+    from app.rendering.nome_fit import precedencia_do_nome
+
+    regioes, fontes = _celula_de_linha(tmp_path)
+
+    def _aj(nome, unidade=None, marcas=(), descritor=None):
+        return precedencia_do_nome(nome, descritor, unidade, regioes,
+                                   96, fontes, marcas=marcas)
+
+    # os dois leites saem com a MESMA hierarquia (a queixa literal)
+    aj = _aj("Leite Integral Triângulo", "1 L", marcas=("Triângulo",))
+    assert aj.nome == "Leite Integral"
+    assert aj.descritor == "Triângulo · 1 L"
+    aj = _aj("Leite Integral Parmalat", "1 L", marcas=("Parmalat",))
+    assert aj.nome == "Leite Integral"
+    assert aj.descritor == "Parmalat · 1 L"
+
+    # "Doce Dia" nunca é partida — desce INTEIRA como marca
+    aj = _aj("Açúcar Cristal Doce Dia 2kg", "2 kg", marcas=("Doce Dia",))
+    assert aj.nome == "Açúcar Cristal"
+    assert aj.descritor == "Doce Dia · 2 kg"
+
+    # o composto sai equilibrado: tipo grande, as DUAS marcas juntas
+    aj = _aj("Arroz Somar e Tio Bonini · 5 kg", "5 kg",
+             marcas=("Somar", "Tio Bonini"))
+    assert aj.nome == "Arroz"
+    assert aj.descritor == "Somar e Tio Bonini · 5 kg"
+
+    # embalagens por componente viajam com as marcas
+    aj = _aj("Milho Verde Fugini (pouch) e Bonare (lata) · 170 g",
+             "170 g", marcas=("Fugini", "Bonare"))
+    assert aj.nome == "Milho Verde"
+    assert aj.descritor == "Fugini (pouch) e Bonare (lata) · 170 g"
+
+    # sem marca CONHECIDA nada muda (F9: a régua nunca inventa)
+    aj = _aj("Leite Integral Triângulo", "1 L")
+    assert aj.nome == "Leite Integral Triângulo"
+
+    # marca no token 0 não divide (o tipo não pode sumir)
+    aj = _aj("Nivea Sabonete", "85 g", marcas=("Nivea",))
+    assert aj.nome == "Nivea Sabonete"
+
+
+def test_v2_peso_nao_duplica_na_celula(tmp_path):
+    """As 5 células da 2ª prova ("Sabão em Pó Omo 1,6kg / … · 1,6kg"):
+    o peso que mora no MEIO do nome do banco e é IGUAL à unidade sai
+    da exibição — a unidade já o leva ao descritor. O peso aparece UMA
+    vez no par nome/descritor; a embalagem colada a ele desce junto."""
+    from app.rendering.nome_fit import precedencia_do_nome
+
+    regioes, fontes = _celula_de_linha(tmp_path)
+
+    def _aj(nome, unidade, marcas=()):
+        return precedencia_do_nome(nome, None, unidade, regioes,
+                                   96, fontes, marcas=marcas)
+
+    aj = _aj("Sabão em Pó Omo 1,6kg Caixeta L. Perfeita", "1,6 kg",
+             marcas=("Omo",))
+    assert aj.nome == "Sabão em Pó"
+    junto = f"{aj.nome} {aj.descritor}"
+    assert junto.count("1,6") == 1, junto
+    assert "Omo" in aj.descritor and "Caixeta" in aj.descritor
+
+    # "Batata 104g Tubo Pringles" → tipo grande; marca · tubo · 104 g
+    aj = _aj("Batata 104g Tubo Pringles", "104 g", marcas=("Pringles",))
+    assert aj.nome == "Batata"
+    assert aj.descritor == "Pringles · Tubo · 104 g"
+
+    # unidade DIFERENTE do peso do nome: o peso do nome fica (é
+    # informação distinta, nunca se descarta em silêncio)
+    aj = _aj("Café Torrado 500g", "1 kg")
+    assert "500 g" in (aj.descritor or "") or "500g" in aj.nome
+
+
+def test_v2_biscoito_marcas_e_sabores(tmp_path, monkeypatch):
+    """A linha real da 2ª prova: "BISCOITO BULNEZ e ADORALLE 270 g
+    C. CRACKER/LEITE/AGUA E SAL" — o dono: "não consegui criar cada um
+    com seus sabores específicos, ele não deixou e nem sugeriu"."""
+    from app.qt.telas.servico import (dividir_em_dois, familia_da_linha,
+                                      marcas_e_sabores_da_linha)
+
+    _raiz(tmp_path, monkeypatch)
+    linha = "BISCOITO BULNEZ e ADORALLE 270 g C. CRACKER/LEITE/AGUA E SAL"
+    # (1) "AGUA E SAL" é UM sabor consagrado — 3 sabores, nunca 4
+    _, sabores = familia_da_linha(linha)
+    assert len(sabores) == 3, sabores
+    assert any("sal" in s.lower() for s in sabores)
+    # (2) a barra do RABO não veta as marcas da FRENTE
+    comps = dividir_em_dois(linha)
+    assert len(comps) == 2, comps
+    assert "Bulnez" in comps[0] and "Adoralle" in comps[1]
+    # os casos-limite seguem: a Sardinha dá 3 sabores ("oleo e limão"
+    # não é consagrado); o Arroz dá 2 componentes e zero sabores
+    _, s2 = familia_da_linha("SARDINHA COQUEIRO 125 g TOMATE / OLEO e LIMAO")
+    assert len(s2) == 3, s2
+    assert familia_da_linha("ARROZ SOMAR e TIO BONINI 5 Kgs")[1] == []
+    assert len(dividir_em_dois("ARROZ SOMAR e TIO BONINI 5 Kgs")) == 2
+    # (5) o cartesiano: marcas separadas e a base LIMPA (sem as marcas —
+    # o nome de família nunca mais carrega "Bulnez e Adoralle")
+    base, marcas, ss = marcas_e_sabores_da_linha(linha)
+    assert [m.lower() for m in marcas] == ["bulnez", "adoralle"]
+    assert len(ss) == 3
+    assert "bulnez" not in base.lower() and "adoralle" not in base.lower()
+    assert "270" in base
+
+
+def test_v2_biscoito_conjunto_cartesiano_do_acervo(tmp_path, monkeypatch):
+    """Criados os 6 uma vez (marca × sabor), a MESMA linha reimportada
+    nasce VERDE montada — o ciclo completo do cartesiano."""
+    from app.qt.telas import servico
+    from app.tests import acervo
+
+    _raiz(tmp_path, monkeypatch)
+    f1 = tmp_path / "b.png"
+    acervo.foto_de_bancada(f1, (200, 160, 60))
+    nomes = ["Biscoito Bulnez Cream Cracker 270g",
+             "Biscoito Bulnez Leite 270g",
+             "Biscoito Bulnez Agua e Sal 270g",
+             "Biscoito Adoralle Cream Cracker 270g",
+             "Biscoito Adoralle Leite 270g",
+             "Biscoito Adoralle Agua e Sal 270g"]
+    for i, n in enumerate(nomes):
+        it = servico.ItemMesa(f"I{i}", "8,99", "VERMELHO", f"I{i}")
+        servico.finalizar_criacao(it, n, False,
+                                  str(f1) if i == 0 else None)
+
+    linha = "BISCOITO BULNEZ e ADORALLE 270 g CREAM CRACKER/LEITE/AGUA E SAL"
+    cj = servico.conjunto_do_acervo(linha)
+    assert cj is not None and cj["tipo"] == "familia", f"cj={cj}"
+    assert len(cj["membros"]) == 6
+    item = servico.item_do_conjunto(linha, "8,99", None, cj)
+    assert item.semaforo == "VERDE" and item.via == "conjunto"
+    # rótulos marca-major no descritor da célula
+    assert any("Bulnez" in r for r in item.sabores)
+    # parcial não inventa: sem um dos 6, o conjunto cala
+    linha2 = "BISCOITO BULNEZ e ADORALLE 270 g CREAM CRACKER/LEITE/MAISENA"
+    assert servico.conjunto_do_acervo(linha2) is None
+
+
+def test_v2_dica_nunca_desenha_validade():
+    """K8 confirmado pela frota: a região DICA sem texto caía no rabo
+    genérico do texto_composto_legal e imprimia a VALIDADE na caixa
+    "Fica a Dica". A dica é EDITORIAL: vazia não desenha NADA; e o
+    jp2-dica do Jornal nasce com default editorial (a degradação sem
+    IA nunca mais mostra data ali)."""
+    from app.rendering.compositor import DadosProduto, texto_composto_legal
+    from app.rendering.model import PapelTexto, Regiao, Retangulo, TipoRegiao
+
+    d = DadosProduto("X", texto_legal="OFERTA VÁLIDA DE 03/08 ATÉ 27/08")
+    dica_vazia = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 50, 10),
+                        papel_texto=PapelTexto.DICA, texto_fixo="")
+    assert texto_composto_legal(dica_vazia, d) == ""
+    dica_cheia = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 50, 10),
+                        papel_texto=PapelTexto.DICA,
+                        texto_fixo="Prove com arroz soltinho.")
+    assert texto_composto_legal(dica_cheia, d) == "Prove com arroz soltinho."
+    # a região LIVRE continua com o último-recurso de sempre (I2)
+    livre = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 50, 10),
+                   papel_texto=PapelTexto.LIVRE, texto_fixo="")
+    assert "03/08" in texto_composto_legal(livre, d)
+    # e o Jornal do pacote nasce com a dica editorial preenchida
+    from app.rendering import encartes
+    slots = encartes._jornal_p2()
+    dica = next(r for s in slots if s.id == "jp2-dica" for r in s.regioes
+                if getattr(r, "papel_texto", None) == PapelTexto.DICA)
+    assert dica.texto_fixo and "válida" not in dica.texto_fixo.lower()
+
+
+def test_v2_celula_lateral_nunca_inverte():
+    """A capa do Kolynos: célula de CHAMADA (foto à esquerda, textos à
+    direita) com foto DEITADA — o plano misto reordenava a célula
+    (título no vão, foto embaixo). Célula LATERAL só aceita plano
+    lateral/abraço: os textos seguem AO LADO da foto."""
+    from app.rendering.foto_fit import plano_da_celula
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+
+    regioes = [
+        Regiao(TipoRegiao.IMAGEM, Retangulo(0, 0, 30, 36),
+               zona_flex=True),
+        Regiao(TipoRegiao.NOME, Retangulo(30, 4, 44, 8)),
+        Regiao(TipoRegiao.SUBTITULO, Retangulo(30, 12, 44, 5)),
+        Regiao(TipoRegiao.PRECO, Retangulo(39, 19, 27, 12)),
+    ]
+    # foto deitada (larga): ocupação < 85% → o plano roda
+    plano = plano_da_celula(regioes, 400.0, 200.0)
+    if plano is not None:
+        assert plano.arranjo in ("lateral", "abraco"), plano.arranjo
+        # nenhum texto pode parar DENTRO da faixa da foto original
+        # (empilhado sobre o vão) — o nome segue à direita
+        rn = plano.rects.get(regioes[1].uid)
+        if rn is not None:
+            assert rn.x_mm >= 28.0, f"o nome invadiu a foto: {rn}"

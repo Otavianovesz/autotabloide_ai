@@ -895,8 +895,10 @@ class ConciliacaoDialog(QDialog):
         # Rodada JM (B3): a pergunta "são 2 produtos?" + o +18 visível —
         # a sugestão vem da IA (pré-marcada) ou do sanitize (desmarcada)
         item_cur = self.itens[linha]
-        # J13: os sabores DETECTADOS + o nome-base sugerido da família
-        base_fam, sabores_det = servico.familia_da_linha(item_cur.descricao)
+        # J13 → v2: sabores DETECTADOS + marcas da CABEÇA + base LIMPA
+        # (o nome de família nunca mais carrega "Bulnez e Adoralle")
+        base_fam, marcas_det, sabores_det = \
+            servico.marcas_e_sabores_da_linha(item_cur.descricao)
         # J23: posição na fila de vermelhos ("item n de N")
         verm = [it for it in self.itens if it.semaforo == "VERMELHO"]
         try:
@@ -914,6 +916,7 @@ class ConciliacaoDialog(QDialog):
             mais18=proposta.mais18,
             sabores=sabores_det,
             nome_familia_sugerido=base_fam,
+            marcas_detectadas=marcas_det,       # v2: a 4ª resposta
             contexto=item_cur.descricao,
             posicao=pos)
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -931,14 +934,19 @@ class ConciliacaoDialog(QDialog):
         # quem JÁ EXISTE no acervo aparece "✓ já no acervo" — nunca se
         # recria (a pergunta dele sobre duplicatas).
         # Cancelar cancela: o item segue vermelho, nada nasce pela metade.
+        # v2 (o Biscoito): a 4ª resposta tem rádio PRÓPRIO — o gate
+        # antigo exigia "2 produtos" E "sabores" marcados juntos, mas
+        # os rádios são exclusivos (o cartesiano era inalcançável)
+        cart = dlg.cartesiano_final()
+        if cart:
+            nome_fam, marcas_c, sabores_c = cart
+            self._sabores_escolhidos = (
+                nome_fam,
+                servico.rotulos_marcas_x_sabores(marcas_c, sabores_c))
         sab = self._sabores_escolhidos
         rotulos = (sab[1] if sab
                    else (proposta.componentes
                          if len(proposta.componentes) >= 2 else None))
-        if sab and len(proposta.componentes) >= 2 and len(sab[1]) >= 2:
-            rotulos = servico.rotulos_marcas_x_sabores(
-                proposta.componentes, sab[1])
-            self._sabores_escolhidos = (sab[0], rotulos)
         if rotulos and len(rotulos) >= 2:
             from app.qt.telas.fotos_por_sabor_dialog import (
                 FotosPorSaborDialog,
