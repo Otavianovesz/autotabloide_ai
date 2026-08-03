@@ -320,6 +320,25 @@ N espaços mostra "✓ já no acervo" com a foto atual; o Jornal ganhou
 estilo_secoes="JORNAL" próprio no pacote (o Agrupar agora liga NELE) com
 o cabeçalho medido na folga.
 
+
+## ADENDO DA ONDA 3 (03/08, o print da conciliação do dono)
+
+136. **A CONCILIAÇÃO PENSAVA POR PRODUTO ÚNICO** — o conceito que
+     faltava, agora implementado: a linha MULTI casa com um CONJUNTO do
+     acervo (`conjunto_do_acervo`): se TODOS os membros que ela declara
+     já existem (nome → alias → chave natural, com a reserva sem-espaços
+     "5kg"="5 kg"), o item nasce VERDE MONTADO (`item_do_conjunto`) —
+     leque das fotos existentes, sabores no descritor, composto com as
+     2 fotos — sem curadoria, sem busca, sem recriação. PARCIAL NÃO
+     INVENTA (membro faltando → fluxo normal). Sabores vencem quando os
+     dois detectores disparam (a divisão perde a marca do 2º).
+137. "TEMPERO TIO JONAD 1 Kg TODO S" — "TODOS" partido pelo OCR
+     ("TODO S") e "JONAD"≠"Jonas": candidatos ao vocabulário/bigramas
+     da ortografia (nomeado).
+138. Marcas×sabores no MESMO conjunto (o Biscoito 2×3) reconhecido na
+     reimportação: depende da grafia com que o dono criar os 6 pela
+     tela — nomeado para depois da primeira criação real dele.
+
 ## AS ONDAS DE EXECUÇÃO
 
 **Onda 1 — JÁ EXECUTADA nesta rodada (o commit desta data):**

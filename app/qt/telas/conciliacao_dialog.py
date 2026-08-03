@@ -140,6 +140,12 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setHorizontalHeaderLabels(
             ["Situação", "Importado", "Preço", "No banco", "Ação"])
         self.tabela.verticalHeader().setVisible(False)
+        # RODADA-125 Onda 3b: botão direito em QUALQUER linha — a cesta
+        # (montar do acervo) e a lupa da foto do palpite
+        self.tabela.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tabela.customContextMenuRequested.connect(
+            self._menu_tabela)
         # ADENDO 30/07: a miniatura do palpite na coluna "No banco"
         self.tabela.setIconSize(QSize(28, 28))
         # OS F11.5 #13: nome e preço IMPORTADOS editáveis inline (duplo clique
@@ -617,7 +623,60 @@ class ConciliacaoDialog(QDialog):
         buscar = menu.addAction("Buscar no acervo…")
         buscar.triggered.connect(
             lambda _=False, li=linha: self._buscar_no_acervo(li))
+        # RODADA-125 Onda 3b: a CESTA — "caçar os N que já existem"
+        montar = menu.addAction("Montar conjunto do acervo…")
+        montar.triggered.connect(
+            lambda _=False, li=linha: self._montar_conjunto(li))
         menu.exec(botao.mapToGlobal(botao.rect().bottomLeft()))
+
+    def _menu_tabela(self, pos) -> None:
+        """Onda 3b: o botão direito vale em TODA linha, qualquer cor."""
+        idx = self.tabela.indexAt(pos)
+        if not idx.isValid() or idx.row() >= len(self.itens):
+            return
+        linha = idx.row()
+        item = self.itens[linha]
+        menu = QMenu(self)
+        menu.addAction("Montar conjunto do acervo…",
+                       lambda li=linha: self._montar_conjunto(li))
+        if item.imagem:
+            menu.addAction("Ampliar foto (lupa)",
+                           lambda it=item: self._lupa_do_item(it))
+        menu.exec(self.tabela.viewport().mapToGlobal(pos))
+
+    def _lupa_do_item(self, item) -> None:
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, item.imagem)
+
+    def _montar_conjunto(self, linha: int) -> None:
+        """Onda 3b (o pedido do dono): o gesto LIVRE — ele caça N
+        produtos existentes na cesta e a linha vira a célula montada
+        com as fotos deles. Vale em QUALQUER cor de linha."""
+        from app.qt.telas.montar_conjunto_dialog import (
+            MontarConjuntoDialog,
+        )
+        item = self.itens[linha]
+        from app.core.sanitize import sanitizar
+        dlg = MontarConjuntoDialog(
+            item.descricao, self,
+            sugestao_nome=sanitizar(item.descricao).nome_sanitizado)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        escolha = dlg.escolha()
+        if escolha is None:
+            return
+        ids, tipo, nome_base = escolha
+        try:
+            novo = servico.montar_conjunto_manual(item, ids, tipo,
+                                                  nome_base)
+        except ValueError as exc:
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        self.itens[linha] = novo
+        self._recarregar()
+        mostrar_toast(self, f"“{novo.nome}” montado do acervo "
+                            f"({len(ids)} produtos) — nada recriado.",
+                      tipo="sucesso")
 
     def _buscar_no_acervo(self, linha: int) -> None:
         item = self.itens[linha]

@@ -2442,6 +2442,20 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                 # marcas nunca viram uma em silêncio); o match
                 # EXATO/alias fica: é aprendizado confirmado pelo dono.
                 san = sanitizar(desc, conc.regras)
+                # RODADA-125 Onda 3 (o print do dono): a linha MULTI
+                # tenta primeiro o CONJUNTO do acervo — se todos os
+                # membros declarados JÁ existem, o item nasce VERDE
+                # montado (leque das fotos dele, sabores no descritor)
+                # e ninguém refaz nada. Parcial não inventa: segue o
+                # fluxo normal.
+                if any(pd.codigo == "multiplos"
+                       for pd in san.pendencias) or " e " in desc.lower():
+                    conjunto = conjunto_do_acervo(desc)
+                    if conjunto is not None:
+                        itens.append(item_do_conjunto(
+                            desc, preco, ean or None, conjunto,
+                            mp=mp, dp=dp))
+                        continue
                 if (v.semaforo == Semaforo.VERDE and v.via != "exato"
                         and any(pd.codigo == "multiplos"
                                 for pd in san.pendencias)):
@@ -3119,12 +3133,17 @@ def membro_do_acervo(nome: str) -> dict | None:
             p = (repo.buscar_por_nome_bruto(nome)
                  or repo.buscar_por_alias(nome))
             if p is None:
+                import re as _re
                 alvo = chave_natural(
                     sanitizar(nome).nome_sanitizado, "")
+                # a grafia da unidade não separa ("5kg" × "5 kg"):
+                # a comparação de reserva ignora TODO espaço
+                alvo_denso = _re.sub(r"\s+", "", alvo[0])
                 for cand in s.query(Produto).filter(
                         Produto.excluido_em.is_(None)):
-                    if chave_natural(cand.nome_sanitizado or "",
-                                     "") == alvo:
+                    ch = chave_natural(cand.nome_sanitizado or "", "")
+                    if (ch == alvo
+                            or _re.sub(r"\s+", "", ch[0]) == alvo_denso):
                         p = cand
                         break
             if p is None or p.excluido_em is not None:
@@ -3169,6 +3188,161 @@ def selecionar_fotos_da_celula(imagens: list, max_n: int = MAX_FOTOS_CELULA
         if imagens[k] not in vistos:
             vistos.append(imagens[k])
     return vistos
+
+
+def conjunto_do_acervo(descricao: str) -> dict | None:
+    """RODADA-125 Onda 3 (o print do dono, 03/08): a conciliação pensava
+    por PRODUTO ÚNICO — "MON BIJOU PROTEÇÃO e CLASSICO" casava com UM
+    sabor e o dono refazia tudo. O conceito que faltava: a linha MULTI
+    casa com um CONJUNTO do acervo. Se TODOS os membros que a linha
+    declara já existem (nome → alias → chave natural), devolve
+    ``{"tipo": "familia"|"composto", "base", "rotulos", "membros"}`` —
+    e o item nasce VERDE montado (leque das fotos existentes, sabores
+    no descritor), sem curadoria nenhuma. PARCIAL NÃO INVENTA: com
+    qualquer membro faltando devolve None e o fluxo normal decide
+    (nada nasce verde calado). Marcas×sabores no mesmo conjunto ficam
+    nomeadas (dependem da grafia com que o dono criar os 6)."""
+    base, sabores = familia_da_linha(descricao)
+    comps = dividir_em_dois(descricao)
+    # SABORES vencem quando os dois detectores disparam: o pós-medida é
+    # o sinal mais específico ("MON BIJOU 5L PROTEÇÃO e CLASSICO" também
+    # divide em 2, mas a divisão perde a marca do 2º)
+    if len(sabores) >= 2:
+        nomes = [f"{base} {s}".strip() for s in sabores]
+        tipo, rotulos = "familia", list(sabores)
+    elif len(comps) >= 2:
+        nomes = list(comps)
+        tipo, rotulos = "composto", list(comps)
+    else:
+        return None
+    membros = []
+    for n in nomes:
+        m = membro_do_acervo(n)
+        if m is None:
+            return None                # parcial não inventa
+        membros.append(m)
+    return {"tipo": tipo, "base": base or descricao,
+            "rotulos": rotulos, "membros": membros}
+
+
+def item_do_conjunto(desc: str, preco, ean, conjunto: dict,
+                     mp=None, dp=None) -> ItemMesa:
+    """Monta o ItemMesa VERDE do conjunto reconhecido — a linha vira
+    UMA célula (I6) com as fotos que o acervo JÁ tem."""
+    membros = conjunto["membros"]
+    fotos = selecionar_fotos_da_celula(
+        [m["imagem"] for m in membros if m.get("imagem")])
+    n = len(membros)
+    if conjunto["tipo"] == "composto":
+        a = ItemMesa(descricao=membros[0]["nome"], preco=preco,
+                     semaforo="VERDE", nome=membros[0]["nome"],
+                     produto_id=membros[0]["id"],
+                     imagem=membros[0].get("imagem"))
+        b = ItemMesa(descricao=membros[1]["nome"], preco=preco,
+                     semaforo="VERDE", nome=membros[1]["nome"],
+                     produto_id=membros[1]["id"],
+                     imagem=membros[1].get("imagem"))
+        comp = compor_itens(a, b, preco=preco)
+        comp.descricao = desc
+        comp.ean = ean
+        comp.multi_preco = mp
+        comp.desconto_pct = dp
+        comp.via = "conjunto"
+        comp.motivo = (f"linha casada com os {n} produtos que você já "
+                       "criou — nada foi recriado")
+        return comp
+    item = ItemMesa(
+        descricao=desc, preco=preco, semaforo="VERDE",
+        nome=conjunto["base"], produto_id=membros[0]["id"],
+        ean=ean, multi_preco=mp, desconto_pct=dp,
+        imagem=next((m["imagem"] for m in membros
+                     if m.get("imagem")), None),
+        imagens=fotos, arranjo="LEQUE" if fotos else None,
+        sabores=list(conjunto["rotulos"]), via="conjunto",
+        motivo=(f"linha casada com a família já criada "
+                f"({n} sabores) — nada foi recriado"))
+    item.familia = familia_do_item(membros[0]["id"])
+    item.mais18 = item.mais18 or eh_bebida_alcoolica_nome(
+        conjunto["base"])
+    return item
+
+
+def eh_bebida_alcoolica_nome(nome: str) -> bool:
+    from app.core.mais18 import eh_bebida_alcoolica
+    return eh_bebida_alcoolica(nome)
+
+
+def montar_conjunto_manual(item: ItemMesa, produto_ids: list[int],
+                           tipo: str, nome_base: str) -> ItemMesa:
+    """RODADA-125 Onda 3b (o pedido do dono: "preciso ter liberdade pra
+    CAÇAR esses dois itens já existentes e colocar ali"): a CESTA — o
+    dono escolhe N produtos do acervo à mão e a linha vira a célula
+    montada, com as fotos DELES. ``tipo``: "sabores" (leque, nome-base
+    + sabores no descritor) ou "diferentes" (2 → o composto separável
+    de sempre; 3+ → vitrine com o nome que o dono deu). O item da
+    estante nasce VERDE via "conjunto" — nada é recriado."""
+    from app.core.models import Produto
+
+    membros: list[dict] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            for pid in produto_ids:
+                p = s.get(Produto, pid)
+                if p is None or p.excluido_em is not None:
+                    continue
+                membros.append({
+                    "id": p.id, "nome": p.nome_sanitizado,
+                    "tem_foto": bool(p.caminho_imagem),
+                    "imagem": _imagem_absoluta(p.caminho_imagem),
+                    "mais18": bool(p.selo_mais18 or p.bebida_alcoolica),
+                })
+    finally:
+        db.engine.dispose()
+    if len(membros) < 2:
+        raise ValueError("a cesta precisa de pelo menos 2 produtos")
+
+    if tipo == "diferentes" and len(membros) == 2:
+        a = ItemMesa(descricao=membros[0]["nome"], preco=item.preco,
+                     semaforo="VERDE", nome=membros[0]["nome"],
+                     produto_id=membros[0]["id"],
+                     imagem=membros[0].get("imagem"),
+                     mais18=membros[0]["mais18"])
+        b = ItemMesa(descricao=membros[1]["nome"], preco=item.preco,
+                     semaforo="VERDE", nome=membros[1]["nome"],
+                     produto_id=membros[1]["id"],
+                     imagem=membros[1].get("imagem"),
+                     mais18=membros[1]["mais18"])
+        comp = compor_itens(a, b, nome=nome_base or None,
+                            preco=item.preco)
+        comp.descricao = item.descricao
+        comp.ean = item.ean
+        comp.multi_preco = item.multi_preco
+        comp.via = "conjunto"
+        comp.motivo = "montado do acervo pela cesta — nada recriado"
+        return comp
+
+    fotos = selecionar_fotos_da_celula(
+        [m["imagem"] for m in membros if m.get("imagem")])
+    novo = ItemMesa(
+        descricao=item.descricao, preco=item.preco, semaforo="VERDE",
+        nome=nome_base or membros[0]["nome"],
+        produto_id=membros[0]["id"], ean=item.ean,
+        multi_preco=item.multi_preco,
+        imagem=next((m["imagem"] for m in membros
+                     if m.get("imagem")), None),
+        imagens=fotos,
+        arranjo=("LEQUE" if tipo == "sabores" else "LADO_A_LADO"),
+        sabores=([sabor_do_membro(m["nome"], nome_base)
+                  for m in membros] if tipo == "sabores" else []),
+        via="conjunto",
+        motivo=(f"montado do acervo pela cesta ({len(membros)} "
+                "produtos) — nada recriado"),
+        uid=item.uid)                    # I1: a identidade da linha fica
+    novo.mais18 = (any(m["mais18"] for m in membros)
+                   or eh_bebida_alcoolica_nome(nome_base or ""))
+    novo.familia = familia_do_item(membros[0]["id"])
+    return novo
 
 
 def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,

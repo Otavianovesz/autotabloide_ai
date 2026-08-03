@@ -206,3 +206,141 @@ def test_onda2_secao_do_jornal_medida_na_folga(tmp_path):
     # mesma folga de 8mm NÃO basta — melhor calar que riscar texto
     assert _tinta(_pinta(8.0, larg_vizinho=290)) == 0, (
         "riscou a área editorial (a manchete da prova real)")
+
+
+def test_onda3_linha_multi_casa_com_o_conjunto_do_acervo(tmp_path,
+                                                         monkeypatch):
+    """O print do dono (03/08): "os itens com mais de uma marca ou
+    sabor não conseguem ser associados com o que já salvei". Agora a
+    linha multi casa com o CONJUNTO: todos os membros existem → VERDE
+    montado com as fotos DELES, sem curadoria; parcial NÃO inventa."""
+    from app.qt.telas import servico
+    from app.tests import acervo
+
+    _raiz(tmp_path, monkeypatch)
+    f1 = tmp_path / "p.png"
+    acervo.foto_de_bancada(f1, (200, 60, 60))
+    # o dono JÁ criou os dois sabores (com foto no 1º) numa sessão
+    a = servico.ItemMesa("X", "26,66", "VERMELHO", "X")
+    servico.finalizar_criacao(a, "Amaciante Mon Bijou 5L Proteção",
+                              False, str(f1))
+    b = servico.ItemMesa("Y", "26,66", "VERMELHO", "Y")
+    servico.finalizar_criacao(b, "Amaciante Mon Bijou 5L Clássico",
+                              False, None)
+
+    cj = servico.conjunto_do_acervo(
+        "AMACIANTE MON BIJOU 5L PROTEÇÃO e CLASSICO")
+    assert cj is not None and cj["tipo"] == "familia", (
+        f"o conjunto não foi reconhecido: {cj}")
+    assert len(cj["membros"]) == 2
+    item = servico.item_do_conjunto(
+        "AMACIANTE MON BIJOU 5L PROTEÇÃO e CLASSICO", "26,66", None, cj)
+    assert item.semaforo == "VERDE" and item.via == "conjunto"
+    assert len(item.imagens) == 1          # a foto que o acervo TEM
+    assert item.sabores and "Proteção" in item.sabores[0]
+    # parcial: some um membro → None (nada nasce verde calado)
+    assert servico.conjunto_do_acervo(
+        "AMACIANTE MON BIJOU 5L PROTEÇÃO e INEXISTENTE") is None
+
+
+def test_onda3_composto_do_acervo(tmp_path, monkeypatch):
+    """"ARROZ SOMAR e TIO BONINI": os dois já existem → a linha nasce
+    o COMPOSTO deles (2 fotos, 1 preço), nada recriado."""
+    from app.qt.telas import servico
+    from app.tests import acervo
+
+    _raiz(tmp_path, monkeypatch)
+    f1 = tmp_path / "s.png"
+    acervo.foto_de_bancada(f1, (60, 200, 60))
+    f2 = tmp_path / "t.png"
+    acervo.foto_de_bancada(f2, (60, 60, 200))
+    a = servico.ItemMesa("X", "18,81", "VERMELHO", "X")
+    servico.finalizar_criacao(a, "Arroz Somar 5 kg", False, str(f1))
+    b = servico.ItemMesa("Y", "18,81", "VERMELHO", "Y")
+    servico.finalizar_criacao(b, "Arroz Tio Bonini 5 kg", False,
+                              str(f2))
+
+    cj = servico.conjunto_do_acervo("ARROZ SOMAR e TIO BONINI 5 Kgs")
+    assert cj is not None and cj["tipo"] == "composto", f"cj={cj}"
+    item = servico.item_do_conjunto(
+        "ARROZ SOMAR e TIO BONINI 5 Kgs", "18,81", None, cj)
+    assert item.semaforo == "VERDE" and item.via == "conjunto"
+    assert len(item.imagens) == 2, "as DUAS fotos do acervo na célula"
+    assert servico.eh_composto(item)
+
+
+def test_onda3b_montar_conjunto_manual(tmp_path, monkeypatch):
+    """O pedido do dono: "liberdade pra caçar esses dois itens já
+    existentes e colocar ali". A cesta monta a linha com N produtos do
+    acervo — sabores (leque) ou diferentes (composto) — sem recriar."""
+    from app.qt.telas import servico
+    from app.tests import acervo
+
+    _raiz(tmp_path, monkeypatch)
+    f1 = tmp_path / "a.png"
+    acervo.foto_de_bancada(f1, (200, 60, 60))
+    a = servico.ItemMesa("X", "9,90", "VERMELHO", "X")
+    servico.finalizar_criacao(a, "Suco Aurora Uva 1,5L", False, str(f1))
+    b = servico.ItemMesa("Y", "9,90", "VERMELHO", "Y")
+    servico.finalizar_criacao(b, "Suco Aurora Laranja 1,5L", False,
+                              None)
+
+    linha = servico.ItemMesa("SUCO AURORA 1,5L SABORES", "9,90",
+                             "AMARELO", "Suco Aurora")
+    uid0 = linha.uid
+    novo = servico.montar_conjunto_manual(
+        linha, [a.produto_id, b.produto_id], "sabores",
+        "Suco Aurora 1,5L")
+    assert novo.semaforo == "VERDE" and novo.via == "conjunto"
+    assert novo.uid == uid0, "a identidade da linha mudou (I1)"
+    assert novo.nome == "Suco Aurora 1,5L"
+    assert len(novo.imagens) == 1          # só a foto que o acervo tem
+    assert any("Uva" in s for s in novo.sabores)
+    # diferentes com 2 → o composto separável de sempre
+    linha2 = servico.ItemMesa("SUCOS", "9,90", "AMARELO", "Sucos")
+    comp = servico.montar_conjunto_manual(
+        linha2, [a.produto_id, b.produto_id], "diferentes", "")
+    assert servico.eh_composto(comp)
+    # cesta magra: erro dito, nunca silêncio
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        servico.montar_conjunto_manual(linha2, [a.produto_id],
+                                       "sabores", "Z")
+
+
+def test_onda3b_dialogo_da_cesta(tmp_path, monkeypatch):
+    """O gesto: buscar, duplo clique enche a cesta, 2+ habilita o
+    Usar; a escolha devolve (ids, tipo, nome)."""
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+    from app.qt.telas import servico
+    from app.qt.telas.montar_conjunto_dialog import MontarConjuntoDialog
+
+    _raiz(tmp_path, monkeypatch)
+    a = servico.ItemMesa("X", "1,00", "VERMELHO", "X")
+    servico.finalizar_criacao(a, "Arroz Camil 5 kg", False, None)
+    b = servico.ItemMesa("Y", "1,00", "VERMELHO", "Y")
+    servico.finalizar_criacao(b, "Arroz Prato Fino 5 kg", False, None)
+
+    dlg = MontarConjuntoDialog("ARROZ CAMIL e PRATO FINO",
+                               sugestao_nome="Arroz Camil e Prato Fino")
+    try:
+        dlg.busca.setText("Arroz")
+        assert dlg.resultados.count() >= 2, "a busca não achou os dois"
+        assert not dlg._ok.isEnabled()
+        dlg.resultados.setCurrentRow(0)
+        dlg._adicionar()
+        dlg.resultados.setCurrentRow(1)
+        dlg._adicionar()
+        assert dlg._ok.isEnabled(), "2 na cesta tinha de habilitar"
+        assert "✓ na cesta" in dlg.resultados.item(0).text()
+        dlg.resultados.setCurrentRow(0)
+        dlg._adicionar()                     # repetido não duplica
+        assert dlg.cesta.count() == 2
+        esc = dlg.escolha()
+        assert esc is not None
+        ids, tipo, nome = esc
+        assert len(ids) == 2 and tipo == "diferentes"
+        assert nome == "Arroz Camil e Prato Fino"
+    finally:
+        dlg.done(0)
