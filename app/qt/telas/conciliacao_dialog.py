@@ -865,6 +865,26 @@ class ConciliacaoDialog(QDialog):
         proposta.componentes = dlg.componentes_finais()
         proposta.mais18 = dlg.mais18_final()
         self._sabores_escolhidos = dlg.sabores_finais()
+        # SEXTUSDECIMUS/M2+M5: linha MULTI (sabores ou 2 produtos) → a
+        # tela de UM ESPAÇO POR FOTO (decisão 2 do dono) — cada produto
+        # nasce com a SUA foto (L14: ou fecha o N, ou não oferece).
+        # Cancelar cancela: o item segue vermelho, nada nasce pela metade.
+        sab = self._sabores_escolhidos
+        rotulos = (sab[1] if sab
+                   else (proposta.componentes
+                         if len(proposta.componentes) >= 2 else None))
+        if rotulos and len(rotulos) >= 2:
+            from app.qt.telas.fotos_por_sabor_dialog import (
+                FotosPorSaborDialog,
+            )
+            fdlg = FotosPorSaborDialog(
+                sab[0] if sab else "", rotulos, self,
+                titulo=(sab[0] if sab else proposta.nome))
+            if fdlg.exec() != QDialog.DialogCode.Accepted:
+                self._sabores_escolhidos = None
+                return
+            self._cadastrar(linha, proposta, fdlg.fotos())
+            return
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             self._cadastrar(linha, proposta, None)
@@ -941,7 +961,9 @@ class ConciliacaoDialog(QDialog):
             self._recarregar()
 
     def _cadastrar(self, linha: int, proposta: servico.PropostaCriacao,
-                   tratada: str | None) -> None:
+                   tratada: str | list | None) -> None:
+        # M2: ``tratada`` pode ser a LISTA paralela da tela de N espaços
+        # (sabores/composto) — os dois criadores já falam o plural
         item = self.itens[linha]
         sabores = getattr(self, "_sabores_escolhidos", None)
         self._sabores_escolhidos = None
@@ -955,6 +977,8 @@ class ConciliacaoDialog(QDialog):
             if len(p.componentes) >= 2:             # RG-29: nasce composto
                 return servico.criar_como_composto(
                     it, p.componentes, p.mais18, tr, categoria=p.categoria)
+            if isinstance(tr, (list, tuple)):       # produto só: a 1ª vale
+                tr = next((c for c in tr if c), None)
             return servico.finalizar_criacao(it, p.nome, p.mais18, tr,
                                              categoria=p.categoria)
 

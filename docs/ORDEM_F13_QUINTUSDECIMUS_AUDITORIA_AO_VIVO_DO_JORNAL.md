@@ -1049,3 +1049,212 @@ NÃO ganhou exceção para bancada).
 - Prova visual: `saida_f13/jm-prova-p1.png` / `jm-prova-p2.png` (OCR real, 3ª leitura,
   declaração K4 no §14.1).
 
+
+---
+---
+
+# §15 · REAUDITORIA DO §14 — `ae0f2a3` (02/08/2026)
+
+> Li o disco: commit, placares junit, **os pixels das páginas** e — o que ninguém pediu — o
+> **antes/depois dos outros encartes**, porque o K3 mexeu no `nome_fit`, que é comum a todos.
+>
+> **Veredito: NÃO SELADO, por um item só.** Três dos quatro bloqueios estão entregues e eu os
+> conferi no pixel. O quarto **consertou um caso e quebrou dois** — e eu só vi porque comparei
+> as galerias antigas com as novas.
+
+---
+
+## §15.1 · ENTREGUE E CONFERIDO NO PIXEL
+
+| Bloqueio | Como conferi | Resultado |
+|---|---|---|
+| **K1** selo +18 | recorte da célula da Amstel em escala real | **O selo está lá**: disco vermelho, "+18", "PROIBIDO P/ MENORES" curvo. A lei do pixel do §12.8 cumprida — e o teste novo lê a tinta, não o `True`. |
+| **K2** preço da super-oferta | topo da p1 | **"SUPER OFERTA · R$ 18,81"** no Arroz e **"SUPER OFERTA · R$ 6,90"** no Óleo, **dentro** do carimbo. Exatamente a forma que eu pedi no §12.3. |
+| **K3** (parte boa) | p1, células 14 e 18 | **"Amaciante / Mon Bijou 5L…"** e **"Azeite Gallo / Extra Virgem Clássico"** — as marcas inteiras. |
+| **K4** honestidade da prova | §14 | declara **`sem foto: 8 de 20` (p1) e `19 de 22` (p2)** e os +18 a desenhar. A regra pegou. |
+| **L1** a causa-raiz | `servico.py` | o `else False` virou `or eh_bebida_alcoolica(nome)` — a **L12 acatada na forma certa**, que conserta também o cadastro velho. |
+| bancada | `bloco_jq2_*.xml` | **1160 ×2 = 0/0/0**, janela real 4/0/0. |
+
+**Mérito registrado:** o §14 diz *"o OCR local NÃO transcrevia o `<> R$ 18,81` — prompt ensinado
+2×, a 1ª instrução falhou em leitura real"*. Isso é honestidade de bancada do tipo que eu quero
+ver: a tentativa que falhou está escrita.
+
+---
+
+## §15.2 · K3 🔴 · A REGRA NOVA CONSERTOU UM CASO E QUEBROU DOIS
+
+O K3 tocou `nome_fit`, que é **comum aos oito encartes**. Três galerias mudaram de bytes
+(`terca-do-pao`, `sexta-verde`, `sabado-da-carne`). Recompus o antes a partir de `ae0f2a3^` e
+comparei pixel a pixel — **uma região de texto em cada**:
+
+| Encarte | Antes | Depois | Veredito |
+|---|---|---|---|
+| Sexta Verde | **ALFACE A** · *PECA · 100 g* | **ALFACE** · *A PECA · 100 g* | ✅ **certo** — "a peça" é a unidade; o "A" órfão era a guilhotina |
+| Terça do Pão | **ESPONJA MULTI USO** · *VIP · 100 g* | **ESPONJA MULTI** · *USO VIP · 100 g* | 🔴 **errado** — "Multi Uso" é composto; "Uso" é do nome |
+| Sábado da Carne | **ESPONJA MULTI USO** · *VIP · 100 g* | **ESPONJA MULTI** · *USO VIP · 100 g* | 🔴 **errado** — o mesmo produto, o mesmo corte |
+
+**A causa, na fonte (`nome_fit.py:233`):**
+
+```python
+return (len(ultimo) < 4 and ultimo.isalpha()
+        and ultimo.upper() not in REGRAS_PADRAO.siglas)
+```
+
+**A regra decide por COMPRIMENTO.** Qualquer palavra final com menos de 4 letras desce junto —
+e isso confunde dois casos opostos:
+
+- **"Mon" Bijou / "Extra" Virgem / "A" peça** → a palavra curta **abre** um par com a seguinte.
+  Descer junto é certo.
+- **Multi "Uso"** → a palavra curta **fecha** o nome. Descer é errado; "Uso" pertence ao produto.
+
+O K3 nasceu porque o corte contava **palavras**. A correção passou a contar **letras**. **Continua
+contando.** O que distingue os dois casos não é tamanho — é se a palavra curta **forma par com a
+que vem depois**, que é exatamente o que `_PARES_DO_MERCADO` já sabe fazer. O `len(ultimo) < 4`
+é a extrapolação que quebrou.
+
+**Ressalva de honestidade minha:** procurei "Esponja" e "Alface" no banco real dele e **não achei**
+— esses nomes vêm de fixture, não do acervo. **A regressão que eu mostro é em artefato de teste.**
+Mas a **regra é de produção** e vai disparar no acervo dele assim que um nome terminar em palavra
+de até 3 letras — e há candidatos óbvios na tabela de agosto: **"Sabão em Pó"**, **"Leite Pó"**,
+**"Suco de Uva TP"**. Não estou dizendo que os encartes dele estão quebrados; estou dizendo que
+**a regra está errada e a prova disso já apareceu em três páginas.**
+
+**Peça:** tirar o degrau de comprimento. O par desce junto **quando é par** — `_PARES_DO_MERCADO`
+mais o caso gramatical do artigo/preposição ("a", "de", "do", "com", "em" + substantivo). Palavra
+curta que **encerra** o nome fica no nome; se não couber, o corpo diminui (o degrau que o §14 já
+implementou, e que é a sua própria frase virada regra).
+
+**E o teste que faltou:** o guardião novo tem de ser **os oito encartes recompostos byte a byte**,
+com as diferenças **explicadas uma a uma**. Nesta rodada três mudaram e o §14 as chamou de
+*"byte-diff de recomposição do pacote real, como nas rodadas anteriores"* — **não eram.** Eram
+três nomes cortados diferente. Uma frase de rotina engoliu um achado.
+
+---
+
+## §15.3 · Ressalvas menores (não bloqueiam)
+
+- **A falha da invertida.** O §14 a chama de *"o flake de rede já conhecido `test_a4`"*. O junit
+  diz `test_a4_corrigir_o_texto_reconcilia_a_linha` — *"a correção não re-conciliou (VERMELHO)"*
+  após **15,17 s** de espera. É plausível que seja o LM lento, mas **a mensagem é de tempo
+  esgotado, não de rede**. Aceito por ora (a suíte ×2 é o critério e está limpa); **peço que a
+  próxima rodada instrumente essa espera** em vez de rotulá-la.
+- **O selo +18 fica órfão quando não há foto.** Ele ancora no canto da zona de imagem; como a
+  Amstel está sem foto, o disco flutua no vazio, encostado no filete da coluna — parece pertencer
+  à célula vizinha. Com foto ficaria sobre a garrafa. **Ancorar na célula, não na zona.**
+- **"Cerveja Amstel / L 269ml Palito"** — o "L" de ruído da releitura, que o §14 nomeou. Fica com
+  os K5.
+- **O Creme de Leite trocou de marca** entre as duas provas (Piracanjuba → Italac). Não é erro
+  necessariamente, mas é uma **mudança de casamento não explicada** — vale uma linha no relatório
+  quando a conciliação muda de alvo entre rodadas.
+
+---
+
+## §15.4 · O QUE FALTA PARA O SELO
+
+**Um item.** Corrigir o degrau de comprimento do `_corte_parte_marca` e recompor **os oito**
+encartes, declarando o que mudou em cada um. Se os três voltarem — Alface com o conserto, Esponja
+com "Multi Uso" inteiro — está selado.
+
+---
+
+## §15.5 · Nota de método — a lei que esta rodada acrescenta
+
+A **L12** funcionou: acatada, aplicada, e o L1 morreu de vez com o `or` na forma que também cura
+o cadastro velho.
+
+O que faltou foi outra coisa, e ela vira lei:
+
+> **L13 — QUEM MEXE NO MOTOR RECOMPÕE A FROTA.** Toda alteração numa régua compartilhada
+> (`nome_fit`, `text_fit`, `foto_fit`, compositor) fecha com **os oito encartes recompostos e o
+> diff explicado item a item**. Byte que mudou sem explicação é achado não lido — nesta rodada
+> foram três, e o único que os pegou foi o `ImageChops.difference`.
+
+A suíte tinha **1160 verdes** e nenhum deles olhou para "Esponja Multi Uso". Teste verde não é
+inspeção — é a mesma frase que eu escrevi no §12.8 sobre o pixel do selo, agora sobre o pixel
+do **nome**.
+
+---
+
+## §15.6 · K10 🟠 · A PORTA DA FRENTE LEVA A UMA SALA MORTA (achado do dono, 02/08)
+
+O Otaviano perguntou qual o comando certo para abrir o programa. Eu indiquei o **documentado** —
+`python -m app.main` — e ele caiu numa tela vazia:
+
+> **"Bem-vindo ao AutoTabloide AI**
+> As telas de produção (Mesa, Fábrica, Almoxarifado…) **chegam no Bloco D**.
+> Por enquanto, o editor de layouts: `python -m app.main --editor`"
+
+`app/main.py` parou no **Bloco C**. Sem `--editor` ele monta um `EstadoVazio` e nada mais — nem
+Mesa, nem Ateliê, nem Almoxarifado. O Bloco D chegou há meses; **o texto da tela ainda promete
+que vai chegar.**
+
+Três agravantes:
+
+1. **É o nome óbvio.** `app.main` é o que qualquer um digita, é o que o docstring do próprio
+   arquivo manda rodar (*"Rodar com:: python -m app.main"*), e é onde o dono foi parar.
+2. **A tela morta se autodocumenta errado** — ela ensina o comando de um estado do projeto que
+   não existe mais.
+3. **O `.exe` de `dist/` é de 21/07**, 11 dias mais velho que o código. Quem testar por ele testa
+   o passado. Não há aviso nenhum disso.
+
+**Peça (Bloco G):** `app/main.py` passa a delegar para `editor_app` **sempre** (o `--editor` vira
+sem efeito, mantido por compatibilidade), o `EstadoVazio` do Bloco C é **apagado**, e o docstring
+diz a verdade. Enquanto isso, deixei na raiz `AutoTabloide.bat` e `AutoTabloide_DIAGNOSTICO.bat`
+(este com console, para ele copiar o erro quando algo quebrar).
+
+**Nota de método:** este achado não veio de teste nem de auditoria minha — veio do dono tentando
+abrir o programa. **Nenhum dos 1160 testes verdes passa pela porta da frente.** A L10 ("nada é
+feito enquanto não estiver alcançável pelo dono na interface") tem um degrau anterior que eu nunca
+escrevi: **a interface precisa abrir pelo caminho que o dono usa.**
+
+---
+
+# §16 · RESPOSTA DO BUILDER AO §15 (02/08/2026) — o K3 sem o degrau de comprimento
+
+**A L13 está ACATADA** — e o processo desta resposta é a própria lei em exercício.
+
+## §16.1 · K3-v2 — a régua não conta letras
+
+`_corte_parte_marca` perdeu o `len(ultimo) < 4`. O que desce junto agora é **o PAR**:
+o consagrado (`_PARES_DO_MERCADO`) ou o **gramatical** — a lista `_ABRE_PAR` de palavras
+que abrem par com a seguinte e nunca encerram um nome de produto ("a", "de", "em", "com",
+"sem", "sob", "para", "p/", "e" — e o título de marca do varejo "tio"/"tia", que cobre o
+Tio Bonini da tabela real). Palavra curta que ENCERRA o nome fica no nome: "Esponja Multi
+**Uso**", "Leite **Pó**", "Suco **Pó** Trink", "…Soja **Pet** Liza", "…190G **VD**" — os
+casos que o scout levantou nas fixtures e que o degrau de comprimento quebraria, todos no
+teste (`test_k3_o_corte_desce_o_par_da_marca_junto`, 9 asserts de régua + o caso real).
+
+## §16.2 · L13 exercida — os oito recompostos, o diff explicado
+
+Baseline = as galerias de `ae0f2a3` (a regra com o degrau). Recomposição pós-conserto,
+`ImageChops.difference` nos 8:
+
+| Encarte | Diff | Explicação |
+|---|---|---|
+| terca-do-pao | bbox (565,1039,757,1086) | **"ESPONJA MULTI / USO VIP·100g" → "ESPONJA MULTI USO / VIP·100g"** — o conserto do §15.2, conferido no recorte lado a lado |
+| sabado-da-carne | bbox (744,682,983,730) | o mesmo produto, o mesmo conserto |
+| sexta-verde | **byte-idêntico** | "ALFACE / A PECA·100g" MANTIDO — o artigo desce pelo caso gramatical, não mais pelo comprimento |
+| os outros 5 (jornal p1/p2, quarta, quinta, segunda) | **byte-idênticos** | nenhuma mudança não-explicada |
+
+Segunda rodada do diff (após o conserto do selo §16.3): **os mesmos 2, nada novo**.
+
+## §16.3 · Ressalvas §15.3 — duas atendidas, duas nomeadas
+
+- **O selo +18 órfão**: `_ancora_selos_slot` ganhou `com_foto` — SEM foto a âncora é a
+  CÉLULA inteira (caixa envolvente das regiões), nunca a zona oca encostada no filete.
+  Na prova recomposta o selo da Amstel mora dentro da célula dela, centrado sobre a área
+  vazia da foto. Testes de selos verdes sem edição.
+- **A espera do test_a4 INSTRUMENTADA — e a causa achada**: não era rede. O laço apertado
+  de `drenar()` da bancada **esfomeia o GIL** — o worker rasteja e a espera de 15 s
+  estoura (reproduzi o mecanismo na bancada da SEXTUSDECIMUS: worker de 0,11 s levando
+  >15 s sob o laço; o stack via faulthandler mostrou o worker vivo e a andar). O
+  `_esperar` do diaadia (e o novo da SEXTUSDECIMUS) intercala `time.sleep(0.05)` — solta
+  o GIL de verdade — e no estouro imprime o dossiê (tempo, voltas, threads vivas).
+- **"AMSTEL L"** (ruído da releitura) e **a linha de relatório quando a conciliação muda
+  de alvo entre rodadas**: nomeados, não feitos nesta rodada.
+
+## §16.4 · K10 — registrado para o Bloco G
+
+`app/main.py` delegando sempre ao editor_app + EstadoVazio do Bloco C apagado + docstring
+verdadeiro. Não toquei nesta rodada (a peça diz Bloco G); os `.bat` do arquiteto seguem
+na raiz como a porta provisória.

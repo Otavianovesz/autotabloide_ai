@@ -62,6 +62,7 @@ class MesaTela(QWidget):
         self.ao_salvo = None           # callable(bool) → indicador do rodapé
         self.ao_documento = None       # callable(str) → título da janela (77)
         self._projeto_id = None        # FASE 2 (passo 36): status por projeto
+        self._projeto_nome = None      # M6: o nome do projeto aberto
 
         # --- barra de ações da Mesa -------------------------------------------
         barra = QWidget()
@@ -143,7 +144,10 @@ class MesaTela(QWidget):
         self.btn_salvar_proj = QPushButton(" Salvar projeto")
         self.btn_salvar_proj.setIcon(icone("cofre", tamanho=16))
         self.btn_salvar_proj.setToolTip(
-            "Congela o tabloide (dados da época) — reabre idêntico  ·  Ctrl+S")
+            "Congela o tabloide (dados da época) — reabre idêntico. Com "
+            "projeto aberto, salva POR CIMA (a versão anterior fica em "
+            "“Versões…”); outra edição: “Salvar como nova edição…” na "
+            "paleta (Ctrl+K)  ·  Ctrl+S")
         self.btn_salvar_proj.setEnabled(False)
         self.btn_salvar_proj.clicked.connect(self._salvar_projeto)
         btn_abrir_proj = QPushButton(" Abrir projeto")
@@ -952,17 +956,34 @@ class MesaTela(QWidget):
         if callable(self.ao_salvo):
             self.ao_salvo(salvo)
 
-    def _salvar_projeto(self) -> None:
+    def _salvar_como_nova_edicao(self) -> None:
+        """SEXTUSDECIMUS/M6: o gesto EXPLÍCITO de criar outra edição —
+        o espelho do "Duplicar (nova edição)" do Dashboard."""
+        self._salvar_projeto(como_nova_edicao=True)
+
+    def _salvar_projeto(self, como_nova_edicao: bool = False) -> None:
         from app.core import projetos
         from app.qt.telas.projetos_dialog import SalvarProjetoDialog
 
         if not self._itens:
             mostrar_toast(self, "Nada para salvar — importe itens antes.", tipo="erro")
             return
-        dlg = SalvarProjetoDialog(parent=self)
-        if dlg.exec() != SalvarProjetoDialog.DialogCode.Accepted:
-            return
-        nome, evento = dlg.valores()
+        # SEXTUSDECIMUS/M6: projeto ABERTO + "Salvar" = gravar POR CIMA
+        # (mesma linha, mesma pasta; o núcleo versiona o estado anterior
+        # sozinho). Projeto novo — ou o gesto "Salvar como nova
+        # edição…" — pergunta o nome como sempre.
+        regravar = (self._projeto_id is not None and not como_nova_edicao
+                    and bool(getattr(self, "_projeto_nome", None)))
+        if regravar:
+            nome, evento = self._projeto_nome, (self._evento or None)
+        else:
+            sugestao = ""
+            if como_nova_edicao and getattr(self, "_projeto_nome", None):
+                sugestao = f"{self._projeto_nome} (nova edição)"
+            dlg = SalvarProjetoDialog(sugestao, parent=self)
+            if dlg.exec() != SalvarProjetoDialog.DialogCode.Accepted:
+                return
+            nome, evento = dlg.valores()
         # F13/D7 (P-03, a "uma linha que ressuscita 3 funções"): o evento
         # digitado VIVE no projeto — meta 32/40, pulso da barra e {evento}
         # nas frases nasciam mortos porque isto era jogado fora
@@ -1001,7 +1022,9 @@ class MesaTela(QWidget):
                 [it.to_dict() for it in self._itens], self._validade,
                 edicao=self._edicao,
                 nome_layout=self._layout_nome, mapa=self._mapa,
-                overrides=self._overrides)
+                overrides=self._overrides,
+                projeto_id=(self._projeto_id if regravar else None))
+        self._projeto_nome = nome        # M6: o "Salvar" seguinte grava aqui
         self._marcar_salvo(True)
         # R-061 (passo 54): salvou de verdade → o rascunho (rede) já cumpriu;
         # descarta para não reoferecer na próxima abertura.
@@ -1010,7 +1033,12 @@ class MesaTela(QWidget):
         self._rascunho_lbl.setText("")
         if callable(self.ao_documento):
             self.ao_documento(nome)      # título da janela (passo 77)
-        mostrar_toast(self, f"Projeto “{nome}” salvo (dados congelados).")
+        if regravar:
+            mostrar_toast(self, f"“{nome}” salvo POR CIMA — a versão "
+                                "anterior está em “Versões…”.")
+        else:
+            mostrar_toast(self, f"Projeto “{nome}” salvo (dados "
+                                "congelados).")
 
     def _abrir_projeto(self) -> None:
         from app.core import projetos
@@ -1065,6 +1093,7 @@ class MesaTela(QWidget):
         """
         self._itens = [servico.ItemMesa.from_dict(d) for d in p.itens]
         self._projeto_id = p.id          # FASE 2 (passo 36)
+        self._projeto_nome = p.nome      # M6: "Salvar" grava por cima
         from app.core.projetos import registrar_ultimo_aberto
         registrar_ultimo_aberto(p.id)    # FASE 2 (passo 48)
         if callable(self.ao_documento):
@@ -1713,6 +1742,8 @@ class MesaTela(QWidget):
             ("imagem", "Publicar (Oferta do Dia, carrossel, vídeo)…", "",
              self._publicar),
             ("cofre", "Salvar projeto", "", self._salvar_projeto),
+            ("cofre", "Salvar como nova edição…", "",
+             self._salvar_como_nova_edicao),
             ("abrir", "Abrir projeto", "", self._abrir_projeto),
             # OS F11.5 #44/#48: o diff e o checklist agora têm porta de UI
             ("restaurar", "O que mudou desde a última edição…", "",

@@ -932,10 +932,16 @@ def _selos_do_produto(dados: DadosProduto) -> list[Selo]:
 
 def _ancora_selos_slot(slot, dpi: int, w: int, h: int,
                        rects_subst: dict | None = None,
+                       com_foto: bool = True,
                        ) -> tuple[int, int, int, int]:
     """Onde os selos do slot se ancoram: [SELO] > [IMAGEM] do slot > página.
     ``rects_subst`` (Q1/N1): rect efetivo por uid quando a composição
-    replanejou a célula — o selo pousa onde a foto REALMENTE está."""
+    replanejou a célula — o selo pousa onde a foto REALMENTE está.
+
+    §15.3: SEM foto (``com_foto=False``) a zona de imagem é um VAZIO — o
+    selo ancorado ali flutua encostado no filete e parece da célula
+    vizinha. Nesse caso a âncora é a CÉLULA inteira (a caixa envolvente
+    das regiões), nunca a zona oca."""
     subst = rects_subst or {}
     selo_rect = imagem_rect = None
     for reg in slot.regioes:
@@ -943,6 +949,18 @@ def _ancora_selos_slot(slot, dpi: int, w: int, h: int,
             selo_rect = subst.get(reg.uid, reg.rect)
         elif reg.tipo == TipoRegiao.IMAGEM and imagem_rect is None:
             imagem_rect = subst.get(reg.uid, reg.rect)
+    if not com_foto:
+        from app.rendering.model import Retangulo
+        imagem_rect = None
+        if selo_rect is None:
+            vis = [subst.get(r.uid, r.rect) for r in slot.regioes
+                   if r.visivel]
+            if vis:
+                x0 = min(r.x_mm for r in vis)
+                y0 = min(r.y_mm for r in vis)
+                x1 = max(r.x_mm + r.larg_mm for r in vis)
+                y1 = max(r.y_mm + r.alt_mm for r in vis)
+                selo_rect = Retangulo(x0, y0, x1 - x0, y1 - y0)
     rect = selo_rect or imagem_rect
     return _rect_px(rect, dpi) if rect is not None else (0, 0, w, h)
 
@@ -1245,7 +1263,8 @@ def compor_pagina(
         selos = _selos_do_produto(d)
         if selos:
             desenhar_selos(base,
-                           _ancora_selos_slot(slot, dpi_ef, w, h,
-                                              rects_subst),
+                           _ancora_selos_slot(
+                               slot, dpi_ef, w, h, rects_subst,
+                               com_foto=bool(d.imagem_path or d.imagens)),
                            selos, fontes_dir / "Roboto-Bold.ttf")
     return base

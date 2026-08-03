@@ -519,9 +519,24 @@ def test_k3_o_corte_desce_o_par_da_marca_junto(tmp_path):
         precedencia_do_nome
     from app.tests import acervo
 
-    # a régua nomeada, nos dois gatilhos e nos vetos
-    assert _corte_parte_marca("Mon", "Bijou")          # órfão curto
+    # a régua nomeada — §15.2: ela NÃO conta letras. O que desce junto
+    # é o PAR (consagrado ou gramatical); palavra curta que ENCERRA o
+    # nome é do nome.
+    assert _corte_parte_marca("Mon", "Bijou")          # par consagrado
     assert _corte_parte_marca("Extra", "Virgem")       # par consagrado
+    assert _corte_parte_marca("A", "Peça")             # artigo abre par
+    assert _corte_parte_marca("em", "Pó")              # preposição idem
+    assert _corte_parte_marca("Tio", "Bonini")         # título de marca
+    assert _corte_parte_marca("P/", "Cão")             # "Ração P/ Cão"
+    assert _corte_parte_marca("Sem", "Lactose")
+    assert not _corte_parte_marca("Uso", "VIP"), \
+        "'Multi Uso' encerra o nome — 'Uso' não desce (§15.2)"
+    assert not _corte_parte_marca("Pó", "Ninho"), \
+        "'Leite Pó' encerra o nome — 'Pó' não desce (§15.2)"
+    assert not _corte_parte_marca("Pó", "Trink")       # "Suco Pó Trink"…
+    assert not _corte_parte_marca("Pet", "Liza")       # embalagem no nome
+    assert not _corte_parte_marca("VD", "190G")        # vidro, idem
+    assert not _corte_parte_marca("Uva", "Aurora")
     assert not _corte_parte_marca("Condensado", "Triangulo")
     assert not _corte_parte_marca("TP", "1,5L")        # sigla não é órfã
 

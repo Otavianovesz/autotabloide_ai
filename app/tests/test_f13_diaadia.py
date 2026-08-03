@@ -124,13 +124,23 @@ def raiz_tmp(tmp_path, monkeypatch):
 
 
 def _esperar(cond, ms=15000):
-    from app.tests.gestos import drenar
+    """SEXTUSDECIMUS (§15.3, a instrumentação pedida): o flake do
+    test_a4 era o laço apertado de drenar() ESFOMEANDO o GIL — o worker
+    rastejava e a espera estourava "sem motivo". O sleep intercalado
+    solta o GIL de verdade; no estouro, o dossiê diz quem vivia."""
     import time
+    from app.tests.gestos import drenar
     fim = time.time() + ms / 1000
+    voltas = 0
     while time.time() < fim:
-        drenar(60)
+        drenar(30)
+        time.sleep(0.05)        # o GIL vai ao worker (sleep é C puro)
+        voltas += 1
         if cond():
             return True
+    import threading
+    print(f"_esperar ESTOUROU após {ms} ms ({voltas} voltas); "
+          f"threads vivas: {[t.name for t in threading.enumerate()]}")
     return False
 
 

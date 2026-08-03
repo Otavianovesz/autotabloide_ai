@@ -55,6 +55,7 @@ class FabricaTela(QWidget):
         self.ao_salvo = None           # callable(bool) → indicador do rodapé
         self.ao_documento = None       # callable(str) → título da janela (77)
         self._projeto_id = None        # FASE 2 (passo 36): status por projeto
+        self._projeto_nome = None      # M6: o nome do projeto aberto
 
         # --- barra de ações -----------------------------------------------------
         barra = QWidget()
@@ -432,10 +433,17 @@ class FabricaTela(QWidget):
         if not self._itens:
             mostrar_toast(self, "Nada para salvar — importe itens antes.", tipo="erro")
             return
-        dlg = SalvarProjetoDialog(parent=self)
-        if dlg.exec() != SalvarProjetoDialog.DialogCode.Accepted:
-            return
-        nome, evento = dlg.valores()
+        # SEXTUSDECIMUS/M6: projeto aberto = gravar POR CIMA (o núcleo
+        # versiona a anterior); projeto novo pergunta o nome como sempre
+        regravar = (self._projeto_id is not None
+                    and bool(getattr(self, "_projeto_nome", None)))
+        if regravar:
+            nome, evento = self._projeto_nome, None
+        else:
+            dlg = SalvarProjetoDialog(parent=self)
+            if dlg.exec() != SalvarProjetoDialog.DialogCode.Accepted:
+                return
+            nome, evento = dlg.valores()
         # A2: o pré-voo do cartaz (PROCON incluso) vale também para SALVAR
         if not confirmar_pre_voo(self, self._avisos_pre_voo(), "Salvar"):
             return
@@ -444,11 +452,18 @@ class FabricaTela(QWidget):
             self._projeto_id = projetos.salvar_projeto(
                 nome, evento, "CARTAZ", self._layout,
                 [it.to_dict() for it in self._itens], None,
-                nome_layout=self._layout_nome)
+                nome_layout=self._layout_nome,
+                projeto_id=(self._projeto_id if regravar else None))
+        self._projeto_nome = nome
         self._marcar_salvo(True)
         if callable(self.ao_documento):
             self.ao_documento(nome)      # título da janela (passo 77)
-        mostrar_toast(self, f"Projeto “{nome}” salvo (dados congelados).")
+        if regravar:
+            mostrar_toast(self, f"“{nome}” salvo POR CIMA — a versão "
+                                "anterior está em “Versões…”.")
+        else:
+            mostrar_toast(self, f"Projeto “{nome}” salvo (dados "
+                                "congelados).")
 
     def _abrir_projeto(self) -> None:
         from app.core import projetos
@@ -467,6 +482,7 @@ class FabricaTela(QWidget):
         """Reabre um ProjetoAberto idêntico (usado pelo diálogo e pelo Dashboard)."""
         self._itens = [servico.ItemMesa.from_dict(d) for d in p.itens]
         self._projeto_id = p.id          # FASE 2 (passo 36)
+        self._projeto_nome = p.nome      # M6: "Salvar" grava por cima
         from app.core.projetos import registrar_ultimo_aberto
         registrar_ultimo_aberto(p.id)    # FASE 2 (passo 48)
         if callable(self.ao_documento):

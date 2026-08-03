@@ -223,15 +223,24 @@ def _crescer_banda(reg_nome: Regiao, reg_img: Regiao,
 # inequívoco no domínio; na dúvida, fica de fora.
 _PARES_DO_MERCADO = {("extra", "virgem"), ("mon", "bijou")}
 
+# §15.2: palavras que ABREM par com a seguinte e nunca encerram um nome
+# de produto sozinhas — artigo/preposição/conjunção ("Alface | A Peça",
+# "Sabão | em Pó") e o título de marca do varejo ("Tio Bonini",
+# "Tia Rosa").
+_ABRE_PAR = {"a", "o", "à", "ao", "de", "do", "da", "dos", "das",
+             "em", "com", "e", "sem", "sob", "para", "p/",
+             "tio", "tia"}
+
 
 def _corte_parte_marca(ultimo: str, descido: str) -> bool:
-    """O corte deixaria uma marca partida ao meio? Órfão CURTO no fim do
-    nome (<4 letras não-sigla — o "Mon" de Mon Bijou) ou par consagrado
-    partido ("Extra | Virgem"): o par desce junto ao descritor."""
+    """O corte deixaria um PAR partido? A régua não conta letras
+    (reauditoria §15.2 — o degrau de comprimento consertou "Mon Bijou"
+    e quebrou "Multi Uso"): palavra curta que ENCERRA o nome é do nome
+    ("…Multi Uso", "Leite Pó"); desce junto só quem forma par com a
+    palavra seguinte — o consagrado ou o gramatical."""
     if (ultimo.lower(), descido.lower()) in _PARES_DO_MERCADO:
         return True
-    return (len(ultimo) < 4 and ultimo.isalpha()
-            and ultimo.upper() not in REGRAS_PADRAO.siglas)
+    return ultimo.lower() in _ABRE_PAR
 
 
 def precedencia_do_nome(

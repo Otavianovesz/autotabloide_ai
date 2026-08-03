@@ -99,6 +99,10 @@ class ItemMesa:
     # Acende o "Sabores da família…" na estante; None = produto sem
     # família (o caminho comum não muda). Congela com o projeto.
     familia: dict | None = None
+    # SEXTUSDECIMUS/M3: os SABORES da linha da oferta ("Branco", "Oreo").
+    # O nome da célula fica o base da família; os sabores vão ao
+    # DESCRITOR ("Branco ou Oreo · 45 g") — o cliente descobre o que há.
+    sabores: list = field(default_factory=list)
     # Identidade estável do item (invariante I1) — o mapa slot→item usa o uid.
     uid: str = field(default_factory=lambda: _uuid_mod.uuid4().hex)
 
@@ -758,7 +762,11 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     # F13-BIS/T2: o DESCRITOR da 2ª linha dos encartes ("marca própria ·
     # 100 g") — composto do que o item carrega hoje; a observação NÃO
     # entra (tem região própria, R-071)
+    # SEXTUSDECIMUS/M3: os SABORES da linha abrem o descritor ("Tomate,
+    # Óleo ou Limão · 125 g") — o nome fica o base da família e o
+    # cliente descobre o que existe
     descritor = " · ".join(p for p in (
+        juntar_com_ou(getattr(it, "sabores", None) or []) or None,
         "marca própria" if it.marca_propria else None,
         it.unidade) if p) or None
     return DadosProduto(
@@ -1911,12 +1919,40 @@ def familia_do_item(produto_id: int | None) -> dict | None:
         db.engine.dispose()
 
 
+def sabor_do_membro(nome_membro: str, nome_familia: str) -> str:
+    """SEXTUSDECIMUS/M3: o SABOR de um membro é o nome dele sem o prefixo
+    da família ("Sardinha Coqueiro 125g Tomate" → "Tomate"); se a grafia
+    não bate, o nome inteiro fica (nunca devolve vazio)."""
+    m, f = (nome_membro or "").strip(), (nome_familia or "").strip()
+    if f and m.lower().startswith(f.lower()):
+        resto = m[len(f):].strip(" ·—-")
+        if resto:
+            return resto
+    return m
+
+
+def juntar_com_ou(nomes: list[str]) -> str:
+    """"Tomate", "Tomate ou Óleo", "Tomate, Óleo ou Limão" — a prosa da
+    célula (§2.2 da SEXTUSDECIMUS)."""
+    limpos = [n for n in (nomes or []) if n]
+    if not limpos:
+        return ""
+    if len(limpos) == 1:
+        return limpos[0]
+    return ", ".join(limpos[:-1]) + " ou " + limpos[-1]
+
+
 def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
     """O CHECK vira o LEQUE: as fotos dos membros escolhidos entram no
     ITEM (congela com o projeto — o imagens_json por-produto do RG-28
-    não entra aqui, I3) na ordem por produto_id (identidade, I1)."""
+    não entra aqui, I3) na ordem por produto_id (identidade, I1).
+    M3: os NOMES dos sabores escolhidos viajam também — o descritor da
+    célula os anuncia ("Tomate, Óleo ou Limão")."""
     escolhidos = sorted(membros, key=lambda m: m.get("produto_id") or 0)
     item.imagens = [m["imagem"] for m in escolhidos if m.get("imagem")]
+    base = (item.familia or {}).get("nome") or item.nome or ""
+    item.sabores = [sabor_do_membro(m.get("nome") or "", base)
+                    for m in escolhidos]
     if item.imagens:
         item.arranjo = "LEQUE"
     return item
@@ -3047,22 +3083,27 @@ def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
 
 def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
                              sabores: list[str], mais18: bool,
-                             imagem_tratada: str | None,
+                             imagem_tratada: str | list | None,
                              categoria: str | None = None) -> ItemMesa:
-    """J13: a resposta "são SABORES do mesmo produto" — cria um produto
-    COMPLETO por sabor ("Sardinha Coqueiro 125g Tomate"…), liga todos à
-    FAMÍLIA (B4) e o item da estante vira o leque. A foto da curadoria
-    vai ao 1º sabor; os demais completam pelo Almoxarifado (avisado —
-    o pré-voo cobre, I2)."""
+    """J13 + SEXTUSDECIMUS/M1: a resposta "são SABORES do mesmo produto"
+    — cria um produto COMPLETO por sabor ("Sardinha Coqueiro 125g
+    Tomate"…), liga todos à FAMÍLIA (B4) e o item da estante vira o
+    leque. ``imagem_tratada`` é a LISTA paralela aos sabores (a tela de
+    um espaço por sabor) — CADA sabor grava a sua foto; ``str`` de
+    compatibilidade vai ao 1º (o mesmo padrão do composto). Sabor sem
+    foto avisa (I2), nunca some — L14: ou fecha o N, ou não oferece."""
     from app.core.modo import exigir_escrita
     exigir_escrita()
+    if isinstance(imagem_tratada, (list, tuple)):
+        fotos = list(imagem_tratada) + [None] * len(sabores)
+    else:
+        fotos = [imagem_tratada] + [None] * len(sabores)
     ids: list[int] = []
     for i, sabor in enumerate(sabores):
         nome = f"{nome_familia} {sabor}".strip()
         sub = ItemMesa(descricao=nome, preco=item.preco,
                        semaforo="VERMELHO", nome=nome)
-        finalizar_criacao(sub, nome, mais18,
-                          imagem_tratada if i == 0 else None,
+        finalizar_criacao(sub, nome, mais18, fotos[i],
                           categoria=categoria)
         ids.append(sub.produto_id)
     criar_familia_de(ids, nome_familia)
@@ -3073,6 +3114,7 @@ def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
     item.mais18 = mais18
     item.nome = nome_familia
     item.familia = fam
+    item.sabores = list(sabores)           # M3: o descritor os anuncia
     if fam:
         aplicar_sabores(item, fam["membros"])
     item.imagem = next((m["imagem"] for m in (fam or {}).get("membros", [])
