@@ -1289,3 +1289,80 @@ por acaso; conferido no recorte), não tinta de texto.
   a IA sozinho ao compor e congela no projeto) — as portas manuais
   existem; o gatilho automático fica nomeado para a próxima rodada.
 - Os extensos das células ("Detg.", "Papel Hig.", "Leite Int. L.V.").
+
+## A ORDEM DUODEVICESIMUS (04/08) — a resposta do builder
+
+### §0 — o item zero, com o SELECT que faltava
+
+O arquiteto tinha razão no que importa: **ninguém nunca provou que o
+reimport entrega, e a prova visual não declarava a fonte**. A linha
+do tempo medida: o SELECT de AGORA no `core.db` (layout 14) mostra
+TUDO atualizado — SUBTITULO #4A443B/Regular/11,5 nas 22 células,
+preço #A85212/Archivo-Bold/23, passo uniforme (topos 29,6/88,4/147,1/
+205,8/264,6). O snapshot da ordem (com o NOME 13,5 da v4 presente e o
+preço/grade pré-SEPTIMUSDECIMUS ausentes) foi tirado ANTES dos dois
+reimports desta janela — o banco ficou para trás exatamente o
+intervalo entre o commit e o reimport, que era invisível porque
+NENHUM teste cobria a ponte. As peças do §0, todas entregues:
+
+1. **A investigação:** o upsert (`importar_pacote`) JÁ substitui a
+   ARTE inteira (o estrutura_json novo do gerador) e preserva SÓ o
+   `conteudo_fixo` por slot.id (a guarda SEPTIMUS) — a separação
+   DONO×ARTE do §0.2 já era o mecanismo; faltava a prova.
+2. **O teste §0.3** — `test_duodevicesimus_import_leva_a_arte_e_
+   preserva_o_dono`: muda `_J_LARD` no gerador → importa → LÊ O BANCO
+   → a cor nova está em TODOS os preços E o conteudo_fixo plantado
+   sobrevive. Verde.
+3. **L16 executada:** a prova visual agora IMPRIME "PROVA COMPOSTA DO
+   BANCO DO DONO (core.db, layout id 14)" no cabeçalho do relatório —
+   e sempre foi composta do banco (o script lê `Layout 14`); o que
+   faltava era DIZER e garantir o reimport ANTES dela, agora parte do
+   ritual.
+
+### §1 — a lei da proximidade (o "preços confundíveis" morre)
+
+A célula de linha foi redesenhada no gesto clássico (§1a): **o
+carimbo SOBREPÕE o canto inferior direito da foto** — o preço gruda
+no produto. A foto CRESCEU (100→116 px) e o texto desceu com o
+respiro do carimbo rotacionado. Antes: 17,7 mm até o próprio produto
+e −1,8 mm até o seguinte; agora: o carimbo TOCA a própria foto e fica
+~26 mm da foto seguinte. Guardião `test_duodevicesimus_lei_da_
+proximidade_no_banco` (L16: mede o layout CARREGADO DO BANCO após o
+import): dist < 6 mm da própria / > 12 mm da seguinte, com mutação
+(preço de volta ao fim = vermelho).
+
+**Achado da prova (e conserto na raiz):** com o carimbo cavalgando a
+foto, o número ficou ILEGÍVEL — o carimbo era VAZADO (só borda + 
+texto) e a foto aparecia através dele (o laranja sumia no saco
+amarelo da Yoki). A etiqueta que sobrepõe foto é OPACA em todo
+encarte do mundo: o ramo CARIMBO do compositor ganhou FUNDO do papel
+(#F7F3E9) — invisível sobre o papel, decisivo sobre a foto.
+
+### Os itens pequenos executados
+
+- **36:** "agua"→"água" no vocabulário (`ortografia.py`) +
+  higienização nominal no banco real (backup
+  `core_pre_duodevicesimus_20260804.db`): id 100 "Água Mineral Marajá
+  500ml S/ Gás" (marca "Marajá" gravada), ids 119/123 "Água e Sal".
+- **50:** DOIS ângulos fixos no jornal inteiro (−6/+5) — as chamadas
+  usavam −5/+4.
+
+### Conflitos DECLARADOS para o dono decidir (não executados)
+
+- **Item 4 (a MARCA entra no nome):** conflita com a decisão do DONO
+  na 2ª prova da v2 ("Cadê a hierarquia?" — o TIPO grande, a marca no
+  descritor, decisão de motor). "Nutella grande" reverte aquilo — só
+  com o selo dele.
+- **Item 39 (SUPER OFERTA com número):** é o conflito K2 já declarado
+  — o dono mandou o carimbo SEM valor ("não pode ter o valor junto").
+
+### Ficou de fora (nomeado, Ondas 2–4)
+
+Patamares de corpo por preço (2) e âncoras de destaque (3) — dependem
+do "destaque" ser decisão visível do dono na Mesa; a normalização de
+escala/linha de base das fotos (22/23) e as fotos cortadas
+(19/20/21); os mm do rodapé (14/15/16); a caixa da dica que não se
+desenha vazia (41 — as pautas são da ARTE; o plano: a caixa sai da
+BASE e vira desenho condicional); os extensos (33/34); a validade 2×
+(42); o "SE É B" 2× (43); a edição na p1 (44); preço por unidade de
+medida (45); estoques/limite (46); e os demais de F.

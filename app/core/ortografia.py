@@ -23,6 +23,8 @@ import unicodedata
 # Vocabulário de mercado com forma certa ÚNICA (chave: minúscula, sem
 # acento). Conservador de propósito — na dúvida, a palavra NÃO entra.
 ACENTOS_MERCADO: dict[str, str] = {
+    # DUODEVICESIMUS item 36: "Agua Mineral" saiu impresso sem acento
+    "agua": "água",
     "acucar": "açúcar",
     "po": "pó",
     "pao": "pão",

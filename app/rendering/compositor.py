@@ -593,9 +593,16 @@ def _desenhar_forma_preco(base: Image.Image, reg: Regiao, dpi: int) -> None:
             d.rounded_rectangle(caixa, radius=r, outline=borda,
                                 width=esp)
     elif reg.forma_preco == FormaPreco.CARIMBO:
-        # o carimbo do Jornal: borda perfurada + moldura interna, SEM
-        # fundo (espec: carimbo, gen_jornal_final:30)
+        # o carimbo do Jornal: borda perfurada + moldura interna.
+        # DUODEVICESIMUS §1: o carimbo agora CAVALGA a foto do produto
+        # (a lei da proximidade) — a etiqueta é OPACA como todo encarte
+        # faz: fundo do papel por baixo do número (vazado, o laranja
+        # sumia sobre o saco amarelo da Yoki). Sobre o papel creme o
+        # fundo é invisível; sobre a foto, ele faz o preço LER.
         cor_c = reg.forma_cor
+        d.rounded_rectangle((m, m, m + w - 1, m + h - 1),
+                            radius=max(3, round(h * 0.08)),
+                            fill="#F7F3E9")
         sw = max(2, round(h * 0.055))
         passo, traco = max(10, w // 9), max(7, w // 14)
         xx = m

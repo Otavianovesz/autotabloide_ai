@@ -474,3 +474,135 @@ def test_errata_gerar_dica_manda_nome_e_preco():
                           precos=["6,90", "2,99"])
     assert "Sardinha (R$ 6,90)" in vistos["user"], vistos
     assert dica == "Sardinha com macarrao por R$ 9,89"
+
+
+def test_duodevicesimus_import_leva_a_arte_e_preserva_o_dono(
+        tmp_path, monkeypatch):
+    """§0 da DUODEVICESIMUS (o item zero): o banco do dono ficou para
+    trás e ninguém tinha PROVA de que o reimport entrega. Este teste
+    fecha o §0.3: muda um valor no GERADOR → importa → LÊ O BANCO →
+    o valor novo chegou (a ARTE é substituída) E o conteudo_fixo do
+    dono sobrevive (a guarda SEPTIMUS). L16: a verdade se lê de onde
+    o dono compõe."""
+    import json
+    from pathlib import Path
+
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    from app.rendering import encartes
+    from app.rendering.model import TipoRegiao
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    raiz = SystemRoot(tmp_path / "raiz")
+    db = Database(raiz).init()
+    try:
+        with db.Session() as s:
+            # 1ª importação (o estado do dono) + o Kit dele num slot
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            from app.core.models import Layout
+            reg = s.query(Layout).filter(
+                Layout.nome == "Jornal do Mês").one()
+            d = json.loads(reg.estrutura_json)
+            d["paginas"][1]["slots"][0]["conteudo_fixo"] = {
+                "produto_id": 77}
+            reg.estrutura_json = json.dumps(d)
+            s.commit()
+        # o GERADOR muda (a cor do preço — o campo da tabela do §0)
+        monkeypatch.setattr(encartes, "_J_LARD", "#123456")
+        with db.Session() as s:
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            reg = s.query(Layout).filter(
+                Layout.nome == "Jornal do Mês").one()
+            d = json.loads(reg.estrutura_json)
+            precos = [r.get("cor") for p in d["paginas"]
+                      for sl in p["slots"] for r in sl["regioes"]
+                      if r.get("tipo") == "PRECO"]
+            # a ARTE substituiu: a cor nova do gerador ESTÁ no banco
+            assert "#123456" in precos, sorted(set(precos))
+            assert "#A85212" not in precos
+            # e o conteúdo do DONO sobreviveu ao reimport
+            fixo = d["paginas"][1]["slots"][0].get("conteudo_fixo")
+            assert fixo == {"produto_id": 77}, fixo
+    finally:
+        db.engine.dispose()
+
+
+def test_duodevicesimus_lei_da_proximidade_no_banco(tmp_path):
+    """§1 da DUODEVICESIMUS: o preço ENCOSTA na foto do próprio
+    produto (sobrepõe o canto — dist < 6 mm) e fica LONGE da foto do
+    produto seguinte (> 12 mm). Antes: 17,7 mm do próprio e −1,8 mm
+    do seguinte — o olho agrupava errado. L16: medido no LAYOUT DO
+    BANCO após o import, o mesmo que o dono compõe — nunca só no
+    gerador."""
+    from pathlib import Path
+
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    from app.rendering import encartes
+    from app.rendering.model import TipoRegiao
+    from app.rendering.persistencia import carregar_layout, listar_layouts
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    raiz = SystemRoot(tmp_path / "raiz")
+    db = Database(raiz).init()
+    try:
+        with db.Session() as s:
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            reg = next(r for r in listar_layouts(s)
+                       if r.nome == "Jornal do Mês")
+            lay = carregar_layout(s, reg.id, raiz=raiz)
+    finally:
+        db.engine.dispose()
+    medidas = 0
+    for pag in lay.paginas:
+        fotos_topo = []
+        celulas = []
+        for sl in pag.slots:
+            img = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.IMAGEM), None)
+            pr = next((r for r in sl.regioes
+                       if r.tipo == TipoRegiao.PRECO), None)
+            sub = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.SUBTITULO), None)
+            if img is None:
+                continue
+            fotos_topo.append((img.rect.y_mm, img.rect.x_mm,
+                               img.rect.x_mm + img.rect.larg_mm))
+            if pr is None or sub is None:
+                continue                 # herói/chamada: outra métrica
+            celulas.append((sl.id, img, pr))
+        for sid, img, pr in celulas:
+            base_foto = img.rect.y_mm + img.rect.alt_mm
+            topo_preco = pr.rect.y_mm
+            base_preco = pr.rect.y_mm + pr.rect.alt_mm
+            px0 = pr.rect.x_mm
+            px1 = pr.rect.x_mm + pr.rect.larg_mm
+            em_coluna = (px1 > img.rect.x_mm
+                         and px0 < img.rect.x_mm + img.rect.larg_mm
+                         and topo_preco >= img.rect.y_mm)
+            if em_coluna:
+                # (1) o preço PERTENCE ao produto: encosta na foto
+                # (<6 mm — no Jornal ele SOBREPÕE o canto, dist < 0)
+                assert topo_preco - base_foto < 6.0, (
+                    f"{sid}: preço a {topo_preco - base_foto:.1f} mm "
+                    "da própria foto — órfão de novo")
+                medidas += 1
+            # (2) o preço fica LONGE de qualquer foto SEGUINTE que o
+            # cruze na horizontal (>12 mm — o produto do vizinho)
+            prox = [t for t, x0, x1 in fotos_topo
+                    if t > base_preco - 1.0
+                    and x1 > px0 and x0 < px1]
+            if prox:
+                folga = min(prox) - base_preco
+                assert folga > 12.0, (
+                    f"{sid}: só {folga:.1f} mm até a foto seguinte")
+    assert medidas >= 30, f"só {medidas} células de coluna medidas"

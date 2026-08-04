@@ -733,29 +733,29 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # F13-TER: a foto sobe até o fio da linha (recolado).
             # J25: zona_flex — o FIO é filete separador, não "veste" a
             # célula (a guarda do foto_fit aprendeu a diferença).
-            # v4 (a LEI do dono, 4ª prova): NENHUMA informação é comida
-            # — a foto cede 16 px ao BLOCO DE TEXTO (116→100)
-            _img(x + 4, y - 20, 178, 100, flex=True),
-            # v4: nome maior (12,5→13,5, caixa 30 px) e o descritor com
-            # ATÉ 3 LINHAS (36 px) — marcas E sabores por extenso; a
-            # forma "N sabores" foi VETADA pelo dono (risco legal)
-            _nome(x + 8, y + 80, 170, 30, fonte=_F_FRAUNCES,
+            # DUODEVICESIMUS §1 (a LEI DA PROXIMIDADE): a foto CRESCE
+            # (100→116 px) e o carimbo de preço SOBREPÕE o canto
+            # inferior direito dela — o clássico dos encartes: o preço
+            # "gruda" no produto. Antes: 17,7 mm até o próprio produto
+            # e −1,8 mm até o seguinte (o olho agrupava ERRADO).
+            _img(x + 4, y - 20, 178, 116, flex=True),
+            # o carimbo DEPOIS da foto na lista (L-C: preço é a última
+            # camada) — cavalga a borda direita, sobrepondo ~36 px
+            _preco(x + 90, y + 60, 96, 42, fonte=_F_ARCHIVO, rot=rot,
+                   forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
+                   cor=_J_LARD, tam=23.0, tam_cent=14.5,
+                   centavos_na_base=True),
+            # v4 (a LEI do dono): NENHUMA informação é comida — nome e
+            # descritor abaixo, com o respiro do carimbo rotacionado
+            _nome(x + 8, y + 108, 170, 28, fonte=_F_FRAUNCES,
                   tam=14.0, cor=_J_INK),
             # ERRATA §13.3: o descritor deixa o ITÁLICO (a serifa
             # itálica não segura tinta abaixo de 12 pt no papel) e
             # sobe de corpo — max 11,5 / piso 10,5 (o 8,5 era o que
             # deixava o descritor virar poeira); o piso DURO do
             # compositor segue como exceção anti-tesoura (K3)
-            _sub(x + 8, y + 110, 170, 36, fonte=_F_FRA_RE,
+            _sub(x + 8, y + 138, 170, 34, fonte=_F_FRA_RE,
                  tam=11.5, tam_min=10.5, cor=_J_GRAY),
-            # ORDEM do arquiteto: o preço em PESO de verdade — não
-            # existe Fraunces Bold no projeto (só Regular/Italic/
-            # SemiBold); o Archivo-Bold já está no pacote. ERRATA
-            # §13.3: corpo 20→23 (o pedido do §3 que ficou de fora)
-            _preco(x + 45, y + 147, 96, 42, fonte=_F_ARCHIVO, rot=rot,
-                   forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
-                   cor=_J_LARD, tam=23.0, tam_cent=14.5,
-                   centavos_na_base=True),
         ], origem=(x + 4, y)))
 
 
@@ -804,7 +804,10 @@ def _jornal_p1() -> list[Slot]:
     splash.forma_cor_borda = "#F7F3E9"
     for i, (x, y) in enumerate(((488, 328), (762, 328),
                                 (488, 466), (762, 466)), start=1):
-        rot = -5.0 if i % 2 else 4.0
+        # DUODEVICESIMUS item 50: DOIS ângulos fixos no jornal inteiro
+        # (−6/+5, os mesmos das linhas) — 4 ângulos diferentes liam
+        # como ruído a 42 repetições
+        rot = -6.0 if i % 2 else 5.0
         dy = 20 if i <= 2 else 18
         slots.append(_slot(f"jp1-ch{i}", [
             # J25: a foto da chamada enche a zona (zona_flex — a régua
