@@ -1304,14 +1304,21 @@ class CanvasView(QGraphicsView):
 
     def nomes_dos_itens(self) -> list[str]:
         """RG-25: os nomes dos produtos compostos agora (p/ a dica da IA)."""
+        return [n for n, _p in self.itens_para_dica()]
+
+    def itens_para_dica(self) -> list[tuple[str, object]]:
+        """ERRATA §13.5: pares (nome, preço) dos produtos compostos —
+        a dica cita 2-3 produtos DA PÁGINA com os preços reais."""
         from app.rendering.compositor import DadosProduto
         d = self._dados
         if isinstance(d, dict):
-            return [v.nome for v in d.values()
-                    if isinstance(v, DadosProduto) and v.nome]
-        if isinstance(d, (list, tuple)):
-            return [v.nome for v in d if isinstance(v, DadosProduto) and v.nome]
-        return [d.nome] if isinstance(d, DadosProduto) and d.nome else []
+            vivos = list(d.values())
+        elif isinstance(d, (list, tuple)):
+            vivos = list(d)
+        else:
+            vivos = [d]
+        return [(v.nome, getattr(v, "preco_por", None)) for v in vivos
+                if isinstance(v, DadosProduto) and v.nome]
 
     def tamanho_efetivo_pt(self, reg) -> float | None:
         """RG-18: o tamanho que o desenho REALMENTE usa (o ajuste só-reduz) —

@@ -391,3 +391,86 @@ def test_ordem_arq_carimbo_nunca_hifeniza(tmp_path, monkeypatch):
     assert vistos, "o carimbo não desenhou"
     texto, sem_hifen = vistos[0]
     assert texto == "SUPER OFERTA" and sem_hifen is True, vistos
+
+
+def test_errata_guardiao_de_tinta_do_cinza(tmp_path):
+    """ERRATA §13.4: cor pedida se prova CONTANDO PIXEL na página
+    composta, nunca lendo o diff. O cinza velho #6E675C não pode ter
+    UM pixel na p2 do Jornal; o novo #4A443B aparece em quantidade
+    (o descritor de venda das 22 células). O mesmo comando que o
+    arquiteto rodou na reauditoria."""
+    from collections import Counter
+    from decimal import Decimal
+    from pathlib import Path
+
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.encartes import layout_de_encarte
+    from app.rendering.model import TipoRegiao
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    lay = layout_de_encarte("jornal-do-mes", pacote)
+    pag = lay.paginas[1]                 # a p2 (a página da errata)
+    dados = {}
+    for s in pag.slots:
+        if not any(r.tipo == TipoRegiao.IMAGEM and
+                   getattr(r, "ocupavel", True) for r in s.regioes):
+            continue
+        dados[s.id] = DadosProduto(
+            nome="Produto de Bancada",
+            descritor="Marca da Casa · Sabor Clássico · 500 g",
+            preco_por=Decimal("9.99"))
+    img = compor_pagina(lay, pag, dados).convert("RGB")
+    c = Counter(img.getdata())
+    assert c[(0x6E, 0x67, 0x5C)] == 0, (
+        f"o cinza VELHO ainda tem {c[(0x6E, 0x67, 0x5C)]} px de tinta")
+    assert c[(0x4A, 0x44, 0x3B)] > 5_000, (
+        f"o cinza NOVO só tem {c[(0x4A, 0x44, 0x3B)]} px — cadê o "
+        "descritor?")
+
+
+def test_errata_dica_cita_preco_real_nunca_inventado():
+    """ERRATA §13.5: a dica pode citar os preços REAIS da página (o
+    exemplo do arquiteto: 'almoço de domingo por menos de R$ 12' com
+    6,90+1,50+2,99=11,39 somados e arredondados p/ cima). A guarda
+    dura confere número a número: valor que a página não soma segue
+    REJEITADO; sem lista de preços, dinheiro segue proibido (o
+    comportamento da OS F11.5 #12 intacto)."""
+    from app.ai.enriquecimento import dica_alucinada
+
+    nomes = ["Sardinha Coqueiro", "Molho Fugini", "Macarrao Dallas"]
+    precos = ["6,90", "1,50", "2,99"]
+    boa = "Sardinha + molho Fugini + macarrao: almoco por menos de R$ 12"
+    assert dica_alucinada(boa, nomes, (), precos=precos) is False
+    exata = "So a sardinha: R$ 6,90 no jantar de sexta"
+    assert dica_alucinada(exata, nomes, (), precos=precos) is False
+    inventada = "Feijoada completa por R$ 90 com os itens da pagina"
+    assert dica_alucinada(inventada, nomes, (), precos=precos) is True
+    # sem a lista real, QUALQUER dinheiro é invenção (o contrato antigo)
+    assert dica_alucinada(boa, nomes, ()) is True
+    # % segue proibido mesmo com preços (desconto é papel do encarte)
+    assert dica_alucinada("Leve 2 com 20% off", nomes, (),
+                          precos=precos) is True
+
+
+def test_errata_gerar_dica_manda_nome_e_preco():
+    """O modelo VÊ 'nome (R$ preço)' — a errata: nome+preço viajam
+    juntos; e a dica devolvida com preço real passa a guarda."""
+    from app.ai import enriquecimento as enr
+
+    vistos = {}
+
+    class MotorFake:
+        def disponivel(self):
+            return True
+
+        def chat(self, mensagens, **kw):
+            vistos["user"] = mensagens[1]["content"]
+            return '{"dica": "Sardinha com macarrao por R$ 9,89"}'
+
+    dica = enr.gerar_dica(["Sardinha", "Macarrao"], 120, MotorFake(),
+                          precos=["6,90", "2,99"])
+    assert "Sardinha (R$ 6,90)" in vistos["user"], vistos
+    assert dica == "Sardinha com macarrao por R$ 9,89"

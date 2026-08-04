@@ -198,15 +198,51 @@ def remover_inventados(nome: str, bruto: str, permitidos=()) -> str:
     return sobrou or nome
 
 
+def _valores_criveis(precos) -> set:
+    """ERRATA §13.5: o universo de valores que uma dica PODE citar —
+    cada preço real e as somas de 2 e 3 deles (a dica cita 2-3
+    produtos: "almoço por menos de R$ 12" é a soma arredondada)."""
+    from decimal import Decimal
+    from itertools import combinations
+    base = []
+    for p in precos or ():
+        try:
+            base.append(Decimal(str(p).replace("R$", "").strip()
+                                .replace(",", ".")))
+        except Exception:
+            continue
+    valores = set(base)
+    for n in (2, 3):
+        for combo in combinations(base, n):
+            valores.add(sum(combo))
+    return valores
+
+
 def dica_alucinada(dica: str, nomes: list[str],
-                   marcas_conhecidas=()) -> bool:
+                   marcas_conhecidas=(), precos=None) -> bool:
     """OS F11.5 #12: checagem anti-alucinação do TEXTO da dica — a dica não
-    pode afirmar número de dinheiro/desconto (preço é papel do encarte, nunca
-    da dica) nem citar uma MARCA conhecida que não está nos itens da oferta."""
+    pode afirmar desconto (% é papel do encarte) nem citar MARCA conhecida
+    que não está nos itens. ERRATA §13.5: com ``precos`` fornecidos, número
+    de dinheiro é permitido SE bater um preço real ou a soma de 2-3 deles
+    (tolerância: arredondar para CIMA ao inteiro — "menos de R$ 12" para a
+    soma 11,39); sem ``precos``, dinheiro segue proibido como antes."""
     import re as _re
+    from decimal import Decimal
+    from math import ceil
     d = (dica or "").lower()
-    if _re.search(r"(r\$\s?\d|\d+\s?%)", d):
+    if _re.search(r"\d+\s?%", d):
         return True
+    dinheiro = _re.findall(r"r\$\s?(\d+(?:[.,]\d{1,2})?)", d)
+    if dinheiro:
+        criveis = _valores_criveis(precos)
+        if not criveis:
+            return True                  # sem lista real, R$ é invenção
+        for bruto in dinheiro:
+            v = Decimal(bruto.replace(",", "."))
+            ok = any(s == v or (s <= v <= Decimal(ceil(s)))
+                     for s in criveis)
+            if not ok:
+                return True              # número que a página não soma
     toks_dica = {_normalizar_token(t) for t in (dica or "").split()}
     toks_itens = {_normalizar_token(t)
                   for nome in nomes for t in str(nome).split()}
@@ -385,11 +421,20 @@ def limite_caracteres(larg_mm: float, alt_mm: float,
 
 # FASE 3 (passo 45, R-088): o prompt é EDITÁVEL na aba IA (chave
 # ``ia.prompt_dica``); {limite} é trocado pelo teto da região na hora.
+# ERRATA §13.5 da SEPTIMUSDECIMUS — o que "dica" quer dizer (o dono,
+# duas vezes): "dica dos itens que tem ali pra você fazer um preparo,
+# alguma história". Nunca chamada de compra genérica. O prompt exige
+# citar 2-3 produtos DA PÁGINA; os preços fornecidos podem aparecer
+# (a guarda dura confere número por número contra a lista real).
 PROMPT_DICA_PADRAO = (
     "Você escreve o quadro “Fica a Dica” de um encarte de "
-    "supermercado brasileiro: UMA dica curta, receita rápida ou "
-    "curiosidade simpática usando produtos da oferta. Tom leve, "
-    "direto, sem emoji, sem hashtag. Devolva SOMENTE JSON: "
+    "supermercado brasileiro: UMA sugestão de uso citando 2 ou 3 "
+    "produtos DA LISTA (um preparo, uma combinação, uma história "
+    "curta). Exemplo do formato: “sardinha em lata + molho de tomate "
+    "+ macarrão: almoço de domingo por menos de R$ 12”. Só cite "
+    "produtos que estão na lista; se citar valor, use SOMENTE os "
+    "preços listados ou a soma deles — nunca invente número. Tom "
+    "leve, direto, sem emoji, sem hashtag. Devolva SOMENTE JSON: "
     '{"dica": "texto com NO MÁXIMO {limite} caracteres"}')
 
 
@@ -426,22 +471,31 @@ ESTILOS_DICA: dict[str, str] = {
 def gerar_dica(nomes: list[str], limite_chars: int,
                motor: MotorIA | None, *, estilo: str | None = None,
                evitar: list[str] | None = None,
-               marcas_conhecidas: list[str] | None = None) -> str | None:
+               marcas_conhecidas: list[str] | None = None,
+               precos: list | None = None) -> str | None:
     """Gera a dica/receita/curiosidade a partir dos itens da oferta.
 
     `estilo` (R-083: receita·economia·curiosidade) muda o tom; `evitar` (R-083
     memória) lista dicas recentes para não repetir. None = sem motor/sem resposta
-    útil (quem chama avisa — I2; a dica é assistência). O limite vem da REGIÃO."""
+    útil (quem chama avisa — I2; a dica é assistência). O limite vem da REGIÃO.
+    ERRATA §13.5: ``precos`` pareado com ``nomes`` — o modelo vê "nome · preço"
+    e pode citar valores REAIS (a guarda dura confere cada número)."""
     if motor is None or not motor.disponivel() or not nomes:
         return None
     instrucao = ESTILOS_DICA.get(estilo or "", "")
     if evitar:
         instrucao += (" NÃO repita nem se pareça com estas dicas recentes: "
                       + " | ".join(evitar[:5]))
+    if precos and len(precos) == len(nomes):
+        itens_txt = "; ".join(
+            f"{n} (R$ {p})" if p else str(n)
+            for n, p in zip(nomes, precos))
+    else:
+        itens_txt = "; ".join(nomes)
     try:
         resposta = motor.chat([
             {"role": "system", "content": prompt_dica(limite_chars)},
-            {"role": "user", "content": "Itens da oferta: " + "; ".join(nomes)
+            {"role": "user", "content": "Itens da oferta: " + itens_txt
              + (f"\n{instrucao}" if instrucao else "")},
         ], formato_json=True, max_tokens=400)
         dica = str(json.loads(resposta).get("dica") or "").strip()
@@ -459,7 +513,8 @@ def gerar_dica(nomes: list[str], limite_chars: int,
             return None
         # OS F11.5 #12: anti-alucinação — dica com preço/% inventado ou
         # marca conhecida que NÃO está na oferta é rejeitada (guarda dura)
-        if dica_alucinada(dica, nomes, marcas_conhecidas or ()):
+        if dica_alucinada(dica, nomes, marcas_conhecidas or (),
+                          precos=precos):
             return None
         return dica[:limite_chars]        # o teto da região é lei
     except (IAIndisponivel, json.JSONDecodeError, TypeError, AttributeError):

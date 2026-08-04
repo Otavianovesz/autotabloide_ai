@@ -566,12 +566,15 @@ def test_v2_dica_nunca_desenha_validade():
     livre = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 50, 10),
                    papel_texto=PapelTexto.LIVRE, texto_fixo="")
     assert "03/08" in texto_composto_legal(livre, d)
-    # e o Jornal do pacote nasce com a dica editorial preenchida
+    # ERRATA §13.5 (inverte o assert v2 DE PROPÓSITO): a dica do
+    # Jornal nasce MUDA — a frase cravada era chamada de compra, não
+    # dica ("dica dos itens que tem ali", o dono); o texto vem da IA
+    # (2-3 produtos com preço) ou do dono; sem os dois, vazio > genérico
     from app.rendering import encartes
     slots = encartes._jornal_p2()
     dica = next(r for s in slots if s.id == "jp2-dica" for r in s.regioes
                 if getattr(r, "papel_texto", None) == PapelTexto.DICA)
-    assert dica.texto_fixo and "válida" not in dica.texto_fixo.lower()
+    assert dica.texto_fixo == ""
 
 
 def test_v2_celula_lateral_nunca_inverte():

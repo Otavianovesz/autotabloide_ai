@@ -582,8 +582,12 @@ class MesaTela(QWidget):
             return
         if not novo:
             motor = servico._motor_se_disponivel()
-            nomes = [d.nome for d in self._dados_por_slot().values()
+            # ERRATA §13.5: a dica cita 2-3 produtos DA PÁGINA com os
+            # preços REAIS — nome+preço viajam juntos ao modelo
+            pares = [(d.nome, getattr(d, "preco_por", None))
+                     for d in self._dados_por_slot().values()
                      if getattr(d, "nome", "")]
+            nomes = [n for n, _p in pares]
             if motor is not None and nomes:
                 from app.ai.enriquecimento import (
                     gerar_dica,
@@ -592,7 +596,8 @@ class MesaTela(QWidget):
                 limite = limite_caracteres(reg.rect.larg_mm,
                                            reg.rect.alt_mm,
                                            reg.tamanho_max_pt)
-                novo = gerar_dica(nomes, limite, motor) or ""
+                novo = gerar_dica(nomes, limite, motor,
+                                  precos=[p for _n, p in pares]) or ""
                 if novo:
                     mostrar_toast(self, "Dica escrita pela IA — edite "
                                         "à vontade.")

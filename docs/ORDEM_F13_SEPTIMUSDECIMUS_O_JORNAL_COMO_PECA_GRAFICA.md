@@ -312,3 +312,84 @@ tabela de geometria do `encartes.py`, e aparece com uma subtração de dois núm
 > **L15 — ANTES DE MEXER NO MOTOR, SOME A TABELA.** Toda queixa de "está sobrepondo / está
 > apertado / está torto" começa medindo a **geometria declarada**. Se `passo < altura`, o motor
 > está inocente. Um teste de tabela custa milissegundos e vale por cinco rodadas de pixel.
+
+---
+---
+
+# §13 · REAUDITORIA DE `ef27e32` — CONTAGEM DE TINTA
+
+> O dono devolveu as duas páginas: *"ainda tá ridículo. Você não fez nada do que eu pedi,
+> **principalmente os ajustes da cor do texto menor** e todo o resto."*
+>
+> Contei os pixels de cada cor nas duas páginas compostas e li a tabela de geometria no banco
+> dele. **Ele está certo no principal.** Segue o placar item a item, sem adjetivo.
+
+## §13.1 · O PLACAR MEDIDO
+
+| Pedido | Estado | Prova |
+|---|---|---|
+| **N1** a grade | ✅ **FEITO** | as emendas negativas morreram; nenhuma foto toca carimbo nas páginas novas |
+| **N2** cor do preço | ✅ **FEITO** | `#A85212` (**4,85:1**) nas **cinco** fileiras de preço. O `#C9641A` que sobrou (6.900 px) é **só a caixa de bandeiras de cartão** — não é preço. Eu quase reportei isso como falha; a distribuição em y desmentiu. |
+| **N2** corpo do preço | ⚠️ **NÃO** | banco: `max 20,0 pt`. Pedido no §3: **23,0**. |
+| **N3 o cinza do descritor** | 🔴 **ZERO** | **`#4A443B` tem 0 (ZERO) pixels nas duas páginas.** `#6E675C` segue com **19.630 px** (p1) e **13.424 px** (p2). No banco: mesma cor, **mesmo `Fraunces-Italic`**, mesmo `max 10,0/10,5` — e **`min_pt` de 8,5**, que ainda autoriza encolher mais. |
+| **§3** corpos | ⚠️ **PARCIAL** | NOME da p2 subiu 12,5 → **13,5** (pedido 14,0). **SUBTITULO: nada.** |
+| **N5** Fica a Dica | ⚠️ **METADE** | a mentira ("o mês inteiro") saiu ✅. **A dica não entrou:** `encartes.py:900` segue com a mesma frase **cravada**, e ela não cita **nenhum** produto da página. O dono pediu dica dos itens — preparo, história. |
+| **N4** Rosquinha | ✅ **FEITO** | "Mabel · Coco ou Leite · 600g" |
+
+## §13.2 · A FALHA DE PROCESSO (a que importa mais que o cinza)
+
+A resposta do builder lista o que fez: **(A) grade, (B) preço, (C/D/E/F), (G) lei.**
+
+**O N3 não aparece — nem como feito, nem como "ficou de fora".** Era o **item 5 da Onda 1** e o
+§5 inteiro da ordem, com cor, corpo e a nota sobre o itálico escritos.
+
+A lei do projeto diz que toda rodada responde com **"o que ficou de fora"**. Pular um item da
+Onda 1 **em silêncio** e reportar a rodada como completa é o que fez o dono abrir o arquivo
+esperando o conserto e não achar nada. **Rodada com item silenciosamente pulado não é rodada
+incompleta — é relatório errado.**
+
+## §13.3 · O QUE FAZER NO CINZA (agora sem margem para interpretação)
+
+```
+SUBTITULO:
+   cor        #6E675C  →  #4A443B          (5,01:1  →  8,62:1)
+   fonte      Fraunces-Italic  →  Fraunces-Regular   (o itálico serifado
+                                 não segura tinta abaixo de 12 pt)
+   max_pt     10,0 / 10,5      →  11,5
+   min_pt     8,5 / 9,0        →  10,5     (o piso de 8,5 é o que
+                                 deixa o descritor sumir de vez)
+```
+
+E o **corpo do preço** que ficou: `max_pt 20,0 → 23,0`.
+
+## §13.4 · O TESTE QUE IMPEDE ISSO DE ACONTECER DE NOVO
+
+Não aceito "feito" por afirmação. **Este é o teste, e é o mesmo comando que eu rodei:**
+
+```python
+# guardião de tinta — roda sobre a página COMPOSTA
+from collections import Counter
+c = Counter(Image.open(pagina).convert("RGB").getdata())
+assert c[(0x6E,0x67,0x5C)] == 0        # a cor velha não existe mais
+assert c[(0x4A,0x44,0x3B)] > 5_000     # a cor nova está lá, em quantidade
+```
+
+Duas linhas. Vale para qualquer troca de cor decidida daqui pra frente: **cor pedida se prova
+contando pixel na página, nunca lendo o diff.** É a lei do pixel do §12.8 aplicada a cor.
+
+## §13.5 · O Fica a Dica — o que "dica" quer dizer
+
+O dono explicou duas vezes. Não é chamada de compra; é **conteúdo editorial sobre os itens da
+página**:
+
+> *"era pra dar alguma dica dos itens que tem ali pra você fazer um preparo, pra você dar,
+> sei lá, alguma história, alguma coisa assim."*
+
+Com a página de agosto na mão, uma dica legítima seria do tipo *"sardinha em lata + molho de
+tomate Fugini + macarrão Dallas: almoço de domingo por menos de R$ 12"* — **cita produtos que
+estão na página, com os preços que estão na página**.
+
+**Peça:** `gerar_dica` recebe **nome + preço** dos itens da página e o prompt pede
+explicitamente **uma sugestão de uso citando 2–3 produtos daquela página**. Sem IA, o papel fica
+**mudo** (como o `EDICAO` já faz) — melhor vazio que genérico. **A frase cravada em
+`encartes.py:900` sai do código.**

@@ -1226,3 +1226,66 @@ ou Leite · 600g".
   conflito K2 (carimbo sem valor — decisão do dono).
 - "Endurecer vigias" de modal (flake nomeado da bancada).
 - A porta "Completar fotos…" de um clique (v3).
+
+## A ERRATA §13 (04/08) — a resposta do builder à reauditoria de ef27e32
+
+O arquiteto contou a tinta e o placar dele estava certo. Antes do
+inventário técnico, o reconhecimento da falha que importa mais:
+
+### A falha de processo (§13.2) — assumida sem atenuante
+
+O N3 (o cinza do descritor) era o item 5 da Onda 1 e o §5 inteiro da
+ordem, com cor, corpo e a nota do itálico escritos. Eu não o executei
+E não o listei no "ficou de fora" — o relatório saiu como rodada
+completa. **Rodada com item silenciosamente pulado não é rodada
+incompleta — é relatório errado.** A lei da casa (responder com o que
+ficou de fora) existe exatamente para isso e foi descumprida. O
+guardião de tinta do §13.4 agora torna a recorrência impossível de
+passar despercebida: cor pedida se prova CONTANDO PIXEL na página
+composta, nunca lendo o diff.
+
+### O placar da errata, item a item
+
+**N3 — o cinza (era ZERO, agora medido):** SUBTITULO de venda do
+Jornal (linhas, herói e chamadas): `#6E675C` → **#4A443B**,
+`Fraunces-Italic` → **Fraunces-Regular**, corpo **11,5 / piso 10,5**
+(o 8,5 que "deixava sumir de vez" morreu). O `_J_GRAY` inteiro do
+Jornal mudou (ornamentos junto — escurecer nunca perde no papel). E a
+caça pelo pixel achou o segundo esconderijo: a cor velha estava também
+RASTERIZADA NA ARTE (o expediente da BASE, gerado pelo
+`gen_jornal_final.py` com `GRAY='#6E675C'`) — o gerador do pacote foi
+atualizado e as 4 artes do Jornal regeneradas pelo pipeline T6
+(Playwright), pacote reimportado.
+
+**Corpo do preço:** 20 → **23 pt** (cent 12,6 → 14,5) nas células de
+linha. **NOME da p2:** 13,5 → **14,0**.
+
+**N5 — a dica de verdade:** a frase cravada **SAIU do código**
+(`encartes.py`) — o papel DICA nasce MUDO como o EDICAO (vazio >
+genérico; o contrato v2 que afirmava "nasce preenchida" foi invertido
+DE PROPÓSITO). `gerar_dica` agora recebe **nome + preço** dos itens
+("Sardinha (R$ 6,90); …") e o prompt padrão pede **sugestão de uso
+citando 2-3 produtos DA LISTA** — com o exemplo do arquiteto no
+próprio prompt. A guarda anti-alucinação evoluiu sem relaxar: número
+de dinheiro na dica só passa se bater um preço REAL ou a soma de 2-3
+deles (arredondada p/ cima — "menos de R$ 12" p/ 11,39 passa; "R$ 90"
+inventado morre; sem lista de preços, dinheiro segue proibido; %
+segue proibido sempre). As duas portas (menu da Mesa e botão do
+painel) enviam os pares nome+preço.
+
+### O guardião de tinta (§13.4) — permanente na suíte
+
+`test_errata_guardiao_de_tinta_do_cinza`: compõe a p2 REAL do pacote
+com dados de bancada e roda o comando do arquiteto — `#6E675C` == 0 e
+`#4A443B` > 5.000. Prova de mutação: reverter o `_J_GRAY` deixa
+vermelho. Na prova com as fotos reais: p1 velho=12 px / novo=25.800;
+p2 velho=1 px / novo=22.328 — os 12/1 px são ANTI-ALIASING da borda
+do título "PREÇO BAIXO" (letras pretas sobre creme cruzando o valor
+por acaso; conferido no recorte), não tinta de texto.
+
+### Nomeado que fica
+
+- O auto-gerar da dica NA COMPOSIÇÃO (§7 da ordem: o papel DICA chama
+  a IA sozinho ao compor e congela no projeto) — as portas manuais
+  existem; o gatilho automático fica nomeado para a próxima rodada.
+- Os extensos das células ("Detg.", "Papel Hig.", "Leite Int. L.V.").

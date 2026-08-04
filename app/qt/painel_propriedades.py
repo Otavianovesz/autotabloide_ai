@@ -645,7 +645,9 @@ class PainelPropriedades(QWidget):
             mostrar_toast(self, "LM Studio não acessível — escreva a dica à "
                                 "mão ou ligue a IA.", tipo="erro")
             return
-        nomes = self.canvas.nomes_dos_itens()
+        pares = self.canvas.itens_para_dica()   # ERRATA §13.5: nome+preço
+        nomes = [n for n, _p in pares]
+        precos = [p for _n, p in pares]
         if not nomes:
             mostrar_toast(self, "Sem itens compostos ainda — preencha a grade "
                                 "antes de gerar a dica.", tipo="erro")
@@ -671,7 +673,8 @@ class PainelPropriedades(QWidget):
             except Exception:
                 marcas = []
             return gerar_dica(nomes, limite, motor, estilo=estilo,
-                              evitar=evitar, marcas_conhecidas=marcas)
+                              evitar=evitar, marcas_conhecidas=marcas,
+                              precos=precos)
 
         trab = Trabalhador(_tarefa)
 

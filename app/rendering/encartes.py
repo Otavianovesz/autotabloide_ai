@@ -179,6 +179,7 @@ def _slot(sid: str, regioes: list[Regiao], *, origem: tuple,
 _F_ARCHIVO = "Archivo-Bold.ttf"
 _F_FRAUNCES = "Fraunces-SemiBold.ttf"
 _F_FRA_IT = "Fraunces-Italic.ttf"
+_F_FRA_RE = "Fraunces-Regular.ttf"
 _F_NUNITO = "Nunito-Black.ttf"
 _F_ANTON = "Anton-Regular.ttf"
 
@@ -705,7 +706,11 @@ def _sabado() -> list[Slot]:
 # com o PIOR contraste da página — #C9641A dava 3,4:1 sobre o papel
 # (mínimo 4,5). O laranja-queimado escureceu para #A85212 (4,6:1);
 # o vivo #F58634 segue só em FORMA/borda (nunca texto pequeno).
-_J_INK, _J_GRAY, _J_LAR, _J_LARD = ("#201B12", "#6E675C",
+# ERRATA §13.3 da SEPTIMUSDECIMUS: o cinza #6E675C (5,0:1) some na
+# IMPRESSÃO — a régua do encarte é o papel, não a tela. #4A443B dá
+# 8,6:1; vale para o Jornal INTEIRO (o guardião de tinta afirma
+# cor velha == 0 na página composta — ornamento escurecer não perde).
+_J_INK, _J_GRAY, _J_LAR, _J_LARD = ("#201B12", "#4A443B",
                                     "#F58634", "#A85212")
 
 
@@ -735,15 +740,21 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # ATÉ 3 LINHAS (36 px) — marcas E sabores por extenso; a
             # forma "N sabores" foi VETADA pelo dono (risco legal)
             _nome(x + 8, y + 80, 170, 30, fonte=_F_FRAUNCES,
-                  tam=13.5, cor=_J_INK),
-            _sub(x + 8, y + 110, 170, 36, fonte=_F_FRA_IT,
-                 tam=10.0, cor=_J_GRAY),
+                  tam=14.0, cor=_J_INK),
+            # ERRATA §13.3: o descritor deixa o ITÁLICO (a serifa
+            # itálica não segura tinta abaixo de 12 pt no papel) e
+            # sobe de corpo — max 11,5 / piso 10,5 (o 8,5 era o que
+            # deixava o descritor virar poeira); o piso DURO do
+            # compositor segue como exceção anti-tesoura (K3)
+            _sub(x + 8, y + 110, 170, 36, fonte=_F_FRA_RE,
+                 tam=11.5, tam_min=10.5, cor=_J_GRAY),
             # ORDEM do arquiteto: o preço em PESO de verdade — não
             # existe Fraunces Bold no projeto (só Regular/Italic/
-            # SemiBold); o Archivo-Bold já está no pacote
+            # SemiBold); o Archivo-Bold já está no pacote. ERRATA
+            # §13.3: corpo 20→23 (o pedido do §3 que ficou de fora)
             _preco(x + 45, y + 147, 96, 42, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
-                   cor=_J_LARD, tam=20.0, tam_cent=12.6,
+                   cor=_J_LARD, tam=23.0, tam_cent=14.5,
                    centavos_na_base=True),
         ], origem=(x + 4, y)))
 
@@ -782,8 +793,9 @@ def _jornal_p1() -> list[Slot]:
             # nunca tem o menor nome)
             _nome(78, 570, 376, 30, fonte=_F_FRAUNCES,
                   tam=15.0, cor=_J_INK),
-            _sub(78, 602, 376, 20, fonte=_F_FRA_IT,
-                 tam=10.5, cor=_J_GRAY),
+            # ERRATA §13.3: o descritor de venda sem itálico e maior
+            _sub(78, 602, 376, 20, fonte=_F_FRA_RE,
+                 tam=11.5, tam_min=10.5, cor=_J_GRAY),
         ], origem=(74, 328)),
     ]
     splash = next(r for r in slots[0].regioes if r.nome == "Splash")
@@ -807,8 +819,9 @@ def _jornal_p1() -> list[Slot]:
             # até o topo do carimbo) — a lei do dono vale na capa
             _nome(x + 112, y + 14, 162, 28, fonte=_F_FRAUNCES,
                   tam=14.5, cor=_J_INK),
-            _sub(x + 112, y + 44, 162, 26, fonte=_F_FRA_IT,
-                 tam=10.5, cor=_J_GRAY),
+            # ERRATA §13.3: idem — Regular, 11,5/10,5
+            _sub(x + 112, y + 44, 162, 26, fonte=_F_FRA_RE,
+                 tam=11.5, tam_min=10.5, cor=_J_GRAY),
             _preco(x + 146, y + 72, 100, 44, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=21.0, tam_cent=13.2,
@@ -890,16 +903,18 @@ def _jornal_p2() -> list[Slot]:
             # cresceu (650,1188,366×114) e o corpo ganha 3-4 linhas
             # legíveis em coluna de jornal; o título é o chip verde da
             # própria arte (com o lápis)
-            # v2 (K8) → ORDEM do arquiteto: o default editorial NUNCA
-            # afirma período ("o mês inteiro" mentia duas linhas abaixo
-            # de "DE 03/08 ATÉ 27/08") — dica neutra de despensa; a IA/
-            # dono sobrescrevem pela porta VISÍVEL da Mesa (Fica a
-            # Dica…), não mais só pelo botão escondido do editor
+            # ERRATA §13.5: a frase cravada SAIU DO CÓDIGO — dica é
+            # conteúdo editorial sobre OS ITENS DA PÁGINA (a definição
+            # do dono: "dica dos itens que tem ali pra você fazer um
+            # preparo, alguma história"), nunca chamada de compra
+            # genérica. O papel nasce MUDO (como o EDICAO): a IA gera
+            # citando 2-3 produtos com preço, ou o dono escreve pela
+            # porta da Mesa. Sem IA, fica vazio — melhor mudo que
+            # genérico (a caixa vazia não desenha, ramo DICA do
+            # compositor).
             _legal(666, 1226, 336, 70, papel=PapelTexto.DICA,
                    fonte=_F_FRA_IT, nome="Fica a Dica",
-                   texto=("Monte o carrinho pelo Jornal do Mês e "
-                          "aproveite as ofertas para abastecer a "
-                          "despensa de uma vez só."),
+                   texto="",
                    tam=10.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
         ], origem=(650, 1188)),
     ]
