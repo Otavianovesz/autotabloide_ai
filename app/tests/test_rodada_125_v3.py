@@ -606,3 +606,118 @@ def test_duodevicesimus_lei_da_proximidade_no_banco(tmp_path):
                 assert folga > 12.0, (
                     f"{sid}: só {folga:.1f} mm até a foto seguinte")
     assert medidas >= 30, f"só {medidas} células de coluna medidas"
+
+
+def test_undevicesimus_etiqueta_pousa_no_canto_vazio(tmp_path):
+    """§4.1 da UNDEVICESIMUS: a etiqueta que cavalga a foto pousa no
+    canto MAIS VAZIO — foto carregada à direita empurra a etiqueta
+    para a esquerda; foto carregada à esquerda a deixa onde a arte
+    mandou (o canto direito). Por PIXEL na página composta."""
+    from decimal import Decimal
+
+    from PIL import Image
+
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.model import (
+        AlinhamentoV, Alinhamento, FormaPreco, LayoutDef, Pagina,
+        Regiao, Retangulo, Slot, TipoRegiao,
+    )
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    def _pagina(foto_path):
+        sl = Slot("c1", [
+            Regiao(TipoRegiao.IMAGEM, Retangulo(10, 10, 90, 60)),
+            Regiao(TipoRegiao.PRECO, Retangulo(60, 55, 38, 20),
+                   fonte=nome_f, tamanho_max_pt=20,
+                   forma_preco=FormaPreco.CARIMBO,
+                   forma_cor="#F58634", cor="#A85212"),
+        ])
+        lay = LayoutDef(120.0, 90.0, dpi=96,
+                        paginas=[Pagina(slots=[sl])])
+        return lay, lay.paginas[0], {
+            "c1": DadosProduto(nome="X", preco_por=Decimal("9.99"),
+                               imagem_path=str(foto_path))}
+
+    # foto TODA carregada à DIREITA (tinta onde a etiqueta pousaria)
+    f_dir = tmp_path / "dir.png"
+    im = Image.new("RGBA", (600, 400), (0, 0, 0, 0))
+    im.paste((40, 40, 200, 255), (360, 0, 600, 400))
+    im.save(f_dir)
+    lay, pag, dados = _pagina(f_dir)
+    img = compor_pagina(lay, pag, dados, fontes_dir=fontes).convert("RGB")
+    # a metade esquerda da faixa da etiqueta tem o laranja da borda
+    def _tem_carimbo(img, x0, x1):
+        w = img.width
+        faixa = img.crop((int(w * x0), 0, int(w * x1), img.height))
+        return any(abs(r - 0xF5) < 30 and abs(g - 0x86) < 40
+                   and b < 120 for r, g, b in faixa.getdata())
+    assert _tem_carimbo(img, 0.0, 0.45), "a etiqueta não fugiu p/ esq."
+    # foto carregada à ESQUERDA: a etiqueta FICA no canto da arte (dir.)
+    f_esq = tmp_path / "esq.png"
+    im2 = Image.new("RGBA", (600, 400), (0, 0, 0, 0))
+    im2.paste((40, 40, 200, 255), (0, 0, 240, 400))
+    im2.save(f_esq)
+    lay2, pag2, dados2 = _pagina(f_esq)
+    img2 = compor_pagina(lay2, pag2, dados2,
+                         fontes_dir=fontes).convert("RGB")
+    assert _tem_carimbo(img2, 0.5, 1.0), "a etiqueta fugiu sem motivo"
+
+
+def test_undevicesimus_bloco_unico_variancia_zero(tmp_path):
+    """§2/§5.1 da UNDEVICESIMUS: o bloco de texto é UM SÓ — a
+    distância nome→descritor é IDÊNTICA em todas as células de linha
+    (variância zero) e os dois ancoram no TOPO (a sobra cai embaixo,
+    nunca entre eles). O "jogado" tinha nome: duas caixas BASE
+    flutuando. L16: lido do layout no BANCO após o import."""
+    from pathlib import Path
+
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    from app.rendering import encartes
+    from app.rendering.model import AlinhamentoV, TipoRegiao
+    from app.rendering.persistencia import carregar_layout, listar_layouts
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    raiz = SystemRoot(tmp_path / "raiz")
+    db = Database(raiz).init()
+    try:
+        with db.Session() as s:
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            reg = next(r for r in listar_layouts(s)
+                       if r.nome == "Jornal do Mês")
+            lay = carregar_layout(s, reg.id, raiz=raiz)
+    finally:
+        db.engine.dispose()
+    gaps = set()
+    n = 0
+    for pag in lay.paginas:
+        for sl in pag.slots:
+            nome = next((r for r in sl.regioes
+                         if r.tipo == TipoRegiao.NOME), None)
+            sub = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.SUBTITULO), None)
+            img = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.IMAGEM), None)
+            if nome is None or sub is None or img is None:
+                continue
+            # só a família das células de COLUNA (bloco abaixo da
+            # foto) — o herói é editorial e a chamada é lateral
+            if nome.rect.y_mm < img.rect.y_mm + img.rect.alt_mm - 1.0:
+                continue
+            # H1: âncora única no TOPO — nos dois
+            assert nome.alinhamento_v == AlinhamentoV.TOPO, sl.id
+            assert sub.alinhamento_v == AlinhamentoV.TOPO, sl.id
+            # H2: a entrelinha é POSIÇÃO (topo a topo), não caixa
+            gaps.add(round(sub.rect.y_mm - nome.rect.y_mm, 2))
+            n += 1
+    assert n >= 30, f"só {n} células medidas"
+    assert len(gaps) == 1, f"entrelinhas diferentes: {sorted(gaps)}"

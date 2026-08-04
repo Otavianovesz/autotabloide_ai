@@ -625,6 +625,57 @@ def _desenhar_forma_preco(base: Image.Image, reg: Regiao, dpi: int) -> None:
     base.paste(tile, (x - m, y - m), tile)
 
 
+def _tinta_no_rect(base: Image.Image, x: int, y: int, w: int,
+                   h: int) -> float:
+    """Fração de pixels que NÃO são papel na área (dist > 40 do creme
+    #F7F3E9) — a régua do pouso da etiqueta (§4.1)."""
+    x0, y0 = max(0, x), max(0, y)
+    x1 = min(base.width, x + w)
+    y1 = min(base.height, y + h)
+    if x1 <= x0 or y1 <= y0:
+        return 1.0
+    reg = base.crop((x0, y0, x1, y1)).convert("RGB")
+    reg.thumbnail((48, 24))              # amostra barata
+    px = list(reg.getdata())
+    fora = sum(1 for r, g, b in px
+               if abs(r - 0xF7) + abs(g - 0xF3) + abs(b - 0xE9) > 120)
+    return fora / max(1, len(px))
+
+
+def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
+    """UNDEVICESIMUS §4.1: quando a etiqueta SOBREPÕE a zona da foto,
+    compara a posição da arte (canto direito) com a ESPELHADA (canto
+    esquerdo) e pousa na de menor tinta — com histerese (só muda se o
+    espelho for CLARAMENTE mais limpo) para não tremer entre edições.
+    Devolve o rect novo em mm, ou None (fica onde a arte mandou)."""
+    from app.rendering.model import Retangulo, TipoRegiao as _TR
+    img = next((r for r in regioes
+                if r.tipo == _TR.IMAGEM and r.visivel), None)
+    if img is None:
+        return None
+    r_img = rects_subst.get(img.uid) or img.rect
+    rp = reg_preco.rect
+    # só interessa quando a etiqueta cruza a zona da foto (o Jornal)
+    if not (rp.x_mm < r_img.x_mm + r_img.larg_mm
+            and rp.x_mm + rp.larg_mm > r_img.x_mm
+            and rp.y_mm < r_img.y_mm + r_img.alt_mm
+            and rp.y_mm + rp.alt_mm > r_img.y_mm):
+        return None
+    # o espelho horizontal em torno do centro da zona da foto
+    x_esp = 2 * r_img.x_mm + r_img.larg_mm - rp.x_mm - rp.larg_mm
+    if abs(x_esp - rp.x_mm) < 1.0:       # centrado: nada a decidir
+        return None
+    def _px(v):
+        return round(mm_para_px(v, dpi))
+    atual = _tinta_no_rect(base, _px(rp.x_mm), _px(rp.y_mm),
+                           _px(rp.larg_mm), _px(rp.alt_mm))
+    espelho = _tinta_no_rect(base, _px(x_esp), _px(rp.y_mm),
+                             _px(rp.larg_mm), _px(rp.alt_mm))
+    if espelho < atual * 0.7:            # claramente mais limpo
+        return Retangulo(x_esp, rp.y_mm, rp.larg_mm, rp.alt_mm)
+    return None
+
+
 def _regiao_palco_da_forma(reg: Regiao) -> Regiao:
     """F13-BIS/T1: a sub-caixa ÚTIL da forma, onde o texto do preço vive.
 
@@ -786,16 +837,28 @@ def _desenhar_preco(
     x0 = cursor                                            # início (p/ o riscado)
     baseline = y + (rh + alt_g) / 2 - f_g.getmetrics()[1]  # centraliza vertical
 
+    # UNDEVICESIMUS §4.4: NÚMEROS TABULARES no preço (tnum) — os
+    # dígitos ganham a mesma largura e os preços alinham dígito a
+    # dígito entre células. BEST-EFFORT declarado: fontes carregadas
+    # com layout BASIC (sem Raqm) recusam `features` com KeyError —
+    # o refinamento NUNCA derruba o desenho (caiu nas etiquetas em
+    # lote do marco na 1ª bancada); sem a feature, sai como sempre.
+    def _texto_preco(xy, txt, fonte_d):
+        try:
+            draw.text(xy, txt, font=fonte_d, fill=reg.cor, anchor="ls",
+                      features=["tnum"])
+        except (KeyError, TypeError):
+            draw.text(xy, txt, font=fonte_d, fill=reg.cor, anchor="ls")
     if prefixo:
-        draw.text((cursor, baseline), prefixo, font=f_p, fill=reg.cor, anchor="ls")
+        _texto_preco((cursor, baseline), prefixo, f_p)
     cursor += w_prefixo
-    draw.text((cursor, baseline), reais, font=f_g, fill=reg.cor, anchor="ls")
+    _texto_preco((cursor, baseline), reais, f_g)
     cursor += w_reais
     # centavos: sobrescritos (o padrão de sempre) ou na MESMA baseline
     # (F13-BIS/T1 — os selos/discos/bandeiras do pacote)
     baseline_cent = baseline if reg.centavos_na_base \
         else baseline - (asc_g - asc_p)
-    draw.text((cursor, baseline_cent), "," + centavos, font=f_p, fill=reg.cor, anchor="ls")
+    _texto_preco((cursor, baseline_cent), "," + centavos, f_p)
 
     if reg.riscado:   # traço sobre o preço inteiro (o "de" do cartaz)
         meio = baseline - asc_g * 0.32
@@ -1309,6 +1372,17 @@ def compor_pagina(
             campos: dict = {}
             if novo_rect:
                 campos["rect"] = novo_rect
+            # UNDEVICESIMUS §4.1: a etiqueta que CAVALGA a foto pousa
+            # no canto MAIS VAZIO dela — ia sempre ao mesmo canto e
+            # podia cobrir o rótulo (a Nutella, a tampa do Danone).
+            # Mede a tinta JÁ PINTADA na base (a foto real, não a
+            # caixa) nas duas posições e fica com a mais limpa.
+            if (reg.tipo == TipoRegiao.PRECO and reg.visivel
+                    and novo_rect is None):
+                r_alt = _canto_mais_vazio(base, reg, slot.regioes,
+                                          rects_subst, dpi_ef)
+                if r_alt is not None:
+                    campos["rect"] = r_alt
             if reg.tipo == TipoRegiao.NOME and reg.visivel \
                     and not (aj_nome is not None and aj_nome.piso_cedeu):
                 # (piso_cedeu: sem SUBTITULO o piso cede antes da

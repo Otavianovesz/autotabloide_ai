@@ -109,24 +109,29 @@ def _img(x, y, w, h, rot=0.0, flex=False) -> Regiao:
 
 
 def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
-          tam=48.0, tam_min=None, cor="#000000") -> Regiao:
+          tam=48.0, tam_min=None, cor="#000000",
+          alin_v=AlinhamentoV.BASE) -> Regiao:
     # F13-BIS/T5: nas células estreitas dos encartes, hifenizar é
     # PROIBIDO — o corpo cede ("CERVEJA ITAPA-VA" virou prova).
     # F13-OCTAVUS/C1 + NONUS/N2: o corpo tem PISO com FAIXA — por
     # padrão o corpo cede no máximo UM degrau (tam−3); abaixo disso a
     # precedência do N1 encurta o nome pelo descritor (nunca encolhe a
     # ilegível, nunca elipsa sem avisar). O 6.0 inerte morreu aqui.
+    # UNDEVICESIMUS/H1: o BASE dentro de caixa folgada era uma das
+    # duas folgas flutuantes do "jogado" — as células de bloco único
+    # pedem TOPO explícito.
     return Regiao(TipoRegiao.NOME, _r(x, y, w, h), nome="Nome",
                   fonte=fonte, alinhamento=alin, cor=cor,
                   tamanho_max_pt=tam,
                   tamanho_min_pt=(tam_min if tam_min is not None
                                   else min(tam, max(tam - 3.0, 6.5))),
                   sem_hifen=True,
-                  alinhamento_v=AlinhamentoV.BASE, rotacao_graus=rot)
+                  alinhamento_v=alin_v, rotacao_graus=rot)
 
 
 def _sub(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
-         tam=48.0, tam_min=None, cor="#000000") -> Regiao:
+         tam=48.0, tam_min=None, cor="#000000",
+         alin_v=AlinhamentoV.BASE) -> Regiao:
     # F13-BIS/T2: a linha de DESCRITOR do modelo (região SUBTITULO).
     # F13-NONUS/N2: com piso — o descritor é 1 linha curta; melhor
     # manter o corpo e ceder meio degrau (tam−1,5) do que virar poeira
@@ -136,7 +141,7 @@ def _sub(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
                   tamanho_min_pt=(tam_min if tam_min is not None
                                   else min(tam, max(tam - 1.5, 6.5))),
                   sem_hifen=True,
-                  alinhamento_v=AlinhamentoV.BASE, rotacao_graus=rot)
+                  alinhamento_v=alin_v, rotacao_graus=rot)
 
 
 def _preco(x, y, w, h, *, fonte, rot=0.0, forma=None, forma_cor=None,
@@ -745,17 +750,23 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=23.0, tam_cent=14.5,
                    centavos_na_base=True),
-            # v4 (a LEI do dono): NENHUMA informação é comida — nome e
-            # descritor abaixo, com o respiro do carimbo rotacionado
-            _nome(x + 8, y + 108, 170, 28, fonte=_F_FRAUNCES,
-                  tam=14.0, cor=_J_INK),
-            # ERRATA §13.3: o descritor deixa o ITÁLICO (a serifa
-            # itálica não segura tinta abaixo de 12 pt no papel) e
-            # sobe de corpo — max 11,5 / piso 10,5 (o 8,5 era o que
-            # deixava o descritor virar poeira); o piso DURO do
-            # compositor segue como exceção anti-tesoura (K3)
-            _sub(x + 8, y + 138, 170, 34, fonte=_F_FRA_RE,
-                 tam=11.5, tam_min=10.5, cor=_J_GRAY),
+            # UNDEVICESIMUS §2 — O BLOCO É UM SÓ (o "jogado" medido:
+            # nome BASE em caixa de 7,4mm + descritor BASE em caixa de
+            # 9mm = DUAS folgas flutuantes; célula de 1 linha abria
+            # 3,9mm de buraco, a de 2 linhas zero). H1: âncora ÚNICA
+            # no TOPO — a sobra cai EMBAIXO do bloco, igual em todas.
+            # H2: a entrelinha nome→descritor é POSIÇÃO fixa (22px =
+            # 5,8mm ≈ 1,15× o corpo do nome), nunca a altura da caixa.
+            # v4 (a LEI do dono) segue: nada é comido — o descritor
+            # ainda pode 2 linhas quando o extenso exigir (o conflito
+            # H3-contagem × lei-v4 está DECLARADO para o dono).
+            _nome(x + 8, y + 108, 170, 24, fonte=_F_FRAUNCES,
+                  tam=14.0, cor=_J_INK, alin_v=AlinhamentoV.TOPO),
+            # ERRATA §13.3: sem itálico, 11,5/10,5 (o piso DURO do
+            # compositor segue como exceção anti-tesoura, K3)
+            _sub(x + 8, y + 130, 170, 34, fonte=_F_FRA_RE,
+                 tam=11.5, tam_min=10.5, cor=_J_GRAY,
+                 alin_v=AlinhamentoV.TOPO),
         ], origem=(x + 4, y)))
 
 
@@ -820,11 +831,14 @@ def _jornal_p1() -> list[Slot]:
             # na zona de foto da vizinha (que desenha DEPOIS e cobria)
             # v4: o descritor da chamada ganha a 2ª linha (19→26 px,
             # até o topo do carimbo) — a lei do dono vale na capa
-            _nome(x + 112, y + 14, 162, 28, fonte=_F_FRAUNCES,
-                  tam=14.5, cor=_J_INK),
+            # UNDEVICESIMUS/H1+H2: o bloco único também nas chamadas
+            # (âncora no TOPO, gap de posição 23px ≈ 1,15× o corpo)
+            _nome(x + 112, y + 14, 162, 24, fonte=_F_FRAUNCES,
+                  tam=14.5, cor=_J_INK, alin_v=AlinhamentoV.TOPO),
             # ERRATA §13.3: idem — Regular, 11,5/10,5
-            _sub(x + 112, y + 44, 162, 26, fonte=_F_FRA_RE,
-                 tam=11.5, tam_min=10.5, cor=_J_GRAY),
+            _sub(x + 112, y + 38, 162, 26, fonte=_F_FRA_RE,
+                 tam=11.5, tam_min=10.5, cor=_J_GRAY,
+                 alin_v=AlinhamentoV.TOPO),
             _preco(x + 146, y + 72, 100, 44, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=21.0, tam_cent=13.2,

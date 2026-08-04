@@ -1366,3 +1366,68 @@ desenha vazia (41 — as pautas são da ARTE; o plano: a caixa sai da
 BASE e vira desenho condicional); os extensos (33/34); a validade 2×
 (42); o "SE É B" 2× (43); a edição na p1 (44); preço por unidade de
 medida (45); estoques/limite (46); e os demais de F.
+
+## A ORDEM UNDEVICESIMUS (04/08) — a resposta do builder
+
+### §0 — a errata do arquiteto, registrada
+
+O item zero da DUODEVICESIMUS era leitura sem o WAL (a foto velha do
+`core.db` sem o `-wal` de 2,6 MB) — o arquiteto corrigiu a si mesmo
+com todas as letras. O registro desta casa: a L16 FICA (boa lei), o
+teste gerador→banco FICA (fecha o furo para sempre, qualquer que
+fosse a causa), e a LEI DO WAL entrou na memória de bancada: medir
+SQLite em WAL = as três peças ou `VACUUM INTO`.
+
+### §2 — O BLOCO É UM SÓ (H1+H2, o "jogado" morre)
+
+O diagnóstico dele: nome BASE numa caixa de 7,4 mm + descritor BASE
+numa caixa de 9,0 mm = duas folgas flutuantes; célula de 1 linha
+abria 3,9 mm de buraco, a de 2 linhas zero. O conserto no gerador
+(células de linha E chamadas): **âncora única no TOPO** (H1 — a sobra
+cai embaixo do bloco, igual em todas) e **entrelinha de POSIÇÃO fixa**
+(H2 — 22 px ≈ 1,15× o corpo do nome, nunca a altura da caixa).
+Guardião `test_undevicesimus_bloco_unico_variancia_zero` (L16: lê o
+layout do banco após o import): TOPO nos dois + variância ZERO do gap
+nas 37 células de coluna; mutação TOPO→BASE = vermelho (a mutação do
+gap uniforme não morde DE PROPÓSITO — o helper único muda todas
+juntas, que é a força do desenho).
+
+### §3 — a escolha A/B para o dono
+
+`saida_f13/jm-escolha-A-B.png`: a p2 REAL composta nas duas versões
+lado a lado, rotuladas — **A centrado** (do banco) × **B à esquerda**
+(variante em memória; nada foi gravado). A decisão é do dono; o voto
+do arquiteto (B no miolo, centrado na capa) vai anotado.
+
+### §4 — os refinos executados
+
+- **§4.1 a etiqueta pousa no canto MAIS VAZIO:** quando o carimbo
+  cavalga a foto, o compositor compara a posição da arte com a
+  ESPELHADA (medindo a tinta JÁ PINTADA na base — a foto real) e fica
+  na mais limpa, com histerese (só muda se claramente melhor).
+  `_canto_mais_vazio` + teste por pixel (foto carregada à direita
+  empurra a etiqueta à esquerda; à esquerda, fica) + mutação.
+- **§4.4 números tabulares:** Raqm presente E o Archivo-Bold tem
+  `tnum` — ligado no desenho do preço (dígito alinha com dígito entre
+  células; fonte sem a feature ignora em silêncio).
+- **§4.3 peso no fim:** já era a ordem canônica (v2) — afirmado.
+- **§4.5 centavos ≥55%:** já cumprido (14,5/23 = 63%).
+
+### Conflito DECLARADO (não executado sem o dono)
+
+**H3 — "conta em vez de listar" ("Bulnez · 4 sabores · 270 g"):** a
+forma compacta foi VETADA pelo dono na v4 ("não fica bom e pode dar
+processo" — informação de venda por extenso é obrigação legal). O
+arquiteto agora a pede de volta como regra de 1 linha. Enquanto o
+dono não desempatar: o descritor busca 1 linha (o corte por
+prioridade existente), e onde o extenso NÃO cabe (o Biscoito, a
+Sardinha) ele vai a 2 linhas — a lei do dono vence o H3 até segunda
+ordem. Com o bloco único, a 2ª linha desce com a MESMA entrelinha
+(harmônica, não quebrada).
+
+### Ficou de fora (nomeado)
+
+§4.6 (normalizar pela área ÓPTICA de tinta — Yoki × Kitubaina) e
+§4.7 (o herói é escolha do dono — o gesto "destacar" na Mesa); a
+vírgula menor que os centavos (§4.5, ganho marginal); e as Ondas 2-4
+da DUODEVICESIMUS que seguem na fila.
