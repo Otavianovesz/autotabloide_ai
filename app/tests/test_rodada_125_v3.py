@@ -815,3 +815,120 @@ def test_s7_dica_ou_texto_ou_nada(tmp_path):
                          fontes_dir=fontes).convert("RGB")
     c2 = Counter(img2.getdata())
     assert c2[verde] == 0, "dica VAZIA desenhou moldura"
+
+
+def test_vicesimus_a_zona_e_em_pe(tmp_path):
+    """L17 da VICESIMUS: ANTES DE ESCALAR, MEÇA A PROPORÇÃO — a zona
+    de foto de encarte de mercado nunca é mais larga que alta demais
+    (proporção ≤ 1,2; estava 1,53 e o produto em pé parava na altura
+    com 71% da caixa vazia). Teste de TABELA, lido do banco (L16)."""
+    from pathlib import Path
+
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    from app.rendering import encartes
+    from app.rendering.model import TipoRegiao
+    from app.rendering.persistencia import carregar_layout, listar_layouts
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    raiz = SystemRoot(tmp_path / "raiz")
+    db = Database(raiz).init()
+    try:
+        with db.Session() as s:
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            reg = next(r for r in listar_layouts(s)
+                       if r.nome == "Jornal do Mês")
+            lay = carregar_layout(s, reg.id, raiz=raiz)
+    finally:
+        db.engine.dispose()
+    n = 0
+    for pag in lay.paginas:
+        for sl in pag.slots:
+            img = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.IMAGEM), None)
+            nome = next((r for r in sl.regioes
+                         if r.tipo == TipoRegiao.NOME), None)
+            if img is None or nome is None:
+                continue
+            if nome.rect.y_mm < img.rect.y_mm + img.rect.alt_mm - 1.0:
+                continue                 # herói/chamada: outra família
+            prop = img.rect.larg_mm / img.rect.alt_mm
+            assert prop <= 1.2, (
+                f"{sl.id}: zona DEITADA ({prop:.2f}) — o produto em "
+                "pé para na altura")
+            n += 1
+    assert n >= 30, f"só {n} zonas medidas"
+
+
+def test_vicesimus_etiqueta_encostada_e_sem_barriga(tmp_path):
+    """§3.1/§3.2 da VICESIMUS (pelas silhuetas e pousos REGISTRADOS
+    na composição): a etiqueta AO LADO fica ENCOSTADA (folga ≤ 3 mm
+    da tinta) e a que morde nunca invade mais de 25% da tinta do
+    produto — nas duas geometrias (garrafa estreita e saco largo)."""
+    from decimal import Decimal
+
+    from PIL import Image
+
+    from app.rendering.compositor import (DadosProduto, compor_pagina,
+                                          mm_para_px)
+    from app.rendering.model import (
+        FormaPreco, LayoutDef, Pagina, Regiao, Retangulo, Slot,
+        TipoRegiao,
+    )
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    from app.rendering.model import Ajuste
+
+    def _celula(sid, x0, foto_path):
+        return Slot(sid, [
+            Regiao(TipoRegiao.IMAGEM, Retangulo(x0, 10, 47, 40),
+                   ajuste=Ajuste.ASSENTAR),
+            Regiao(TipoRegiao.PRECO, Retangulo(x0 + 23, 40, 25, 11),
+                   fonte=nome_f, tamanho_max_pt=20,
+                   forma_preco=FormaPreco.CARIMBO,
+                   forma_cor="#F58634", cor="#A85212"),
+        ])
+
+    garrafa = tmp_path / "garrafa.png"
+    im = Image.new("RGBA", (200, 800), (0, 0, 0, 0))
+    im.paste((60, 60, 160, 255), (60, 0, 140, 800))
+    im.save(garrafa)
+    saco = tmp_path / "saco.png"
+    im2 = Image.new("RGBA", (700, 600), (0, 0, 0, 0))
+    im2.paste((200, 170, 40, 255), (10, 10, 690, 590))
+    im2.save(saco)
+    lay = LayoutDef(120.0, 70.0, dpi=96, paginas=[Pagina(slots=[
+        _celula("estreita", 5, garrafa), _celula("larga", 60, saco)])])
+    pag = lay.paginas[0]
+    dados = {
+        "estreita": DadosProduto(nome="G", preco_por=Decimal("9.99"),
+                                 imagem_path=str(garrafa)),
+        "larga": DadosProduto(nome="S", preco_por=Decimal("9.99"),
+                              imagem_path=str(saco)),
+    }
+    img = compor_pagina(lay, pag, dados, fontes_dir=fontes)
+    sils = img._silhuetas
+    pousos = img._pousos
+    ppm = mm_para_px(1.0, 96)
+    for sl in pag.slots:
+        rimg, rpr = sl.regioes
+        ox, oy, nw, nh = sils[rimg.uid]
+        sx0, sx1 = ox / ppm, (ox + nw) / ppm
+        sy0, sy1 = oy / ppm, (oy + nh) / ppm
+        pr = pousos[rpr.uid]
+        ix = max(0.0, min(pr.x_mm + pr.larg_mm, sx1) - max(pr.x_mm, sx0))
+        iy = max(0.0, min(pr.y_mm + pr.alt_mm, sy1) - max(pr.y_mm, sy0))
+        inv = (ix * iy) / max((sx1 - sx0) * (sy1 - sy0), 1e-6)
+        assert inv <= 0.25, f"{sl.id}: invade {inv:.0%} da tinta"
+        if ix * iy <= 0:                 # pousou AO LADO: encostada
+            folga = max(pr.x_mm - sx1, sx0 - (pr.x_mm + pr.larg_mm))
+            assert folga <= 3.0, f"{sl.id}: a {folga:.1f} mm da tinta"

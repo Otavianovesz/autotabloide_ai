@@ -745,18 +745,20 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # F13-TER: a foto sobe até o fio da linha (recolado).
             # J25: zona_flex — o FIO é filete separador, não "veste" a
             # célula (a guarda do foto_fit aprendeu a diferença).
-            # DUODEVICESIMUS §1 (a LEI DA PROXIMIDADE): a foto CRESCE
-            # (100→116 px) e o carimbo de preço SOBREPÕE o canto
-            # inferior direito dela — o clássico dos encartes: o preço
-            # "gruda" no produto. Antes: 17,7 mm até o próprio produto
-            # e −1,8 mm até o seguinte (o olho agrupava ERRADO).
-            # §7.2 (a decisão B, com a correção do arquiteto): a foto
-            # encosta à ESQUERDA junto com o texto — UM eixo por coluna
-            _img(x + 4, y - 20, 178, 116, flex=True,
+            # DUODEVICESIMUS §1 (proximidade) + VICESIMUS §1-2: a zona
+            # de foto estava DEITADA (47,1×30,7 mm = 1,53) para produto
+            # EM PÉ (~0,45) — o produto parava na altura e 71% da caixa
+            # ficava vazia. A zona agora é 47,1×40 mm (178×151 px,
+            # proporção 1,18): o produto cresce ~30%. L17: antes de
+            # escalar, MEÇA A PROPORÇÃO — quem manda nela é o produto.
+            # §7.2 (a decisão B): a foto encosta à ESQUERDA (um eixo).
+            _img(x + 4, y - 20, 178, 151, flex=True,
                  alin=Alinhamento.ESQUERDA),
             # o carimbo DEPOIS da foto na lista (L-C: preço é a última
-            # camada) — cavalga a borda direita, sobrepondo ~36 px
-            _preco(x + 90, y + 60, 96, 42, fonte=_F_ARCHIVO, rot=rot,
+            # camada) — morde o canto INFERIOR direito (36 px sobre a
+            # base da tinta, nunca a barriga); o pouso fino é do
+            # compositor (pela silhueta)
+            _preco(x + 90, y + 95, 96, 42, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=23.0, tam_cent=14.5,
                    centavos_na_base=True),
@@ -770,12 +772,13 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # v4 (a LEI do dono) segue: nada é comido — o descritor
             # ainda pode 2 linhas quando o extenso exigir (o conflito
             # H3-contagem × lei-v4 está DECLARADO para o dono).
-            _nome(x + 8, y + 108, 170, 24, fonte=_F_FRAUNCES,
+            _nome(x + 8, y + 143, 170, 22, fonte=_F_FRAUNCES,
                   tam=14.0, cor=_J_INK, alin_v=AlinhamentoV.TOPO,
                   alin=Alinhamento.ESQUERDA),
             # ERRATA §13.3: sem itálico, 11,5/10,5 (o piso DURO do
-            # compositor segue como exceção anti-tesoura, K3)
-            _sub(x + 8, y + 130, 170, 34, fonte=_F_FRA_RE,
+            # compositor segue como exceção anti-tesoura, K3);
+            # UNDEVICESIMUS/H2: a entrelinha segue 22 px de POSIÇÃO
+            _sub(x + 8, y + 165, 170, 32, fonte=_F_FRA_RE,
                  tam=11.5, tam_min=10.5, cor=_J_GRAY,
                  alin_v=AlinhamentoV.TOPO, alin=Alinhamento.ESQUERDA),
         ], origem=(x + 4, y)))
@@ -855,9 +858,10 @@ def _jornal_p1() -> list[Slot]:
                    cor=_J_LARD, tam=21.0, tam_cent=13.2,
                    centavos_na_base=True),
         ], origem=(x, y)))
+    # VICESIMUS §2: a célula em pé (217 px) — passo 218
     _jornal_linha("jp1", slots, 660, 5, 1)
-    _jornal_linha("jp1", slots, 882, 5, 6)
-    _jornal_linha("jp1", slots, 1104, 5, 11)
+    _jornal_linha("jp1", slots, 878, 5, 6)
+    _jornal_linha("jp1", slots, 1096, 5, 11)
     slots += [
         _slot("jp1-cabecalho", [
             # o período EDITÁVEL do F8 — o BASE regenerado (T6) está
@@ -906,9 +910,12 @@ def _jornal_p2() -> list[Slot]:
     de pagamento começa em y=1000 (a 4ª linha termina em 987) e o
     expediente em y=1214 (a linha final, à esquerda, termina em 1209)."""
     slots: list[Slot] = []
-    for i, y in enumerate((132, 354, 576, 798)):
+    # VICESIMUS §2: 5 fileiras com a célula em pé (zona 40 mm) — o
+    # quadro de pagamento ocupa a LACUNA da 5ª fileira (§3.5/§3.8) e
+    # o expediente+dica dividem o rodapé
+    for i, y in enumerate((132, 350, 568, 786)):
         _jornal_linha("jp2", slots, y, 5, 1 + i * 5)
-    _jornal_linha("jp2", slots, 1020, 2, 21)   # a linha final: só 2
+    _jornal_linha("jp2", slots, 1004, 2, 21)   # a linha final: só 2
     slots += [
         _slot("jp2-cabecalho", [
             # o BASE regenerado (T6) está limpo — o título volta
@@ -940,11 +947,13 @@ def _jornal_p2() -> list[Slot]:
             # porta da Mesa. Sem IA, fica vazio — melhor mudo que
             # genérico (a caixa vazia não desenha, ramo DICA do
             # compositor).
-            _legal(666, 1226, 336, 70, papel=PapelTexto.DICA,
+            # VICESIMUS §2/§3.5: a dica mora no RODAPÉ direito (o
+            # quadro de pagamento subiu para a lacuna da 5ª fileira)
+            _legal(666, 1252, 336, 60, papel=PapelTexto.DICA,
                    fonte=_F_FRA_IT, nome="Fica a Dica",
                    texto="",
                    tam=10.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
-        ], origem=(650, 1188)),
+        ], origem=(650, 1214)),
     ]
     return slots
 

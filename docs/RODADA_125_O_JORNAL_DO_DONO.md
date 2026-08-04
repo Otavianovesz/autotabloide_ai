@@ -1484,3 +1484,51 @@ NOME fixa — pegava o PNG VELHO da raiz. A prova agora carrega o
 layout pelo `carregar_layout` e usa o `arquivo_fundo` REAL do banco —
 a L16 valia para a geometria e furava no fundo; furava mais: está
 fechada nas duas pontas.
+
+## A ORDEM VICESIMUS (04/08) — a resposta do builder
+
+### §1-§2 — a zona estava DEITADA (a conta de uma linha)
+
+47,1 ÷ 30,7 = 1,53 para produto de ~0,45: o produto em pé parava na
+altura e 71% da caixa ficava vazia — por isso só os 4 produtos
+DEITADOS pareciam do tamanho certo. A zona agora é **47,1 × 40 mm
+(1,18)** nas células de linha das DUAS páginas (célula 217 px, passo
+218): o produto cresceu ~30%. A arte da p2 se redesenhou: o quadro de
+pagamento OCUPA A LACUNA da 5ª fileira (12 bandeiras em 2 fileiras de
+6 — §3.5/§3.8), o expediente virou 2 linhas compactas (§3.10) e a
+dica mora no rodapé direito. **L17 registrada e executável**
+(`test_vicesimus_a_zona_e_em_pe`: proporção ≤ 1,2 lida do banco).
+
+### §3 — os problemas, medidos
+
+- **§3.1/§3.2 (etiqueta longe / na barriga):** com a zona em pé e o
+  pouso pela silhueta, MEDIDO nas 34 células reais: **folga máxima
+  0,8 mm** (≤3) e **invasão máxima 14%** da tinta (≤25) — zero
+  violações nas duas páginas. Guardião permanente
+  `test_vicesimus_etiqueta_encostada_e_sem_barriga` (garrafa estreita
+  E saco largo, pelas silhuetas/pousos registrados).
+- **§3.3 (+18 no gargalo):** a âncora dos selos DESVIA da silhueta —
+  com faixa livre ao lado da tinta (≥9 mm), o selo pousa no vão;
+  o Campari saiu do gargalo.
+- **§3.4 (fotos cortadas):** com a zona nova, nenhuma foto corta nas
+  duas páginas recompostas (o ASSENTAR escala pelo lado limitante).
+- **§3.5 (o vão da dica):** o quadro de pagamento ocupa a lacuna da
+  5ª fileira SEMPRE; sem dica, o rodapé tem expediente + slogan (o
+  vão residual à direita é menor que uma célula em área).
+- **§3.9 (extensos):** higienização nominal com backup
+  (`core_pre_vicesimus_20260804.db`): id 50 "Leite Integral L.V.",
+  id 104 "Detergente", id 112 "Papel Higiênico". A pendência dos
+  abreviados morreu.
+- **Altura da tinta (§4.2):** mediana 100% nas células de coluna; os
+  mínimos (28-31%) são os produtos DEITADOS — a física invertida
+  (esperada); o conserto real segue sendo a área óptica (§3.7/4.6,
+  nomeado).
+
+### Ficou de fora (nomeado)
+
+§3.6 (o Biscoito de 3 pacotes embolados — conteúdo de foto do
+acervo, como o Kolynos×Sorriso: curadoria do dono), §3.7 (área
+óptica), e **§3.11 (a MARCA no nome) segue esperando a PALAVRA DO
+DONO** — o arquiteto a chama de "a maior perda de venda da página";
+a decisão reverte a hierarquia que o dono ditou na v2 e só ele
+desempata.

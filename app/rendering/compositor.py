@@ -1471,6 +1471,11 @@ def compor_pagina(
                                           rects_subst, dpi_ef)
                 if r_alt is not None:
                     campos["rect"] = r_alt
+                # o pouso FINAL fica registrado (diagnóstico §4 da
+                # VICESIMUS: folga/invasão medem-se no efetivo)
+                if not hasattr(base, "_pousos"):
+                    base._pousos = {}
+                base._pousos[reg.uid] = r_alt or reg.rect
             if reg.tipo == TipoRegiao.NOME and reg.visivel \
                     and not (aj_nome is not None and aj_nome.piso_cedeu):
                 # (piso_cedeu: sem SUBTITULO o piso cede antes da
@@ -1490,9 +1495,23 @@ def compor_pagina(
         # rects EFETIVOS (o Q1 pode ter movido a zona da foto)
         selos = _selos_do_produto(d)
         if selos:
-            desenhar_selos(base,
-                           _ancora_selos_slot(
-                               slot, dpi_ef, w, h, rects_subst,
-                               com_foto=bool(d.imagem_path or d.imagens)),
-                           selos, fontes_dir / "Roboto-Bold.ttf")
+            anc = _ancora_selos_slot(
+                slot, dpi_ef, w, h, rects_subst,
+                com_foto=bool(d.imagem_path or d.imagens))
+            # VICESIMUS §3.3: o selo é AVISO LEGAL — nunca sobre a
+            # tinta do produto (o +18 pousava no gargalo do Campari).
+            # Com a silhueta registrada e faixa livre ao lado, a
+            # âncora desvia para o vão à direita da tinta.
+            uid_img = next((r.uid for r in slot.regioes
+                            if r.tipo == TipoRegiao.IMAGEM
+                            and r.visivel), None)
+            sil = getattr(base, "_silhuetas", {}).get(uid_img)
+            if sil:
+                ox, _oy, nw, _nh = sil
+                ax, ay, aw, ah = anc
+                livre = (ax + aw) - (ox + nw)
+                if livre > mm_para_px(9, dpi_ef):
+                    anc = (ox + nw, ay, livre, ah)
+            desenhar_selos(base, anc, selos,
+                           fontes_dir / "Roboto-Bold.ttf")
     return base
