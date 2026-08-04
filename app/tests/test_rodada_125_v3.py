@@ -768,7 +768,10 @@ def test_s7_um_eixo_por_coluna_no_banco(tmp_path):
                 continue                 # herói/chamada: outra família
             assert nome.alinhamento == Alinhamento.ESQUERDA, sl.id
             assert sub.alinhamento == Alinhamento.ESQUERDA, sl.id
-            assert img.alinhamento == Alinhamento.ESQUERDA, sl.id
+            # VICESIMUS-PRIMUS/P1 (supera o §7.2 DE PROPÓSITO): a
+            # FOTO centra (o centro óptico é do motor) — só o TEXTO
+            # é tipográfico e assenta na margem (L18)
+            assert img.alinhamento == Alinhamento.CENTRO, sl.id
             assert pr.rotacao_graus == 0.0, (sl.id, pr.rotacao_graus)
             n += 1
     assert n >= 30, f"só {n} células medidas"
@@ -932,3 +935,67 @@ def test_vicesimus_etiqueta_encostada_e_sem_barriga(tmp_path):
         if ix * iy <= 0:                 # pousou AO LADO: encostada
             folga = max(pr.x_mm - sx1, sx0 - (pr.x_mm + pr.larg_mm))
             assert folga <= 3.0, f"{sl.id}: a {folga:.1f} mm da tinta"
+
+
+def test_vprimus_linha_de_chao(tmp_path):
+    """P5 da VICESIMUS-PRIMUS: numa fileira as BASES se alinham (a
+    gôndola) — a garrafa em pé e o pacote deitado pisam no mesmo
+    chão. O plano Q1 punha a foto deitada no TOPO (arranjo vertical)
+    quando o preço morde a foto — célula com mordida tem identidade
+    própria e NUNCA é reordenada."""
+    from decimal import Decimal
+
+    from PIL import Image
+
+    from app.rendering.compositor import (DadosProduto, compor_pagina,
+                                          mm_para_px)
+    from app.rendering.model import (
+        Ajuste, AlinhamentoV, FormaPreco, LayoutDef, Pagina, Regiao,
+        Retangulo, Slot, TipoRegiao,
+    )
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    def _celula(sid, x0, foto):
+        return Slot(sid, [
+            Regiao(TipoRegiao.IMAGEM, Retangulo(x0, 10, 42, 37),
+                   ajuste=Ajuste.ASSENTAR, zona_flex=True),
+            Regiao(TipoRegiao.PRECO, Retangulo(x0 + 20, 33, 24, 11),
+                   fonte=nome_f, tamanho_max_pt=18,
+                   forma_preco=FormaPreco.CARIMBO,
+                   forma_cor="#F58634", cor="#A85212"),
+            Regiao(TipoRegiao.NOME, Retangulo(x0, 51, 42, 6),
+                   fonte=nome_f, tamanho_max_pt=12,
+                   alinhamento_v=AlinhamentoV.TOPO),
+        ])
+
+    garrafa = tmp_path / "g.png"
+    im = Image.new("RGBA", (200, 800), (0, 0, 0, 0))
+    im.paste((60, 60, 160, 255), (60, 0, 140, 800))
+    im.save(garrafa)
+    deitado = tmp_path / "d.png"
+    im2 = Image.new("RGBA", (800, 220), (0, 0, 0, 0))
+    im2.paste((190, 60, 40, 255), (10, 10, 790, 210))
+    im2.save(deitado)
+    lay = LayoutDef(110.0, 70.0, dpi=96, paginas=[Pagina(slots=[
+        _celula("empe", 5, garrafa), _celula("deitada", 55, deitado)])])
+    pag = lay.paginas[0]
+    dados = {
+        "empe": DadosProduto(nome="G", preco_por=Decimal("9.99"),
+                             imagem_path=str(garrafa)),
+        "deitada": DadosProduto(nome="D", preco_por=Decimal("9.99"),
+                                imagem_path=str(deitado)),
+    }
+    img = compor_pagina(lay, pag, dados, fontes_dir=fontes)
+    ppm = mm_para_px(1.0, 96)
+    bases = []
+    for sl in pag.slots:
+        rimg = sl.regioes[0]
+        _ox, oy, _nw, nh = img._silhuetas[rimg.uid]
+        bases.append((oy + nh) / ppm)
+    assert abs(bases[0] - bases[1]) <= 1.0, (
+        f"bases desalinhadas: {bases} — a deitada flutuou")

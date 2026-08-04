@@ -1532,3 +1532,38 @@ acervo, como o Kolynos×Sorriso: curadoria do dono), §3.7 (área
 DONO** — o arquiteto a chama de "a maior perda de venda da página";
 a decisão reverte a hierarquia que o dono ditou na v2 e só ele
 desempata.
+
+## A ORDEM VICESIMUS-PRIMUS (04/08) — a resposta do builder
+
+O arquiteto corrigiu a própria prescrição ("alinhar à esquerda é como
+se resolve texto, não imagem") e os cinco princípios entraram:
+
+- **P1 (a foto é óptica, o texto é tipográfico):** a foto CENTRA pelo
+  centro ÓPTICO — o centroide do alfa (`_centroide_x`), não a caixa;
+  o texto segue assentado à esquerda. O `alin=ESQUERDA` da IMAGEM
+  (§7.2) morreu — era o remédio do texto aplicado à imagem.
+- **P2 (margem interna):** a zona ganhou inset de 3 mm nos 4 lados no
+  gerador (a margem esquerda era 0,0 em TODAS as células).
+- **P3 (a mordida única):** o ramo "ao lado" MORREU — a etiqueta
+  morde SEMPRE o canto inf-dir da silhueta (mordida proporcional no
+  estreito para não atravessar); o olho aprende o padrão em três.
+- **P4 (massa por área de tinta):** teto de 62% da zona — o muito
+  cheio (a Yoki a 89%) comprime em direção à mediana (54% medida);
+  o piso é a escala máxima SEM CORTE (a garrafa para no teto físico
+  de ~18-22% — nunca se corta foto por uniformidade; declarado). O
+  teto vale SÓ para a identidade "coluna com mordida" (o Jornal) —
+  no banner replanejável da Quarta o contrato Q1 do dono ("a foto
+  sobe do chão") permanece (uma foto opaca chapada tem tinta 100% e
+  o teto o desfazia — pego pela suíte e consertado na identidade).
+- **P5 (a linha de chão):** VARIAÇÃO ZERO medida nas duas páginas. A
+  caça achou o flutuador: o plano Q1 escolhia o arranjo VERTICAL
+  (foto no TOPO) nas células com mordida — o Kolynos flutuava 25 mm;
+  célula de coluna com mordida agora NUNCA é reordenada (só o abraço
+  da rede, que ancora no rodapé; o limiar do "colado" acompanhou a
+  margem nova: 2,5→6,5 mm).
+
+**L18 registrada** (cada natureza tem seu eixo: tipo alinha por
+margem; imagem centra por massa óptica; preço ancora no produto).
+Guardião novo `test_vprimus_linha_de_chao` (garrafa em pé + pacote
+deitado pisam juntos). Pendente do dono (4ª vez, o arquiteto pesa):
+**a marca no nome**.

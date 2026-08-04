@@ -332,6 +332,32 @@ def _aplicar_mascara(camada: Image.Image, forma: Image.Image | None) -> Image.Im
     return camada
 
 
+def _fracao_de_tinta(img: Image.Image) -> float:
+    """Fração da caixa da imagem coberta por TINTA (alfa > 32) — a
+    régua do P4 (amostra 40×40, barata)."""
+    if img.mode != "RGBA":
+        return 1.0
+    a = img.getchannel("A").resize((40, 40))
+    return sum(1 for p in a.getdata() if p > 32) / 1600.0
+
+
+def _centroide_x(img: Image.Image) -> float:
+    """O centro ÓPTICO horizontal (centroide do alfa, px da imagem) —
+    P1: garrafa de base larga centra pelo volume aparente."""
+    if img.mode != "RGBA":
+        return img.width / 2
+    a = img.getchannel("A").resize((40, 40))
+    px = list(a.getdata())
+    soma = peso = 0.0
+    for i, p in enumerate(px):
+        if p > 32:
+            soma += (i % 40) + 0.5
+            peso += 1
+    if peso == 0:
+        return img.width / 2
+    return (soma / peso) / 40.0 * img.width
+
+
 def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: int) -> None:
     pares = _carregar_imagens(dados)
     if not pares:
@@ -353,18 +379,35 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 if bbox:
                     img = img.crop(bbox)
                 escala = min(rw / img.width, rh / img.height)
+                # VICESIMUS-PRIMUS/P4: NORMALIZAR POR ÁREA DE TINTA —
+                # a foto muito CHEIA (saco que enche a caixa) comprime
+                # em direção à mediana da página (teto: tinta ≤ 62% da
+                # zona); o piso é a escala máxima SEM CORTE (a garrafa
+                # fina para no teto físico da altura — nunca se corta
+                # foto por uniformidade; o limite é declarado).
+                # (o teto vale SÓ para a célula de coluna com mordida
+                # — o Jornal; o banner replanejável da Quarta mantém o
+                # ganho do Q1: o contrato "a foto sobe do chão" é do
+                # dono e uma foto opaca chapada tem tinta 100%)
+                if reg.uid in getattr(base, "_p4_uids", ()):
+                    frac_alfa = _fracao_de_tinta(img)
+                    if frac_alfa > 0:
+                        tinta = (frac_alfa * (img.width * escala)
+                                 * (img.height * escala)) \
+                            / max(rw * rh, 1)
+                        if tinta > 0.62:
+                            escala *= (0.62 / tinta) ** 0.5
                 nw = max(1, round(img.width * escala))
                 nh = max(1, round(img.height * escala))
                 img = img.resize((nw, nh))
-                # §7.2 (a decisão B): região com alinhamento ESQUERDA
-                # encosta a foto no eixo do texto — um eixo por coluna
-                if reg.alinhamento == Alinhamento.ESQUERDA:
-                    ox = x
-                elif reg.alinhamento == Alinhamento.DIREITA:
-                    ox = x + rw - nw
-                else:
-                    ox = x + (rw - nw) // 2
-                oy = y + rh - nh              # o produto assenta
+                # VICESIMUS-PRIMUS/P1: a FOTO É ÓPTICA — centra pela
+                # MASSA aparente (o centroide horizontal do alfa),
+                # nunca pela caixa nem pela margem do texto (L18: cada
+                # natureza tem seu eixo; o "esquerda" da §7.2 morreu)
+                cx_opt = _centroide_x(img)
+                ox = round(x + rw / 2 - cx_opt)
+                ox = max(x, min(ox, x + rw - nw))
+                oy = y + rh - nh              # P5: a LINHA DE CHÃO
                 base.paste(img, (ox, oy), img)
                 # §7.3: a SILHUETA pintada (px) — a régua do pouso da
                 # etiqueta é a TINTA do produto, nunca a caixa
@@ -722,26 +765,15 @@ def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
         ox, oy, nw, nh = sil             # px da tinta pintada
         px_por_mm = mm_para_px(1.0, dpi)
         sil_x0, sil_x1 = ox / px_por_mm, (ox + nw) / px_por_mm
-        sil_y1 = (oy + nh) / px_por_mm
         larg_sil = sil_x1 - sil_x0
         cel_x1 = r_img.x_mm + r_img.larg_mm
-        # a base da etiqueta fica onde a arte mandou (o bloco de
-        # texto vem logo abaixo); só o X e a MORDIDA mudam
-        if rp.larg_mm > 0.45 * larg_sil:
-            # AO LADO da silhueta (garrafa/caixinha) — se couber
-            x_lado = sil_x1 + 0.8
-            if x_lado + rp.larg_mm <= cel_x1 + 2.0:
-                return Retangulo(min(x_lado, cel_x1 + 2.0 - rp.larg_mm),
-                                 rp.y_mm, rp.larg_mm, rp.alt_mm)
-            # não coube ao lado: morde o canto mesmo assim (mínimo
-            # de invasão que o canto permite)
-            x_novo = min(sil_x1 - 0.25 * rp.larg_mm,
-                         cel_x1 - rp.larg_mm + 2.0)
-            return Retangulo(x_novo, rp.y_mm, rp.larg_mm, rp.alt_mm)
-        # produto LARGO: morde o canto inf-dir (~40% sobre a tinta —
-        # invasão ≈ 40%×45% ≈ 18% da largura, longe do centro)
-        x_novo = min(sil_x1 - 0.4 * rp.larg_mm,
-                     cel_x1 - rp.larg_mm + 2.0)
+        # VICESIMUS-PRIMUS/P3: a etiqueta MORDE O PRODUTO, sempre no
+        # MESMO canto (inf-dir da silhueta) — nunca na sobra: o olho
+        # aprende o padrão em três células e para de procurar (o ramo
+        # "ao lado" morreu; no estreito a mordida é proporcional para
+        # não atravessar o produto).
+        mordida = min(0.4 * rp.larg_mm, 0.5 * larg_sil)
+        x_novo = min(sil_x1 - mordida, cel_x1 - rp.larg_mm + 2.0)
         if abs(x_novo - rp.x_mm) < 0.5:
             return None
         return Retangulo(x_novo, rp.y_mm, rp.larg_mm, rp.alt_mm)
@@ -1455,6 +1487,30 @@ def compor_pagina(
             rects_subst.update(compactar_coluna(
                 regioes_cel, d.nome, d.descritor, d.unidade, dpi_ef,
                 fontes_dir, rects_subst, piso_pt=piso_nome))
+        # VICESIMUS-PRIMUS/P4: a identidade "coluna com mordida" (o
+        # preço sobrepõe a foto E há texto abaixo — o Jornal) liga o
+        # teto de massa do desenho da foto (uniformidade da fileira)
+        _img_slot = next((r for r in slot.regioes
+                          if r.tipo == TipoRegiao.IMAGEM
+                          and r.visivel), None)
+        if _img_slot is not None:
+            _ri = rects_subst.get(_img_slot.uid) or _img_slot.rect
+            _morde = any(
+                r.tipo == TipoRegiao.PRECO and r.visivel
+                and r.rect.y_mm < _ri.y_mm + _ri.alt_mm
+                and r.rect.y_mm + r.rect.alt_mm > _ri.y_mm
+                and r.rect.x_mm < _ri.x_mm + _ri.larg_mm
+                and r.rect.x_mm + r.rect.larg_mm > _ri.x_mm
+                for r in slot.regioes)
+            _abaixo = any(
+                r.tipo in (TipoRegiao.NOME, TipoRegiao.SUBTITULO)
+                and r.visivel
+                and r.rect.y_mm >= _ri.y_mm + _ri.alt_mm - 1.0
+                for r in slot.regioes)
+            if _morde and _abaixo:
+                if not hasattr(base, "_p4_uids"):
+                    base._p4_uids = set()
+                base._p4_uids.add(_img_slot.uid)
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
             campos: dict = {}

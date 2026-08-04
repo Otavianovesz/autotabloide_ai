@@ -266,12 +266,31 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
         (r.rect.x_mm + r.rect.larg_mm / 2) < rf.x_mm
         or (r.rect.x_mm + r.rect.larg_mm / 2) > rf.x_mm + rf.larg_mm
         for r in textos)
-    planos = ((_plano_lateral(foto, textos, bbox, prop),)
-              if eh_lateral else
-              (_plano_lateral(foto, textos, bbox, prop),
-               _plano_vertical(foto, textos, bbox, prop),
-               _plano_misto(foto, textos, bbox, prop)))
-    cands = [c for c in planos if c]
+    # VICESIMUS-PRIMUS/P5: a célula de COLUNA COM MORDIDA (o carimbo
+    # sobrepõe a foto E o bloco de texto vive ABAIXO dela — o Jornal)
+    # tem identidade PRÓPRIA: reordená-la (vertical/misto punham a
+    # foto no TOPO) quebrava a LINHA DE CHÃO da fileira (o Kolynos
+    # flutuava 25 mm) e a proximidade do preço; nela só vale o ABRAÇO
+    # da rede. Célula com textos LATERAIS (o banner da Quarta) segue
+    # replanejável — o contrato do Q1 lá é do dono.
+    preco_morde = any(
+        r.tipo == TipoRegiao.PRECO and r.visivel
+        and r.rect.y_mm < rf.y_mm + rf.alt_mm
+        and r.rect.y_mm + r.rect.alt_mm > rf.y_mm
+        and r.rect.x_mm < rf.x_mm + rf.larg_mm
+        and r.rect.x_mm + r.rect.larg_mm > rf.x_mm
+        for r in regioes)
+    texto_abaixo = any(
+        r.rect.y_mm >= rf.y_mm + rf.alt_mm - 1.0 for r in textos)
+    if preco_morde and texto_abaixo:
+        cands = []
+    else:
+        planos = ((_plano_lateral(foto, textos, bbox, prop),)
+                  if eh_lateral else
+                  (_plano_lateral(foto, textos, bbox, prop),
+                   _plano_vertical(foto, textos, bbox, prop),
+                   _plano_misto(foto, textos, bbox, prop)))
+        cands = [c for c in planos if c]
     if cands:
         melhor = max(cands, key=lambda c: c.area)
         if melhor.area >= GANHO_MINIMO * area_atual:
@@ -289,8 +308,13 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
         w = min(rf.larg_mm, rf.alt_mm * prop)
         h = w / prop
         fundo = rf.y_mm + rf.alt_mm
+        # VICESIMUS-PRIMUS/P5 (a LINHA DE CHÃO): célula de COLUNA é a
+        # que tem texto ABAIXO da zona — o limiar acompanha a margem
+        # interna de 3mm + respiro (o 2,5 antigo quebrou quando a
+        # margem nova abriu 4mm e as fotos DEITADAS passaram a flutuar
+        # ~12mm acima do chão da fileira: o Kolynos e o Passatempo)
         colado = any(r.tipo in _TIPOS_REALOCAVEIS and r.visivel
-                     and 0.0 <= r.rect.y_mm - fundo <= 2.5
+                     and 0.0 <= r.rect.y_mm - fundo <= 6.5
                      for r in regioes)
         y_novo = (fundo - h) if colado \
             else rf.y_mm + (rf.alt_mm - h) / 2

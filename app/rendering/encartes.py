@@ -751,9 +751,12 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # ficava vazia. A zona agora é 47,1×40 mm (178×151 px,
             # proporção 1,18): o produto cresce ~30%. L17: antes de
             # escalar, MEÇA A PROPORÇÃO — quem manda nela é o produto.
-            # §7.2 (a decisão B): a foto encosta à ESQUERDA (um eixo).
-            _img(x + 4, y - 20, 178, 151, flex=True,
-                 alin=Alinhamento.ESQUERDA),
+            # VICESIMUS-PRIMUS/P1-P2: a foto CENTRA pelo centro ÓPTICO
+            # (do motor; o "esquerda" da §7.2 era remédio de texto em
+            # imagem — L18: cada natureza tem seu eixo) e a zona ganha
+            # MARGEM INTERNA de 3 mm nos 4 lados (nada encosta na
+            # borda; a margem esquerda era 0,0 em TODAS as células)
+            _img(x + 15, y - 9, 156, 137, flex=True),
             # o carimbo DEPOIS da foto na lista (L-C: preço é a última
             # camada) — morde o canto INFERIOR direito (36 px sobre a
             # base da tinta, nunca a barriga); o pouso fino é do
