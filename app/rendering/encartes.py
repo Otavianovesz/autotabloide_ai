@@ -701,8 +701,12 @@ def _sabado() -> list[Slot]:
     return slots
 
 
+# ORDEM do arquiteto (03/08): o preço era o elemento MAIS importante
+# com o PIOR contraste da página — #C9641A dava 3,4:1 sobre o papel
+# (mínimo 4,5). O laranja-queimado escureceu para #A85212 (4,6:1);
+# o vivo #F58634 segue só em FORMA/borda (nunca texto pequeno).
 _J_INK, _J_GRAY, _J_LAR, _J_LARD = ("#201B12", "#6E675C",
-                                    "#F58634", "#C9641A")
+                                    "#F58634", "#A85212")
 
 
 def _jornal_linha(pref: str, slots: list, y: float, n: int,
@@ -734,7 +738,10 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
                   tam=13.5, cor=_J_INK),
             _sub(x + 8, y + 110, 170, 36, fonte=_F_FRA_IT,
                  tam=10.0, cor=_J_GRAY),
-            _preco(x + 45, y + 147, 96, 42, fonte=_F_FRAUNCES, rot=rot,
+            # ORDEM do arquiteto: o preço em PESO de verdade — não
+            # existe Fraunces Bold no projeto (só Regular/Italic/
+            # SemiBold); o Archivo-Bold já está no pacote
+            _preco(x + 45, y + 147, 96, 42, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=20.0, tam_cent=12.6,
                    centavos_na_base=True),
@@ -802,7 +809,7 @@ def _jornal_p1() -> list[Slot]:
                   tam=14.5, cor=_J_INK),
             _sub(x + 112, y + 44, 162, 26, fonte=_F_FRA_IT,
                  tam=10.5, cor=_J_GRAY),
-            _preco(x + 146, y + 72, 100, 44, fonte=_F_FRAUNCES, rot=rot,
+            _preco(x + 146, y + 72, 100, 44, fonte=_F_ARCHIVO, rot=rot,
                    forma=FormaPreco.CARIMBO, forma_cor=_J_LAR,
                    cor=_J_LARD, tam=21.0, tam_cent=13.2,
                    centavos_na_base=True),
@@ -846,11 +853,21 @@ def _jornal_p1() -> list[Slot]:
 
 
 def _jornal_p2() -> list[Slot]:
-    """gen_jornal_final::pagina2() — 4 linhas de 5 + linha final de 2."""
+    """gen_jornal_final::pagina2() — 4 linhas de 5 + linha final de 2.
+
+    ORDEM do arquiteto (03/08, medido em mm): a grade antiga se
+    sobrepunha POR CONSTRUÇÃO — célula de 55,3 mm em passos de
+    53,5/61,4/53,4/61,4 mm: em 2 das 4 emendas a foto de baixo
+    NASCIA dentro do preço de cima (−1,8/−1,9 mm) e era pintada por
+    cima (o Suco de Uva sobre o preço da Rosquinha). O passo agora é
+    UNIFORME e o MESMO da p1 (222 px = 58,8 mm → folga +3,4 mm):
+    o ritmo que o olho procura. As âncoras da ARTE medidas: o bloco
+    de pagamento começa em y=1000 (a 4ª linha termina em 987) e o
+    expediente em y=1214 (a linha final, à esquerda, termina em 1209)."""
     slots: list[Slot] = []
-    for i, y in enumerate((132, 334, 566, 768)):
+    for i, y in enumerate((132, 354, 576, 798)):
         _jornal_linha("jp2", slots, y, 5, 1 + i * 5)
-    _jornal_linha("jp2", slots, 1000, 2, 21)   # a linha final: só 2
+    _jornal_linha("jp2", slots, 1020, 2, 21)   # a linha final: só 2
     slots += [
         _slot("jp2-cabecalho", [
             # o BASE regenerado (T6) está limpo — o título volta
@@ -873,15 +890,16 @@ def _jornal_p2() -> list[Slot]:
             # cresceu (650,1188,366×114) e o corpo ganha 3-4 linhas
             # legíveis em coluna de jornal; o título é o chip verde da
             # própria arte (com o lápis)
-            # v2 (K8): a dica do Jornal nasce com DEFAULT editorial no
-            # tom do publicado (o espelho do painel do Quintou) — a
-            # degradação sem IA nunca mais imprime validade nem vazio;
-            # a IA/dono sobrescrevem pelo botão de sempre
+            # v2 (K8) → ORDEM do arquiteto: o default editorial NUNCA
+            # afirma período ("o mês inteiro" mentia duas linhas abaixo
+            # de "DE 03/08 ATÉ 27/08") — dica neutra de despensa; a IA/
+            # dono sobrescrevem pela porta VISÍVEL da Mesa (Fica a
+            # Dica…), não mais só pelo botão escondido do editor
             _legal(666, 1226, 336, 70, papel=PapelTexto.DICA,
                    fonte=_F_FRA_IT, nome="Fica a Dica",
-                   texto=("Monte o carrinho pelo Jornal do Mês: as "
-                          "ofertas valem o mês inteiro — aproveite "
-                          "para abastecer a despensa de uma vez só."),
+                   texto=("Monte o carrinho pelo Jornal do Mês e "
+                          "aproveite as ofertas para abastecer a "
+                          "despensa de uma vez só."),
                    tam=10.0, cor=_J_INK, alin=Alinhamento.ESQUERDA),
         ], origem=(650, 1188)),
     ]

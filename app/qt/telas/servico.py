@@ -1967,6 +1967,27 @@ def sabor_do_membro(nome_membro: str, nome_familia: str) -> str:
     return m
 
 
+def sabores_fatorados(nomes_membros: list[str],
+                      nome_familia: str = "") -> list[str]:
+    """ORDEM do arquiteto (03/08, a Rosquinha): o descritor concatenava
+    os NOMES QUASE COMPLETOS quando a base não era o prefixo exato
+    (família batizada "Rosquinha" → sabor "Mabel 600g Coco"). O
+    fatorador de verdade: o SABOR é o que DIFERE entre os irmãos —
+    os tokens comuns a TODOS os membros saem, sobra o distintivo de
+    cada um, na ordem do nome. Com um membro só (nada a comparar), o
+    prefixo da família decide como sempre."""
+    nomes = [n for n in (nomes_membros or []) if n]
+    if len(nomes) < 2:
+        return [sabor_do_membro(n, nome_familia) for n in nomes]
+    conjuntos = [{t.lower() for t in n.split()} for n in nomes]
+    comuns = set.intersection(*conjuntos)
+    saida = []
+    for n in nomes:
+        resto = " ".join(t for t in n.split() if t.lower() not in comuns)
+        saida.append(resto or sabor_do_membro(n, nome_familia))
+    return saida
+
+
 def juntar_com_ou(nomes: list[str]) -> str:
     """"Tomate", "Tomate ou Óleo", "Tomate, Óleo ou Limão" — a prosa da
     célula (§2.2 da SEXTUSDECIMUS)."""
@@ -2002,8 +2023,11 @@ def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
     item.imagens = selecionar_fotos_da_celula(
         [m["imagem"] for m in escolhidos if m.get("imagem")])
     base = (item.familia or {}).get("nome") or item.nome or ""
-    item.sabores = [sabor_do_membro(m.get("nome") or "", base)
-                    for m in escolhidos]
+    # ORDEM do arquiteto (a Rosquinha): o sabor é o que DIFERE entre
+    # os irmãos — a base digitada curta nunca mais concatena o nome
+    # quase completo ("Mabel 600g Coco ou Mabel 600g Leite")
+    item.sabores = sabores_fatorados(
+        [m.get("nome") or "" for m in escolhidos], base)
     if item.imagens:
         item.arranjo = "LEQUE"
     return item
@@ -3506,8 +3530,12 @@ def montar_conjunto_manual(item: ItemMesa, produto_ids: list[int],
                      if m.get("imagem")), None),
         imagens=fotos,
         arranjo=("LEQUE" if tipo == "sabores" else "LADO_A_LADO"),
-        sabores=([sabor_do_membro(m["nome"], nome_base)
-                  for m in membros] if tipo == "sabores" else []),
+        # ORDEM do arquiteto (a Rosquinha): o fatorador de verdade —
+        # o sabor é o que difere entre os irmãos, nunca o nome quase
+        # completo quando a base digitada é curta
+        sabores=(sabores_fatorados([m["nome"] for m in membros],
+                                   nome_base)
+                 if tipo == "sabores" else []),
         via="conjunto",
         motivo=(f"montado do acervo pela cesta ({len(membros)} "
                 "produtos) — nada recriado"),

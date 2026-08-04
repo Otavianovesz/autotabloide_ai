@@ -536,6 +536,30 @@ class PainelPropriedades(QWidget):
             self.tipo_lbl.setText("")
         else:
             self.tipo_lbl.setText(f"Tipo: {reg.tipo.value}")
+            # ORDEM do arquiteto (03/08, "a edição não funciona"): o
+            # texto de papel VIVO (validade/edição) é DERIVADO — o dado
+            # da Mesa sobrescreve o que se digita aqui. O campo DIZ
+            # onde se edita de verdade (a lição D3), em vez de deixar
+            # o dono digitar num molde que a composição atropela.
+            from app.rendering.model import PapelTexto as _PT
+            papel_vivo = {
+                _PT.VALIDADE: "a VALIDADE viva — edite pelo chip da "
+                              "validade na Mesa",
+                _PT.EDICAO: "a EDIÇÃO viva (Nº/Ano) — edite pelo "
+                            "rótulo “Edição:” na Mesa",
+            }.get(getattr(reg, "papel_texto", None))
+            if papel_vivo:
+                self.texto_fixo.setPlaceholderText(
+                    f"Texto derivado: {papel_vivo}")
+                self.texto_fixo.setToolTip(
+                    f"Este texto é DERIVADO ({papel_vivo}). O que você "
+                    "digitar aqui é o RESERVA para quando não houver "
+                    "dado vivo.")
+            else:
+                self.texto_fixo.setPlaceholderText("")
+                self.texto_fixo.setToolTip(
+                    "Texto do LAYOUT (ex.: “Fica a Dica”) — desenha "
+                    "até em célula vazia")
             self.nome.setText(reg.nome)
             self._selecionar_fonte(reg.fonte)
             self.tam.setValue(reg.tamanho_max_pt)

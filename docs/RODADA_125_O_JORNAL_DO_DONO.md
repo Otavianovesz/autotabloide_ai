@@ -1126,3 +1126,103 @@ INCIDENTE DE BANCADA: a 1ª ordem-invertida falhou o A1 (sexta-verde,
 arquivo invertido, 3 grupos de precedentes) NÃO reproduziu e a 2ª
 invertida completa rodou 1207 LIMPA — flake da família da invertida,
 NOMEADO (como o test_a4 da JQ-BIS).
+
+## A ORDEM DO ARQUITETO pós-v4.1 (04/08) — a resposta do builder
+
+A ordem chegou depois da 5ª prova, com a auditoria dele por MEDIDA e
+uma lei nova. Item a item:
+
+### (A) A grade da p2 se sobrepunha POR CONSTRUÇÃO — CONSERTADO
+
+O achado dele: a célula da p2 ocupa 55,3 mm e os passos eram 53,5 e
+61,4 mm — DUAS emendas negativas (−1,8/−1,9 mm; o Suco de Uva nascia
+DENTRO do preço da Rosquinha) e ritmo irregular, com 66,4 mm de rodapé
+sobrando. Cinco rodadas caçaram no motor (foto_fit/nome_fit) o que
+estava em 2 linhas de geometria do gerador. O conserto
+(`encartes.py::_jornal_p2`): passo ÚNICO de 222 px (58,7 mm) nas 5
+fileiras — linhas em y 132/354/576/798 e a 5ª em 1020 — com as âncoras
+da arte MEDIDAS (o quadro do pagamento nasce em y=1000 ao lado da 5ª
+fileira, que termina em 987; o expediente em 1214, abaixo dos 1209 da
+última célula). Nenhuma emenda negativa, ritmo uniforme.
+
+### (G) A LEI DA RODADA: "antes de mexer no motor, some a tabela"
+
+Virou GUARDIÃO executável — `test_ordem_arq_a_grade_soma`: carrega o
+pacote real (`Templates novos/`), varre TODAS as páginas do Jornal e
+afirma (1) nenhuma célula de linha nasce dentro da célula de cima
+(emenda ≥ 0, comparando só células com sobreposição horizontal real) e
+(2) o passo é UNIFORME por coluna. Prova de mutação: restaurar a grade
+antiga (334/566/768) deixa o guardião VERMELHO; a grade nova, verde.
+A lei em uma frase: geometria se audita com subtração, não com frota.
+
+### (B) O preço legível — cor E fonte
+
+`_J_LARD` "#C9641A" (3,5:1 sobre o papel #F2EDE4 — reprovado no mínimo
+4,5) virou **#A85212 (4,64:1)**; conferido por PIXEL na prova nova
+((168, 82, 18) exato, zero resíduo do laranja antigo). E o arquiteto
+tinha razão na fonte: **Fraunces Bold não existe no projeto** (só
+Regular/Italic/SemiBold — o pedido de "Bold" caía em fallback mudo);
+o preço das linhas e das chamadas agora usa **Archivo-Bold**, que está
+no pacote de verdade.
+
+**Regressão pega na prova, consertada na hora:** o Archivo-Bold é mais
+largo e "SUPER OFERTA" parou de caber numa linha do carimbo da capa —
+saiu "SUPER OFER-TA" hifenizado. Carimbo é SELO, não prosa: o ramo
+`multi_preco` do compositor agora desenha SEMPRE com `sem_hifen=True`
+(o corpo cede ou quebra POR PALAVRA — saiu "SUPER / OFERTA" centrado).
+Guardião `test_ordem_arq_carimbo_nunca_hifeniza` (espião no ramo) com
+prova de mutação (True→False = vermelho).
+
+### (C) O Fica a Dica honesto e ALCANÇÁVEL
+
+O texto cravado mentia ("o mês inteiro" duas linhas abaixo de "DE
+03/08 ATÉ 27/08" — a oferta acaba dia 27). O default novo é neutro:
+"Monte o carrinho pelo Jornal do Mês e aproveite as ofertas para
+abastecer a despensa de uma vez só." E a dica ganhou PORTA: menu "···"
+da Mesa → "Fica a Dica desta página…" (`mesa._editar_dica`) — edita o
+texto da região DICA da página atual (QInputDialog multilinha);
+apagar o texto com o motor de IA vivo chama `gerar_dica` (que existia
+pronto e INALCANÇÁVEL) com os nomes reais da página.
+
+### (D) A Rosquinha fatorada
+
+O diagnóstico do arquiteto estava certo: a Sardinha saía certa porque
+`sabor_do_membro` funciona quando o nome-base da família é LONGO
+("Sardinha Coqueiro 125g" + "Tomate"); a Rosquinha caía noutro caminho
+— base curta ("Rosquinha") fazia o "sabor" virar o nome quase inteiro
+("Mabel 600g Coco") e o descritor concatenava. O conserto é o
+fatorador de IRMÃOS — `servico.sabores_fatorados(nomes, familia)`: os
+tokens comuns a TODOS os membros saem, sobra o que DIFERE (Coco /
+Leite), preservando sabor composto ("Agua e Sal" fica inteiro). Ligado
+em `aplicar_sabores` e no `montar_conjunto_manual` (ramo sabores).
+Guardião `test_ordem_arq_rosquinha_fatorada`.
+
+### (E) A edição de texto que "não funciona"
+
+O dono editava o MOLDE do layout e o dado VIVO sobrescrevia — parecia
+bug. O painel de propriedades agora DIZ: região com papel vivo
+(VALIDADE/EDICAO) ganha placeholder "Texto derivado: …" + tooltip
+explicando que ali se edita o RESERVA e apontando a porta certa (o
+chip da validade / o rótulo "Edição:" na Mesa).
+
+### (F) O "tabloide.png" cravado
+
+O export da Mesa deriva o nome do arquivo do PROJETO (ou do layout) +
+edição, sanitizado ("jornal-do-mes-n-8-2026.png" em vez do genérico
+"tabloide.png" para tudo).
+
+### A prova recomposta (pacote reimportado, 8 chaves upsert)
+
+42 itens, 0 sem foto, 0 avisos, 0 sobras; p1/p2 no pixel: grade da p2
+SEM nenhuma colisão e com ritmo único; preço #A85212/Archivo-Bold;
+"SUPER / OFERTA" sem hífen; a dica honesta; "Rosquinha / Mabel · Coco
+ou Leite · 600g".
+
+### Ficou de fora (nomeado)
+
+- "Detg."/"Papel Hig."/"Leite Int. L.V." por extenso nas células (da
+  v3, segue nomeado).
+- As reauditorias pendentes do arquiteto: §16/SEXTUSDECIMUS + o
+  conflito K2 (carimbo sem valor — decisão do dono).
+- "Endurecer vigias" de modal (flake nomeado da bancada).
+- A porta "Completar fotos…" de um clique (v3).

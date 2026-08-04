@@ -542,6 +542,68 @@ class MesaTela(QWidget):
                 "trocar — as respostas prontas já vêm com o dia do "
                 "encarte.")
 
+    def _regiao_dica_da_pagina(self):
+        """A região de papel DICA da página atual do layout aberto."""
+        from app.rendering.model import PapelTexto, TipoRegiao
+        lay = self.area.canvas._layout or self._layout
+        if lay is None:
+            return None, None
+        pi = getattr(self.area.canvas, "_pagina_atual", 0)
+        pag = lay.paginas[min(pi, len(lay.paginas) - 1)]
+        for s in pag.slots:
+            for r in s.regioes:
+                if (r.tipo == TipoRegiao.TEXTO_LEGAL
+                        and getattr(r, "papel_texto", None)
+                        == PapelTexto.DICA):
+                    return lay, r
+        return lay, None
+
+    def _editar_dica(self) -> None:
+        """ORDEM do arquiteto (03/08): o Fica a Dica editável e gerável
+        ONDE O DONO TRABALHA — a função de IA existia (gerar_dica) e o
+        único caminho era um botão escondido no editor de layout."""
+        from PySide6.QtWidgets import QInputDialog
+
+        lay, reg = self._regiao_dica_da_pagina()
+        if reg is None:
+            mostrar_toast(self, "Esta página não tem a caixa Fica a "
+                                "Dica (é da arte do encarte).",
+                          tipo="erro")
+            return
+        texto, ok = QInputDialog.getMultiLineText(
+            self, "Fica a Dica",
+            "O texto da dica desta página (apague e use “Gerar pela "
+            "IA” no editor de layout, ou escreva a sua):",
+            reg.texto_fixo or "")
+        if not ok:
+            return
+        novo = texto.strip()
+        if novo == (reg.texto_fixo or "").strip():
+            return
+        if not novo:
+            motor = servico._motor_se_disponivel()
+            nomes = [d.nome for d in self._dados_por_slot().values()
+                     if getattr(d, "nome", "")]
+            if motor is not None and nomes:
+                from app.ai.enriquecimento import (
+                    gerar_dica,
+                    limite_caracteres,
+                )
+                limite = limite_caracteres(reg.rect.larg_mm,
+                                           reg.rect.alt_mm,
+                                           reg.tamanho_max_pt)
+                novo = gerar_dica(nomes, limite, motor) or ""
+                if novo:
+                    mostrar_toast(self, "Dica escrita pela IA — edite "
+                                        "à vontade.")
+            if not novo:
+                mostrar_toast(self, "Dica vazia: a caixa não desenha "
+                                    "nada (ligue a IA ou escreva a "
+                                    "sua).")
+        reg.texto_fixo = novo
+        self.area.canvas.atualizar_dados(self._dados_por_slot())
+        self._marcar_salvo(False)
+
     # --- edição do Jornal (F13-TER/D1) ----------------------------------------------
 
     def _atualizar_lbl_edicao(self) -> None:
@@ -995,6 +1057,11 @@ class MesaTela(QWidget):
         # SEMPRE visíveis (o esconderijo da paleta matou os itens fixos)
         menu.addAction(icone("caixa", tamanho=14),
                        "Itens fixos deste encarte…", self._editar_itens_fixos)
+        # ORDEM do arquiteto (03/08): a dica tinha função de IA pronta
+        # e INALCANÇÁVEL (só um botão escondido no editor de layout) —
+        # a porta visível mora onde o dono trabalha
+        menu.addAction(icone("texto", tamanho=14),
+                       "Fica a Dica desta página…", self._editar_dica)
         if colapsados:
             menu.addSeparator()
         for w, rotulo, tipo in colapsados:
@@ -3177,8 +3244,18 @@ class MesaTela(QWidget):
         # SELO/checklist — não como condição do carimbo (eram 9 portas
         # carimbando e a aprovação era inalcançável, P-05..P-07).
         marca = rascunho
+        # ORDEM do arquiteto (03/08): o nome do arquivo DERIVA do
+        # trabalho — "tabloide.png" cravado obrigava o dono a renomear
+        # toda exportação ("jornal-do-mes-n178.png" se nomeia sozinho)
+        import re as _re
+        base_nome = (getattr(self, "_projeto_nome", None)
+                     or self._layout_nome or "tabloide")
+        if self._edicao:
+            base_nome = f"{base_nome} {self._edicao}"
+        base_nome = _re.sub(r"[^\w\s-]", "", base_nome).strip()
+        base_nome = _re.sub(r"\s+", "-", base_nome).lower() or "tabloide"
         caminho, filtro = QFileDialog.getSaveFileName(
-            self, "Exportar tabloide", "tabloide.png",
+            self, "Exportar tabloide", f"{base_nome}.png",
             "PNG (*.png);;PDF (*.pdf)")
         if not caminho:
             return

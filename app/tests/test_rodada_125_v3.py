@@ -284,3 +284,110 @@ def test_v41_celula_de_coluna_elastica(tmp_path):
     # célula NÃO-coluna (sem preço) fica intacta
     r4 = compactar_coluna(regioes[:3], "X", "Y", None, 192, fontes, {})
     assert r4 == {}
+
+
+def test_ordem_arq_a_grade_soma():
+    """A LEI da ordem do arquiteto (03/08): ANTES DE MEXER NO MOTOR,
+    SOME A TABELA. Cinco rodadas caçaram no foto_fit/nome_fit uma
+    sobreposição que estava em 2 linhas de geometria: célula de
+    55,3 mm em passo de 53,5 mm (folga −1,8 mm — o Suco de Uva sobre
+    o preço da Rosquinha). Este guardião SOMA a grade do Jornal: toda
+    emenda com folga ≥ 0 e o passo UNIFORME dentro de cada página."""
+    from pathlib import Path
+
+    from app.rendering.encartes import layout_de_encarte
+    from app.rendering.model import TipoRegiao
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    lay = layout_de_encarte("jornal-do-mes", pacote)
+    for pi, pag in enumerate(lay.paginas, 1):
+        celulas = []
+        for s in pag.slots:
+            if not any(r.tipo == TipoRegiao.PRECO for r in s.regioes):
+                continue
+            if not any(r.tipo == TipoRegiao.SUBTITULO
+                       for r in s.regioes):
+                continue
+            topo = min(r.rect.y_mm for r in s.regioes)
+            fundo = max(r.rect.y_mm + r.rect.alt_mm for r in s.regioes)
+            x0 = min(r.rect.x_mm for r in s.regioes)
+            x1 = max(r.rect.x_mm + r.rect.larg_mm for r in s.regioes)
+            celulas.append((s.id, topo, fundo, x0, x1))
+        # (1) NENHUMA emenda negativa: célula que fica ABAIXO de outra
+        # (com sobreposição horizontal real) nasce DEPOIS do fim dela
+        for sid_a, t_a, f_a, xa0, xa1 in celulas:
+            for sid_b, t_b, f_b, xb0, xb1 in celulas:
+                if t_b <= t_a + 1.0:
+                    continue             # b não está abaixo de a
+                overlap = min(xa1, xb1) - max(xa0, xb0)
+                if overlap < 0.5 * min(xa1 - xa0, xb1 - xb0):
+                    continue             # colunas diferentes
+                assert t_b >= f_a, (
+                    f"p{pi}: {sid_b} (y={t_b:.1f}) nasce DENTRO de "
+                    f"{sid_a} (fim {f_a:.1f}) — a grade não soma")
+        # (2) o passo é UNIFORME entre as fileiras de LINHA (as células
+        # da mesma coluna x — o ritmo que o olho procura)
+        por_coluna: dict = {}
+        for sid, t, f, x0, x1 in celulas:
+            por_coluna.setdefault(round(x0), []).append(t)
+        for x0, tops in por_coluna.items():
+            tops = sorted(tops)
+            passos = [round(b - a, 1) for a, b in zip(tops, tops[1:])]
+            assert len(set(passos)) <= 1, (
+                f"p{pi} coluna x={x0}: passos irregulares {passos}")
+
+
+def test_ordem_arq_rosquinha_fatorada():
+    """A Rosquinha concatenava os nomes quase completos quando a base
+    era curta — o sabor é o que DIFERE entre os irmãos."""
+    from app.qt.telas.servico import sabores_fatorados
+
+    membros = ["Rosquinha Mabel 600g Coco", "Rosquinha Mabel 600g Leite"]
+    assert sabores_fatorados(membros, "Rosquinha") == ["Coco", "Leite"]
+    assert sabores_fatorados(membros, "Rosquinha Mabel 600g") == \
+        ["Coco", "Leite"]
+    # sabor composto fica inteiro no que difere
+    assert sabores_fatorados(["Biscoito 270g Agua e Sal",
+                              "Biscoito 270g Maisena"], "Biscoito") == \
+        ["Agua e Sal", "Maisena"]
+    # 1 membro: o prefixo da família decide como sempre
+    assert sabores_fatorados(["Sardinha Coqueiro 125g Tomate"],
+                             "Sardinha Coqueiro 125g") == ["Tomate"]
+
+
+def test_ordem_arq_carimbo_nunca_hifeniza(tmp_path, monkeypatch):
+    """"SUPER OFER-TA" saiu na capa quando o Archivo-Bold (mais largo)
+    entrou no preço: carimbo é SELO, não prosa — o ramo multi_preco
+    desenha SEMPRE com sem_hifen (o corpo cede ou quebra por palavra)."""
+    from app.rendering import compositor as comp
+    from app.rendering.model import (FormaPreco, Regiao, Retangulo,
+                                     TipoRegiao)
+    from app.tests import acervo
+    from PIL import Image, ImageDraw
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    vistos = []
+    original = comp._desenhar_texto
+
+    def espiao(base, draw, reg, texto, dpi, fontes_dir):
+        vistos.append((texto, reg.sem_hifen))
+        return original(base, draw, reg, texto, dpi, fontes_dir)
+
+    monkeypatch.setattr(comp, "_desenhar_texto", espiao)
+    reg = Regiao(TipoRegiao.PRECO, Retangulo(0, 0, 22, 12),
+                 fonte=nome_f, tamanho_max_pt=14, tamanho_min_pt=8,
+                 forma_preco=FormaPreco.TEXTO)
+    base = Image.new("RGB", (200, 120), "white")
+    dados = comp.DadosProduto(nome="Arroz", multi_preco="SUPER OFERTA")
+    comp._desenhar_preco(base, ImageDraw.Draw(base), reg, dados, 96,
+                         fontes)
+    assert vistos, "o carimbo não desenhou"
+    texto, sem_hifen = vistos[0]
+    assert texto == "SUPER OFERTA" and sem_hifen is True, vistos

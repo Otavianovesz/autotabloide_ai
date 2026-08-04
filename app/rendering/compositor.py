@@ -693,8 +693,12 @@ def _desenhar_preco(
         # (L4) segue no ITEM — Excel/cartaz/painel o usam; só a TINTA
         # do carimbo não o mostra. Conflito K2×dono documentado na
         # RODADA_125 para a reauditoria.
-        _desenhar_texto(base, draw, reg, dados.multi_preco, dpi,
-                        fontes_dir)
+        # ORDEM pós-v4.1: carimbo é SELO, nunca prosa — não hifeniza
+        # ("SUPER OFER-TA" saiu na capa quando o Archivo-Bold, mais
+        # largo, entrou no preço); o corpo cede ou quebra POR PALAVRA.
+        from dataclasses import replace as _rp
+        _desenhar_texto(base, draw, _rp(reg, sem_hifen=True),
+                        dados.multi_preco, dpi, fontes_dir)
         return
 
     valor = dados.preco_de if reg.papel_preco == PapelPreco.DE else dados.preco_por
