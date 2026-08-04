@@ -225,6 +225,98 @@ def descritor_que_cabe(descritor: str | None, unidade: str | None,
     return texto
 
 
+def _altura_real_mm(texto: str, reg: Regiao, dpi: int,
+                    fontes_dir: Path) -> float | None:
+    """Quantos mm o texto REALMENTE usa na largura da região (linhas
+    de verdade × entrelinha) — a medida da célula elástica."""
+    if not texto:
+        return 0.0
+    aj = ajustar_texto(
+        texto, fontes_dir / reg.fonte,
+        mm_para_px(reg.rect.larg_mm, dpi),
+        mm_para_px(reg.rect.alt_mm, dpi),
+        reg.tamanho_max_pt, dpi, reg.tamanho_min_pt,
+        sem_hifen=reg.sem_hifen)
+    if any("…" in ln for ln in aj.linhas):
+        return None                      # nem coube — não mexe na célula
+    return px_para_mm(len(aj.linhas) * aj.altura_linha_px + 2, dpi)
+
+
+def compactar_coluna(regioes: list[Regiao], nome: str,
+                     descritor: str | None, unidade: str | None,
+                     dpi: int, fontes_dir: str | Path,
+                     rects_atuais: dict, piso_pt: float | None = None,
+                     ) -> dict[str, Retangulo]:
+    """RODADA-125 v4.1 (a 5ª prova do dono: "quase descolado, as
+    imagens diminuíram ainda mais"): a CÉLULA DE COLUNA é ELÁSTICA.
+
+    A caixa de 3 linhas do descritor é RESERVA para o caso cheio (o
+    Biscoito com 2 marcas × 4 sabores); a célula comum, de 1 linha,
+    não pode pagar por ela com foto pequena e vãos mortos. A régua:
+    o texto MEDE o que realmente usa, ANCORA no preço (a base fixa da
+    coluna), e a FOTO cresce até encostar nele — zero vão, foto
+    dominante, o layout que um diagramador faria à mão.
+
+    Só age na topologia de COLUNA (foto acima do nome, nome acima do
+    descritor, descritor acima do preço, todos visíveis); devolve os
+    rects substitutos por uid — o modelo nunca muda (I1)."""
+    fontes_dir = Path(fontes_dir)
+
+    def _r_de(reg: Regiao) -> Retangulo:
+        return rects_atuais.get(reg.uid, reg.rect)
+
+    por_tipo: dict = {}
+    for r in regioes:
+        if r.visivel and r.tipo in (TipoRegiao.NOME, TipoRegiao.SUBTITULO,
+                                    TipoRegiao.IMAGEM, TipoRegiao.PRECO):
+            if r.tipo in por_tipo:
+                return {}                # 2 do mesmo tipo: célula rara, fora
+            por_tipo[r.tipo] = r
+    if len(por_tipo) < 4:
+        return {}
+    reg_img = por_tipo[TipoRegiao.IMAGEM]
+    # o MESMO contrato do plano Q1: só a célula marcada REPLANEJÁVEL
+    # (``zona_flex``) aceita re-layout por dentro — nas demais a arte
+    # do autor manda (o invariante A1 da máscara por região fica de pé)
+    if not getattr(reg_img, "zona_flex", False):
+        return {}
+    reg_nome = por_tipo[TipoRegiao.NOME]
+    reg_sub = por_tipo[TipoRegiao.SUBTITULO]
+    reg_preco = por_tipo[TipoRegiao.PRECO]
+    ri, rn = _r_de(reg_img), _r_de(reg_nome)
+    rs, rp = _r_de(reg_sub), _r_de(reg_preco)
+    # a topologia da coluna (com 1 mm de tolerância de arte)
+    if not (ri.y_mm + ri.alt_mm <= rn.y_mm + 1.0
+            and rn.y_mm + rn.alt_mm <= rs.y_mm + 1.0
+            and rs.y_mm + rs.alt_mm <= rp.y_mm + 1.0):
+        return {}
+    reg_nome_m = reg_nome
+    if piso_pt:
+        min_ef = min(reg_nome.tamanho_max_pt,
+                     max(reg_nome.tamanho_min_pt, piso_pt))
+        reg_nome_m = replace(reg_nome, tamanho_min_pt=min_ef)
+    alt_nome = _altura_real_mm(nome, reg_nome_m, dpi, fontes_dir)
+    reg_sub_m = (reg_sub if reg_sub.tamanho_min_pt <= _PISO_DURO_DESCRITOR
+                 else replace(reg_sub,
+                              tamanho_min_pt=_PISO_DURO_DESCRITOR))
+    texto_sub = descritor_que_cabe(descritor, unidade, reg_sub_m, dpi,
+                                   fontes_dir)
+    alt_sub = _altura_real_mm(texto_sub or "", reg_sub_m, dpi, fontes_dir)
+    if alt_nome is None or alt_sub is None:
+        return {}
+    folga = 0.5                          # o respiro fino entre blocos
+    y_sub = rp.y_mm - folga - alt_sub
+    y_nome = y_sub - folga - alt_nome
+    alt_foto = y_nome - folga - ri.y_mm
+    if alt_foto <= ri.alt_mm:
+        return {}                        # a foto só CRESCE — nunca perde
+    return {
+        reg_img.uid: Retangulo(ri.x_mm, ri.y_mm, ri.larg_mm, alt_foto),
+        reg_nome.uid: Retangulo(rn.x_mm, y_nome, rn.larg_mm, alt_nome),
+        reg_sub.uid: Retangulo(rs.x_mm, y_sub, rs.larg_mm, alt_sub),
+    }
+
+
 def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
           fontes_dir: Path) -> bool:
     """O texto cabe SEM elipse no corpo mínimo da região? (passos 1-2:

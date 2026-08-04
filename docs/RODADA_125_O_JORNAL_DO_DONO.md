@@ -1103,3 +1103,26 @@ Mon Bijou · Proteção ou Classico · 5 L", "Sabão em Pó / Omo · Lavagem
 Perfeita · Caixeta · 1,6kg", "Azeite / Gallo · Extra Virgem Clássico ·
 500ml", e o Biscoito completo — 42 itens, 0 sem foto, 0 sobras,
 NENHUMA informação comida.
+
+## RODADA v4.1 — A CÉLULA ELÁSTICA (03/08, a 5ª prova)
+
+O dono: "o negócio ficou quase descolado, as imagens diminuíram ainda
+mais — arruma pra ficar digno de um designer sênior". O diagnóstico de
+design: a v4 pagou a RESERVA de 3 linhas em TODA célula — a maioria
+usa 1 linha de descritor e sobrava caixa morta com foto menor.
+
+**A CÉLULA DE COLUNA É ELÁSTICA** (`nome_fit.compactar_coluna`, ligado
+no compositor após a precedência): o texto MEDE o que realmente usa
+(linhas de verdade × entrelinha), ANCORA no preço (a base fixa da
+coluna) e a FOTO CRESCE até encostar nele — zero vão, foto dominante.
+Sardinha/Kolynos/Amstel/Omo ganharam ~15-25% de foto; o Biscoito de 3
+linhas fica como está (a foto NUNCA diminui — o clamp é lei). O
+contrato é o MESMO do plano Q1: só célula ``zona_flex`` (na Sexta
+Verde, sem flex, a arte do autor manda — o invariante A1 da máscara
+pegou a 1ª versão sem o gate e foi consertado na hora).
+
+INCIDENTE DE BANCADA: a 1ª ordem-invertida falhou o A1 (sexta-verde,
+1394px) com segfault de teardown; investigação dirigida (isolado,
+arquivo invertido, 3 grupos de precedentes) NÃO reproduziu e a 2ª
+invertida completa rodou 1207 LIMPA — flake da família da invertida,
+NOMEADO (como o test_a4 da JQ-BIS).

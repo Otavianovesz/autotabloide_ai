@@ -237,3 +237,50 @@ def test_v3_vitrine_dominante_na_frente():
             if p[3] > 0 and (max(p[:3]) - min(p[:3])) > 100:
                 distintas.add((p[0] > 150, p[1] > 150, p[2] > 150))
     assert len(distintas) < 6, "as 6 fotos entraram — o teto não valeu"
+
+
+def test_v41_celula_de_coluna_elastica(tmp_path):
+    """A 5ª prova ("quase descolado, as imagens diminuíram"): a caixa
+    de 3 linhas do descritor é RESERVA, não custo — o texto mede o que
+    usa, ancora no preço e a FOTO cresce até encostar nele. Descritor
+    de 1 linha → foto MAIOR que a original; texto que enche a reserva
+    → célula fica como está (a foto nunca diminui)."""
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+    from app.rendering.nome_fit import compactar_coluna
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+    regioes = [
+        # zona_flex como a célula real do Jornal — o compactar tem o
+        # MESMO contrato do plano Q1: só célula replanejável (na Sexta
+        # Verde, sem flex, a arte do autor manda e nada se move)
+        Regiao(TipoRegiao.IMAGEM, Retangulo(0, 0, 47, 26),
+               zona_flex=True),
+        Regiao(TipoRegiao.NOME, Retangulo(0, 26, 45, 8),
+               fonte=nome_f, tamanho_max_pt=13.5, tamanho_min_pt=9),
+        Regiao(TipoRegiao.SUBTITULO, Retangulo(0, 34, 45, 10),
+               fonte=nome_f, tamanho_max_pt=10, tamanho_min_pt=7),
+        Regiao(TipoRegiao.PRECO, Retangulo(10, 45, 26, 11),
+               fonte=nome_f),
+    ]
+    uid_img = regioes[0].uid
+    # 1 linha de descritor: a foto CRESCE
+    r1 = compactar_coluna(regioes, "Creme Dental", "Kolynos · 90g",
+                          "90 g", 192, fontes, {})
+    assert r1, "a célula elástica não agiu no caso de 1 linha"
+    assert r1[uid_img].alt_mm > 26.0, r1[uid_img]
+    # o texto fica ANCORADO no preço (sem vão morto: sub encosta)
+    assert abs((r1[regioes[2].uid].y_mm + r1[regioes[2].uid].alt_mm)
+               - 45.0) < 1.5
+    # descritor que enche a reserva: nada muda (a foto nunca perde)
+    r3 = compactar_coluna(
+        regioes, "Biscoito",
+        "Bulnez e Adoralle · Cream Cracker, Leite, Agua e Sal ou "
+        "Maisena · 270 g", "270 g", 192, fontes, {})
+    assert not r3 or r3[uid_img].alt_mm >= 26.0
+    # célula NÃO-coluna (sem preço) fica intacta
+    r4 = compactar_coluna(regioes[:3], "X", "Y", None, 192, fontes, {})
+    assert r4 == {}

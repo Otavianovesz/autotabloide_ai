@@ -1282,6 +1282,17 @@ def compor_pagina(
                          unidade=None if aj_nome.descritor_saiu
                          else d.unidade)
             rects_subst.update(aj_nome.rects)
+        # RODADA-125 v4.1 ("quase descolado, as imagens diminuíram"):
+        # a CÉLULA DE COLUNA é ELÁSTICA — o texto mede o que realmente
+        # usa, ancora no preço e a FOTO cresce até encostar nele (a
+        # caixa de 3 linhas é reserva do caso cheio, não custo fixo).
+        # Só quando a precedência não negociou banda (passos 3/4).
+        if aj_nome is not None and not aj_nome.rects \
+                and not aj_nome.descritor_saiu:
+            from app.rendering.nome_fit import compactar_coluna
+            rects_subst.update(compactar_coluna(
+                regioes_cel, d.nome, d.descritor, d.unidade, dpi_ef,
+                fontes_dir, rects_subst, piso_pt=piso_nome))
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
             campos: dict = {}
