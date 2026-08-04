@@ -96,16 +96,20 @@ def _mm(v: float) -> float:
     return px_para_mm(v, DPI_VIEWBOX)
 
 
-def _img(x, y, w, h, rot=0.0, flex=False) -> Regiao:
+def _img(x, y, w, h, rot=0.0, flex=False,
+         alin=Alinhamento.CENTRO) -> Regiao:
     from app.rendering.model import Ajuste
     # F13-TER/V1: as fotos dos encartes ASSENTAM — recorte pela bbox do
     # alfa (o quadrado do acervo morre), maior escala que caiba, âncora
     # no rodapé da zona
     # QUARTUSDECIMUS/Q1: ``flex`` marca célula de arte LISA onde a zona
     # pode mudar de forma conforme a foto da semana (foto_fit)
+    # §7.2: ``alin`` — a decisão B do Jornal exige UM eixo por coluna:
+    # a foto encosta à ESQUERDA como o texto (dois eixos disputando
+    # liam como desalinho)
     return Regiao(TipoRegiao.IMAGEM, _r(x, y, w, h), nome="Foto",
                   rotacao_graus=rot, ajuste=Ajuste.ASSENTAR,
-                  zona_flex=flex)
+                  alinhamento=alin, zona_flex=flex)
 
 
 def _nome(x, y, w, h, *, fonte, rot=0.0, alin=Alinhamento.CENTRO,
@@ -727,7 +731,10 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
     LARD), s=0.78, rot −6/+5 alternando por coluna."""
     for c in range(n):
         x = 64 + c * 198
-        rot = -6.0 if (c % 2 == 0) else 5.0
+        # §7.4.2: ZERO grau na GRADE — a inclinação é charme uma vez e
+        # defeito de impressão vinte e duas; ela fica só nos destaques
+        # da capa (herói e chamadas)
+        rot = 0.0
         slots.append(_slot(f"{pref}-l{inicio + c}", [
             # v2 (fotos "cortadas" da 2ª prova): o FIO desenha ANTES da
             # foto — vinha depois na lista e riscava o topo do produto
@@ -743,7 +750,10 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # inferior direito dela — o clássico dos encartes: o preço
             # "gruda" no produto. Antes: 17,7 mm até o próprio produto
             # e −1,8 mm até o seguinte (o olho agrupava ERRADO).
-            _img(x + 4, y - 20, 178, 116, flex=True),
+            # §7.2 (a decisão B, com a correção do arquiteto): a foto
+            # encosta à ESQUERDA junto com o texto — UM eixo por coluna
+            _img(x + 4, y - 20, 178, 116, flex=True,
+                 alin=Alinhamento.ESQUERDA),
             # o carimbo DEPOIS da foto na lista (L-C: preço é a última
             # camada) — cavalga a borda direita, sobrepondo ~36 px
             _preco(x + 90, y + 60, 96, 42, fonte=_F_ARCHIVO, rot=rot,
@@ -761,12 +771,13 @@ def _jornal_linha(pref: str, slots: list, y: float, n: int,
             # ainda pode 2 linhas quando o extenso exigir (o conflito
             # H3-contagem × lei-v4 está DECLARADO para o dono).
             _nome(x + 8, y + 108, 170, 24, fonte=_F_FRAUNCES,
-                  tam=14.0, cor=_J_INK, alin_v=AlinhamentoV.TOPO),
+                  tam=14.0, cor=_J_INK, alin_v=AlinhamentoV.TOPO,
+                  alin=Alinhamento.ESQUERDA),
             # ERRATA §13.3: sem itálico, 11,5/10,5 (o piso DURO do
             # compositor segue como exceção anti-tesoura, K3)
             _sub(x + 8, y + 130, 170, 34, fonte=_F_FRA_RE,
                  tam=11.5, tam_min=10.5, cor=_J_GRAY,
-                 alin_v=AlinhamentoV.TOPO),
+                 alin_v=AlinhamentoV.TOPO, alin=Alinhamento.ESQUERDA),
         ], origem=(x + 4, y)))
 
 

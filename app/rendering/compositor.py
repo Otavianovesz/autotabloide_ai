@@ -356,9 +356,21 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 nw = max(1, round(img.width * escala))
                 nh = max(1, round(img.height * escala))
                 img = img.resize((nw, nh))
-                ox = x + (rw - nw) // 2
+                # §7.2 (a decisão B): região com alinhamento ESQUERDA
+                # encosta a foto no eixo do texto — um eixo por coluna
+                if reg.alinhamento == Alinhamento.ESQUERDA:
+                    ox = x
+                elif reg.alinhamento == Alinhamento.DIREITA:
+                    ox = x + rw - nw
+                else:
+                    ox = x + (rw - nw) // 2
                 oy = y + rh - nh              # o produto assenta
                 base.paste(img, (ox, oy), img)
+                # §7.3: a SILHUETA pintada (px) — a régua do pouso da
+                # etiqueta é a TINTA do produto, nunca a caixa
+                if not hasattr(base, "_silhuetas"):
+                    base._silhuetas = {}
+                base._silhuetas[reg.uid] = (ox, oy, nw, nh)
                 return
             if reg.ajuste == Ajuste.PREENCHER:
                 escala = max(rw / img.width, rh / img.height)
@@ -625,6 +637,38 @@ def _desenhar_forma_preco(base: Image.Image, reg: Regiao, dpi: int) -> None:
     base.paste(tile, (x - m, y - m), tile)
 
 
+def _desenhar_quadro_dica(base, draw, reg, dpi, fontes_dir) -> None:
+    """§7.4.3: a MOLDURA do Fica a Dica (era arte rasterizada na BASE
+    do Jornal; caixa vazia com pautas lia como falha de impressão) —
+    desenhada pelo app SOMENTE quando há dica. Geometria derivada do
+    rect do texto com as margens da arte original (aproximação
+    declarada: caixa + tracejado interno + chip verde + losango; o
+    lápis ornamental ficou na memória da arte)."""
+    x, y, rw, rh = _rect_px(reg.rect, dpi)
+    f = mm_para_px(0.2646, dpi)          # 1 px do viewBox 1080, em px
+    qx = round(x - 16 * f)
+    qy = round(y - 38 * f)
+    qw = round(rw + 30 * f)
+    qh = round(rh + 44 * f)
+    draw.rectangle((qx, qy, qx + qw, qy + qh), outline="#201B12",
+                   width=max(1, round(1.3 * f)))
+    m = round(4 * f)
+    d2 = ImageDraw.Draw(base, "RGBA")
+    d2.rectangle((qx + m, qy + m, qx + qw - m, qy + qh - m),
+                 outline=(245, 134, 52, 180), width=max(1, round(f)))
+    cw, ch = round(126 * f), round(23 * f)
+    cx, cy = qx + round(12 * f), qy + round(10 * f)
+    draw.rectangle((cx, cy, cx + cw, cy + ch), fill="#0F783F")
+    fonte = fonte_segura(fontes_dir, "Archivo-Bold.ttf",
+                         round(11.5 * f * 96 / 72))
+    draw.text((cx + cw // 2, cy + ch // 2), "FICA A DICA",
+              font=fonte, fill="#F7F3E9", anchor="mm")
+    lx, ly = cx + cw + round(18 * f), cy + round(11 * f)
+    s = round(5 * f)
+    draw.polygon([(lx, ly), (lx + s, ly - s), (lx + 2 * s, ly),
+                  (lx + s, ly + s)], fill=(245, 134, 52))
+
+
 def _tinta_no_rect(base: Image.Image, x: int, y: int, w: int,
                    h: int) -> float:
     """Fração de pixels que NÃO são papel na área (dist > 40 do creme
@@ -643,11 +687,19 @@ def _tinta_no_rect(base: Image.Image, x: int, y: int, w: int,
 
 
 def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
-    """UNDEVICESIMUS §4.1: quando a etiqueta SOBREPÕE a zona da foto,
-    compara a posição da arte (canto direito) com a ESPELHADA (canto
-    esquerdo) e pousa na de menor tinta — com histerese (só muda se o
-    espelho for CLARAMENTE mais limpo) para não tremer entre edições.
-    Devolve o rect novo em mm, ou None (fica onde a arte mandou)."""
+    """UNDEVICESIMUS §7.3: a etiqueta que cruza a zona da foto pousa
+    pela SILHUETA (a tinta pintada do produto, nunca a caixa):
+
+    - produto ESTREITO (etiqueta > 45% da largura visível — garrafa,
+      caixinha): a etiqueta sai da silhueta e pousa AO LADO, dentro
+      da zona;
+    - produto LARGO: a etiqueta MORDE O CANTO inferior direito
+      (~40% dela sobre a tinta) — o centro do produto nunca é coberto
+      e a área invadida fica ≤ 25% da tinta.
+
+    Sem silhueta registrada (máscara/arranjo), cai no §4.1: compara a
+    posição da arte com a ESPELHADA por densidade de tinta, com
+    histerese. Devolve o rect novo em mm, ou None (fica na arte)."""
     from app.rendering.model import Retangulo, TipoRegiao as _TR
     img = next((r for r in regioes
                 if r.tipo == _TR.IMAGEM and r.visivel), None)
@@ -661,12 +713,43 @@ def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
             and rp.y_mm < r_img.y_mm + r_img.alt_mm
             and rp.y_mm + rp.alt_mm > r_img.y_mm):
         return None
-    # o espelho horizontal em torno do centro da zona da foto
+
+    def _px(v):
+        return round(mm_para_px(v, dpi))
+
+    sil = getattr(base, "_silhuetas", {}).get(img.uid)
+    if sil:
+        ox, oy, nw, nh = sil             # px da tinta pintada
+        px_por_mm = mm_para_px(1.0, dpi)
+        sil_x0, sil_x1 = ox / px_por_mm, (ox + nw) / px_por_mm
+        sil_y1 = (oy + nh) / px_por_mm
+        larg_sil = sil_x1 - sil_x0
+        cel_x1 = r_img.x_mm + r_img.larg_mm
+        # a base da etiqueta fica onde a arte mandou (o bloco de
+        # texto vem logo abaixo); só o X e a MORDIDA mudam
+        if rp.larg_mm > 0.45 * larg_sil:
+            # AO LADO da silhueta (garrafa/caixinha) — se couber
+            x_lado = sil_x1 + 0.8
+            if x_lado + rp.larg_mm <= cel_x1 + 2.0:
+                return Retangulo(min(x_lado, cel_x1 + 2.0 - rp.larg_mm),
+                                 rp.y_mm, rp.larg_mm, rp.alt_mm)
+            # não coube ao lado: morde o canto mesmo assim (mínimo
+            # de invasão que o canto permite)
+            x_novo = min(sil_x1 - 0.25 * rp.larg_mm,
+                         cel_x1 - rp.larg_mm + 2.0)
+            return Retangulo(x_novo, rp.y_mm, rp.larg_mm, rp.alt_mm)
+        # produto LARGO: morde o canto inf-dir (~40% sobre a tinta —
+        # invasão ≈ 40%×45% ≈ 18% da largura, longe do centro)
+        x_novo = min(sil_x1 - 0.4 * rp.larg_mm,
+                     cel_x1 - rp.larg_mm + 2.0)
+        if abs(x_novo - rp.x_mm) < 0.5:
+            return None
+        return Retangulo(x_novo, rp.y_mm, rp.larg_mm, rp.alt_mm)
+
+    # fallback §4.1 (sem silhueta): o espelho por densidade
     x_esp = 2 * r_img.x_mm + r_img.larg_mm - rp.x_mm - rp.larg_mm
     if abs(x_esp - rp.x_mm) < 1.0:       # centrado: nada a decidir
         return None
-    def _px(v):
-        return round(mm_para_px(v, dpi))
     atual = _tinta_no_rect(base, _px(rp.x_mm), _px(rp.y_mm),
                            _px(rp.larg_mm), _px(rp.alt_mm))
     espelho = _tinta_no_rect(base, _px(x_esp), _px(rp.y_mm),
@@ -959,6 +1042,11 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         if texto and reg.forma_preco != FormaPreco.TEXTO:
             _desenhar_forma_preco(base, reg, dpi)
             reg = _regiao_palco_da_forma(reg)
+        # UNDEVICESIMUS §7.4.3: o quadro do Fica a Dica saiu da ARTE
+        # (caixa vazia com pautas lê como falha de impressão) — o app
+        # o desenha SÓ quando há dica; sem texto, nada na página
+        if texto and reg.papel_texto == PapelTexto.DICA:
+            _desenhar_quadro_dica(base, draw, reg, dpi, fontes_dir)
         _desenhar_texto(base, draw, reg, texto, dpi, fontes_dir)
     # SELO é desenhado num passe final (âncora), não aqui.
 

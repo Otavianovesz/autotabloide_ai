@@ -721,3 +721,97 @@ def test_undevicesimus_bloco_unico_variancia_zero(tmp_path):
             n += 1
     assert n >= 30, f"só {n} células medidas"
     assert len(gaps) == 1, f"entrelinhas diferentes: {sorted(gaps)}"
+
+
+def test_s7_um_eixo_por_coluna_no_banco(tmp_path):
+    """§7.2: a decisão B com a correção — texto E foto à ESQUERDA nas
+    células de coluna (um eixo só; dois eixos disputando liam como
+    desalinho). L16: lido do banco após o import. E §7.4.2: ZERO grau
+    na grade (a inclinação ficou só nos destaques da capa)."""
+    from pathlib import Path
+
+    from app.core.database import Database
+    from app.core.paths import SystemRoot
+    from app.rendering import encartes
+    from app.rendering.model import Alinhamento, TipoRegiao
+    from app.rendering.persistencia import carregar_layout, listar_layouts
+
+    pacote = Path(__file__).resolve().parents[2] / "Templates novos"
+    if not pacote.is_dir():
+        import pytest
+        pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
+    raiz = SystemRoot(tmp_path / "raiz")
+    db = Database(raiz).init()
+    try:
+        with db.Session() as s:
+            encartes.importar_pacote(s, pacote, raiz=raiz)
+            s.commit()
+            reg = next(r for r in listar_layouts(s)
+                       if r.nome == "Jornal do Mês")
+            lay = carregar_layout(s, reg.id, raiz=raiz)
+    finally:
+        db.engine.dispose()
+    n = 0
+    for pag in lay.paginas:
+        for sl in pag.slots:
+            nome = next((r for r in sl.regioes
+                         if r.tipo == TipoRegiao.NOME), None)
+            sub = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.SUBTITULO), None)
+            img = next((r for r in sl.regioes
+                        if r.tipo == TipoRegiao.IMAGEM), None)
+            pr = next((r for r in sl.regioes
+                       if r.tipo == TipoRegiao.PRECO), None)
+            if None in (nome, sub, img, pr):
+                continue
+            if nome.rect.y_mm < img.rect.y_mm + img.rect.alt_mm - 1.0:
+                continue                 # herói/chamada: outra família
+            assert nome.alinhamento == Alinhamento.ESQUERDA, sl.id
+            assert sub.alinhamento == Alinhamento.ESQUERDA, sl.id
+            assert img.alinhamento == Alinhamento.ESQUERDA, sl.id
+            assert pr.rotacao_graus == 0.0, (sl.id, pr.rotacao_graus)
+            n += 1
+    assert n >= 30, f"só {n} células medidas"
+
+
+def test_s7_dica_ou_texto_ou_nada(tmp_path):
+    """§7.4.3: a caixa do Fica a Dica saiu da ARTE — COM dica o app
+    desenha a moldura + chip verde; SEM dica, NADA na página (caixa
+    vazia com pautas lia como falha de impressão). Por pixel."""
+    from collections import Counter
+
+    from PIL import Image
+
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.model import (
+        LayoutDef, Pagina, PapelTexto, Regiao, Retangulo, Slot,
+        TipoRegiao,
+    )
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    def _pagina(texto):
+        sl = Slot("d1", [
+            Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(40, 40, 90, 20),
+                   papel_texto=PapelTexto.DICA, texto_fixo=texto,
+                   fonte=nome_f, tamanho_max_pt=10),
+        ])
+        lay = LayoutDef(180.0, 120.0, dpi=96,
+                        paginas=[Pagina(slots=[sl])])
+        return lay, lay.paginas[0]
+
+    verde = (0x0F, 0x78, 0x3F)
+    lay, pag = _pagina("Sardinha com macarrão rende almoço.")
+    img = compor_pagina(lay, pag, {"d1": DadosProduto(nome="X")},
+                        fontes_dir=fontes).convert("RGB")
+    c = Counter(img.getdata())
+    assert c[verde] > 500, f"o chip verde não desenhou ({c[verde]}px)"
+    lay2, pag2 = _pagina("")
+    img2 = compor_pagina(lay2, pag2, {"d1": DadosProduto(nome="X")},
+                         fontes_dir=fontes).convert("RGB")
+    c2 = Counter(img2.getdata())
+    assert c2[verde] == 0, "dica VAZIA desenhou moldura"

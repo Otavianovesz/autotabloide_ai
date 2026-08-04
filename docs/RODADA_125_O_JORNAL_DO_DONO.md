@@ -1431,3 +1431,56 @@ ordem. Com o bloco único, a 2ª linha desce com a MESMA entrelinha
 §4.7 (o herói é escolha do dono — o gesto "destacar" na Mesa); a
 vírgula menor que os centavos (§4.5, ganho marginal); e as Ondas 2-4
 da DUODEVICESIMUS que seguem na fila.
+
+## A REAUDITORIA §7 (04/08) — a resposta do builder
+
+### §7.2 — B gravada, com a correção do eixo
+
+A decisão B entrou no GERADOR (e no banco): texto **e foto** à
+ESQUERDA nas células de coluna — um eixo só por coluna (o motor
+ganhou o alinhamento horizontal no ASSENTAR, gate por região; o
+default CENTRO dos outros encartes intacto). A capa segue centrada
+(herói e chamadas — editorial). Guardião
+`test_s7_um_eixo_por_coluna_no_banco` (L16).
+
+### §7.3 — a etiqueta parou de engolir o produto
+
+O pouso agora é pela **SILHUETA** (a tinta pintada, registrada pelo
+compositor no desenho da foto — nunca a caixa): produto ESTREITO
+(etiqueta > 45% da largura visível — garrafa, caixinha) → a etiqueta
+sai da silhueta e pousa **AO LADO**, dentro da zona; produto LARGO →
+**morde o canto** inferior direito (~40% dela sobre a tinta ≈ 18% da
+largura invadida — o centro nunca é coberto, área ≤ 25%). Sem
+silhueta (máscara/arranjo), cai no §4.1 (espelho por densidade). Na
+prova real: a Água, o Campari, o Leite e o Macarrão com a etiqueta ao
+lado; a Yoki e os largos com a mordida no canto. O caso-limite "não
+coube nem no mínimo → encolhe a foto" não ocorreu em nenhuma das 42
+células — fica nomeado como degrau futuro se uma arte apertada o
+exigir.
+
+### §7.4 — os três acabamentos
+
+1. **Produto ≥85% da altura:** MEDIDO na p2 real — 19 de 21 células a
+   100% (o ASSENTAR escala pelo lado limitante); as 2 restantes são
+   fotos LARGAS (limitadas pela largura — esticar seria distorcer; o
+   conserto real é o §4.6 da área óptica, nomeado).
+2. **0° na grade:** feito — a inclinação (−6/+5) ficou só no herói e
+   nas chamadas da capa.
+3. **A dica ou tem texto ou não existe:** o quadro SAIU da BASE
+   (gerador + T6 + reimport) e virou desenho CONDICIONAL do app
+   (`_desenhar_quadro_dica`: moldura + tracejado + chip verde FICA A
+   DICA + losango; o lápis ornamental ficou na memória da arte —
+   aproximação declarada). Sem dica: NADA na página. Guardião
+   `test_s7_dica_ou_texto_ou_nada` por pixel (verde do chip > 500 com
+   texto; == 0 sem).
+
+### Achado de bancada — a prova usava o NOME, não o CAMINHO
+
+O quadro "removido" reapareceu na 1ª prova: a internação de artes
+deduplica por CONTEÚDO (`jornal-p2-BASE_2/_3.png` quando os bytes
+mudam — defensivo e correto: arte antiga pode ser referenciada por
+outro layout), e o script da prova derivava o fundo pela CONVENÇÃO DE
+NOME fixa — pegava o PNG VELHO da raiz. A prova agora carrega o
+layout pelo `carregar_layout` e usa o `arquivo_fundo` REAL do banco —
+a L16 valia para a geometria e furava no fundo; furava mais: está
+fechada nas duas pontas.
