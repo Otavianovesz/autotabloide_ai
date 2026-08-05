@@ -275,8 +275,13 @@ class ConciliacaoDialog(QDialog):
         self._pre_busca_em_voo = False
         self._fila_enriquecer = None
         self._fila_criar = None
+        # VICESIMUS-QUARTUS §2.1: linha RISCADA não é "novo produto" — é
+        # oferta cancelada esperando confirmação; fica FORA das filas
+        # automáticas (enriquecer/criar em lote). O clique explícito do
+        # dono nela continua valendo.
         vermelhos = [(it.uid, it.descricao) for it in self.itens
-                     if it.semaforo == "VERMELHO"]
+                     if it.semaforo == "VERMELHO"
+                     and "riscada" not in (it.pendencias or [])]
         if vermelhos:
             estado: dict = {}          # o motor é sondado UMA vez, na thread
 
@@ -870,7 +875,8 @@ class ConciliacaoDialog(QDialog):
         vermelho roda em segundo plano (uma por vez — o ddgs tem limite)."""
         if self._pre_busca_em_voo:
             return
-        uids = [it.uid for it in self.itens if it.semaforo == "VERMELHO"]
+        uids = [it.uid for it in self.itens if it.semaforo == "VERMELHO"
+                and "riscada" not in (it.pendencias or [])]     # §2.1
         try:
             pos = uids.index(uid_atual)
         except ValueError:
@@ -995,8 +1001,16 @@ class ConciliacaoDialog(QDialog):
     def _criar_todos_sem_foto(self) -> None:
         """RG-03: TODOS os vermelhos cadastrados de uma vez, sem foto —
         fila em segundo plano, resolvendo POR UID conforme fica pronto."""
+        # §2.1: a riscada NUNCA vira produto por lote — cancelada não é
+        # nova; o pulo é DITO (I2), nunca silencioso
+        riscados = [it for it in self.itens if it.semaforo == "VERMELHO"
+                    and "riscada" in (it.pendencias or [])]
         pares = [(it.uid, it) for it in self.itens
-                 if it.semaforo == "VERMELHO"]
+                 if it.semaforo == "VERMELHO" and it not in riscados]
+        if riscados:
+            mostrar_toast(self, f"{len(riscados)} linha(s) RISCADA(s) na "
+                                "tabela ficaram fora do lote — confirme "
+                                "uma a uma se alguma vale.")
         if not pares:
             return
         self.btn_todos.setEnabled(False)

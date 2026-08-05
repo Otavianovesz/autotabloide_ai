@@ -35,6 +35,11 @@ MARCAS_MERCADO: frozenset[str] = frozenset({
     "campari", "coqueiro", "mon bijou", "limpol", "doce dia", "somar",
     "tio bonini", "tio jonas", "kitubaina", "kolynos", "bulnez",
     "adoralle",
+    # VICESIMUS-QUARTUS §2.2 (o açúcar do Quintou saiu impresso como
+    # Doce Dia): a marca da LINHA precisa ser reconhecida para a guarda
+    # "marca diferente nunca casa" disparar — Itamaraty nunca é palavra
+    # de produto (açúcar/rosquinha do acervo real do dono)
+    "itamaraty",
     # "todos" (a marca do açúcar do dono) fica FORA: palavra comum
     # demais — o caso-limite do critério; entra pela Config/acervo
     # encartes anteriores (Quintou/Terça/Segunda) e nacionais inequívocas

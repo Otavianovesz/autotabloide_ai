@@ -53,6 +53,17 @@ PROMPT_OCR = (
     '(ex: "ARROZ X 5 Kgs <> R$ 18,81") — copie esse valor JUNTO na '
     "descrição, nunca o descarte. "
     "Ignore também códigos de coluna curtos no meio da linha (ex: T-1). "
+    # VICESIMUS-QUARTUS §2.1: a tabela do dono tem GRAMÁTICA — linha
+    # TACHADA (um traço riscando o texto) quer dizer "esta oferta foi
+    # CANCELADA". Ler o texto não é ler o documento: duas riscadas foram
+    # impressas como oferta válida. O modelo NUNCA decide sozinho —
+    # transcreve e MARCA; quem cancela é o humano.
+    'IMPORTANTE: se uma linha estiver RISCADA/TACHADA (um traço cortando '
+    "o texto — oferta cancelada), NÃO a omita: transcreva a linha "
+    'normalmente e acrescente "riscada": true no objeto dela. Na dúvida '
+    '(traço fraco, rasura em cima do texto), também marque "riscada": '
+    "true — o aplicativo pergunta ao humano. Linha limpa não leva a "
+    "chave. "
     "Leia a imagem:"
 )
 
@@ -61,6 +72,9 @@ PROMPT_OCR = (
 class LinhaOferta:
     descricao: str
     preco: str | None = None
+    # VICESIMUS-QUARTUS §2.1: linha tachada na tabela (oferta cancelada
+    # pelo dono) — viaja marcada, nunca entra calada nem some calada
+    riscada: bool = False
 
 
 @dataclass
@@ -131,7 +145,8 @@ def ler_tabela(imagem: str | Path, motor: MotorIA, *, min_lado: int = 1024,
         desc = (d.get("descricao") or "").strip()
         if desc:
             preco = d.get("preco")
-            linhas.append(LinhaOferta(desc, str(preco).strip() if preco else None))
+            linhas.append(LinhaOferta(desc, str(preco).strip() if preco else None,
+                                      riscada=bool(d.get("riscada"))))
 
     validade = dados.get("validade_oferta")
     validade = validade.strip() if isinstance(validade, str) and validade.strip() else None
@@ -181,7 +196,11 @@ def cache_consultar(caminho: str | Path, modelo_visao: str) -> TabelaOCR | None:
         return None
     if entrada.get("prompt") != _versao_prompt():
         return None                      # prompt evoluiu: reler de verdade
-    linhas = [LinhaOferta(d, p) for d, p in entrada.get("linhas", []) if d]
+    # §2.1: entrada antiga é o par [desc, preco]; a nova é o trio com
+    # "riscada" — o leitor aceita as duas (cache velho não envenena)
+    linhas = [LinhaOferta(ln[0], ln[1],
+                          riscada=bool(ln[2]) if len(ln) > 2 else False)
+              for ln in entrada.get("linhas", []) if ln and ln[0]]
     if not linhas:
         return None
     return TabelaOCR(linhas=linhas,
@@ -213,7 +232,8 @@ def cache_guardar(caminho: str | Path, modelo_visao: str,
     from datetime import datetime
     entradas = _cache_carregar()
     entradas[_hash_arquivo(caminho)] = {
-        "linhas": [[ln.descricao, ln.preco] for ln in tabela.linhas],
+        "linhas": [[ln.descricao, ln.preco, ln.riscada]
+                   for ln in tabela.linhas],
         "validade_oferta": tabela.validade_oferta,
         "modelo": modelo_visao,
         "prompt": _versao_prompt(),

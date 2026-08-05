@@ -766,10 +766,22 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     # SEXTUSDECIMUS/M3: os SABORES da linha abrem o descritor ("Tomate,
     # Óleo ou Limão · 125 g") — o nome fica o base da família e o
     # cliente descobre o que existe
+    # VICESIMUS-QUARTUS §1.2 (o K6 da ordem 12, agora executável): UM
+    # ITEM TEM UM PESO SÓ. A unidade do item (tabela/campo estruturado)
+    # e o peso escrito no NOME do cadastro divergiam ("500ml" × "497ml"
+    # — a correção do dono) e a arte imprimia OS DOIS ("500ml · 497 ml").
+    # Vence o do CADASTRO; a divergência é aviso da conciliação (J10),
+    # nunca texto na arte. Este é o ponto ÚNICO que monta o descritor.
+    from app.rendering.nome_fit import mesmo_peso_exibido, peso_do_cadastro
+    unidade_arte = it.unidade
+    peso_cad = peso_do_cadastro(nome)
+    if peso_cad and it.unidade and not mesmo_peso_exibido(peso_cad,
+                                                          it.unidade):
+        unidade_arte = peso_cad
     descritor = " · ".join(p for p in (
         juntar_com_ou(getattr(it, "sabores", None) or []) or None,
         "marca própria" if it.marca_propria else None,
-        it.unidade) if p) or None
+        unidade_arte) if p) or None
     # RODADA-125 v2 — a REGRA CANÔNICA da célula: as marcas conhecidas
     # do nome viajam no dado; a cadeia do nome_fit as desce ao
     # descritor (e dedupa o peso repetido) SÓ onde há SUBTITULO — em
@@ -798,7 +810,9 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         composto=bool(getattr(it, "origem_composto", None)),
         mais18=it.mais18,
         marca_propria=it.marca_propria,                     # F13/COND-5
-        unidade=it.unidade,
+        # §1.2: a unidade da ARTE é a resolvida (o cadastro vence) — é
+        # contra ela que o nome_fit dedupa o peso do nome
+        unidade=unidade_arte,
         descritor=descritor,                 # F13-BIS/T2
         desconto_pct=getattr(it, "desconto_pct", None),   # Q2
         marcas_nome=marcas_nome,             # v2: a hierarquia canônica
@@ -2128,6 +2142,17 @@ def _nota_da_foto(caminho):
         return None
 
 
+def avisos_de_riscadas(itens, mapa: dict | None) -> list[str]:
+    """VICESIMUS-QUARTUS §2.1: item RISCADO na tabela que está NA PÁGINA
+    (uid no mapa) — o pré-voo pergunta antes de salvar/exportar; oferta
+    cancelada nunca vai à rua calada. Aviso, nunca veto (trava #3)."""
+    na_grade = set((mapa or {}).values())
+    return [f"“{it.nome or it.descricao}” estava RISCADO na tabela "
+            "(oferta cancelada?) — confirme que ele vale"
+            for it in (itens or [])
+            if it.uid in na_grade and "riscada" in (it.pendencias or [])]
+
+
 def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                        fontes_dir=None) -> list[str]:
     """Pendências por slot ocupado, ANTES de exportar/salvar.
@@ -2402,6 +2427,7 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
         linhas = []
         multi_precos: list[str | None] = []
         precos_de: list[str | None] = []
+        riscadas: list[bool] = []
         for ln in tabela.linhas:
             preco, mp, pde = classificar_preco_ocr(ln.preco)
             desc = ln.descricao
@@ -2415,12 +2441,14 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
             linhas.append((desc, preco, None))
             multi_precos.append(mp)
             precos_de.append(pde)
+            riscadas.append(ln.riscada)      # §2.1: o gesto viaja junto
         validade = tabela.validade_oferta
         return conciliar_linhas(linhas, status_cb, validade=validade,
                                 aviso=aviso_cache,
                                 caminho_fonte=str(caminho),
                                 multi_precos=multi_precos,
-                                precos_de=precos_de)
+                                precos_de=precos_de,
+                                riscadas=riscadas)
 
     status_cb("Lendo a tabela…")
     from app.scripts.importar_tabela import parse_tabela_ean
@@ -2432,7 +2460,7 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                      aviso=None, caminho_fonte=None,
                      multi_precos=None, descontos=None,
-                     precos_de=None) -> ResultadoMesa:
+                     precos_de=None, riscadas=None) -> ResultadoMesa:
     """Concilia uma lista de tuplas ``(descricao, preco, ean)`` com o banco —
     o MESMO caminho que ``importar_ofertas`` usa. A COLAGEM (R-050, Fase 7)
     reusa isto: o parser de colagem produz as tuplas e cai aqui, sem duplicar
@@ -2542,6 +2570,22 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                     v.motivo = (f"o preço «{preco}» não foi entendido — "
                                 "corrija na coluna Preço"
                                 + (f" · {v.motivo}" if v.motivo else ""))
+                # VICESIMUS-QUARTUS §2.1 (a gramática da tabela): linha
+                # RISCADA é oferta CANCELADA pelo dono — o app lia as
+                # letras e ignorava o gesto (duas riscadas IMPRESSAS no
+                # Quintou). Ela PARA em vermelho perguntando: nunca casa
+                # produto sozinha, nunca entra calada e nunca some
+                # calada (L15) — fica à vista, fora dos fluxos em lote.
+                ri = (bool(riscadas[i - 1]) if riscadas
+                      and i - 1 < len(riscadas) else False)
+                if ri:
+                    pendencias.append("riscada")
+                    v.semaforo = Semaforo.VERMELHO
+                    v.motivo = ("a linha está RISCADA na tabela (oferta "
+                                "cancelada?) — só entra se você confirmar"
+                                + (f" · casaria com {p.nome_sanitizado}"
+                                   if p is not None else ""))
+                    p = None
                 itens.append(ItemMesa(
                     descricao=desc,
                     preco=preco,

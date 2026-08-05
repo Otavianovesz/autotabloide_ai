@@ -273,6 +273,71 @@ class Conciliador:
         from app.core.aprendizado import canonizar_sinonimos
         return _chave_comparacao(canonizar_sinonimos(texto, self._sinonimos))
 
+    # --- a guarda da marca (VICESIMUS-QUARTUS §2.2) ------------------------------
+
+    def _vocab_marcas(self) -> set[str]:
+        """O vocabulário de marcas do LOTE (1 consulta): o seed do
+        mercado + as marcas confirmadas do acervo + as próprias da
+        Config. Degrada para o seed (nunca inventa)."""
+        if getattr(self, "_marcas_cache", None) is None:
+            from app.core.marcas import marcas_conhecidas
+            extras: list[str] = []
+            try:
+                from sqlalchemy import select
+
+                from app.core.models import Produto
+                from app.core.repositories import ConfigRepositorio
+                for (m,) in self.session.execute(
+                        select(Produto.marca).distinct()):
+                    if m and str(m).strip():
+                        extras.append(str(m).strip())
+                extras += list(ConfigRepositorio(self.session).get(
+                    "marcas.proprias", []) or [])
+            except Exception:
+                pass
+            self._marcas_cache = marcas_conhecidas(tuple(extras))
+        return self._marcas_cache
+
+    def _marcas_de(self, texto: str) -> set[str]:
+        """As marcas CONHECIDAS presentes no texto, normalizadas."""
+        from app.core.marcas import _chave as chave_marca
+        from app.core.marcas import marcas_no_nome
+        return {chave_marca(m)
+                for m in marcas_no_nome(texto or "", self._vocab_marcas())}
+
+    def _marcas_do_produto(self, produto) -> set[str]:
+        """As do CANDIDATO: as reconhecidas no nome + o campo ``marca``
+        do cadastro (dado confirmado pelo dono — conta sempre)."""
+        from app.core.marcas import _chave as chave_marca
+        marcas = self._marcas_de(produto.nome_sanitizado or "")
+        campo = chave_marca(getattr(produto, "marca", None) or "")
+        if campo:
+            marcas.add(campo)
+        return marcas
+
+    def _vermelho_se_marca_troca(self, veredito: Veredito,
+                                 nome_bruto: str) -> Veredito:
+        """§2.2: MARCA CONHECIDA DIFERENTE NUNCA CASA — o açúcar
+        Itamaraty da tabela saiu impresso como Doce Dia, verde e calado.
+        A irmã da J10, um degrau mais dura: quando a linha e o candidato
+        têm marcas conhecidas e NENHUMA coincide, o veredito cai a
+        VERMELHO (produto NOVO — o candidato fica à vista, mas nada se
+        pré-aceita). Só age quando os DOIS lados têm marca reconhecida
+        (sem prova não se acusa; a régua nunca inventa)."""
+        if veredito.semaforo != Semaforo.VERDE or veredito.produto is None:
+            return veredito
+        da_linha = self._marcas_de(nome_bruto)
+        do_produto = self._marcas_do_produto(veredito.produto)
+        if da_linha and do_produto and not (da_linha & do_produto):
+            nome_p = veredito.produto.nome_sanitizado
+            veredito.semaforo = Semaforo.VERMELHO
+            veredito.produto = None
+            veredito.motivo = ("a marca não bate (a linha diz "
+                               f"“{' / '.join(sorted(da_linha))}”; o "
+                               f"cadastro “{nome_p}” é outra marca) — "
+                               "parece produto NOVO")
+        return veredito
+
     # --- corpus para o fuzzy (nomes sanitizados + aliases sanitizados) ---------
 
     def _corpus(self) -> dict[str, list[int]]:
@@ -562,9 +627,23 @@ class Conciliador:
             nome_bruto
         )
         if exato is not None:
-            return Veredito(nome_bruto, Semaforo.VERDE, exato,
-                            [Candidato(exato, 100.0)], 1.0,
-                            "match exato (nome cru ou alias)", "exato")
+            v = Veredito(nome_bruto, Semaforo.VERDE, exato,
+                         [Candidato(exato, 100.0)], 1.0,
+                         "match exato (nome cru ou alias)", "exato")
+            # VICESIMUS-QUARTUS §2.2: nem o ALIAS passa verde com marca
+            # trocada — foi exatamente por um alias (confirmação errada
+            # de ontem) que o Itamaraty virou Doce Dia calado. A escolha
+            # do dono segue valendo (o vínculo fica), mas NUNCA calada:
+            # desce a AMARELO com o conflito dito, todo import.
+            da_linha = self._marcas_de(nome_bruto)
+            do_produto = self._marcas_do_produto(exato)
+            if da_linha and do_produto and not (da_linha & do_produto):
+                v.semaforo = Semaforo.AMARELO
+                v.motivo = ("o atalho aprendido liga marcas DIFERENTES "
+                            f"(a linha diz “{' / '.join(sorted(da_linha))}”; "
+                            f"o cadastro é “{exato.nome_sanitizado}”) — "
+                            "confirme, ou desfaça o vínculo")
+            return v
 
         cands = self._candidatos(nome_bruto)
         if not cands:
@@ -587,10 +666,15 @@ class Conciliador:
             return veredito
 
         def _guardas_do_verde(veredito: Veredito) -> Veredito:
-            """S1 (divergência de marca) + J10 (peso/volume) — as duas
-            guardas que impedem um verde calado errado."""
-            return _rebaixar_se_peso_diverge(
-                _rebaixar_se_divergente(veredito), nome_bruto)
+            """§2.2 (marca conhecida diferente → VERMELHO) + S1
+            (divergência de termos) + J10 (peso/volume) — as guardas que
+            impedem um verde calado errado. A da marca roda PRIMEIRO:
+            marca trocada não é "conferir", é outro produto."""
+            veredito = self._vermelho_se_marca_troca(veredito, nome_bruto)
+            return _rebaixar_se_qualificador_perdido(
+                _rebaixar_se_peso_diverge(
+                    _rebaixar_se_divergente(veredito), nome_bruto),
+                nome_bruto)
 
         melhor = cands[0]
         if melhor.score >= self.limiares.verde:
@@ -608,6 +692,37 @@ class Conciliador:
 
         return Veredito(nome_bruto, Semaforo.VERMELHO, None, cands,
                         melhor.score / 100, "abaixo do limiar — provável novo", "novo")
+
+
+# VICESIMUS-QUARTUS §2.3 (o Toscana que sumiu): qualificadores QUE
+# VENDEM — inequívocos no domínio (o mesmo critério conservador da
+# ortografia; na dúvida, a palavra NÃO entra). A oferta que os declara
+# não pode casar calada com um cadastro genérico.
+_QUALIFICADORES_QUE_VENDEM = frozenset({
+    "toscana", "calabresa", "defumada", "defumado",
+})
+
+
+def _rebaixar_se_qualificador_perdido(veredito: Veredito,
+                                      nome_bruto: str) -> Veredito:
+    """§2.3: a Linguiça Perdigão TOSCANA casou verde com o cadastro
+    "Linguiça Perdigão" e o Toscana SUMIU da página — o S1 só olhava a
+    direção cadastro→oferta. O espelho, vocabulário-guiado: token da
+    OFERTA que é qualificador conhecido e não está no candidato
+    rebaixa a AMARELO com o motivo dito (nunca uma régua genérica —
+    a oferta real é cheia de ruído; só o inequívoco acusa)."""
+    if veredito.semaforo != Semaforo.VERDE or veredito.produto is None:
+        return veredito
+    da_oferta = _tokens_significativos(_chave_comparacao(nome_bruto))
+    do_cad = _tokens_significativos(
+        _chave_comparacao(veredito.produto.nome_sanitizado or ""))
+    perdidos = (da_oferta & _QUALIFICADORES_QUE_VENDEM) - do_cad
+    if perdidos:
+        veredito.semaforo = Semaforo.AMARELO
+        veredito.motivo = ("a oferta diz "
+                           f"“{', '.join(sorted(perdidos))}” e o cadastro "
+                           "não — confira se é o mesmo produto")
+    return veredito
 
 
 def _rebaixar_se_peso_diverge(veredito: Veredito,

@@ -509,12 +509,16 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 # mediana medida) e a foto é UM corpo só, o produto se
                 # REPETE — 3 cópias com profundidade e rotação. A
                 # ordem do §4: o leque muda a tinta ANTES da etiqueta.
-                # §4.4 da TERTIUS: a célula-HERÓI nunca multiplica —
-                # na capa o herói é UM produto grande e imponente
-                # (gate: zona mais larga que 60 mm é editorial)
-                eh_heroi = reg.rect.larg_mm > 60.0
-                if (reg.uid in getattr(base, "_p4_uids", ())
-                        and img.mode == "RGBA" and not eh_heroi):
+                # VICESIMUS-QUARTUS §1.3 (L22): o leque é CAPACIDADE DO
+                # MOTOR, não do layout — o gate de identidade "coluna
+                # com mordida" prendia a L19 ao Jornal; qualquer zona
+                # ASSENTAR de foto recortada dispara pela régua da
+                # tinta. §4.4 da TERTIUS segue: o HERÓI nunca
+                # multiplica — agora medido POR PÁGINA (pré-passe: bem
+                # maior que a mediana, ou página editorial <3 zonas)
+                eh_heroi = reg.uid in getattr(base, "_heroi_uids", ())
+                if (img.mode == "RGBA" and not eh_heroi
+                        and reg.uid not in getattr(base, "_q1_uids", ())):
                     frac = _fracao_de_tinta(img)
                     tinta_un = frac * nw * nh / max(rw * rh, 1)
                     prop_un = nw / max(1, nh)
@@ -1021,6 +1025,65 @@ def _regiao_palco_da_forma(reg: Regiao) -> Regiao:
         alinhamento_v=AlinhamentoV.CENTRO)
 
 
+def _cor_dominante_saturada(base: Image.Image, x: int, y: int,
+                            w: int, h: int) -> tuple | None:
+    """§3.2 (VICESIMUS-QUARTUS): a cor da PRÓPRIA etiqueta — o tom
+    saturado mais frequente do miolo (quantizado); listra clara/preta
+    (sem saturação) fica de fora. None quando não há cor dominante."""
+    if w <= 4 or h <= 4:
+        return None
+    # o MIOLO do rect (a etiqueta com certeza mora nele) e NEAREST —
+    # o resize bilinear MISTURAVA a listra vermelha com o fundo azul e
+    # o chapado saía ROXO (visto na 1ª prova do Quintou)
+    cx0, cy0 = x + round(w * 0.20), y + round(h * 0.20)
+    amostra = base.crop(
+        (cx0, cy0, x + w - round(w * 0.20), y + h - round(h * 0.20))
+    ).convert("RGB").resize((24, 12), Image.NEAREST)
+    freq: dict[tuple, int] = {}
+    for r, g, b in amostra.getdata():
+        if max(r, g, b) - min(r, g, b) < 40:
+            continue
+        chave = (r // 24 * 24 + 12, g // 24 * 24 + 12, b // 24 * 24 + 12)
+        freq[chave] = freq.get(chave, 0) + 1
+    if not freq:
+        return None
+    return max(freq, key=freq.get)
+
+
+def _chapado_atras_do_numero(base: Image.Image, reg: Regiao,
+                             dpi: int) -> None:
+    """VICESIMUS-QUARTUS §3.2 (L22 — vale nos oito): número branco
+    sobre HACHURA não se lê — um fundo CHAPADO na cor dominante da
+    própria etiqueta entra atrás do palco do número; as listras
+    seguem vivas na borda. Vale com a camada do dono E com o
+    sintético. Sem cor saturada dominante (arte atípica), não se
+    chapa — degradação declarada, nunca um retângulo inventado."""
+    x, y, w, h = _rect_px(reg.rect, dpi)
+    cor = _cor_dominante_saturada(base, x, y, w, h)
+    if cor is None:
+        return
+    # o topo cobre o "R$" minúsculo GRAVADO na arte (o proporcional é
+    # desenhado pelo app); a base guarda um fio a mais de listra
+    mx, my_topo, my_base = round(w * 0.06), round(h * 0.05), round(h * 0.10)
+    tile = Image.new("RGBA",
+                     (max(1, w - 2 * mx), max(1, h - my_topo - my_base)),
+                     (0, 0, 0, 0))
+    d2 = ImageDraw.Draw(tile)
+    d2.rounded_rectangle(
+        [0, 0, tile.width - 1, tile.height - 1],
+        radius=max(3, round(min(tile.width, tile.height) * 0.18)),
+        fill=tuple(cor) + (255,))
+    base.paste(tile, (x + mx, y + my_topo), tile)
+
+
+def _moeda_na_listrada(reg: Regiao) -> Regiao:
+    """§3.2: na ETIQUETA_LISTRADA o "R$" é desenhado pelo APP, em corpo
+    proporcional ao número (o gravado minúsculo da arte fica sob o
+    chapado) — ninguém lê preço de rua sem saber que é R$."""
+    from dataclasses import replace
+    return replace(reg, mostrar_moeda=True)
+
+
 def _desenhar_preco(
     base: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -1040,6 +1103,8 @@ def _desenhar_preco(
             if not (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
                     and getattr(base, "_tem_camada", False)):
                 _desenhar_forma_preco(base, reg, dpi)
+            if reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA:
+                _chapado_atras_do_numero(base, reg, dpi)   # §3.2
             reg = _regiao_palco_da_forma(reg)
         # RODADA-125 v2 (DECISÃO DO DONO, 03/08 — reverte o K2 do §12.3):
         # o carimbo SUPER OFERTA sai SÓ com o texto — "não pode ter o
@@ -1070,6 +1135,13 @@ def _desenhar_preco(
         if not (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
                 and getattr(base, "_tem_camada", False)):
             _desenhar_forma_preco(base, reg, dpi)
+        if reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA:
+            # VICESIMUS-QUARTUS §3.2: o número ganha fundo CHAPADO (a
+            # hachura fica na borda) e o "R$" volta a ser desenhado em
+            # corpo PROPORCIONAL — o gravado minúsculo da arte some
+            # sob o chapado, e ninguém lê preço sem saber que é R$
+            _chapado_atras_do_numero(base, reg, dpi)
+            reg = _moeda_na_listrada(reg)
         reg = _regiao_palco_da_forma(reg)
 
     if reg.subtipo_preco == SubtipoPreco.COMPLETO:
@@ -1560,6 +1632,26 @@ def compor_pagina(
                             estilo=estilo, cores_por_categoria=por_cat,
                             caixas_pagina_mm=caixas)
 
+    # VICESIMUS-QUARTUS §1.3 (a L21 aplicada ao próprio herói): o gate
+    # fixo de 60 mm fazia TODA célula do Quintou (67 mm) e do Sábado
+    # (81 mm) virar "herói" — e o leque nunca disparava fora do Jornal.
+    # "Editorial" é RELATIVO à página: herói é a zona de foto bem MAIOR
+    # que a mediana (>60 mm E >1,25× a mediana), ou a página com menos
+    # de 3 zonas (cartaz, destaque solo). Medido ANTES do desenho.
+    zonas_pg = [r.rect.larg_mm for s in pagina.slots
+                for r in s.regioes
+                if r.tipo == TipoRegiao.IMAGEM and r.visivel]
+    base._heroi_uids = set()
+    if zonas_pg:
+        _med_pg = sorted(zonas_pg)[len(zonas_pg) // 2]
+        for s in pagina.slots:
+            for r in s.regioes:
+                if (r.tipo == TipoRegiao.IMAGEM and r.visivel
+                        and r.rect.larg_mm > 60.0
+                        and (r.rect.larg_mm > _med_pg * 1.25
+                             or len(zonas_pg) < 3)):
+                    base._heroi_uids.add(r.uid)
+
     draw = ImageDraw.Draw(base)
     for i, slot in enumerate(pagina.slots):
         d = _dados_do_slot(dados, lista, i, slot_id=slot.id)
@@ -1639,6 +1731,14 @@ def compor_pagina(
                             _replace(r, rect=rects_foto[r.uid])
                             if r.uid in rects_foto else r
                             for r in slot.regioes]
+                        # VICESIMUS-QUARTUS §1.3: onde o plano Q1 ATUOU
+                        # (o abraço do banner da Quarta — contrato do
+                        # dono), o leque CEDE: são duas estratégias de
+                        # preencher e o plano chegou primeiro; onde ele
+                        # devolve None, quem preenche é a L19
+                        if not hasattr(base, "_q1_uids"):
+                            base._q1_uids = set()
+                        base._q1_uids.add(zonas_img[0].uid)
         # F13-NONUS/N1: a precedência do nome é CÓDIGO — a cadeia roda
         # para toda célula, aqui, no único ponto que conhece o dado E
         # todas as regiões antes do desenho. O dado da célula é uma
@@ -1745,11 +1845,22 @@ def compor_pagina(
                             and r.visivel), None)
             sil = getattr(base, "_silhuetas", {}).get(uid_img)
             if sil:
-                ox, _oy, nw, _nh = sil
+                ox, oy_sil, nw, _nh = sil
                 ax, ay, aw, ah = anc
                 livre = (ax + aw) - (ox + nw)
                 if livre > mm_para_px(9, dpi_ef):
                     anc = (ox + nw, ay, livre, ah)
+                # VICESIMUS-QUARTUS §3.6 (L22 — a irmã vertical do
+                # §3.3): o selo ENCOSTA no produto — com a foto
+                # ASSENTADA no chão, o canto superior da zona é vazio
+                # e o selo BB flutuava solto entre as células do
+                # Quintou; a âncora desce até o topo da TINTA (com um
+                # respiro de 2 mm), nunca fica pendurada no nada
+                ax2, ay2, aw2, ah2 = anc
+                respiro = round(mm_para_px(2, dpi_ef))
+                if oy_sil - respiro > ay2:
+                    corte = (oy_sil - respiro) - ay2
+                    anc = (ax2, ay2 + corte, aw2, max(1, ah2 - corte))
             desenhar_selos(base, anc, selos,
                            fontes_dir / "Roboto-Bold.ttf")
     return base

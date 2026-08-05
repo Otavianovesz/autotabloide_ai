@@ -304,12 +304,19 @@ def test_q1_celula_vestida_nunca_entra_no_plano():
         "célula com ADORNO entrou no plano — o pão descolaria da cesta")
 
 
-def test_q1_por_pixel_a_foto_sobe_do_chao(tmp_path):
+def test_q1_por_pixel_a_foto_sobe_do_chao(tmp_path, monkeypatch):
     """Por conteúdo (I5): a MESMA página da Quarta com a MESMA foto
     AFUNDÁVEL (4:1) no BANNER (célula flex de arranjo lateral — nas
     fixas do adendo o abraço ancora no rodapé de propósito), com e sem
     a marca zona_flex — os bytes diferem, e na versão flex a tinta da
-    foto COMEÇA mais alto (o paredão de vazio em cima morre)."""
+    foto COMEÇA mais alto (o paredão de vazio em cima morre).
+
+    VICESIMUS-QUARTUS §1.3 (edição de propósito): o LEQUE virou
+    capacidade do motor e passou a preencher TAMBÉM o contrafactual
+    sem-flex (empilhava a foto achatada — o paredão nunca mais fica
+    vazio por nenhum caminho). Para medir o PLANO Q1 isolado, o leque
+    é desligado na versão sem-flex; na versão flex ele já cede ao
+    plano por regra (_q1_uids)."""
     _requer_pacote()
     from dataclasses import replace as _rep
     import numpy as np
@@ -336,7 +343,10 @@ def test_q1_por_pixel_a_foto_sobe_do_chao(tmp_path):
 
     for s in pag.slots:
         s.regioes = [_rep(r, zona_flex=False) for r in s.regioes]
+    from app.rendering import compositor as _comp
+    monkeypatch.setattr(_comp, "_leque_solo", lambda *a, **k: None)
     sem_flex = compor_pagina(lay, pag, dados, fontes_dir=fontes, dpi=96)
+    monkeypatch.undo()
 
     assert com_flex.tobytes() != sem_flex.tobytes(), (
         "a marca zona_flex não mudou NADA no pixel — o plano não rodou")

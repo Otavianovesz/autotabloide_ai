@@ -1190,6 +1190,8 @@ class MesaTela(QWidget):
         from app.qt.telas.prevoo import confirmar_pre_voo
         avisos = (servico.validar_composicao(lay, self._dados_por_slot())
                   + self._avisos_orfaos()
+                  + servico.avisos_de_riscadas(          # VQUARTUS §2.1
+                      self._itens, self._mapa)
                   + servico.avisos_da_validade(          # DECIMUS/D4
                       self._validade, self._layout_nome,
                       getattr(self, "_evento", None)))
@@ -3238,6 +3240,8 @@ class MesaTela(QWidget):
         dados = self._dados_por_slot()
         avisos = (servico.validar_composicao(self._layout, dados)
                   + self._avisos_orfaos()
+                  + servico.avisos_de_riscadas(          # VQUARTUS §2.1
+                      self._itens, self._mapa)
                   + servico.avisos_da_validade(          # DECIMUS/D4
                       self._validade, self._layout_nome,
                       getattr(self, "_evento", None)))

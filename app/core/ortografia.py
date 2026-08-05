@@ -55,6 +55,13 @@ ACENTOS_MERCADO: dict[str, str] = {
     # v3 (a 3ª prova): o OCR alterna FUJINI/FUGINI — a marca real é
     # Fugini (com G); sem a correção a divisão canônica não a reconhece
     "fujini": "Fugini",
+    # VICESIMUS-QUARTUS §2.3 (o Quintou auditado): as grafias erradas
+    # DA TABELA do dono que o corretor deixou passar — o mecanismo
+    # funciona (acertou Hellmann's), o vocabulário estava curto
+    "prediecta": "Predilecta",
+    "xilitrol": "Xilitol",
+    "lingua": "língua",
+    "coracao": "coração",
 }
 
 # Palavra quebrada no espaço errado pelo OCR — bigrama conhecido volta a
@@ -71,6 +78,11 @@ BIGRAMAS_QUEBRADOS: dict[str, str] = {
     "leite pó": "leite em pó",
     "sabao po": "sabão em pó",
     "sabão pó": "sabão em pó",
+    # VICESIMUS-QUARTUS §2.3: a abreviação consagrada da tabela do
+    # dono — "F. SILVESTRES" só existe como "Frutas Silvestres" no
+    # domínio (o chá); expansão por par, nunca token solto ("f." solto
+    # é ambíguo demais)
+    "f. silvestres": "frutas silvestres",
 }
 
 _RE_BORDAS = re.compile(r"^(\W*)(.*?)(\W*)$", re.DOTALL)

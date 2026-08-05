@@ -405,6 +405,28 @@ def _mesmo_peso_exibido(token: str, unidade: str | None) -> bool:
     return _norm(token) == _norm(unidade)
 
 
+def peso_do_cadastro(nome: str) -> str | None:
+    """VICESIMUS-QUARTUS §1.2: o peso que o NOME do cadastro carrega, em
+    QUALQUER posição ("Água Mineral Marajá 497ml S/ Gás" → "497ml") —
+    ``separar_peso`` só olha as bordas; aqui a régua é o token. É a
+    metade "achar" da lei UM ITEM TEM UM PESO SÓ: quando este peso
+    diverge do da tabela, ELE vence (é a correção do dono) e a
+    divergência vira aviso da conciliação (J10), nunca texto na arte."""
+    for t in (nome or "").split():
+        if _RE_PARTE_UNIDADE.match(t):
+            return t
+    _, p = separar_peso(nome or "")
+    return p
+
+
+def mesmo_peso_exibido(a: str | None, b: str | None) -> bool:
+    """A comparação pública da exibição — espaços/vírgula/caixa fora
+    ("497ml" × "497 ml" é o MESMO; "500ml" × "497 ml" NÃO é)."""
+    if not a or not b:
+        return False
+    return _norm(a) == _norm(b)
+
+
 def _tirar_peso_repetido(tokens: list[str], unidade: str | None,
                          ) -> tuple[list[str], list[str]]:
     """RODADA-125 v2 (as 5 células "…1,6kg / … · 1,6kg"): o peso que
@@ -604,7 +626,13 @@ def precedencia_do_nome(
     # descritor0, nunca no meio ("Mabel · Coco ou Leite · 600 g"); os
     # pesos do resto da marca e o do C2 entram na cauda, deduplicados
     # contra a unidade que o descritor0 já carrega
-    cauda_pesos = list(pesos_resto)
+    # VICESIMUS-QUARTUS §1.2: UM ITEM TEM UM PESO SÓ — o peso do resto
+    # da marca que é IGUAL à unidade nunca entra na cauda (o descritor0
+    # já o carrega; era o "500ml · 497 ml" quando divergiam — a
+    # divergência agora se resolve ANTES, no dado, e aqui não passa
+    # repetição nenhuma)
+    cauda_pesos = [pz for pz in pesos_resto
+                   if not (unidade and _norm(pz) == _norm(unidade))]
     if peso and not _mesmo_peso_exibido(peso, unidade):
         cauda_pesos.append(peso)
     nome_atual = " ".join(tokens)
