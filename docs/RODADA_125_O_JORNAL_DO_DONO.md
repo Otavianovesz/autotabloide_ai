@@ -1567,3 +1567,42 @@ margem; imagem centra por massa óptica; preço ancora no produto).
 Guardião novo `test_vprimus_linha_de_chao` (garrafa em pé + pacote
 deitado pisam juntos). Pendente do dono (4ª vez, o arquiteto pesa):
 **a marca no nome**.
+
+## A ORDEM VICESIMUS-SECUNDUS (04/08) — a resposta do builder
+
+### A ideia era do dono (§6, registrado)
+
+"Por que não repete?" — a resposta que a indústria usa há cinquenta
+anos e que três ordens de medição não consideraram. **L19: quando a
+unidade não preenche, o CONJUNTO preenche** — não existe proporção de
+zona que sirva ao alto-e-fino E ao baixo-e-largo ao mesmo tempo; a
+saída não é a caixa, é o conteúdo.
+
+### O leque solo (§3, as regras do arquiteto)
+
+`_leque_solo` no compositor: dispara quando a tinta da unidade fica
+abaixo de 38% da zona (≈70% da mediana medida) numa célula de coluna
+com mordida, e a foto é UM CORPO SÓ (`_um_corpo_so`: a projeção do
+alfa com mais de um corpo separado NUNCA repete — o Detergente, a
+Urca e o Sabonete ficaram intactos). Três cópias (ou duas quando três
+não cabem): alto-e-fino LADO A LADO com ~15% de sobreposição e as de
+trás a 92% (profundidade, não clone); baixo-e-largo em pilha
+DIAGONAL; ±2° de rotação alternada entre as cópias; a da FRENTE
+pinta por último — a etiqueta morde nela. Na prova real: o Suco, o
+Leite, a Água, o Macarrão, o Campari e a Pringles viraram trios; o
+descritor segue declarando a unidade (a guarda honesta).
+
+### A etiqueta que escala (§1)
+
+O carimbo tinha tamanho ABSOLUTO e virava tampa no pacote pequeno
+(cobria o Passatempo quase inteiro). Agora escala com a silhueta
+(alvo ~55% da largura dela) com PISO de legibilidade em 72% da arte —
+e a base fica onde a arte mandou (encolher sobe o topo). A ordem do
+§4 respeitada: o leque muda a tinta ANTES do pouso — o produto que
+ficaria tampado já cresceu.
+
+### Guardião
+
+`test_vsecundus_o_leque_do_dono`: o trio da garrafa fina fica >2× a
+unidade, as cópias NÃO são idênticas (§5.3, por pixel) e o
+multi-corpo nunca repete (§5.4).

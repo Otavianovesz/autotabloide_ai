@@ -999,3 +999,75 @@ def test_vprimus_linha_de_chao(tmp_path):
         bases.append((oy + nh) / ppm)
     assert abs(bases[0] - bases[1]) <= 1.0, (
         f"bases desalinhadas: {bases} — a deitada flutuou")
+
+
+def test_vsecundus_o_leque_do_dono(tmp_path):
+    """L19 (a ideia do DONO): a garrafa fina que não preenche vira
+    TRIO com profundidade — e as cópias NÃO são idênticas (§5.3:
+    rotação/escala variadas, senão lê 'copiei e colei'). A foto que
+    JÁ É conjunto nunca se repete (§5.4 — leque de leque)."""
+    from decimal import Decimal
+
+    from PIL import Image
+
+    from app.rendering.compositor import (DadosProduto, _um_corpo_so,
+                                          compor_pagina)
+    from app.rendering.model import (
+        Ajuste, AlinhamentoV, FormaPreco, LayoutDef, Pagina, Regiao,
+        Retangulo, Slot, TipoRegiao,
+    )
+    from app.tests import acervo
+
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    nome_f = next(fontes.glob("*.ttf")).name
+
+    def _celula(sid, x0, foto):
+        return Slot(sid, [
+            Regiao(TipoRegiao.IMAGEM, Retangulo(x0, 10, 42, 37),
+                   ajuste=Ajuste.ASSENTAR),
+            Regiao(TipoRegiao.PRECO, Retangulo(x0 + 20, 33, 24, 11),
+                   fonte=nome_f, tamanho_max_pt=18,
+                   forma_preco=FormaPreco.CARIMBO,
+                   forma_cor="#F58634", cor="#A85212"),
+            Regiao(TipoRegiao.NOME, Retangulo(x0, 51, 42, 6),
+                   fonte=nome_f, tamanho_max_pt=12,
+                   alinhamento_v=AlinhamentoV.TOPO),
+        ])
+
+    garrafa = tmp_path / "g.png"
+    im = Image.new("RGBA", (200, 900), (0, 0, 0, 0))
+    im.paste((60, 60, 160, 255), (70, 0, 130, 900))
+    im.save(garrafa)
+    lay = LayoutDef(60.0, 70.0, dpi=96, paginas=[Pagina(slots=[
+        _celula("fina", 5, garrafa)])])
+    pag = lay.paginas[0]
+    dados = {"fina": DadosProduto(nome="G", preco_por=Decimal("9.99"),
+                                  imagem_path=str(garrafa))}
+    img = compor_pagina(lay, pag, dados, fontes_dir=fontes)
+    rimg = pag.slots[0].regioes[0]
+    _ox, _oy, nw, nh = img._silhuetas[rimg.uid]
+    # o TRIO é bem mais largo que a UNIDADE (a garrafa cropada tem
+    # 60px de tinta; na escala da zona vira ~9px — o conjunto >2×)
+    from app.rendering.compositor import mm_para_px
+    rw = mm_para_px(42, 96)
+    rh = mm_para_px(37, 96)
+    nw_unidade = 60 * min(rw / 60, rh / 900)
+    assert nw > 2.0 * nw_unidade, (
+        f"o leque não disparou (trio {nw}px vs unidade "
+        f"{nw_unidade:.0f}px)")
+    # §5.3: as cópias não são idênticas — a rotação inclina as de
+    # trás; recortes da esquerda e da direita do trio diferem
+    rec = img.crop((_ox, _oy, _ox + nw, _oy + nh))
+    esq = rec.crop((0, 0, nw // 3, nh))
+    dir_ = rec.crop((nw - nw // 3, 0, nw, nh))
+    assert esq.tobytes() != dir_.tobytes()
+    # §5.4: multi-corpo NUNCA repete
+    trio = tmp_path / "trio.png"
+    im2 = Image.new("RGBA", (600, 400), (0, 0, 0, 0))
+    for k in range(3):
+        im2.paste((200, 60, 60, 255), (k * 210, 0, k * 210 + 180, 400))
+    im2.save(trio)
+    assert _um_corpo_so(Image.open(garrafa)) is True
+    assert _um_corpo_so(Image.open(trio)) is False

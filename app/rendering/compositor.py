@@ -332,6 +332,82 @@ def _aplicar_mascara(camada: Image.Image, forma: Image.Image | None) -> Image.Im
     return camada
 
 
+def _um_corpo_so(img: Image.Image) -> bool:
+    """§3 da VICESIMUS-SECUNDUS (guarda dura): a foto que JÁ É um
+    conjunto (o Detergente com 4 frascos, a Urca com 3) NUNCA se
+    repete — leque de leque. Detecção: a projeção horizontal do alfa
+    tem mais de um corpo separado por um vale vazio."""
+    if img.mode != "RGBA":
+        return True
+    a = img.getchannel("A").resize((60, 20))
+    px = list(a.getdata())
+    colunas = [any(px[l * 60 + c] > 32 for l in range(20))
+               for c in range(60)]
+    corpos = 0
+    dentro = False
+    for cheio in colunas:
+        if cheio and not dentro:
+            corpos += 1
+            dentro = True
+        elif not cheio:
+            dentro = False
+    return corpos <= 1
+
+
+def _leque_solo(img: Image.Image, nw: int, nh: int, rw: int,
+                rh: int) -> Image.Image | None:
+    """L19 (a ideia do DONO): quando a unidade não preenche, o
+    CONJUNTO preenche — 3 cópias (ou 2 quando 3 não cabem):
+
+    - alto e fino → LADO A LADO, sobreposição ~15%, as de trás a 92%
+      (profundidade, não clone);
+    - baixo e largo → pilha em leque DIAGONAL (deslocando ~20% para
+      cima e para o lado) — preenche a zona em pé;
+    - ±2° de rotação entre as cópias (sem isso lê "copiei e colei");
+    - a cópia da FRENTE pinta por último — a etiqueta morde nela.
+
+    Devolve a camada RGBA do conjunto, ou None (não coube nem 2)."""
+    un = img.resize((max(1, nw), max(1, nh)))
+    prop = nw / max(1, nh)
+    for n in (3, 2):
+        tras = un.resize((max(1, round(nw * 0.92)),
+                          max(1, round(nh * 0.92))))
+        pecas = []
+        if prop < 1.0:                   # alto e fino: lado a lado
+            passo = round(nw * 0.85 * 0.92)
+            larg_total = passo * (n - 1) + nw
+            alt_total = nh
+            if larg_total > rw:
+                continue
+            for k in range(n - 1):
+                pecas.append((tras.rotate(2 if k % 2 == 0 else -2,
+                                          expand=True, resample=2),
+                              k * passo, "base"))
+            pecas.append((un, (n - 1) * passo, "base"))
+        else:                            # baixo e largo: pilha diagonal
+            dx = round(nw * 0.10)
+            dy = round(nh * 0.55)
+            larg_total = nw + dx * (n - 1)
+            alt_total = nh + dy * (n - 1)
+            if alt_total > rh or larg_total > rw:
+                continue
+            for k in range(n - 1):
+                pecas.append((tras.rotate(2 if k % 2 == 0 else -2,
+                                          expand=True, resample=2),
+                              k * dx, alt_total - nh - (n - 1 - k) * dy))
+            pecas.append((un, (n - 1) * dx, alt_total - nh))
+        camada = Image.new("RGBA", (max(p[0].width + p[1]
+                                        for p in pecas),
+                                    alt_total + 8), (0, 0, 0, 0))
+        for peca, px_, py_ in [
+                (p[0], p[1],
+                 (camada.height - p[0].height) if p[2] == "base"
+                 else p[2]) for p in pecas]:
+            camada.alpha_composite(peca, (px_, max(0, py_)))
+        return camada
+    return None
+
+
 def _fracao_de_tinta(img: Image.Image) -> float:
     """Fração da caixa da imagem coberta por TINTA (alfa > 32) — a
     régua do P4 (amostra 40×40, barata)."""
@@ -399,7 +475,22 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                             escala *= (0.62 / tinta) ** 0.5
                 nw = max(1, round(img.width * escala))
                 nh = max(1, round(img.height * escala))
-                img = img.resize((nw, nh))
+                # VICESIMUS-SECUNDUS/L19 (a ideia do DONO): quando a
+                # UNIDADE não preenche (tinta < 38% da zona ≈ 70% da
+                # mediana medida) e a foto é UM corpo só, o produto se
+                # REPETE — 3 cópias com profundidade e rotação. A
+                # ordem do §4: o leque muda a tinta ANTES da etiqueta.
+                if (reg.uid in getattr(base, "_p4_uids", ())
+                        and img.mode == "RGBA"):
+                    frac = _fracao_de_tinta(img)
+                    tinta_un = frac * nw * nh / max(rw * rh, 1)
+                    if tinta_un < 0.38 and _um_corpo_so(img):
+                        conj = _leque_solo(img, nw, nh, rw, rh)
+                        if conj is not None:
+                            img = conj
+                            nw, nh = img.width, img.height
+                if img.size != (nw, nh):
+                    img = img.resize((nw, nh))
                 # VICESIMUS-PRIMUS/P1: a FOTO É ÓPTICA — centra pela
                 # MASSA aparente (o centroide horizontal do alfa),
                 # nunca pela caixa nem pela margem do texto (L18: cada
@@ -767,16 +858,28 @@ def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
         sil_x0, sil_x1 = ox / px_por_mm, (ox + nw) / px_por_mm
         larg_sil = sil_x1 - sil_x0
         cel_x1 = r_img.x_mm + r_img.larg_mm
+        # VICESIMUS-SECUNDUS §1: a etiqueta ESCALA com o produto —
+        # tamanho absoluto virava TAMPA no pacote pequeno (o carimbo
+        # cobria o Passatempo inteiro). Alvo: largura ≈ 55% da
+        # silhueta, com PISO de legibilidade em 72% da arte (o corpo
+        # do preço cede junto no desenho); produto que mesmo assim
+        # ficaria tampado já cresceu pelo LEQUE (§4: a ordem importa).
+        fator = max(0.72, min(1.0, 0.55 * larg_sil / rp.larg_mm))
+        le = rp.larg_mm * fator
+        ae = rp.alt_mm * fator
         # VICESIMUS-PRIMUS/P3: a etiqueta MORDE O PRODUTO, sempre no
         # MESMO canto (inf-dir da silhueta) — nunca na sobra: o olho
         # aprende o padrão em três células e para de procurar (o ramo
         # "ao lado" morreu; no estreito a mordida é proporcional para
         # não atravessar o produto).
-        mordida = min(0.4 * rp.larg_mm, 0.5 * larg_sil)
-        x_novo = min(sil_x1 - mordida, cel_x1 - rp.larg_mm + 2.0)
-        if abs(x_novo - rp.x_mm) < 0.5:
+        mordida = min(0.4 * le, 0.5 * larg_sil)
+        x_novo = min(sil_x1 - mordida, cel_x1 - le + 2.0)
+        # a BASE da etiqueta fica onde a arte mandou (o bloco de texto
+        # vem logo abaixo) — encolher sobe o topo, não desce a base
+        y_novo = rp.y_mm + (rp.alt_mm - ae)
+        if abs(x_novo - rp.x_mm) < 0.5 and fator > 0.99:
             return None
-        return Retangulo(x_novo, rp.y_mm, rp.larg_mm, rp.alt_mm)
+        return Retangulo(x_novo, y_novo, le, ae)
 
     # fallback §4.1 (sem silhueta): o espelho por densidade
     x_esp = 2 * r_img.x_mm + r_img.larg_mm - rp.x_mm - rp.larg_mm
