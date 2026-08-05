@@ -283,14 +283,17 @@ def plano_da_celula(regioes: list[Regiao], img_w: float,
     texto_abaixo = any(
         r.rect.y_mm >= rf.y_mm + rf.alt_mm - 1.0 for r in textos)
     if preco_morde and texto_abaixo:
-        cands = []
-    else:
-        planos = ((_plano_lateral(foto, textos, bbox, prop),)
-                  if eh_lateral else
-                  (_plano_lateral(foto, textos, bbox, prop),
-                   _plano_vertical(foto, textos, bbox, prop),
-                   _plano_misto(foto, textos, bbox, prop)))
-        cands = [c for c in planos if c]
+        # TERTIUS §2: nem o ABRAÇO — ele encolhia a zona à foto
+        # achatada e o LEQUE (que multiplica o produto na zona
+        # INTEIRA) nunca via a foto como pequena; na coluna com
+        # mordida quem preenche é o leque (L19)
+        return None
+    planos = ((_plano_lateral(foto, textos, bbox, prop),)
+              if eh_lateral else
+              (_plano_lateral(foto, textos, bbox, prop),
+               _plano_vertical(foto, textos, bbox, prop),
+               _plano_misto(foto, textos, bbox, prop)))
+    cands = [c for c in planos if c]
     if cands:
         melhor = max(cands, key=lambda c: c.area)
         if melhor.area >= GANHO_MINIMO * area_atual:

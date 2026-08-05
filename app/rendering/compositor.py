@@ -100,6 +100,10 @@ class DadosProduto:
     # dissolvidos na prosa do descritor) — o pré-voo compara com as
     # fotos e acusa "anuncia 3 sabores, só 1 tem foto" (a Sardinha)
     sabores: tuple[str, ...] = ()
+    # VICESIMUS-TERTIUS/L20: item COMPOSTO (produtos DIFERENTES — o
+    # 'Somar e Tio Bonini') — o arranjo NUNCA sobrepõe uma marca à
+    # outra (cópia pode sumir atrás; original não)
+    composto: bool = False
 
 
 def percentual_desconto(preco_de: "Decimal | None",
@@ -356,56 +360,81 @@ def _um_corpo_so(img: Image.Image) -> bool:
 
 def _leque_solo(img: Image.Image, nw: int, nh: int, rw: int,
                 rh: int) -> Image.Image | None:
-    """L19 (a ideia do DONO): quando a unidade não preenche, o
-    CONJUNTO preenche — 3 cópias (ou 2 quando 3 não cabem):
+    """L19 (a ideia do DONO) na composição da VICESIMUS-TERTIUS §1-2:
 
-    - alto e fino → LADO A LADO, sobreposição ~15%, as de trás a 92%
-      (profundidade, não clone);
-    - baixo e largo → pilha em leque DIAGONAL (deslocando ~20% para
-      cima e para o lado) — preenche a zona em pé;
-    - ±2° de rotação entre as cópias (sem isso lê "copiei e colei");
-    - a cópia da FRENTE pinta por último — a etiqueta morde nela.
+    - alto e fino → HERÓI E FLANCOS: centro 100% a 0°, flancos a 88%
+      com −3°/+3°, entrando ~22% ATRÁS do centro e com a base ~4%
+      mais alta (é assim que se lê "mais atrás", não "menor");
+      SIMÉTRICO — a massa óptica cai no centro (P1). Produto MUITO
+      fino: os flancos entram só 10% (o grupo alarga, §4.3).
+    - baixo e largo → EMPILHAMENTO: a de trás a 90% deslocada ~18%
+      para cima e ~8% para o lado, a do meio a 95%, a da FRENTE a
+      100% na base — preenche a zona em pé e leva a etiqueta.
 
-    Devolve a camada RGBA do conjunto, ou None (não coube nem 2)."""
+    A cópia da FRENTE/central pinta por último. Devolve a camada RGBA
+    (o par de flancos vira 1 quando o trio não cabe), ou None."""
     un = img.resize((max(1, nw), max(1, nh)))
     prop = nw / max(1, nh)
-    for n in (3, 2):
-        tras = un.resize((max(1, round(nw * 0.92)),
-                          max(1, round(nh * 0.92))))
-        pecas = []
-        if prop < 1.0:                   # alto e fino: lado a lado
-            passo = round(nw * 0.85 * 0.92)
-            larg_total = passo * (n - 1) + nw
-            alt_total = nh
+    if prop < 1.0:                       # HERÓI E FLANCOS
+        fl = un.resize((max(1, round(nw * 0.88)),
+                        max(1, round(nh * 0.88))))
+        muito_fino = (nw * 3) < rw * 0.45
+        entra = 0.10 if muito_fino else 0.22
+        avanco = round(fl.width * (1 - entra))
+        sobe = round(nh * 0.04)
+        fl_e = fl.rotate(-3, expand=True, resample=2)
+        fl_d = fl.rotate(3, expand=True, resample=2)
+        larg_total = avanco * 2 + nw
+        if larg_total > rw:              # só um flanco (à direita)
+            larg_total = avanco + nw
             if larg_total > rw:
-                continue
-            for k in range(n - 1):
-                pecas.append((tras.rotate(2 if k % 2 == 0 else -2,
-                                          expand=True, resample=2),
-                              k * passo, "base"))
-            pecas.append((un, (n - 1) * passo, "base"))
-        else:                            # baixo e largo: pilha diagonal
-            dx = round(nw * 0.10)
-            dy = round(nh * 0.55)
-            larg_total = nw + dx * (n - 1)
-            alt_total = nh + dy * (n - 1)
-            if alt_total > rh or larg_total > rw:
-                continue
-            for k in range(n - 1):
-                pecas.append((tras.rotate(2 if k % 2 == 0 else -2,
-                                          expand=True, resample=2),
-                              k * dx, alt_total - nh - (n - 1 - k) * dy))
-            pecas.append((un, (n - 1) * dx, alt_total - nh))
-        camada = Image.new("RGBA", (max(p[0].width + p[1]
-                                        for p in pecas),
-                                    alt_total + 8), (0, 0, 0, 0))
-        for peca, px_, py_ in [
-                (p[0], p[1],
-                 (camada.height - p[0].height) if p[2] == "base"
-                 else p[2]) for p in pecas]:
-            camada.alpha_composite(peca, (px_, max(0, py_)))
+                return None
+            camada = Image.new("RGBA", (larg_total, nh + sobe + 6),
+                               (0, 0, 0, 0))
+            camada.alpha_composite(
+                fl_d, (avanco + nw - fl_d.width,
+                       camada.height - fl_d.height - sobe))
+            camada.alpha_composite(un, (0, camada.height - nh))
+            return camada
+        camada = Image.new("RGBA", (larg_total, nh + sobe + 6),
+                           (0, 0, 0, 0))
+        camada.alpha_composite(fl_e,
+                               (0, camada.height - fl_e.height - sobe))
+        camada.alpha_composite(
+            fl_d, (larg_total - fl_d.width,
+                   camada.height - fl_d.height - sobe))
+        camada.alpha_composite(un, (avanco, camada.height - nh))
         return camada
-    return None
+    # BAIXO E LARGO: o EMPILHAMENTO (§2 — a metade que faltava). O
+    # achatado costuma ENCHER a largura da zona — deslocar para o
+    # lado estouraria sempre; o CONJUNTO escala para caber (3 cópias
+    # a ~86% ainda têm ~2,2× a tinta da unidade).
+    dx = round(nw * 0.08)
+    dy = round(nh * 0.18)
+    larg_total = nw + dx * 2
+    alt_total = nh + dy * 2
+    fit = min(rw / max(1, larg_total), rh / max(1, alt_total), 1.0)
+    if fit < 0.60:
+        return None                      # nem escalando compensa
+    if fit < 1.0:
+        nw = max(1, round(nw * fit))
+        nh = max(1, round(nh * fit))
+        un = img.resize((nw, nh))
+        dx = round(nw * 0.08)
+        dy = round(nh * 0.18)
+        larg_total = nw + dx * 2
+        alt_total = nh + dy * 2
+    m95 = un.resize((max(1, round(nw * 0.95)),
+                     max(1, round(nh * 0.95))))
+    t90 = un.resize((max(1, round(nw * 0.90)),
+                     max(1, round(nh * 0.90))))
+    camada = Image.new("RGBA", (larg_total, alt_total), (0, 0, 0, 0))
+    camada.alpha_composite(t90.rotate(2, expand=True, resample=2),
+                           (dx * 2, 0))
+    camada.alpha_composite(m95.rotate(-2, expand=True, resample=2),
+                           (dx, dy))
+    camada.alpha_composite(un, (0, alt_total - nh))
+    return camada
 
 
 def _fracao_de_tinta(img: Image.Image) -> float:
@@ -480,11 +509,19 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 # mediana medida) e a foto é UM corpo só, o produto se
                 # REPETE — 3 cópias com profundidade e rotação. A
                 # ordem do §4: o leque muda a tinta ANTES da etiqueta.
+                # §4.4 da TERTIUS: a célula-HERÓI nunca multiplica —
+                # na capa o herói é UM produto grande e imponente
+                # (gate: zona mais larga que 60 mm é editorial)
+                eh_heroi = reg.rect.larg_mm > 60.0
                 if (reg.uid in getattr(base, "_p4_uids", ())
-                        and img.mode == "RGBA"):
+                        and img.mode == "RGBA" and not eh_heroi):
                     frac = _fracao_de_tinta(img)
                     tinta_un = frac * nw * nh / max(rw * rh, 1)
-                    if tinta_un < 0.38 and _um_corpo_so(img):
+                    prop_un = nw / max(1, nh)
+                    # §2: o ACHATADO dispara abaixo da mediana (50%) —
+                    # a metade da L19 que tinha ficado só escrita
+                    limiar = 0.50 if prop_un >= 1.3 else 0.38
+                    if tinta_un < limiar and _um_corpo_so(img):
                         conj = _leque_solo(img, nw, nh, rw, rh)
                         if conj is not None:
                             img = conj
@@ -527,7 +564,9 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
         camada = _imagem_enquadrada(img, rw, rh, esp, reg.ajuste)
     else:
         # N imagens: arranjo (leque / lado a lado / grade), camada que não vaza.
-        camada = compor_imagens([im for _, im in pares], rw, rh, dados.modo_arranjo)
+        camada = compor_imagens([im for _, im in pares], rw, rh,
+                                dados.modo_arranjo,
+                                sem_sobrepor=dados.composto)
 
     camada = _aplicar_mascara(camada, forma)
     base.paste(camada, (x, y), camada)
@@ -803,6 +842,25 @@ def _desenhar_quadro_dica(base, draw, reg, dpi, fontes_dir) -> None:
                   (lx + s, ly + s)], fill=(245, 134, 52))
 
 
+def _detalhe_no_rect(base: Image.Image, x: int, y: int, w: int,
+                     h: int) -> float:
+    """§4.1 da TERTIUS: quanta INFORMAÇÃO visual mora na área (o
+    desvio-padrão do recorte em tons de cinza) — a régua do espelho
+    da mordida: canto com muito detalhe = provável MARCA/rótulo."""
+    x0, y0 = max(0, x), max(0, y)
+    x1 = min(base.width, x + max(1, w))
+    y1 = min(base.height, y + max(1, h))
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    rec = base.crop((x0, y0, x1, y1)).convert("L")
+    rec.thumbnail((32, 32))
+    px = list(rec.getdata())
+    if not px:
+        return 0.0
+    media = sum(px) / len(px)
+    return (sum((p - media) ** 2 for p in px) / len(px)) ** 0.5
+
+
 def _tinta_no_rect(base: Image.Image, x: int, y: int, w: int,
                    h: int) -> float:
     """Fração de pixels que NÃO são papel na área (dist > 40 do creme
@@ -864,19 +922,40 @@ def _canto_mais_vazio(base, reg_preco, regioes, rects_subst, dpi):
         # silhueta, com PISO de legibilidade em 72% da arte (o corpo
         # do preço cede junto no desenho); produto que mesmo assim
         # ficaria tampado já cresceu pelo LEQUE (§4: a ordem importa).
+        # TERTIUS §2: o ACHATADO tem teto PRÓPRIO (≤35% da largura e
+        # ≤40% da altura da silhueta — 25% de área num pacote baixo
+        # vira uma faixa atravessando tudo).
+        alt_sil = (oy + nh) / px_por_mm - oy / px_por_mm
         fator = max(0.72, min(1.0, 0.55 * larg_sil / rp.larg_mm))
+        if larg_sil / max(alt_sil, 0.1) >= 1.3:      # achatado
+            fator = max(0.72, min(
+                fator,
+                0.35 * larg_sil / rp.larg_mm,
+                0.40 * alt_sil / rp.alt_mm))
         le = rp.larg_mm * fator
         ae = rp.alt_mm * fator
-        # VICESIMUS-PRIMUS/P3: a etiqueta MORDE O PRODUTO, sempre no
-        # MESMO canto (inf-dir da silhueta) — nunca na sobra: o olho
-        # aprende o padrão em três células e para de procurar (o ramo
-        # "ao lado" morreu; no estreito a mordida é proporcional para
-        # não atravessar o produto).
+        # VICESIMUS-PRIMUS/P3 + TERTIUS §4.1: a etiqueta MORDE O
+        # PRODUTO — DUAS posições, não quatro: o canto inf-DIREITO por
+        # padrão; quando a MARCA mora nele (mais DETALHE de tinta que
+        # no esquerdo), espelha para o inf-ESQUERDO. O olho ainda
+        # aprende o padrão.
         mordida = min(0.4 * le, 0.5 * larg_sil)
-        x_novo = min(sil_x1 - mordida, cel_x1 - le + 2.0)
+        y_novo = rp.y_mm + (rp.alt_mm - ae)
+        alt_px = round(mm_para_px(ae, dpi))
+        y_px = round(mm_para_px(y_novo, dpi))
+        det_dir = _detalhe_no_rect(
+            base, round(mm_para_px(sil_x1 - mordida, dpi)), y_px,
+            round(mm_para_px(mordida, dpi)), alt_px)
+        det_esq = _detalhe_no_rect(
+            base, round(mm_para_px(sil_x0, dpi)), y_px,
+            round(mm_para_px(mordida, dpi)), alt_px)
+        cel_x0 = r_img.x_mm
+        if det_dir > det_esq * 1.6:      # a marca está no direito
+            x_novo = max(sil_x0 + mordida - le, cel_x0 - 2.0)
+        else:
+            x_novo = min(sil_x1 - mordida, cel_x1 - le + 2.0)
         # a BASE da etiqueta fica onde a arte mandou (o bloco de texto
         # vem logo abaixo) — encolher sobe o topo, não desce a base
-        y_novo = rp.y_mm + (rp.alt_mm - ae)
         if abs(x_novo - rp.x_mm) < 0.5 and fator > 0.99:
             return None
         return Retangulo(x_novo, y_novo, le, ae)

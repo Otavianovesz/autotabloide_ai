@@ -1606,3 +1606,38 @@ ficaria tampado já cresceu.
 `test_vsecundus_o_leque_do_dono`: o trio da garrafa fina fica >2× a
 unidade, as cópias NÃO são idênticas (§5.3, por pixel) e o
 multi-corpo nunca repete (§5.4).
+
+## A ORDEM VICESIMUS-TERTIUS (04/08) — a resposta do builder
+
+Os três apontamentos do dono eram o mesmo erro em três roupas (L21:
+toda regra nova pergunta "onde eu não valho?"):
+
+- **§3 (o Arroz, o mais grave — L20: CÓPIA PODE SUMIR ATRÁS;
+  ORIGINAL NÃO):** o composto usava a vitrine sobreposta da v3 (feita
+  para SABORES) e o Somar cobria o Tio Bonini. O item composto agora
+  viaja com `composto=True` e o arranjo usa o `_lado_a_lado_estrito`:
+  escala IGUAL, folga ~2% da zona, ZERO sobreposição. Guardião
+  `test_vtertius_composto_nunca_esconde_marca` (as duas marcas em
+  área comparável, por pixel).
+- **§1 (o trio vira HERÓI E FLANCOS):** centro 100% a 0°, flancos 88%
+  a ±3° entrando ~22% atrás com a base 4% mais alta — SIMÉTRICO, a
+  massa óptica no centro (o diagonal descentrado morreu); o muito
+  fino alarga (flancos entram só 10%, §4.3).
+- **§2 (o EMPILHAMENTO dos achatados — a metade da L19 que faltava):**
+  trás 90% (+18% acima), meio 95%, frente 100% na base com a
+  etiqueta; o CONJUNTO escala para caber (o achatado enche a largura
+  da zona — deslocar estouraria sempre). O gatilho do achatado é <50%
+  (a mediana). E o teto próprio da etiqueta no achatado: ≤35% da
+  largura e ≤40% da altura da silhueta.
+- **§4.1 (o espelho da mordida):** DUAS posições — inf-direito por
+  padrão; quando a MARCA mora nele (mais DETALHE de tinta que no
+  esquerdo, `_detalhe_no_rect` por desvio-padrão), espelha para o
+  inf-esquerdo. O olho ainda aprende.
+- **§4.4 (o herói não faz leque):** zona mais larga que 60 mm é
+  editorial — o Gatorade da capa voltou a ser UM produto imponente.
+
+**Achado da rodada (a caça do empilhamento):** o ABRAÇO do Q1
+encolhia a zona à foto achatada ANTES do leque — o leque via a foto
+"cheia" na zona reduzida e nunca disparava; na coluna com mordida o
+plano Q1 inteiro cede ao leque (quem preenche é a L19). O contrato
+do Q1 no banner da Quarta segue intacto (testado).

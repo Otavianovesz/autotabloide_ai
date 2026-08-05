@@ -110,8 +110,31 @@ def _leque(camada, imagens, w, h) -> None:
                        round(max(0, base - dom.height))), dom)
 
 
+def _lado_a_lado_estrito(camada, imagens, w, h) -> None:
+    """VICESIMUS-TERTIUS/L20: CÓPIA PODE SUMIR ATRÁS; ORIGINAL NÃO.
+    O COMPOSTO junta produtos DIFERENTES ('Somar e Tio Bonini') — cada
+    marca tem de se ler POR INTEIRO: escala IGUAL para todos, folga de
+    ~2% da zona entre silhuetas, ZERO sobreposição (se não couber lado
+    a lado, reduz-se a escala dos dois — nunca se esconde um)."""
+    n = len(imagens)
+    folga = max(2, round(w * 0.02))
+    livre = w - folga * (n - 1)
+    fits = [_contain(img, livre / n, h * 0.96) for img in imagens]
+    escala = min(1.0, livre / max(1, sum(f.width for f in fits)))
+    if escala < 1.0:
+        fits = [f.resize((max(1, round(f.width * escala)),
+                          max(1, round(f.height * escala))))
+                for f in fits]
+    span = sum(f.width for f in fits) + folga * (n - 1)
+    x = max(0, (w - span) // 2)
+    for f in fits:
+        camada.alpha_composite(f, (x, h - f.height))
+        x += f.width + folga
+
+
 def compor_imagens(
-    imagens: list[Image.Image], larg: int, alt: int, modo: ModoArranjo = ModoArranjo.LEQUE
+    imagens: list[Image.Image], larg: int, alt: int, modo: ModoArranjo = ModoArranjo.LEQUE,
+    sem_sobrepor: bool = False,
 ) -> Image.Image:
     """Devolve uma camada RGBA (larg×alt) com as imagens compostas no modo dado.
 
@@ -148,6 +171,9 @@ def compor_imagens(
             imgs = [imgs[k] for k in vistos]
     if len(imgs) == 1:
         _colar_centro(camada, imgs[0], 0, 0, larg, alt)
+    elif sem_sobrepor:
+        # L20: o COMPOSTO nunca esconde uma marca atrás da outra
+        _lado_a_lado_estrito(camada, imgs, larg, alt)
     elif modo == ModoArranjo.LADO_A_LADO:
         _lado_a_lado(camada, imgs, larg, alt)
     elif modo == ModoArranjo.GRADE:

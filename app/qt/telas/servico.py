@@ -793,6 +793,9 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         imagem_path=it.imagem,
         imagens=[ImagemSlot(c) for c in (it.imagens or [])],
         modo_arranjo=arranjo,
+        # VICESIMUS-TERTIUS/L20: o COMPOSTO nunca esconde uma marca
+        # atras da outra (o Somar cobria o Tio Bonini na capa)
+        composto=bool(getattr(it, "origem_composto", None)),
         mais18=it.mais18,
         marca_propria=it.marca_propria,                     # F13/COND-5
         unidade=it.unidade,

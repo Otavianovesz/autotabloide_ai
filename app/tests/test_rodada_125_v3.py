@@ -1071,3 +1071,31 @@ def test_vsecundus_o_leque_do_dono(tmp_path):
     im2.save(trio)
     assert _um_corpo_so(Image.open(garrafa)) is True
     assert _um_corpo_so(Image.open(trio)) is False
+
+
+def test_vtertius_composto_nunca_esconde_marca():
+    """L20 da TERTIUS: CÓPIA PODE SUMIR ATRÁS; ORIGINAL NÃO — no
+    COMPOSTO ('Somar e Tio Bonini') cada silhueta aparece POR INTEIRO
+    (lado a lado estrito, folga, zero sobreposição); no modo normal
+    (sabores) a vitrine sobreposta da v3 continua."""
+    from PIL import Image
+
+    from app.rendering.arranjo import ModoArranjo, compor_imagens
+
+    a = Image.new("RGBA", (300, 500), (0, 0, 0, 0))
+    a.paste((200, 40, 40, 255), (10, 10, 290, 490))
+    b = Image.new("RGBA", (300, 500), (0, 0, 0, 0))
+    b.paste((40, 40, 200, 255), (10, 10, 290, 490))
+    cam = compor_imagens([a, b], 400, 300,
+                         ModoArranjo.LADO_A_LADO, sem_sobrepor=True)
+    px = list(cam.convert("RGB").getdata())
+    vermelho = sum(1 for r, g, bl in px if r > 150 and bl < 100)
+    azul = sum(1 for r, g, bl in px if bl > 150 and r < 100)
+    # as DUAS marcas visíveis em área comparável (nenhuma escondida)
+    assert vermelho > 8000 and azul > 8000, (vermelho, azul)
+    assert 0.7 < vermelho / azul < 1.4, (
+        "uma marca sumiu atrás da outra")
+    # e o modo v3 (sabores, vitrine sobreposta) segue SEPARADO do
+    # estrito — as composições diferem (a v3 tem os próprios testes)
+    cam2 = compor_imagens([a, b], 400, 300, ModoArranjo.LADO_A_LADO)
+    assert cam2.tobytes() != cam.tobytes()
