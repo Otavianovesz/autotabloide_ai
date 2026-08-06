@@ -8,7 +8,7 @@ no tamanho físico exato definido pelo LayoutDef.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
@@ -31,7 +31,7 @@ from app.rendering.model import (
     SubtipoPreco,
     TipoRegiao,
 )
-from app.rendering.text_fit import ajustar_texto
+from app.rendering.text_fit import ajustar_texto, piso_do_celular
 from app.rendering.units import mm_para_px, pt_para_px
 
 
@@ -145,7 +145,8 @@ def formato_do_desconto(pct, estilo: str | None = None) -> str:
     return f"{pct}% OFF"
 
 
-def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> str:
+def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None,
+                         *, em_celula: bool = False) -> str:
     """RG-57: o texto que uma região TEXTO_LEGAL desenha, decidido pelo PAPEL.
 
     Fonte ÚNICA para o compositor e para a prévia do editor (canvas), para a
@@ -180,8 +181,14 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
             if datas:
                 # VICESIMUS-QUINTUS/L23: o texto_fixo vira PREFIXO da
                 # data ("Até " + "26/05" — o publicado do Quintou);
-                # sem prefixo, só a data, como sempre
-                return (fixo + datas[-1]) if fixo else datas[-1]
+                # sem prefixo, só a data, como sempre.
+                # UNDETRICESIMUS (achado na PRÓPRIA prova do Peixe): o
+                # prefixo só vale se NÃO for uma data — quando o dono
+                # (ou um projeto antigo) digitou "30/07" no texto fixo,
+                # a concatenação imprimia "30/0730/07" dentro do selo.
+                # Prefixo é palavra ("Até "), nunca a data de novo.
+                prefixo = "" if _re.search(r"\d{1,2}/\d{1,2}", fixo) else fixo
+                return (prefixo + datas[-1]) if prefixo else datas[-1]
         return texto
     if papel == PapelTexto.OBSERVACAO:
         # R-071: a observação do item; condicional — vazia devolve "" (a região
@@ -226,7 +233,13 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
     if fixo:
         from app.core.validade import texto_com_periodo_vivo
         return texto_com_periodo_vivo(fixo, validade)
-    return validade
+    # UNDETRICESIMUS §3: A VALIDADE É DA PÁGINA — nunca se repete dentro
+    # de célula de produto. O rabo legado (LIVRE vazio herda a validade)
+    # é o que punha a data nas duas células grandes da Quinta do Peixe:
+    # a "Etiqueta" opcional nasce VAZIA de propósito (D2) e vinha
+    # imprimindo a data por herança. Fora de célula (o rodapé típico do
+    # tabloide, os layouts antigos) o recurso segue valendo — I2.
+    return "" if em_celula else validade
 
 
 # ==============================================================================
@@ -612,6 +625,181 @@ def _texto_com_efeito(draw: ImageDraw.ImageDraw, pos, texto: str, fonte,
               stroke_width=stroke, stroke_fill=reg.cor_efeito)
 
 
+_TIPOS_DE_TEXTO = (TipoRegiao.NOME, TipoRegiao.SUBTITULO,
+                   TipoRegiao.UNIDADE, TipoRegiao.TEXTO_LEGAL)
+
+
+class GradeApertada(Exception):
+    """UNDETRICESIMUS §2 (degrau 3): a região não comporta UMA linha no
+    piso legível E não pode crescer sem invadir a vizinha. A página NÃO
+    compõe — a grade é que precisa de mais altura ali. Erro duro, com o
+    layout e a região nomeados (nunca um texto vazado em silêncio)."""
+
+
+def _uma_linha_no_piso_px(reg: Regiao, dpi: int, fontes_dir: Path,
+                          entrelinha: float = 1.12) -> int:
+    """Altura, em px, de UMA linha no piso declarado da região."""
+    from PIL import ImageFont
+    px = max(1, round(pt_para_px(reg.tamanho_min_pt, dpi)))
+    try:
+        fonte = ImageFont.truetype(str(fontes_dir / reg.fonte), px)
+    except OSError:
+        try:
+            fonte = ImageFont.truetype(
+                str(fontes_dir / "Roboto-Regular.ttf"), px)
+        except OSError:
+            return 0                      # sem fonte medível: não cresce
+    asc, desc = fonte.getmetrics()
+    return round((asc + desc) * entrelinha)
+
+
+def _piso_e_regra(reg: Regiao, pag) -> bool:
+    """O piso desta região é REGRA (a legibilidade no celular) ou é
+    DADO (o 6 pt histórico do modelo)?
+
+    Só a primeira manda na caixa. Numa etiqueta de 40 mm o piso do
+    celular não se aplica (o próprio ``piso_do_celular`` para no 6.0
+    histórico: "peça pequena não é peça de celular") — ali o layout
+    declara os dois lados, não há regra a defender, e quem cede é o
+    texto pela tesoura de sempre."""
+    if reg.tipo != TipoRegiao.NOME or not pag:
+        return False
+    piso = piso_do_celular(pag[0])
+    return piso > 6.0 and reg.tamanho_min_pt >= piso - 0.01
+
+
+def plano_de_crescimento(reg: Regiao, dpi: int, fontes_dir: Path,
+                         caixas: dict, pag) -> tuple[object, str]:
+    """A CONTA do §2, sem efeito nenhum: devolve ``(rect_novo, erro)``.
+
+    ``rect_novo`` é None quando a caixa já comporta o piso; ``erro`` é
+    a frase nomeada quando não comporta E não pode crescer. É a mesma
+    conta que o desenho usa e que o pré-voo pergunta — uma só, para o
+    aviso nunca divergir do que a composição vai fazer.
+    """
+    alt_linha = _uma_linha_no_piso_px(reg, dpi, fontes_dir)
+    if alt_linha <= 0:
+        return None, ""
+    _x, _y, _rw, rh = _rect_px(reg.rect, dpi)
+    if alt_linha <= rh:
+        return None, ""                   # a caixa comporta o piso
+    falta_mm = (alt_linha - rh) / dpi * 25.4
+    r = reg.rect
+    # ENCOSTAR NÃO É INVADIR: duas caixas coladas (o nome e o descritor
+    # do Jornal partilham a borda) davam "colisão" por um fio de ponto
+    # flutuante — 0,05 mm é menos de meio pixel a 192 dpi.
+    EPS = 0.05
+
+    folga_acima = r.y_mm if pag else 1e9
+    folga_abaixo = (pag[1] - (r.y_mm + r.alt_mm)) if pag else 1e9
+    vizinho_acima = vizinho_abaixo = "a borda do papel"
+    for uid, (x0, y0, x1, y1, rotulo) in caixas.items():
+        if uid == reg.uid:
+            continue
+        if x1 <= r.x_mm + EPS or x0 >= r.x_mm + r.larg_mm - EPS:
+            continue                      # não divide faixa vertical
+        if y1 <= r.y_mm + EPS and r.y_mm - y1 < folga_acima:
+            folga_acima, vizinho_acima = r.y_mm - y1, rotulo
+        elif y0 >= r.y_mm + r.alt_mm - EPS \
+                and y0 - (r.y_mm + r.alt_mm) < folga_abaixo:
+            folga_abaixo, vizinho_abaixo = y0 - (r.y_mm + r.alt_mm), rotulo
+
+    # A caixa cresce para BAIXO (o sentido da leitura); se não houver
+    # folga lá, para CIMA; e se nenhum lado sozinho bastar, DIVIDE o
+    # que falta entre os dois — é o que um diagramador faria com a
+    # sobra da fileira antes de declarar a grade apertada.
+    if folga_abaixo >= falta_mm - EPS:
+        return replace(r, alt_mm=r.alt_mm + falta_mm), ""
+    if folga_acima >= falta_mm - EPS:
+        return replace(r, y_mm=r.y_mm - falta_mm,
+                       alt_mm=r.alt_mm + falta_mm), ""
+    if folga_acima + folga_abaixo >= falta_mm - EPS:
+        sobe = max(0.0, falta_mm - max(0.0, folga_abaixo))
+        return replace(r, y_mm=r.y_mm - sobe, alt_mm=r.alt_mm + falta_mm), ""
+    if not _piso_e_regra(reg, pag):
+        return None, ""                   # sem regra em jogo: a tesoura
+    return None, (
+        f"a região '{reg.nome or reg.tipo.value}' não comporta uma "
+        f"linha legível ({reg.tamanho_min_pt:.1f} pt precisa de "
+        f"{alt_linha / dpi * 25.4:.2f} mm, a caixa tem "
+        f"{r.alt_mm:.2f} mm) e só há {folga_acima:.2f} mm livres "
+        f"acima (até {vizinho_acima}) e {folga_abaixo:.2f} mm abaixo "
+        f"(até {vizinho_abaixo}) — a grade precisa de mais altura aqui")
+
+
+def crescer_do_piso(base: Image.Image, reg: Regiao, dpi: int,
+                    fontes_dir: Path) -> Regiao:
+    """UNDETRICESIMUS §2 — O PISO NÃO CEDE; A CAIXA CEDE (L26).
+
+    O piso do tipo é REGRA (nasce da distância de leitura no celular,
+    U1/C1); a altura da região é DADO (um número na tabela de
+    geometria). Regra vence dado — o projeto já decidiu isso duas
+    vezes. Então, quando nem UMA linha no piso cabe na caixa, a caixa
+    cresce (e o crescimento é DECLARADO — I2, nunca calado).
+
+    Três degraus: (1) cresce e registra; (2) se crescer colidir com a
+    fileira vizinha, é ``GradeApertada`` — erro duro (o pré-voo pergunta
+    ANTES, para o dono ver a frase e não um travamento); (3) em nenhuma
+    hipótese o texto vaza.
+
+    A vizinhança chega pela base — as caixas VISÍVEIS da página em mm,
+    já com as SUBSTITUIÇÕES do slot (a coluna elástica, o plano Q1, o
+    pouso do carimbo). Medir contra o rect do layout acusaria colisão
+    onde o desenho tem folga: foi o que a 1ª medição do Jornal mostrou
+    (o instrumento errado de novo, conferido antes de acusar).
+    """
+    caixas = getattr(base, "_caixas_pagina", {})
+    novo, erro = plano_de_crescimento(
+        reg, dpi, fontes_dir, caixas, getattr(base, "_pagina_mm", None))
+    if erro:
+        raise GradeApertada(erro)
+    if novo is None:
+        return reg
+    r = reg.rect
+    if not hasattr(base, "_crescimentos"):
+        base._crescimentos = {}
+    base._crescimentos[reg.uid] = (reg.nome or reg.tipo.value,
+                                   round(r.alt_mm, 2), round(novo.alt_mm, 2))
+    caixas[reg.uid] = (novo.x_mm, novo.y_mm, novo.x_mm + novo.larg_mm,
+                       novo.y_mm + novo.alt_mm,
+                       caixas.get(reg.uid, (0, 0, 0, 0, ""))[4])
+    return replace(reg, rect=novo)
+
+
+def problemas_de_grade(layout, fontes_dir=None, dpi: int | None = None) -> list[str]:
+    """§2 pelo lado do AVISO (I2): as regiões que a composição não vai
+    conseguir acomodar — a MESMA conta do desenho, sem compor. O
+    pré-voo pergunta isto para o dono ler a frase em vez de levar um
+    travamento na hora de exportar."""
+    from app.core.paths import SystemRoot
+
+    fontes = Path(fontes_dir) if fontes_dir else SystemRoot().fontes
+    dpi_ef = int(dpi) if dpi else getattr(layout, "dpi", 300)
+    piso = piso_do_celular(getattr(layout, "largura_mm", 0))
+    achados: list[str] = []
+    for pg in getattr(layout, "paginas", []):
+        caixas = {
+            r.uid: (r.rect.x_mm, r.rect.y_mm,
+                    r.rect.x_mm + r.rect.larg_mm,
+                    r.rect.y_mm + r.rect.alt_mm,
+                    f"{r.nome or r.tipo.value} ({s.id})")
+            for s in pg.slots for r in s.regioes if r.visivel}
+        pag = (layout.largura_mm, layout.altura_mm)
+        for slot in pg.slots:
+            for reg in slot.regioes:
+                if not reg.visivel or reg.tipo not in _TIPOS_DE_TEXTO:
+                    continue
+                r_ef = reg
+                if reg.tipo == TipoRegiao.NOME:
+                    r_ef = replace(reg, tamanho_min_pt=min(
+                        reg.tamanho_max_pt, max(reg.tamanho_min_pt, piso)))
+                _novo, erro = plano_de_crescimento(
+                    r_ef, dpi_ef, fontes, caixas, pag)
+                if erro:
+                    achados.append(f"{slot.id}: {erro}")
+    return achados
+
+
 def _desenhar_texto(
     base: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -622,6 +810,7 @@ def _desenhar_texto(
 ) -> None:
     if not texto:
         return
+    reg = crescer_do_piso(base, reg, dpi, fontes_dir)
     x, y, rw, rh = _rect_px(reg.rect, dpi)
     aj = ajustar_texto(
         texto, fontes_dir / reg.fonte, rw, rh, reg.tamanho_max_pt, dpi,
@@ -1394,7 +1583,8 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
     elif reg.tipo == TipoRegiao.TEXTO_LEGAL:
         # RG-57: o PAPEL da região decide o texto (validade viva, dica da IA,
         # aviso do preset, ou o livre) — fonte única com a prévia do editor.
-        texto = texto_composto_legal(reg, dados)
+        texto = texto_composto_legal(
+            reg, dados, em_celula=getattr(base, "_slot_de_produto", False))
         # F13-BIS/T1: texto legal também pode vestir FORMA — o "-20%"
         # calculado da Quarta mora numa pílula laranja (pctpod); a
         # forma só pinta quando HÁ texto (papel condicional vazio não
@@ -1725,6 +1915,16 @@ def compor_pagina(
                 _at.add("".join(c for c in _k if not _ud.combining(c)))
     base._atomos_marcas = frozenset(_at)
 
+    # UNDETRICESIMUS §2: a CAIXA cede ao piso — e para saber se pode
+    # crescer, o desenho precisa da VIZINHANÇA (as caixas visíveis da
+    # página, em mm) e dos limites do papel. Medidas 1× aqui.
+    base._caixas_pagina = {
+        r.uid: (r.rect.x_mm, r.rect.y_mm,
+                r.rect.x_mm + r.rect.larg_mm, r.rect.y_mm + r.rect.alt_mm,
+                f"{r.nome or r.tipo.value} ({s.id})")
+        for s in pagina.slots for r in s.regioes if r.visivel}
+    base._pagina_mm = (layout.largura_mm, layout.altura_mm)
+
     zonas_pg = [r.rect.larg_mm for s in pagina.slots
                 for r in s.regioes
                 if r.tipo == TipoRegiao.IMAGEM and r.visivel]
@@ -1762,6 +1962,7 @@ def compor_pagina(
             vazio = DadosProduto(
                 "", texto_legal=_texto_legal_da_pagina(dados),
                 edicao=_campo_vivo_da_pagina(dados, "edicao"))
+            base._slot_de_produto = False      # rodapé/página: herda
             for reg in slot.regioes:
                 if not reg.visivel:
                     continue
@@ -1857,6 +2058,15 @@ def compor_pagina(
             rects_subst.update(compactar_coluna(
                 regioes_cel, d.nome, d.descritor, d.unidade, dpi_ef,
                 fontes_dir, rects_subst, piso_pt=piso_nome))
+        # UNDETRICESIMUS §2: a vizinhança do crescimento é a EFETIVA —
+        # os rects que este slot acabou de substituir (coluna elástica,
+        # plano Q1) entram no mapa antes de qualquer desenho
+        for _uid, _rc in rects_subst.items():
+            if _uid in base._caixas_pagina:
+                base._caixas_pagina[_uid] = (
+                    _rc.x_mm, _rc.y_mm,
+                    _rc.x_mm + _rc.larg_mm, _rc.y_mm + _rc.alt_mm,
+                    base._caixas_pagina[_uid][4])
         # VICESIMUS-PRIMUS/P4: a identidade "coluna com mordida" (o
         # preço sobrepõe a foto E há texto abaixo — o Jornal) liga o
         # teto de massa do desenho da foto (uniformidade da fileira)
@@ -1901,6 +2111,10 @@ def compor_pagina(
                                                dpi_ef, fontes_dir)
             if _alt_pc > 0:
                 cap_nome_pt = (_alt_pc / 2.2) * 72.0 / dpi_ef
+        # UNDETRICESIMUS §3: esta é célula DE PRODUTO (tem foto e nome) —
+        # a validade da página não se repete aqui dentro
+        base._slot_de_produto = bool(zonas_img) and any(
+            r.tipo == TipoRegiao.NOME and r.visivel for r in slot.regioes)
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
             campos: dict = {}

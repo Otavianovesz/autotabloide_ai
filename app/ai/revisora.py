@@ -161,6 +161,17 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
                             f"“{cortado}” (sai “{vai}”).")
             except Exception:
                 pass
+    # UNDETRICESIMUS §2 (I2): a GRADE APERTADA — região que não comporta
+    # uma linha legível E não pode crescer. É erro DURO na composição;
+    # o dono tem de ler a frase aqui, antes, e não levar um travamento
+    # no meio do exportar. A conta é a MESMA do desenho (importada, não
+    # reescrita — a lição da C5/A7).
+    if layout is not None and fontes_dir is not None:
+        try:
+            from app.rendering.compositor import problemas_de_grade
+            avisos.extend(problemas_de_grade(layout, fontes_dir))
+        except Exception:
+            pass
     return avisos
 
 

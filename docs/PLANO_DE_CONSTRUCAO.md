@@ -935,3 +935,37 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   devolvidos ao produto certo (backup core_pre_diaadia). 9 testes L1
   (test_f13_diaadia.py). Suíte ×2 + invertida + janela
   (bloco_fdiaadia_*).
+
+  —— **RODADAS DOS ENCARTES (04–06/08) — as leis subiram do layout para
+  o MOTOR.** VICESIMUS-PRIMUS a DUODETRICESIMUS entregaram L18–L25 e,
+  no fecho, **`app/tests/test_os_oito.py` — a REDE DA L22**: um arquivo,
+  oito parâmetros (os oito encartes do pacote), as regras conquistadas
+  rodando em todos ao mesmo tempo, pela porta real do banco (L16). Lei
+  nova entra ali e passa a valer nos oito no mesmo commit.
+  —— **`docs/ORDEM_F13_UNDETRICESIMUS_DESPACHO_DOS_DOIS_CONFLITOS.md`
+  EXECUTADA (06/08): o arquiteto despachou os dois conflitos que o
+  builder havia declarado sem resolver.** §1 a L25 vira PREFERÊNCIA
+  ORDENADA (o degrau 4 da escada: a marca só se parte quando a
+  alternativa seria encolher o texto — `ajustar_texto` busca duas vezes
+  e fica com o corpo maior). §2 **L26 — quando duas leis boas colidem, a
+  colisão é o achado**: o piso é REGRA (leitura no celular), a altura da
+  caixa é DADO, e regra vence dado — `compositor.crescer_do_piso` faz a
+  região crescer (baixo/cima/dividindo a falta), declara em
+  `_crescimentos` (I2), e a colisão vira `GradeApertada` NOMEADA que o
+  pré-voo antecipa (`problemas_de_grade`, a mesma conta importada);
+  `min == max` vira erro de import (`regioes_de_piso_travado`). Os dois
+  consertos juntos ZERARAM o transbordo nos oito (a dívida de 12 a 40
+  casos por encarte saiu do dicionário). §3 **só o Quintou tem peça
+  publicada do dono** — a L23 vale só nele, e os outros sete ganharam
+  padrão ESCRITO na rede (r9 duas classes de célula, r10 zona ≥55% na
+  célula grande, r11 a validade nunca dentro de célula de produto — o
+  achado: entrava por herança do motor, não por descuido de layout —,
+  r12 patamar do preço); Peixe/Sexta/Quarta recompostos sob elas. §5.4 a
+  dívida da Sexta era falso positivo da régua (o oval está gravado na
+  arte): `Regiao.carimbo_na_arte` declara, e o dicionário `DIVIDA` está
+  VAZIO. INCIDENTE: a própria prova visual achou regressão da QUINTUS —
+  o selo saía "30/0730/07" (prefixo que era data), invisível para 1259
+  testes. Suíte ×2 + invertida + janela (`bloco_ut_*`); 9 guardiões em
+  `test_undetricesimus.py`. **PARADO (L7): o lado canônico da foto no
+  destaque é decisão do dono; e se existir peça publicada de outro
+  encarte, ela vale mais que estas regras.**

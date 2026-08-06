@@ -244,6 +244,14 @@ class Regiao:
     # preencher a caixa (cresce até o teto de largura/altura), nunca
     # lido de tamanho_max_pt. O carimbo do Quintou liga isto.
     preenche_caixa: bool = False
+    # UNDETRICESIMUS §5.4: O CARIMBO PODE ESTAR NA ARTE. O oval coral
+    # das bancas da Sexta está GRAVADO no BASE do dono — o app desenha
+    # só o número em cima. Sem esta declaração, uma auditoria honesta
+    # vê "preço solto no fundo" e acusa defeito que não existe (foi o
+    # que aconteceu: a dívida dos "2 de 11 sem carimbo" era da régua,
+    # não da página). Diferente de ``preenche_caixa``: aqui o número
+    # NÃO se redimensiona pelo elemento — a arte é só o fundo dele.
+    carimbo_na_arte: bool = False
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -349,6 +357,7 @@ class Regiao:
             "sem_leque": self.sem_leque,                 # QUINTUS/C6
             "unidade_caixa_alta": self.unidade_caixa_alta,   # QUINTUS/L23
             "preenche_caixa": self.preenche_caixa,       # SEXTUS/L24
+            "carimbo_na_arte": self.carimbo_na_arte,     # UNDETRICESIMUS
         }
 
     @classmethod
@@ -402,6 +411,7 @@ class Regiao:
             sem_leque=d.get("sem_leque", False),         # QUINTUS aditivo
             unidade_caixa_alta=d.get("unidade_caixa_alta", False),
             preenche_caixa=d.get("preenche_caixa", False),   # L24 aditivo
+            carimbo_na_arte=d.get("carimbo_na_arte", False),
         )
 
 

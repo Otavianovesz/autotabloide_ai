@@ -181,6 +181,102 @@ def r7_piso_do_celular(ctx) -> list[str]:
             and d["altura_px"] > d["rect_alt_px"]]
 
 
+def _classe_da_celula(slot):
+    """UNDETRICESIMUS §3 — DUAS CLASSES DE CÉLULA, E SÓ DUAS.
+
+    Devolve "GRADE" (foto em cima, texto embaixo), "DESTAQUE" (texto à
+    esquerda, foto à direita), "DESTAQUE_INVERTIDO" (foto à esquerda —
+    o mesmo arranjo espelhado, que quebra o "sempre igual"), ou None
+    quando a célula não é de produto (sem foto ou sem nome).
+    """
+    from app.rendering.model import TipoRegiao
+
+    img = next((r for r in slot.regioes
+                if r.tipo == TipoRegiao.IMAGEM and r.visivel), None)
+    nome = next((r for r in slot.regioes
+                 if r.tipo == TipoRegiao.NOME and r.visivel), None)
+    if img is None or nome is None:
+        return None
+    i, n = img.rect, nome.rect
+    # Pelos CENTROS, não pelas bordas: a caixa do nome tem respiro
+    # interno e encosta ~2 mm na foto em todos os encartes aprovados —
+    # medir borda com borda classificava célula de grade como "fora do
+    # padrão" (régua minha nascida torta, corrigida antes de acusar).
+    cxi, cyi = i.x_mm + i.larg_mm / 2, i.y_mm + i.alt_mm / 2
+    cxn, cyn = n.x_mm + n.larg_mm / 2, n.y_mm + n.alt_mm / 2
+    faixa = max(i.larg_mm, n.larg_mm) * 0.25
+    if abs(cxi - cxn) <= faixa:
+        return "GRADE" if cyi < cyn else "FORA DO PADRÃO"
+    return "DESTAQUE" if cxi > cxn else "DESTAQUE_INVERTIDO"
+
+
+def r9_duas_classes_de_celula(ctx) -> list[str]:
+    """§3: um arranjo por classe, e só duas classes na página inteira —
+    a de GRADE (foto em cima) e a HORIZONTAL (foto ao lado do texto).
+    E, dentro da página, a horizontal é SEMPRE do mesmo lado ("sempre
+    igual nas duas grandes"): é a mistura que o arquiteto viu na
+    Quinta do Peixe.
+
+    NÃO cobra o lado CANÔNICO (foto à direita): os oito medidos mostram
+    o Jornal (4 chamadas), a Sexta (9 patches) e a Quarta (1 livre) com
+    a foto à ESQUERDA — arranjos que o dono já aprovou em rodadas
+    anteriores. Trocar o lado deles é redesenho de três encartes, e
+    isso é decisão do dono, não régua de builder (L7). O que a rede
+    garante é a COERÊNCIA, que é o defeito relatado."""
+    ruins = [f"{sid}: arranjo interno fora das duas classes (a foto não "
+             "está nem em cima nem ao lado do nome)"
+             for sid, classe in ctx["classes"].items()
+             if classe == "FORA DO PADRÃO"]
+    lados = {c for c in ctx["classes"].values() if c.startswith("DESTAQUE")}
+    if len(lados) > 1:
+        ruins.append("a página mistura foto à direita e foto à esquerda "
+                     "nas células horizontais — o arranjo é sempre igual")
+    return ruins
+
+
+def r10_zona_da_foto_generosa(ctx) -> list[str]:
+    """§3: o produto ocupa ≥55% da célula de DESTAQUE ("as duas
+    grandes" — a foto do Peixe Pintado ocupava um sexto da célula).
+
+    Mede a ZONA, não a tinta: a zona é a promessa do layout (o que o
+    app controla); quanto da zona o produto enche depende da foto do
+    dono e já é lei do Q1/leque. E mede só as células GRANDES: o §3 diz
+    "célula de destaque", que é relativo à página (L21) — cobrar 55% da
+    célula miúda da grade seria régua inventada."""
+    return [f"{sid}: a foto da célula de destaque ocupa {prop:.0%} da "
+            f"área dela (mínimo 55%)"
+            for sid, (_classe, prop) in ctx["zonas"].items()
+            if prop < 0.55]
+
+
+def r11_validade_fora_da_celula(ctx) -> list[str]:
+    """§3: a validade é da PÁGINA — nunca se repete dentro de célula de
+    produto (as duas células grandes do Peixe imprimiam a data).
+
+    Mede o que foi DESENHADO, não o que o layout declara: a etiqueta
+    das células do Peixe nasce vazia e a data entrava por HERANÇA do
+    texto legal da página — nenhuma leitura do layout acharia isso."""
+    return [f"{sid}: a validade da página ({txt!r}) está dentro de uma "
+            f"célula de produto, na região {rot}"
+            for sid, rot, txt in ctx["validade_em_celula"]]
+
+
+def r12_patamar_do_preco(ctx) -> list[str]:
+    """§3: a célula de DESTAQUE tem preço MAIOR que as outras — a
+    hierarquia da página se lê no corpo do número. "Destaque" é a
+    célula GRANDE (a mesma definição relativa da r10), não a que tem a
+    foto ao lado: as chamadas do Jornal e os patches da Sexta são
+    horizontais e MIÚDOS — preço grande neles inverteria a página."""
+    dest = [pt for sid, pt in ctx["precos"] if sid in ctx["zonas"]]
+    resto = [pt for sid, pt in ctx["precos"] if sid not in ctx["zonas"]]
+    if not dest or not resto:
+        return []
+    if min(dest) <= max(resto):
+        return [f"o preço da célula de destaque ({min(dest):.1f} pt) não "
+                f"é maior que o das demais ({max(resto):.1f} pt)"]
+    return []
+
+
 def r8_preco_coerente_na_pagina(ctx) -> list[str]:
     """§4 (o Ervilha Fugini sem carimbo enquanto os outros 15 tinham):
     a régua honesta é a COERÊNCIA — numa mesma página, ou toda região
@@ -190,7 +286,10 @@ def r8_preco_coerente_na_pagina(ctx) -> list[str]:
     com, sem = [], []
     for reg in ctx["regioes_preco"]:
         tem = (reg.forma_preco != FormaPreco.TEXTO
-               or getattr(reg, "preenche_caixa", False))
+               # o carimbo do app, o número que ENCHE o elemento de
+               # arte (L24), ou o carimbo GRAVADO na arte do dono
+               or getattr(reg, "preenche_caixa", False)
+               or getattr(reg, "carimbo_na_arte", False))
         (com if tem else sem).append(reg.nome or reg.uid)
     if com and sem:
         return [f"{len(sem)} de {len(com) + len(sem)} preços da página "
@@ -203,33 +302,29 @@ def r8_preco_coerente_na_pagina(ctx) -> list[str]:
 # nunca escondida. Defeito novo deixa o teste vermelho; dívida
 # consertada também (o número tem de baixar junto com o conserto).
 DIVIDA = {
-    # A Sexta Verde tem 2 células de destaque com preço em TEXTO puro
-    # enquanto as outras 9 têm carimbo — a mesma classe do "Ervilha
-    # Fugini sem carimbo" do §4. Conserto: dar forma às duas (arte do
-    # encarte), numa rodada da Sexta.
-    ("sexta-verde", "r8_preco_coerente_na_pagina"): 1,
-    # CONFLITO DE LEIS, para o arquiteto decidir (achado desta rede):
-    # nome longo em região cujo PISO é igual ao TETO fica mais alto
-    # que a caixa. Ceder o corpo resolve o desenho e quebra a U1/C1
-    # (piso inviolável); manter o piso respeita a U1 e deixa o bloco
-    # transbordar. O builder NÃO escolheu: o piso ficou (é lei
-    # vigente) e o caso está aqui, contado, até a ordem que decidir.
-    # Medido com o item de prova mais longo que os nomes reais.
-    ("jornal-do-mes", "r6_texto_dentro_da_regiao"): 40,
-    ("sabado-da-carne", "r6_texto_dentro_da_regiao"): 12,
-    ("quintou", "r6_texto_dentro_da_regiao"): 32,
-    ("terca-do-pao", "r6_texto_dentro_da_regiao"): 12,
-    ("segunda-frios", "r6_texto_dentro_da_regiao"): 12,
-    ("quarta-das-ofertas", "r6_texto_dentro_da_regiao"): 12,
-    ("quinta-do-peixe", "r6_texto_dentro_da_regiao"): 12,
-    ("sexta-verde", "r6_texto_dentro_da_regiao"): 12,
+    # QUITADA na UNDETRICESIMUS §5.4: os "2 de 11 preços sem carimbo"
+    # da Sexta eram FALSO POSITIVO desta régua — o oval coral das
+    # bancas está GRAVADO no BASE do dono, e o app desenha só o número
+    # em cima. A página não tinha defeito; o layout é que não declarava
+    # o que a arte já fazia (``carimbo_na_arte``). O dicionário fica
+    # VAZIO: nenhuma dívida aberta nos oito.
+    # QUITADA na UNDETRICESIMUS: as 8 dívidas de r6 (o transbordo do
+    # nome, 12 a 40 por encarte) eram o CONFLITO DE LEIS que o
+    # arquiteto despachou no §2 — o piso não cede, a CAIXA cede. Com o
+    # crescimento da região (compositor.crescer_do_piso) e o degrau 4
+    # da escada (§1), o transbordo foi a ZERO nos oito e as linhas
+    # saíram daqui. Dívida consertada tem de sumir do dicionário: se
+    # voltar, o teste fica vermelho — que é o ponto.
 }
 
 
 REGRAS = [r1_hifen_nao_parte_marca, r2_nenhum_nome_elipsado,
           r3_nome_sem_numero_solto, r4_um_peso_por_item,
           r5_a_unidade_nunca_some, r6_texto_dentro_da_regiao,
-          r7_piso_do_celular, r8_preco_coerente_na_pagina]
+          r7_piso_do_celular, r8_preco_coerente_na_pagina,
+          # UNDETRICESIMUS §3 — o padrão de célula dos sete
+          r9_duas_classes_de_celula, r10_zona_da_foto_generosa,
+          r11_validade_fora_da_celula, r12_patamar_do_preco]
 
 
 # ============================================================== o motor
@@ -251,6 +346,54 @@ def _contexto(ldef, pagina, img, dados):
     regs_preco = [r for s in pagina.slots for r in s.regioes
                   if r.tipo == TipoRegiao.PRECO and r.visivel
                   and s.id in dados]
+
+    # UNDETRICESIMUS §3 — o padrão de célula dos SETE (os encartes sem
+    # peça publicada do dono; onde há original, quem manda é a L23)
+    from statistics import median
+
+    CONTEUDO = (TipoRegiao.IMAGEM, TipoRegiao.NOME, TipoRegiao.SUBTITULO,
+                TipoRegiao.PRECO, TipoRegiao.UNIDADE)
+    classes: dict[str, str] = {}
+    validade_em_celula: list[tuple[str, str, str]] = []
+    precos_por_classe: list[tuple[str, float]] = []
+    medidas: list[tuple[str, str, float, float]] = []
+    desenho = getattr(img, "_texto_desenhado", {})
+    val_pg = (d0.texto_legal or "").strip()
+    for slot in pagina.slots:
+        if slot.id not in dados:
+            continue                       # só célula de produto
+        classe = _classe_da_celula(slot)
+        if classe is None:
+            continue
+        classes[slot.id] = classe
+        # a CÉLULA é o retângulo do CONTEÚDO — moldura, toldo e fios são
+        # decoração e inflavam a caixa (a banca da Sexta media 42% por
+        # causa do toldo, não da foto)
+        vis = [r for r in slot.regioes if r.visivel and r.tipo in CONTEUDO]
+        cx0 = min(r.rect.x_mm for r in vis)
+        cy0 = min(r.rect.y_mm for r in vis)
+        cx1 = max(r.rect.x_mm + r.rect.larg_mm for r in vis)
+        cy1 = max(r.rect.y_mm + r.rect.alt_mm for r in vis)
+        zi = next(r.rect for r in vis if r.tipo == TipoRegiao.IMAGEM)
+        area_cel = max(1e-6, (cx1 - cx0) * (cy1 - cy0))
+        medidas.append((slot.id, classe, area_cel,
+                        (zi.larg_mm * zi.alt_mm) / area_cel))
+        for r in slot.regioes:
+            if not r.visivel:
+                continue
+            if r.tipo == TipoRegiao.TEXTO_LEGAL and val_pg:
+                escrito = " ".join(
+                    desenho.get(r.uid, {}).get("linhas", []))
+                if escrito and escrito in val_pg:
+                    validade_em_celula.append(
+                        (slot.id, r.nome or "texto legal", escrito))
+            if r.tipo == TipoRegiao.PRECO:
+                precos_por_classe.append((slot.id, r.tamanho_max_pt))
+    # "as duas GRANDES": destaque é RELATIVO à página (a mesma lei do
+    # herói, L21) — célula bem maior que a mediana da própria página
+    med = median([m[2] for m in medidas]) if medidas else 0.0
+    zonas = {sid: (cl, prop) for sid, cl, area, prop in medidas
+             if med and area > med * 1.5}
     # o nome/descritor REAIS da página (o que a escada decidiu)
     nome_final = (next(iter(desenhado.values()))["texto"]
                   if desenhado else d0.nome)
@@ -261,6 +404,9 @@ def _contexto(ldef, pagina, img, dados):
         "linhas_desenhadas": [d["linhas"] for d in desenhado.values()],
         "regioes_preco": regs_preco,
         "piso": piso_do_celular(ldef.largura_mm),
+        "classes": classes, "zonas": zonas,
+        "validade_em_celula": validade_em_celula,
+        "precos": precos_por_classe,
     }
 
 

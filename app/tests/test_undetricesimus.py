@@ -1,0 +1,256 @@
+"""ORDEM F13-UNDETRICESIMUS — o despacho dos dois conflitos (L26).
+
+Os guardiões das leis desta rodada, cada um com a mutação que ele mata:
+
+  §1  o DEGRAU 4 da escada — a marca só se parte quando a alternativa
+      seria encolher o texto (a L25 vira preferência ordenada);
+  §2  o PISO NÃO CEDE, A CAIXA CEDE — a região cresce, o crescimento é
+      declarado, a colisão é erro DURO e nomeado, e o texto nunca vaza;
+  §2  piso IGUAL ao teto é defeito de layout — o import recusa;
+  §3  a validade é da PÁGINA: nunca dentro de célula de produto;
+  §5.4 o carimbo pode estar na ARTE (e sobrevive ao banco).
+
+As regras de composição do §3 (as duas classes, a zona do destaque, o
+patamar do preço) moram no ``test_os_oito.py`` — é lá que elas valem
+para os oito ao mesmo tempo, que é o ponto da L22.
+"""
+
+from pathlib import Path
+
+import pytest
+
+
+def _fontes_reais(tmp_path):
+    from app.tests import acervo
+    fontes = tmp_path / "fontes"
+    fontes.mkdir()
+    acervo.copiar_fontes_reais(fontes)
+    return fontes
+
+
+# ==================================================================== §1
+# O DEGRAU 4: parte a marca só quando a alternativa é encolher
+# ======================================================================
+
+
+def test_undetricesimus_marca_parte_so_para_nao_encolher(tmp_path):
+    """O despacho do CONFLITO A (L23 × L25).
+
+    Duas caixas, o MESMO nome e o MESMO vocabulário de marcas:
+      - na LARGA, "Itaipava" cabe inteira → o hífen não a toca;
+      - na ESTREITA, ou parte a marca ou o corpo desaba → parte.
+    """
+    from app.rendering.text_fit import ajustar_texto
+
+    fontes = _fontes_reais(tmp_path)
+    fonte = fontes / "Roboto-Bold.ttf"
+    atomos = frozenset({"itaipava"})
+    texto = "Cerveja Itaipava"
+    dpi = 192
+
+    larga = ajustar_texto(texto, fonte, 420, 120, 20.0, dpi, 9.0,
+                          atomos=atomos)
+    assert not any(l.rstrip().endswith("-") for l in larga.linhas), \
+        f"com folga a marca não se parte: {larga.linhas}"
+
+    estreita = ajustar_texto(texto, fonte, 92, 200, 20.0, dpi, 9.0,
+                             atomos=atomos)
+    partiu = any(l.rstrip().endswith("-") for l in estreita.linhas)
+    protegida = ajustar_texto(texto, fonte, 92, 200, 20.0, dpi, 9.0,
+                              atomos=atomos, sem_hifen=True)
+    assert partiu, (
+        "sem espaço, o degrau 4 parte a marca em vez de encolher: "
+        f"{estreita.linhas}")
+    assert estreita.tamanho_pt > protegida.tamanho_pt, (
+        "e o ganho tem de ser o CORPO — se partir a marca não deixasse "
+        "o texto maior, não haveria motivo para partir "
+        f"({estreita.tamanho_pt:.1f} vs {protegida.tamanho_pt:.1f} pt)")
+
+
+# ==================================================================== §2
+# A CAIXA CEDE (e quando não pode, é erro DURO e nomeado)
+# ======================================================================
+
+
+def _pagina_de_prova(alt_nome_mm, folga_mm):
+    """Uma página com UMA célula: nome apertado e o descritor logo
+    abaixo, à distância pedida."""
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao,
+    )
+    nome = Regiao(TipoRegiao.NOME, Retangulo(10, 40, 60, alt_nome_mm),
+                  nome="Nome", fonte="Roboto-Bold.ttf",
+                  tamanho_max_pt=18.0, tamanho_min_pt=16.6)
+    y_sub = 40 + alt_nome_mm + folga_mm
+    sub = Regiao(TipoRegiao.SUBTITULO, Retangulo(10, y_sub, 60, 6),
+                 nome="Descritor", fonte="Roboto-Regular.ttf",
+                 tamanho_max_pt=10.0, tamanho_min_pt=8.0)
+    pg = Pagina(slots=[Slot("celula-1", [nome, sub])])
+    # largura da página dos encartes: é ela que dá o piso de 16,6 pt
+    return (LayoutDef(285.75, 381.0, dpi=192, paginas=[pg]), nome, sub)
+
+
+def test_undetricesimus_a_caixa_cresce_e_declara(tmp_path):
+    """Com folga embaixo, a região CRESCE — e o crescimento aparece no
+    registro (I2: nunca calado)."""
+    from app.rendering.compositor import compor_pagina
+    from app.qt.telas.servico import ItemMesa, dados_para_desenho
+
+    fontes = _fontes_reais(tmp_path)
+    ldef, nome, _sub = _pagina_de_prova(alt_nome_mm=5.0, folga_mm=8.0)
+    it = ItemMesa(descricao="Café", preco="9,99", semaforo="VERDE",
+                  nome="Café")
+    dados = {"celula-1": dados_para_desenho(it, None, None)}
+
+    img = compor_pagina(ldef, ldef.paginas[0], dados, fontes_dir=fontes)
+    cresc = getattr(img, "_crescimentos", {})
+    assert nome.uid in cresc, "a caixa tinha de crescer para o piso"
+    _rotulo, antes, depois = cresc[nome.uid]
+    assert depois > antes, f"cresceu de {antes} para {depois} mm"
+    # e o que foi desenhado CABE (o único resultado proibido é vazar)
+    d = img._texto_desenhado[nome.uid]
+    assert d["altura_px"] <= d["rect_alt_px"] + 1, \
+        "depois de crescer, o bloco tem de caber na caixa"
+
+
+def test_undetricesimus_grade_apertada_e_erro_nomeado(tmp_path):
+    """Sem folga de nenhum lado, a página NÃO compõe — e a frase diz a
+    região, a medida que falta e QUEM está no caminho."""
+    from app.rendering.compositor import GradeApertada, compor_pagina
+    from app.qt.telas.servico import ItemMesa, dados_para_desenho
+
+    fontes = _fontes_reais(tmp_path)
+    ldef, _nome, _sub = _pagina_de_prova(alt_nome_mm=5.0, folga_mm=0.0)
+    # e nada acima: o nome começa colado no topo da página
+    for s in ldef.paginas[0].slots:
+        for r in s.regioes:
+            r.rect.y_mm -= 40.0
+    it = ItemMesa(descricao="Café", preco="9,99", semaforo="VERDE",
+                  nome="Café")
+    dados = {"celula-1": dados_para_desenho(it, None, None)}
+
+    with pytest.raises(GradeApertada) as e:
+        compor_pagina(ldef, ldef.paginas[0], dados, fontes_dir=fontes)
+    msg = str(e.value)
+    assert "Nome" in msg and "Descritor" in msg, \
+        f"a frase nomeia a região e a vizinha: {msg}"
+    assert "mm" in msg and "mais altura" in msg, msg
+
+
+def test_undetricesimus_pre_voo_ve_a_grade_antes_de_compor(tmp_path):
+    """O erro duro não pode chegar ao dono como travamento: o pré-voo
+    pergunta ANTES, com a MESMA conta do desenho."""
+    from app.ai.revisora import heuristicas_do_pre_voo
+    from app.qt.telas.servico import ItemMesa, dados_para_desenho
+
+    fontes = _fontes_reais(tmp_path)
+    ldef, _n, _s = _pagina_de_prova(alt_nome_mm=5.0, folga_mm=0.0)
+    for s in ldef.paginas[0].slots:
+        for r in s.regioes:
+            r.rect.y_mm -= 40.0
+    it = ItemMesa(descricao="Café", preco="9,99", semaforo="VERDE",
+                  nome="Café")
+    avisos = heuristicas_do_pre_voo(
+        ldef, {"celula-1": dados_para_desenho(it, None, None)}, fontes)
+    assert any("mais altura" in a for a in avisos), \
+        f"o pré-voo tem de anunciar a grade apertada: {avisos}"
+
+
+def test_undetricesimus_piso_igual_ao_teto_o_import_recusa():
+    """§2: região de texto sem margem de manobra é defeito de LAYOUT —
+    o import aponta a região em vez de compor torto."""
+    from app.rendering.encartes import regioes_de_piso_travado
+    from app.rendering.model import (
+        LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao,
+    )
+
+    r = Regiao(TipoRegiao.NOME, Retangulo(0, 0, 40, 10), nome="Nome",
+               tamanho_max_pt=12.0, tamanho_min_pt=12.0)
+    lay = LayoutDef(100, 100, paginas=[Pagina(slots=[Slot("c1", [r])])])
+    achados = regioes_de_piso_travado(lay)
+    assert achados and "c1/Nome" in achados[0], achados
+
+    r.tamanho_min_pt = 9.0
+    assert not regioes_de_piso_travado(lay), \
+        "com margem de manobra, o layout passa"
+
+
+# ==================================================================== §3
+# A VALIDADE É DA PÁGINA
+# ======================================================================
+
+
+def test_undetricesimus_validade_nao_entra_em_celula_de_produto():
+    """O defeito das duas células grandes do Peixe: a etiqueta OPCIONAL
+    nasce vazia e vinha herdando a data da página. Fora de célula (o
+    rodapé, os layouts antigos) o recurso continua valendo — I2."""
+    from app.rendering.compositor import DadosProduto, texto_composto_legal
+    from app.rendering.model import (
+        PapelTexto, Regiao, Retangulo, TipoRegiao,
+    )
+
+    etiqueta = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 40, 6),
+                      nome="Etiqueta", papel_texto=PapelTexto.LIVRE,
+                      texto_fixo="")
+    d = DadosProduto("Tilápia", texto_legal="Válido até 08/08")
+
+    assert texto_composto_legal(etiqueta, d, em_celula=True) == "", \
+        "dentro da célula do produto, a etiqueta vazia fica vazia"
+    assert texto_composto_legal(etiqueta, d) == "Válido até 08/08", \
+        "fora de célula (rodapé/legado), o recurso segue valendo"
+
+
+def test_undetricesimus_o_selo_nao_escreve_a_data_duas_vezes():
+    """Achado da PRÓPRIA prova desta rodada (o selo da Quinta do Peixe
+    saiu "30/0730/07"): o texto_fixo vira PREFIXO da data desde a
+    QUINTUS ("Até " + "26/05"), mas quando o fixo JÁ É uma data — um
+    projeto antigo, ou o dono digitando no campo — a concatenação
+    imprimia a data duas vezes dentro do carimbo. Prefixo é palavra."""
+    from app.rendering.compositor import DadosProduto, texto_composto_legal
+    from app.rendering.model import (
+        PapelTexto, Regiao, Retangulo, TipoRegiao,
+    )
+
+    d = DadosProduto("x", texto_legal="Válido somente 30/07")
+
+    selo = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 30, 10),
+                  papel_texto=PapelTexto.VALIDADE, texto_fixo="30/07")
+    selo.so_data = True
+    assert texto_composto_legal(selo, d) == "30/07", \
+        "data no texto fixo não se soma à data viva"
+
+    com_prefixo = Regiao(TipoRegiao.TEXTO_LEGAL, Retangulo(0, 0, 30, 10),
+                         papel_texto=PapelTexto.VALIDADE, texto_fixo="Até ")
+    com_prefixo.so_data = True
+    assert texto_composto_legal(com_prefixo, d) == "Até 30/07", \
+        "o prefixo de palavra (o Quintou) continua valendo"
+
+
+# ================================================================== §5.4
+# O CARIMBO NA ARTE (e o roundtrip — a lição do incidente da QUINTUS)
+# ======================================================================
+
+
+def test_undetricesimus_carimbo_na_arte_sobrevive_ao_banco():
+    """Flag novo que não viaja no to_dict morre no reimport (foi assim
+    que o Frango virou trio na rodada passada). Roundtrip completo."""
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+
+    r = Regiao(TipoRegiao.PRECO, Retangulo(0, 0, 20, 10))
+    r.carimbo_na_arte = True
+    assert Regiao.from_dict(r.to_dict()).carimbo_na_arte is True
+
+
+def test_undetricesimus_a_sexta_declara_o_oval_gravado():
+    """A dívida dos "2 de 11 preços sem carimbo" era da RÉGUA: o oval
+    das bancas está gravado no BASE do dono. Agora a página o declara."""
+    from app.rendering.encartes import _sexta
+    from app.rendering.model import TipoRegiao
+
+    bancas = [s for s in _sexta() if s.id.startswith("celula-banca")]
+    assert len(bancas) == 2
+    for slot in bancas:
+        preco = next(r for r in slot.regioes
+                     if r.tipo == TipoRegiao.PRECO)
+        assert preco.carimbo_na_arte, \
+            f"{slot.id}: o oval gravado tem de estar declarado"

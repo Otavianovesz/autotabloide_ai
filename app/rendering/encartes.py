@@ -171,12 +171,27 @@ def _preco(x, y, w, h, *, fonte, rot=0.0, forma=None, forma_cor=None,
                   rotacao_graus=rot)
 
 
+def _preco_na_arte(*a, **kw) -> Regiao:
+    """UNDETRICESIMUS §5.4: o preço cujo CARIMBO está gravado na arte
+    do dono (o oval coral das bancas da Sexta). Desenha igual a
+    ``_preco`` — só DECLARA que há carimbo, para a auditoria não ler
+    "preço solto no fundo" onde a página tem um."""
+    reg = _preco(*a, **kw)
+    reg.carimbo_na_arte = True
+    return reg
+
+
 def _legal(x, y, w, h, *, papel, fonte, texto="", nome="", rot=0.0,
            alin=Alinhamento.CENTRO, tam=48.0, cor="#000000") -> Regiao:
     return Regiao(TipoRegiao.TEXTO_LEGAL, _r(x, y, w, h),
                   nome=nome or papel.value.title(), fonte=fonte,
                   papel_texto=papel, texto_fixo=texto, alinhamento=alin,
                   tamanho_max_pt=tam, cor=cor, sem_hifen=True,
+                  # UNDETRICESIMUS §2: piso IGUAL ao teto é defeito de
+                  # layout — a região fica sem nenhuma margem de manobra
+                  # e um texto mais longo só tem a saída proibida (vazar).
+                  # O rótulo de 6 pt da Terça era o único caso do pacote.
+                  tamanho_min_pt=min(6.0, tam - 0.5),
                   alinhamento_v=AlinhamentoV.CENTRO, rotacao_graus=rot)
 
 
@@ -480,10 +495,13 @@ def _quarta() -> list[Slot]:
                    rot=-1.5),
         ], origem=(cx, cy)))
     slots.append(_slot("celula-var-5", [
-        _img(420, 878, 320, 406, flex=True),
-        _nome(752, 990, 264, 46, fonte=_F_NUNITO,
+        # UNDETRICESIMUS §3: célula de DESTAQUE — a zona da foto passa
+        # de 320 para 332 e a coluna de texto cede 8 px (54% → 56% da
+        # célula); a folga entre a foto e o texto fica em 8 px
+        _img(420, 878, 332, 406, flex=True),
+        _nome(760, 990, 256, 46, fonte=_F_NUNITO,
               alin=Alinhamento.ESQUERDA, tam=22.5, cor=escuro),
-        _sub(752, 1040, 264, 26, fonte="Nunito-Bold.ttf",
+        _sub(760, 1040, 256, 26, fonte="Nunito-Bold.ttf",
              alin=Alinhamento.ESQUERDA, tam=14.0, cor=escuro),
         _preco(796, 1083, 140, 70, fonte=_F_ANTON,
                forma=FormaPreco.TAG_ARREDONDADA, forma_cor=laranja,
@@ -515,29 +533,35 @@ def _peixe() -> list[Slot]:
     navy, cinza, gold = "#123243", "#7C8B93", "#9A7A16"
     for i, (x, y, w, h, tipo) in enumerate(cells, start=1):
         if tipo == "wide":
-            fx = x + w - 286
+            # UNDETRICESIMUS §3 (o padrão dos sete): na célula de
+            # DESTAQUE o produto ocupa ≥55% da célula — a foto era 283
+            # de largura (51%) e o Peixe Pintado sumia dentro dela. A
+            # zona cresce para 323 e a coluna de texto cede os 40 px
+            # (a mesma troca que um diagramador faria: quem manda na
+            # célula grande é o produto).
+            fx = x + w - 326
             regs = [
                 # F13-TER: foto até a moldura; as bordas finas voltam
-                _img(fx, y + 3, 283, 314),
-                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 3, 286, 9),
+                _img(fx, y + 3, 323, 314),
+                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 3, 326, 9),
                        nome="Moldura"),
-                Regiao(TipoRegiao.ADORNO, _r(fx + 274, y + 3, 9, 314),
+                Regiao(TipoRegiao.ADORNO, _r(fx + 314, y + 3, 9, 314),
                        nome="Moldura"),
-                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 308, 286, 9),
+                Regiao(TipoRegiao.ADORNO, _r(fx - 3, y + 308, 326, 9),
                        nome="Moldura"),
                 # D2: o rótulo do destaque é etiqueta OPCIONAL — nasce
                 # VAZIO (vazio não desenha; nunca um rótulo mentindo)
-                _legal(x + 32, y + 38, 250, 24, papel=PapelTexto.LIVRE,
+                _legal(x + 32, y + 38, 215, 24, papel=PapelTexto.LIVRE,
                        fonte=_F_ARCHIVO, texto="",
                        nome="Etiqueta", tam=9.75, cor=gold,
                        alin=Alinhamento.ESQUERDA),
-                _nome(x + 32, y + 60, 260, 86, fonte=_F_FRAUNCES,
+                _nome(x + 32, y + 60, 220, 86, fonte=_F_FRAUNCES,
                       alin=Alinhamento.ESQUERDA, tam=26.0, cor=navy),
-                _sub(x + 32, y + 152, 260, 26, fonte=_F_FRA_IT,
+                _sub(x + 32, y + 152, 220, 26, fonte=_F_FRA_IT,
                      alin=Alinhamento.ESQUERDA, tam=12.75, cor=cinza),
                 # texto navy PURO com R$ menor — a ÚNICA forma TEXTO
                 # legítima do pacote (§3.4 conferido pelo scout)
-                _preco(x + 32, y + h - 82, 260, 60, fonte=_F_FRAUNCES,
+                _preco(x + 32, y + h - 82, 220, 60, fonte=_F_FRAUNCES,
                        cor=navy, tam=38.0, tam_cent=23.5,
                        centavos_na_base=True,
                        alin=Alinhamento.ESQUERDA),
@@ -575,8 +599,11 @@ def _sexta() -> list[Slot]:
     for i, (x, rot) in enumerate(((54, -5.0), (566, 4.0)), start=1):
         cx = x + 230
         slots.append(_slot(f"celula-banca-{i}", [
-            # F13-TER: a foto SOBE atrás do toldo listrado, recolado
-            _img(x + 36, 402, 388, 188),
+            # F13-TER: a foto SOBE atrás do toldo listrado, recolado.
+            # UNDETRICESIMUS §3: a banca é célula de DESTAQUE e a zona
+            # ganhou 8 px para baixo (53% → 55% da célula); o toldo, que
+            # mora no topo, não é tocado e a folga até o nome fica em 11
+            _img(x + 36, 402, 388, 196),
             Regiao(TipoRegiao.ADORNO, _r(x - 14, 398, 488, 75),
                    nome="Toldo"),
             # D2: etiqueta OPCIONAL — nasce vazia (o dono escolhe)
@@ -588,10 +615,12 @@ def _sexta() -> list[Slot]:
             _sub(x + 40, 648, 380, 22, fonte=_F_FRA_IT,
                  tam=10.5, cor="#BFD3C2"),
             # o OVAL é ESTRUTURA (gravado no BASE) — aqui SÓ o texto
-            # coral, Fraunces, centavos na base (a espec do arco_ex)
-            _preco(cx - 85, 704, 170, 52, fonte=_F_FRAUNCES, rot=rot,
-                   cor="#D6543C", tam=31.0, tam_cent=19.5,
-                   centavos_na_base=True),
+            # coral, Fraunces, centavos na base (a espec do arco_ex).
+            # UNDETRICESIMUS §5.4: e a página DECLARA que o carimbo
+            # existe na arte (senão a auditoria lê "preço solto")
+            _preco_na_arte(cx - 85, 704, 170, 52, fonte=_F_FRAUNCES,
+                           rot=rot, cor="#D6543C", tam=31.0,
+                           tam_cent=19.5, centavos_na_base=True),
         ], origem=(x, 380)))
     rots = (-2.0, 2.0, -1.5, 2.5, -2.0, 1.5, -2.5, 2.0, -1.5)
     k = 3
@@ -1239,6 +1268,28 @@ def layout_de_encarte(chave: str, pasta_pacote: str | Path,
     return layout
 
 
+def regioes_de_piso_travado(lay) -> list[str]:
+    """UNDETRICESIMUS §2 — REGIÃO DE TEXTO COM PISO IGUAL AO TETO é
+    defeito de layout, não caso de uso: o tipo não tem para onde ceder
+    e, num texto mais longo, a única saída seria a proibida (vazar).
+    O import RECUSA e aponta a região — nunca compõe torto em silêncio.
+    """
+    from app.rendering.model import TipoRegiao as _T
+
+    de_texto = (_T.NOME, _T.SUBTITULO, _T.UNIDADE, _T.TEXTO_LEGAL,
+                _T.PRECO)
+    ruins: list[str] = []
+    for pg in lay.paginas:
+        for slot in pg.slots:
+            for r in slot.regioes:
+                if r.tipo in de_texto and r.visivel \
+                        and r.tamanho_min_pt >= r.tamanho_max_pt:
+                    ruins.append(
+                        f"{slot.id}/{r.nome or r.tipo.value} "
+                        f"({r.tamanho_min_pt:g} pt)")
+    return ruins
+
+
 def importar_pacote(session, pasta_pacote: str | Path,
                     raiz=None) -> list[str]:
     """Semeia na biblioteca os encartes COMPLETOS do pacote e copia as
@@ -1260,6 +1311,12 @@ def importar_pacote(session, pasta_pacote: str | Path,
     chaves = chaves_do_pacote(pasta)
     for chave in chaves:
         lay = layout_de_encarte(chave, pasta)
+        travadas = regioes_de_piso_travado(lay)
+        if travadas:
+            raise ValueError(
+                f"o encarte '{chave}' tem região com piso igual ao teto "
+                f"(nenhuma margem de manobra para o tipo): "
+                f"{'; '.join(travadas)}")
         # SEPTIMUS: o upsert NÃO apaga a configuração do dono — o
         # conteudo_fixo (N1: o Kit com a foto escolhida) do layout já
         # existente é PRESERVADO por slot.id na atualização do encarte
