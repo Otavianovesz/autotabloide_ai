@@ -269,11 +269,11 @@ def _verdes(img):
 
 
 def test_vquartus_leque_e_capacidade_do_motor_nos_oito(tmp_path, monkeypatch):
-    """§1.3 (L22): a MESMA foto estreita vira trio no QUINTOU e no
-    SÁBADO — o gate de identidade "coluna com mordida" prendia a L19
-    ao Jornal. Um teste só, rodando nos layouts REAIS do banco (L16);
-    a prova é por tinta: com leque ≥ 1,8× a unidade (a mutação que
-    devolve o gate antigo deixa isto vermelho)."""
+    """§1.3 (L22): a MESMA foto estreita vira trio pela régua da tinta
+    em qualquer encarte SEM exceção declarada (o SÁBADO prova) — e a
+    exceção DECLARADA vale: no QUINTOU (arte carregada, sem_leque da
+    QUINTUS/C6) o produto NUNCA se repete (com == sem). Um teste só,
+    nos layouts REAIS do banco (L16)."""
     from decimal import Decimal
     from pathlib import Path
 
@@ -323,11 +323,17 @@ def test_vquartus_leque_e_capacidade_do_motor_nos_oito(tmp_path, monkeypatch):
                 monkeypatch.setenv("AUTOTABLOIDE_ROOT",
                                    str(tmp_path / "raiz"))
                 assert sem > 0, f"{nome}: a unidade nem desenhou"
-                # a régua discrimina o GATE (com o gate antigo o leque
-                # nunca dispara fora do Jornal → com == sem): flancos a
-                # 88% entrando atrás rendem ~1,8× de tinta na medição
-                assert com >= sem * 1.5, (
-                    f"{nome}: leque não disparou ({com} × {sem})")
+                if "Quintou" in nome:
+                    # QUINTUS/C6: a exceção DECLARADA — arte carregada
+                    # nunca multiplica (o trio poluía o tijolo azul)
+                    assert com == sem, (
+                        f"{nome}: o leque disparou onde foi vetado "
+                        f"({com} × {sem})")
+                else:
+                    # a régua discrimina o GATE (com o gate antigo o
+                    # leque nunca dispara fora do Jornal → com == sem)
+                    assert com >= sem * 1.5, (
+                        f"{nome}: leque não disparou ({com} × {sem})")
     finally:
         db.engine.dispose()
 
@@ -376,7 +382,7 @@ def test_vquartus_chapado_atras_do_numero_por_pixel(tmp_path):
     from PIL import Image, ImageDraw
 
     from app.rendering.compositor import (DadosProduto, _desenhar_preco,
-                                          _moeda_na_listrada, _rect_px)
+                                          _rect_px)
     from app.rendering.model import (FormaPreco, Regiao, Retangulo,
                                      TipoRegiao)
     from app.tests import acervo
@@ -402,16 +408,23 @@ def test_vquartus_chapado_atras_do_numero_por_pixel(tmp_path):
     base._tem_camada = True              # a etiqueta "é da arte"
     _desenhar_preco(base, d, reg, DadosProduto("X", preco_por=Decimal("5")),
                     96, fontes)
-    # a faixa central (60% × meio) não tem mais listra azul
+    # a faixa central (60% × meio-baixo) não tem mais listra azul
     azuis = 0
-    for py in range(y + round(h * 0.35), y + round(h * 0.65)):
+    for py in range(y + round(h * 0.45), y + round(h * 0.75)):
         for px in range(x + round(w * 0.20), x + round(w * 0.80)):
             r, g, b = base.getpixel((px, py))
             if b > 140 and r < 100:
                 azuis += 1
     assert azuis == 0, f"{azuis} pixels de listra sob o número"
-    # e o R$ entra em corpo proporcional (a régua nomeada)
-    assert _moeda_na_listrada(reg).mostrar_moeda is True
+    # QUINTUS/L23: o TOPO fica LIVRE — o "R$" gravado da arte do dono
+    # aparece EMPILHADO acima do número (o R$ inline da QUARTUS morreu)
+    topo_listrado = 0
+    for py in range(y + round(h * 0.05), y + round(h * 0.22)):
+        for px in range(x + round(w * 0.20), x + round(w * 0.80)):
+            r, g, b = base.getpixel((px, py))
+            if b > 140 and r < 100:
+                topo_listrado += 1
+    assert topo_listrado > 0, "o chapado cobriu o R$ gravado do topo"
 
 
 # ================================================================= §2.3

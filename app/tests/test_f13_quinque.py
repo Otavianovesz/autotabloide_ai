@@ -33,16 +33,22 @@ def _requer_pacote():
 
 
 def test_a1_camada_interna_e_resolve_como_toda_arte(raiz_tmp):
-    """A1/I3: ``Pagina.arquivo_camada`` (a arte de preço do dono) é
-    INTERNADA no salvar (cópia em layouts/, caminho relativo no JSON —
-    nada da pasta do pacote vaza) e RESOLVIDA no carregar. Sem isso, o
-    layout importado quebraria em outra máquina."""
+    """A1/I3: ``Pagina.arquivo_camada`` é INTERNADA no salvar (cópia em
+    layouts/, caminho relativo no JSON) e RESOLVIDA no carregar.
+
+    QUINTUS/L23 (edição de propósito): o Quintou deixou de declarar
+    camada (os carimbos moram no fundo COMPLETO) — o MECANISMO segue
+    testado com uma camada FABRICADA sobre o mesmo layout (arte futura
+    pode precisar dela; o contrato I3 não morre com a cobaia)."""
     _requer_pacote()
     from app.core.database import Database
     from app.rendering.encartes import layout_de_encarte
     from app.rendering.persistencia import carregar_layout, salvar_layout
 
     lay = layout_de_encarte("quintou", _PACOTE)
+    for pag in lay.paginas:
+        pag.arquivo_camada = str(
+            _PACOTE / "Quintou" / "Quintou do Real Frente Preço.png")
     db = Database().init()
     try:
         with db.Session() as s:
@@ -74,8 +80,10 @@ def test_a1_galeria_compoe_do_banco_pela_porta(raiz_tmp):
     lay, layout_id = layout_do_banco("quintou", _PACOTE, raiz_tmp)
     assert layout_id is not None, "o layout não veio do BANCO"
     assert len(lay.paginas) == 2
-    assert lay.paginas[0].arquivo_camada and \
-        Path(lay.paginas[0].arquivo_camada).exists()
+    # QUINTUS/L23 (edição de propósito): o Quintou consome o FUNDO
+    # COMPLETO do dono (a camada morreu — os carimbos moram no fundo)
+    assert lay.paginas[0].arquivo_fundo and \
+        Path(lay.paginas[0].arquivo_fundo).exists()
     from app.rendering.compositor import DadosProduto, compor_pagina
     img = compor_pagina(lay, lay.paginas[0],
                         {"pos-01": DadosProduto("Prova")})

@@ -63,17 +63,20 @@ _BASES: dict[str, tuple[str, tuple[str, ...]]] = {
     # publicado ("./" = pasta relativa à raiz do pacote, não a artes/)
     # F13-TER §9.4: FRENTE + VERSO — o Quintou é o que ele entrega
     # toda semana (o "fundo" do verso vem em minúsculo do Illustrator)
-    "quintou": ("./Quintou", ("Quintou Frente Fundo.png",
-                              "Quintou Verso fundo.png")),
+    # VICESIMUS-QUINTUS/L23: o fundo passa a ser o template COMPLETO
+    # do dono (arte/quintou/*_template.png — painel Belo Brasil,
+    # carimbos com o R$ gravado, filetes) — "o Quintou é uma arte
+    # PRONTA que o app preenche", nunca um layout a redesenhar
+    "quintou": ("./Quintou", ("Quintou Frente Completo.png",
+                              "Quintou Verso Completo.png")),
 }
 
-# QUATER/L9: a CAMADA de preço do dono por página — o asset é a fonte
-# da verdade (etiquetas listradas + divisórias vermelhas, RGBA 4500×
-# 5418 alinhado 1:1 à página; o número NUNCA esteve na arte)
-_CAMADAS: dict[str, tuple[str, ...]] = {
-    "quintou": ("Quintou do Real Frente Preço.png",
-                "Quintou do Real Verso Preço.png"),
-}
+# QUATER/L9 → QUINTUS/L23: a camada de preço MORREU no Quintou — os
+# carimbos (com o R$ gravado e as listras discretas do publicado) já
+# moram no template COMPLETO do fundo; a camada de listras vazadas
+# deixava o azul da página vazar pelos riscos e o número não se lia.
+# O mecanismo (arquivo_camada/_tem_camada) fica para arte futura.
+_CAMADAS: dict[str, tuple[str, ...]] = {}
 
 NOMES_EXIBICAO = {
     "quintou": "Quintou do Real",
@@ -978,35 +981,21 @@ def _quintou() -> list[Slot]:
         x, y = col * 270, 270 + lin * 258
         slots.append(_slot(f"pos-{pos:02d}", _celula_quintou(x, y),
                            origem=(x, y)))
-    # QUATER/Q6 (medido no Real): alvo VISUAL (221,1080,36,192),
-    # cap ~34px, #E04444 — sobre o TIJOLO, nunca o logo. O RG-12
-    # gira o conteúdo em torno do CENTRO do rect, então o rect é o
-    # RETO pré-rotação (196×40 centrado em 238,1176) — a caixa
-    # pós-rotação esmagava o texto (o bug das 3 rodadas).
-    # TERTIUSDECIMUS/A2: só a data no tijolo (a frase inteira girada
-    # não é o publicado — que escrevia "Até 16/07", curto)
+    # QUATER/Q6 → QUINTUS/L23: o publicado escreve "Até 26/05" girado
+    # no tijolo ao lado do B — o texto_fixo vira PREFIXO da data viva
+    # e a rotação segue o sentido do publicado (lê de baixo p/ cima;
+    # a errata do arquiteto: a data girada É o desenho do dono — o
+    # defeito era o sentido invertido, que lia "80/90")
     selo_qt = _legal(138, 1146, 200, 60, papel=PapelTexto.VALIDADE,
-                     fonte=_F_QUICK, nome="Validade (data)", rot=90.0,
-                     tam=34.0, cor="#E04444")
+                     fonte=_F_QUICK, nome="Validade (data)", rot=-90.0,
+                     texto="Até ", tam=34.0, cor="#E04444")
     selo_qt.so_data = True
     slots.append(_slot("selo-validade", [selo_qt], origem=(138, 1146)))
-    # o painel do topo-direito: ADENDO do dono (30/07, ao ver a página
-    # dele) — "não tem o fica a dica preenchendo o espaço": a decisão
-    # A/B do QUATER/Q5 caiu para a DICA (variante A). O título é
-    # texto_fixo; o corpo é papel DICA (a IA/editorial sobrescreve; o
-    # default é no tom do PRÓPRIO publicado do dono — L9)
-    slots.append(_slot("painel-dica", [
-        _legal(600, 26, 444, 34, papel=PapelTexto.LIVRE,
-               fonte=_F_QUICK, nome="Fica a Dica (título)",
-               texto="Fica a Dica", tam=22.0, cor="#241D2E"),
-        _legal(600, 62, 444, 172, papel=PapelTexto.DICA,
-               fonte=_F_QUICK, nome="Fica a Dica",
-               texto=("Que tal usar os produtos do Quintou para fazer "
-                      "aquela janta para agradar a família heinn?! "
-                      "Aproveite as ofertas de hoje — é só no Quintou "
-                      "do Real, e só até durar o estoque!"),
-               tam=13.5, cor="#241D2E"),
-    ], origem=(588, 18), fixa=True))
+    # QUINTUS/L23 (§A1 — "o logo do mercado foi substituído pela
+    # dica"): o painel do topo-direito é o LOGO BELO BRASIL, que mora
+    # no fundo COMPLETO do dono — a caixa da dica (linguagem do
+    # Jornal) MORREU na capa do Quintou; a dica do encarte fica para
+    # o dono decidir onde vive (não sobre a marca dele)
     return slots
 
 
@@ -1014,23 +1003,27 @@ _F_QUICK = "Quicksand-Bold.ttf"            # QUATER/Q2: a fonte REAL
 
 
 def _celula_quintou(x: float, y: float) -> list:
-    """A célula do Quintou MEDIDA no publicado (QUATER §2): foto usa a
-    zona inteira acima do rodapé (y rel 2–195, 92–97% da altura); nome
-    em até 3 linhas Quicksand branco CENTRADO na metade esquerda (cap
-    ~14px, linhas y rel 198/222/246); etiqueta = a CAMADA do dono em
-    (rel 153,189,112,64) — a região só posiciona o NÚMERO (cap ~34px,
-    sem "R$" do app: o R$ é gravado na arte)."""
+    """A célula do Quintou MEDIDA no publicado (QUATER §2 → QUINTUS/
+    L23): foto usa a zona inteira acima do rodapé; nome em até 3
+    linhas Quicksand branco CENTRADO na metade esquerda, com a UNIDADE
+    em CAIXA ALTA ("700G") como o publicado; o CARIMBO listrado (com o
+    "R$" empilhado gravado) mora no FUNDO completo — a região de preço
+    é forma TEXTO: só o NÚMERO, pousado na metade de baixo do carimbo
+    do fundo (bbox medido do template: rel 156,194,108,60)."""
     branco = "#FFFFFF"
+    im = _img(x + 8, y + 2, 254, 190)
+    # QUINTUS/C6: arte carregada — o produto NUNCA se repete aqui
+    # (exceção DECLARADA da L19; o trio poluía o tijolo azul)
+    im.sem_leque = True
+    nm = _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
+               tam=14.5, tam_min=9.5, cor=branco)
+    nm.unidade_caixa_alta = True
     return [
-        _img(x + 8, y + 2, 254, 190),
-        # ADENDO do dono (30/07): o publicado reduz o corpo dos nomes
-        # longos até bem pequeno (nunca corta) — range real 14,5→9,5;
-        # o piso do celular cede antes da tesoura (motor)
-        _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
-              tam=14.5, tam_min=9.5, cor=branco),
-        _preco(x + 153, y + 189, 112, 64, fonte=_F_QUICK,
-               forma=FormaPreco.ETIQUETA_LISTRADA, forma_cor="#FF0000",
-               cor=branco, tam=40.0, tam_cent=40.0,
+        im,
+        nm,
+        _preco(x + 158, y + 214, 104, 38, fonte=_F_QUICK,
+               forma=FormaPreco.TEXTO,
+               cor=branco, tam=34.0, tam_cent=34.0,
                centavos_na_base=True, moeda=False),
     ]
 
@@ -1062,9 +1055,11 @@ def _quintou_verso() -> list[Slot]:
                fonte=_F_QUICK, nome="Validade", tam=9.5,
                cor="#FFFFFF", alin=Alinhamento.DIREITA),
     ], origem=(640, 8)))
+    # QUINTUS/L23: o sentido da rotação segue o publicado (bottom-up;
+    # o +90 lia a data como "80/90" — §A6)
     neon = _legal(560, 105, 200, 70, papel=PapelTexto.VALIDADE,
                   fonte=_F_QUICK, nome="Validade (data neon)",
-                  rot=90.0, tam=40.0, cor="#E14546")
+                  rot=-90.0, tam=40.0, cor="#E14546")
     neon.so_data = True
     slots.append(_slot("v-data-neon", [neon], origem=(560, 105)))
     return slots

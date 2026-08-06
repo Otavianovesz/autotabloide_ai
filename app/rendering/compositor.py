@@ -174,7 +174,10 @@ def texto_composto_legal(reg: "Regiao", dados: "DadosProduto | None" = None) -> 
             import re as _re
             datas = _re.findall(r"\d{1,2}/\d{1,2}", texto)
             if datas:
-                return datas[-1]
+                # VICESIMUS-QUINTUS/L23: o texto_fixo vira PREFIXO da
+                # data ("Até " + "26/05" — o publicado do Quintou);
+                # sem prefixo, só a data, como sempre
+                return (fixo + datas[-1]) if fixo else datas[-1]
         return texto
     if papel == PapelTexto.OBSERVACAO:
         # R-071: a observação do item; condicional — vazia devolve "" (a região
@@ -518,6 +521,7 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 # maior que a mediana, ou página editorial <3 zonas)
                 eh_heroi = reg.uid in getattr(base, "_heroi_uids", ())
                 if (img.mode == "RGBA" and not eh_heroi
+                        and not getattr(reg, "sem_leque", False)
                         and reg.uid not in getattr(base, "_q1_uids", ())):
                     frac = _fracao_de_tinta(img)
                     tinta_un = frac * nw * nh / max(rw * rh, 1)
@@ -1062,9 +1066,9 @@ def _chapado_atras_do_numero(base: Image.Image, reg: Regiao,
     cor = _cor_dominante_saturada(base, x, y, w, h)
     if cor is None:
         return
-    # o topo cobre o "R$" minúsculo GRAVADO na arte (o proporcional é
-    # desenhado pelo app); a base guarda um fio a mais de listra
-    mx, my_topo, my_base = round(w * 0.06), round(h * 0.05), round(h * 0.10)
+    # QUINTUS/L23: o topo fica LIVRE — o "R$" gravado na arte do dono
+    # aparece EMPILHADO acima do número (como no publicado dele)
+    mx, my_topo, my_base = round(w * 0.06), round(h * 0.30), round(h * 0.10)
     tile = Image.new("RGBA",
                      (max(1, w - 2 * mx), max(1, h - my_topo - my_base)),
                      (0, 0, 0, 0))
@@ -1074,14 +1078,6 @@ def _chapado_atras_do_numero(base: Image.Image, reg: Regiao,
         radius=max(3, round(min(tile.width, tile.height) * 0.18)),
         fill=tuple(cor) + (255,))
     base.paste(tile, (x + mx, y + my_topo), tile)
-
-
-def _moeda_na_listrada(reg: Regiao) -> Regiao:
-    """§3.2: na ETIQUETA_LISTRADA o "R$" é desenhado pelo APP, em corpo
-    proporcional ao número (o gravado minúsculo da arte fica sob o
-    chapado) — ninguém lê preço de rua sem saber que é R$."""
-    from dataclasses import replace
-    return replace(reg, mostrar_moeda=True)
 
 
 def _desenhar_preco(
@@ -1135,13 +1131,15 @@ def _desenhar_preco(
         if not (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
                 and getattr(base, "_tem_camada", False)):
             _desenhar_forma_preco(base, reg, dpi)
-        if reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA:
-            # VICESIMUS-QUARTUS §3.2: o número ganha fundo CHAPADO (a
-            # hachura fica na borda) e o "R$" volta a ser desenhado em
-            # corpo PROPORCIONAL — o gravado minúsculo da arte some
-            # sob o chapado, e ninguém lê preço sem saber que é R$
+        if (reg.forma_preco == FormaPreco.ETIQUETA_LISTRADA
+                and getattr(base, "_tem_camada", False)):
+            # VICESIMUS-QUARTUS §3.2 → QUINTUS/L23: o chapado vale SÓ
+            # para a camada de listras VAZADAS (o fundo da página
+            # vazava pelas listras e o número não se lia); ele NÃO
+            # cobre o topo — o "R$" GRAVADO na arte do dono fica
+            # visível EMPILHADO acima do número, como no publicado
+            # (o R$ inline da QUARTUS era infiel e morreu)
             _chapado_atras_do_numero(base, reg, dpi)
-            reg = _moeda_na_listrada(reg)
         reg = _regiao_palco_da_forma(reg)
 
     if reg.subtipo_preco == SubtipoPreco.COMPLETO:
@@ -1283,6 +1281,14 @@ def _desenhar_regiao_reta(base, draw, reg, dados, dpi, fontes_dir,
         _desenhar_imagem(base, reg, dados, dpi)
     elif reg.tipo == TipoRegiao.NOME:
         texto = nome_com_unidade(dados.nome, dados.unidade, tem_regiao_unidade)
+        if getattr(reg, "unidade_caixa_alta", False) and texto:
+            # QUINTUS/L23: o publicado grafa a unidade em CAIXA ALTA
+            # ("700G", "269ML") — só a exibição; o banco fica como está
+            import re as _re
+            texto = _re.sub(
+                r"\b(\d+(?:[.,]\d+)?\s?)(g|kg|ml|l|un|und|unds)\b\.?",
+                lambda m: m.group(1) + m.group(2).upper(),
+                texto, flags=_re.IGNORECASE)
         _desenhar_texto(base, draw, reg, texto, dpi, fontes_dir)
     elif reg.tipo == TipoRegiao.UNIDADE:
         _desenhar_texto(base, draw, reg, dados.unidade or "", dpi, fontes_dir)
@@ -1777,10 +1783,16 @@ def compor_pagina(
                           and r.visivel), None)
         if _img_slot is not None:
             _ri = rects_subst.get(_img_slot.uid) or _img_slot.rect
+            # VICESIMUS-QUINTUS/L23: a mordida é SIGNIFICATIVA (≥3 mm
+            # de interseção vertical) — o carimbo do Quintou tocava a
+            # zona por 0,9 mm e a célula caía na identidade do Jornal
+            # por acidente (o teto P4 encolhia as fotos que no
+            # publicado são grandes)
             _morde = any(
                 r.tipo == TipoRegiao.PRECO and r.visivel
-                and r.rect.y_mm < _ri.y_mm + _ri.alt_mm
-                and r.rect.y_mm + r.rect.alt_mm > _ri.y_mm
+                and (min(r.rect.y_mm + r.rect.alt_mm,
+                         _ri.y_mm + _ri.alt_mm)
+                     - max(r.rect.y_mm, _ri.y_mm)) >= 3.0
                 and r.rect.x_mm < _ri.x_mm + _ri.larg_mm
                 and r.rect.x_mm + r.rect.larg_mm > _ri.x_mm
                 for r in slot.regioes)

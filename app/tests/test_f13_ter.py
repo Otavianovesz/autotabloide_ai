@@ -542,10 +542,11 @@ def test_l9_camada_da_pagina_compoe_por_pixel(raiz_tmp, tmp_path):
 
 
 def test_l9_quintou_declara_camada_e_quicksand():
-    """L9/Q1+Q2: o layout do Quintou CONSOME os assets do dono — a
-    camada de preço declarada nas DUAS páginas (frente e verso) e a
-    Quicksand nas regiões de nome/preço/validade (a fonte certa estava
-    na raiz dele e não era usada)."""
+    """L9/Q1+Q2 → QUINTUS/L23 (edição de propósito): o Quintou consome
+    os assets do dono pelo FUNDO COMPLETO (o template com os carimbos,
+    o R$ gravado e o painel Belo Brasil — a camada separada morreu: as
+    listras vazadas deixavam o azul da página engolir o número). A
+    Quicksand segue nas regiões de nome/preço/validade."""
     raiz = Path(__file__).resolve().parents[2] / "Templates novos"
     if not raiz.exists():
         pytest.skip("REQUER ACERVO DO DONO: a pasta 'Templates novos/'")
@@ -553,9 +554,11 @@ def test_l9_quintou_declara_camada_e_quicksand():
     lay = layout_de_encarte("quintou", raiz)
     assert len(lay.paginas) == 2
     for n, pag in enumerate(lay.paginas, start=1):
-        assert pag.arquivo_camada and "Preço" in pag.arquivo_camada, (
-            f"p{n}: a camada de preço do dono não está declarada")
-        assert Path(pag.arquivo_camada).exists()
+        assert pag.arquivo_camada is None, (
+            f"p{n}: a camada voltou — os carimbos moram no fundo (L23)")
+        assert "Completo" in (pag.arquivo_fundo or ""), (
+            f"p{n}: o fundo não é o template COMPLETO do dono")
+        assert Path(pag.arquivo_fundo).exists()
         fontes = {r.fonte for s in pag.slots for r in s.regioes
                   if r.tipo in (TipoRegiao.NOME, TipoRegiao.PRECO,
                                 TipoRegiao.TEXTO_LEGAL) and r.fonte}

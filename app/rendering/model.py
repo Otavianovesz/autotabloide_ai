@@ -217,6 +217,10 @@ class Regiao:
     cor: str = "#000000"
     alinhamento: Alinhamento = Alinhamento.ESQUERDA
     incluir_unidade: bool = True
+    # VICESIMUS-QUINTUS/L23 (o publicado do Quintou grafa "700G",
+    # "269ML"): a UNIDADE do nome sai em CAIXA ALTA nesta região —
+    # transformação SÓ de exibição, o banco segue minúsculo
+    unidade_caixa_alta: bool = False
 
     # --- preço ---
     subtipo_preco: SubtipoPreco = SubtipoPreco.COMPLETO
@@ -248,6 +252,10 @@ class Regiao:
     # arte de fundo é lisa (as fábricas dos encartes marcam); False =
     # geometria do template intocada (o de sempre).
     zona_flex: bool = False
+    # VICESIMUS-QUINTUS/L23 (C6): em arte CARREGADA (o tijolo do
+    # Quintou) o leque polui — a zona declara que o produto NUNCA se
+    # repete nela (exceção declarada da L19, nunca inferida)
+    sem_leque: bool = False
 
     # --- legibilidade sobre foto (R-035 pill, R-034 sombra/contorno) ---
     # pill: faixa/pílula semitransparente atrás do texto (nome). sombra/contorno:
@@ -333,6 +341,8 @@ class Regiao:
             "centavos_na_base": self.centavos_na_base,
             "sem_hifen": self.sem_hifen,                 # F13-BIS/T5
             "zona_flex": self.zona_flex,                 # QUARTUSDECIMUS/Q1
+            "sem_leque": self.sem_leque,                 # QUINTUS/C6
+            "unidade_caixa_alta": self.unidade_caixa_alta,   # QUINTUS/L23
         }
 
     @classmethod
@@ -383,6 +393,8 @@ class Regiao:
             centavos_na_base=d.get("centavos_na_base", False),
             sem_hifen=d.get("sem_hifen", False),
             zona_flex=d.get("zona_flex", False),         # Q1 aditivo
+            sem_leque=d.get("sem_leque", False),         # QUINTUS aditivo
+            unidade_caixa_alta=d.get("unidade_caixa_alta", False),
         )
 
 

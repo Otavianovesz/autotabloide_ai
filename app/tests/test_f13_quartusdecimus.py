@@ -457,24 +457,30 @@ def test_quintou_piso_cede_antes_da_tesoura(tmp_path):
 
 
 def test_quintou_dica_aviso_e_data_neon():
-    """Adendo do dono (30/07): o painel da frente é o FICA A DICA
-    (decisão A/B do QUATER, agora dele); o verso tem o aviso das
-    imagens (a frase do publicado) e a DATA em neon vertical no vão
-    do "ATÉ" (so_data, 90°) — o v-validade segue frase completa."""
+    """Adendo do dono (30/07) → VICESIMUS-QUINTUS/L23 (editado de
+    propósito): a referência publicada mostrou que o painel da frente
+    é o LOGO Belo Brasil (mora no fundo COMPLETO) — a caixa da dica
+    MORREU na capa do Quintou. O verso segue: aviso das imagens + a
+    DATA em neon no vão do "ATÉ", agora no sentido do publicado
+    (-90°: lê de baixo para cima; +90 lia "80/90")."""
     _requer_pacote()
     from app.rendering.encartes import layout_de_encarte
     from app.rendering.model import PapelTexto
 
     lay = layout_de_encarte("quintou", _PACOTE)
-    painel = next(s for s in lay.paginas[0].slots if s.id == "painel-dica")
-    assert any(r.papel_texto == PapelTexto.DICA for r in painel.regioes)
+    assert not any("dica" in s.id for s in lay.paginas[0].slots), (
+        "a caixa da dica voltou para cima do logo do dono")
     verso = lay.paginas[1]
     aviso = next(r for s in verso.slots for r in s.regioes
                  if r.papel_texto == PapelTexto.LEGAL)
     assert "meramente ilustrativas" in (aviso.texto_fixo or "")
     neon = next(s for s in verso.slots if s.id == "v-data-neon")
     assert neon.regioes[0].so_data is True
-    assert neon.regioes[0].rotacao_graus == 90.0
+    assert neon.regioes[0].rotacao_graus == -90.0
+    # e a frente tem o "Até " vivo girado no tijolo do B
+    selo = next(s for s in lay.paginas[0].slots if s.id == "selo-validade")
+    assert selo.regioes[0].texto_fixo == "Até "
+    assert selo.regioes[0].rotacao_graus == -90.0
 
 
 # ------------------------------------------------- os achados da frota --
