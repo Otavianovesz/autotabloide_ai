@@ -239,6 +239,11 @@ class Regiao:
     # os selos/discos/bandeiras usam UMA baseline com centavos menores.
     # False = sobrescrito (o comportamento de sempre do SEPARADO).
     centavos_na_base: bool = False
+    # VICESIMUS-SEXTUS/L24: TIPO DENTRO DE ELEMENTO DE ARTE SE
+    # DIMENSIONA PELO ELEMENTO — o corpo do número é CALCULADO para
+    # preencher a caixa (cresce até o teto de largura/altura), nunca
+    # lido de tamanho_max_pt. O carimbo do Quintou liga isto.
+    preenche_caixa: bool = False
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -343,6 +348,7 @@ class Regiao:
             "zona_flex": self.zona_flex,                 # QUARTUSDECIMUS/Q1
             "sem_leque": self.sem_leque,                 # QUINTUS/C6
             "unidade_caixa_alta": self.unidade_caixa_alta,   # QUINTUS/L23
+            "preenche_caixa": self.preenche_caixa,       # SEXTUS/L24
         }
 
     @classmethod
@@ -395,6 +401,7 @@ class Regiao:
             zona_flex=d.get("zona_flex", False),         # Q1 aditivo
             sem_leque=d.get("sem_leque", False),         # QUINTUS aditivo
             unidade_caixa_alta=d.get("unidade_caixa_alta", False),
+            preenche_caixa=d.get("preenche_caixa", False),   # L24 aditivo
         )
 
 

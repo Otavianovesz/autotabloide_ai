@@ -1080,6 +1080,38 @@ def _chapado_atras_do_numero(base: Image.Image, reg: Regiao,
     base.paste(tile, (x + mx, y + my_topo), tile)
 
 
+def corpo_pela_caixa(reg: Regiao, valor, dpi: int,
+                     fontes_dir: Path) -> tuple[float, float]:
+    """VICESIMUS-SEXTUS/L24: o corpo (pt) que ENCHE o elemento de arte
+    — cresce até a largura do conjunto chegar a ~85% OU a altura do
+    algarismo chegar a ~88% da caixa, o que bater primeiro (os tetos
+    calibrados pela sobreposição com o publicado do Quintou; preço
+    curto ganha corpo maior — a variação 55→80 px da referência).
+    Devolve ``(pt, altura_do_algarismo_px)``."""
+    from app.rendering.units import pt_para_px as _ppx
+    _x, _y, rw, rh = _rect_px(reg.rect, dpi)
+    reais, centavos = _reais_centavos(valor)
+    prefixo = "R$ " if reg.mostrar_moeda else ""
+    razao = ((reg.tamanho_centavos_pt or reg.tamanho_max_pt * 0.5)
+             / max(reg.tamanho_max_pt, 0.001))
+    lo, hi = 4.0, 300.0
+    alt_lo = 0.0
+    for _ in range(22):
+        mid = (lo + hi) / 2
+        f_g = fonte_segura(fontes_dir, reg.fonte, round(_ppx(mid, dpi)))
+        f_p = fonte_segura(fontes_dir, reg.fonte_centavos or reg.fonte,
+                           round(_ppx(mid * razao, dpi)))
+        total = (f_p.getlength(prefixo) + f_g.getlength(reais)
+                 + f_p.getlength("," + centavos))
+        bb = f_g.getbbox(reais)
+        alt_alg = (bb[3] - bb[1]) if bb else sum(f_g.getmetrics())
+        if total <= rw * 0.85 and alt_alg <= rh * 0.84:
+            lo, alt_lo = mid, alt_alg
+        else:
+            hi = mid
+    return lo, alt_lo
+
+
 def _desenhar_preco(
     base: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -1186,6 +1218,15 @@ def _desenhar_preco(
         w_cent = f_p.getlength("," + centavos)
         return f_g, f_p, w_prefixo, w_reais, w_cent
 
+    # VICESIMUS-SEXTUS/L24: TIPO DENTRO DE ELEMENTO DE ARTE SE
+    # DIMENSIONA PELO ELEMENTO — com ``preenche_caixa`` o corpo é
+    # CALCULADO para preencher; nunca há max_pt, há teto de caixa.
+    if getattr(reg, "preenche_caixa", False):
+        pt_grande, _alt = corpo_pela_caixa(reg, valor, dpi, fontes_dir)
+        pt_peq = pt_grande * ((reg.tamanho_centavos_pt or
+                               reg.tamanho_max_pt * 0.5)
+                              / max(reg.tamanho_max_pt, 0.001))
+
     f_g, f_p, w_prefixo, w_reais, w_cent = montar(pt_grande, pt_peq)
     total_w = w_prefixo + w_reais + w_cent
     asc_g = f_g.getmetrics()[0]
@@ -1193,7 +1234,7 @@ def _desenhar_preco(
 
     # Só REDUZ para caber na largura e na altura.
     escala = min(1.0, rw / total_w if total_w else 1.0, rh / alt_g if alt_g else 1.0)
-    if escala < 1.0:
+    if escala < 1.0 and not getattr(reg, "preenche_caixa", False):
         f_g, f_p, w_prefixo, w_reais, w_cent = montar(pt_grande * escala, pt_peq * escala)
         total_w = w_prefixo + w_reais + w_cent
         asc_g = f_g.getmetrics()[0]
@@ -1202,7 +1243,14 @@ def _desenhar_preco(
     asc_p = f_p.getmetrics()[0]
     cursor = _x_alinhado(x, rw, total_w, reg.alinhamento)
     x0 = cursor                                            # início (p/ o riscado)
-    baseline = y + (rh + alt_g) / 2 - f_g.getmetrics()[1]  # centraliza vertical
+    if getattr(reg, "preenche_caixa", False):
+        # SEXTUS/L24: o PÉ do algarismo assenta a ~88% da caixa — o
+        # ponto MEDIDO no publicado (pé do "9,99" da referência); a
+        # centralização pela linha da fonte (asc+desc folgados)
+        # empurrava o número para baixo do carimbo
+        baseline = y + round(rh * 0.80)
+    else:
+        baseline = y + (rh + alt_g) / 2 - f_g.getmetrics()[1]  # centraliza
 
     # UNDEVICESIMUS §4.4: NÚMEROS TABULARES no preço (tnum) — os
     # dígitos ganham a mesma largura e os preços alinham dígito a
@@ -1805,6 +1853,20 @@ def compor_pagina(
                 if not hasattr(base, "_p4_uids"):
                     base._p4_uids = set()
                 base._p4_uids.add(_img_slot.uid)
+        # VICESIMUS-SEXTUS §4: A HIERARQUIA NÃO INVERTE — onde o preço
+        # ENCHE um elemento de arte (L24), a razão preço÷nome nunca
+        # desce de 2,2×: o corpo do NOME ganha teto pela altura REAL
+        # do algarismo daquela célula; quem cede é o nome (abrevia e
+        # hifeniza), nunca o preço.
+        cap_nome_pt = None
+        _preco_cx = next((r for r in slot.regioes
+                          if r.tipo == TipoRegiao.PRECO and r.visivel
+                          and getattr(r, "preenche_caixa", False)), None)
+        if _preco_cx is not None and d.preco_por is not None:
+            _pt_pc, _alt_pc = corpo_pela_caixa(_preco_cx, d.preco_por,
+                                               dpi_ef, fontes_dir)
+            if _alt_pc > 0:
+                cap_nome_pt = (_alt_pc / 2.2) * 72.0 / dpi_ef
         for reg in slot.regioes:
             novo_rect = rects_subst.get(reg.uid)
             campos: dict = {}
@@ -1834,6 +1896,13 @@ def compor_pagina(
                              max(reg.tamanho_min_pt, piso_nome))
                 if min_ef != reg.tamanho_min_pt:
                     campos["tamanho_min_pt"] = min_ef
+            if (reg.tipo == TipoRegiao.NOME and reg.visivel
+                    and cap_nome_pt is not None
+                    and reg.tamanho_max_pt > cap_nome_pt):
+                # SEXTUS §4: o teto do nome pela hierarquia 2,2× —
+                # nunca abaixo do mínimo da própria região (sanidade)
+                campos["tamanho_max_pt"] = max(cap_nome_pt,
+                                               reg.tamanho_min_pt)
             reg_f = _replace(reg, **campos) if campos else reg
             d_reg = d
             if reg.uid in por_zona:

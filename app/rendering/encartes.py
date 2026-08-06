@@ -974,11 +974,18 @@ def _quintou() -> list[Slot]:
     esquerda; a etiqueta LISTRADA vermelha (a forma do publicado) no
     canto inferior direito; validade "Até dd/mm" a 90° junto ao B."""
     slots = []
+    # SEXTUS/L24 (o desvio das fileiras): a grade do template do dono
+    # NÃO tem passo fixo — os carimbos do fundo estão em x{154,422,
+    # 690,962} e y{463,719,979,1231} (passos 268/268/272 e 256/260/
+    # 252); com passo fixo a região do preço deslizava até 5 px do
+    # carimbo nas fileiras de baixo. A grade segue o MEDIDO.
+    xs_col = (0, 268, 536, 808)
+    ys_lin = (270, 526, 786, 1038)
     for pos in range(1, 17):
         if pos == 13:                      # o B laranja da estrutura
             continue
         lin, col = divmod(pos - 1, 4)
-        x, y = col * 270, 270 + lin * 258
+        x, y = xs_col[col], ys_lin[lin]
         slots.append(_slot(f"pos-{pos:02d}", _celula_quintou(x, y),
                            origem=(x, y)))
     # QUATER/Q6 → QUINTUS/L23: o publicado escreve "Até 26/05" girado
@@ -1018,14 +1025,16 @@ def _celula_quintou(x: float, y: float) -> list:
     nm = _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
                tam=14.5, tam_min=9.5, cor=branco)
     nm.unidade_caixa_alta = True
-    return [
-        im,
-        nm,
-        _preco(x + 158, y + 214, 104, 38, fonte=_F_QUICK,
-               forma=FormaPreco.TEXTO,
-               cor=branco, tam=34.0, tam_cent=34.0,
-               centavos_na_base=True, moeda=False),
-    ]
+    # SEXTUS/L24: a região do preço é o CARIMBO INTEIRO do fundo
+    # (bbox real 112×64 medido no template, rel 154,193) e o corpo do
+    # número é CALCULADO para preenchê-lo — nunca por tamanho_max_pt
+    # (o publicado enche a caixa: 55→80 px conforme o preço)
+    pr = _preco(x + 154, y + 193, 112, 64, fonte=_F_QUICK,
+                forma=FormaPreco.TEXTO,
+                cor=branco, tam=34.0, tam_cent=34.0,
+                centavos_na_base=True, moeda=False)
+    pr.preenche_caixa = True
+    return [im, nm, pr]
 
 
 def _quintou_verso() -> list[Slot]:
@@ -1036,9 +1045,13 @@ def _quintou_verso() -> list[Slot]:
     A validade vive no DISCLAIMER do topo direito (bbox do diff:
     y 7–41, x ~640–1076), em branco, sem rotação."""
     slots = []
+    # SEXTUS/L24: a mesma grade MEDIDA da frente (os templates saem do
+    # mesmo Illustrator; se o verso divergir, a prova L23 dele acusa)
+    xs_col = (0, 268, 536, 808)
+    ys_lin = (270, 526, 786, 1038)
     for pos in range(1, 17):
         lin, col = divmod(pos - 1, 4)
-        x, y = col * 270, 270 + lin * 258
+        x, y = xs_col[col], ys_lin[lin]
         slots.append(_slot(f"vpos-{pos:02d}", _celula_quintou(x, y),
                            origem=(x, y)))
     # ADENDO do dono (30/07): o disclaimer do publicado é a FRASE
