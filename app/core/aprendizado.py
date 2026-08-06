@@ -129,8 +129,22 @@ def sugerir_variacoes(itens, marcas_conhecidas) -> list[list]:
     (sabores/tamanhos): mesma marca CONHECIDA + mesmo tipo (1º token útil) e
     nomes diferentes entre si. Nunca inventa: item sem marca confirmada não
     entra em sugestão nenhuma. Devolve grupos de 2+ itens."""
+    # Rodada JM (B4): o degrau por FAMÍLIA vem antes da heurística de
+    # marca — itens da MESMA família do acervo agrupam com CERTEZA
+    # (o vínculo é do banco, não palpite; marca conhecida não é exigida)
+    por_familia: dict[int, list] = {}
+    com_familia: set[int] = set()
+    for it in itens:
+        fam = getattr(it, "familia", None)
+        if isinstance(fam, dict) and fam.get("id"):
+            por_familia.setdefault(int(fam["id"]), []).append(it)
+            com_familia.add(id(it))
+    saida_familia = [g for g in por_familia.values() if len(g) >= 2]
+
     grupos: dict[tuple, list] = {}
     for it in itens:
+        if id(it) in com_familia:
+            continue                    # a família já decidiu por ele
         nome = (getattr(it, "nome", None) or str(it) or "").strip()
         if not nome:
             continue
@@ -143,7 +157,7 @@ def sugerir_variacoes(itens, marcas_conhecidas) -> list[list]:
             continue
         chave = (_norm(marca), _norm(toks[0]))
         grupos.setdefault(chave, []).append(it)
-    saida = []
+    saida = list(saida_familia)
     for membros in grupos.values():
         nomes = {(getattr(it, "nome", None) or str(it)).strip().lower()
                  for it in membros}

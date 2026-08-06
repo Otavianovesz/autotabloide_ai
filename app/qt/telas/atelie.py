@@ -43,7 +43,6 @@ from app.rendering.model import LayoutDef, layout_de_arte
 from app.rendering.persistencia import (
     carregar_layout,
     duplicar_layout,
-    excluir_layout,
     listar_layouts,
     renomear_layout,
     salvar_layout,
@@ -51,8 +50,11 @@ from app.rendering.persistencia import (
 
 _MINIATURA = 150
 _TIPOS = ["TABLOIDE", "CARTAZ", "ETIQUETA"]
+# F13/C11 (E-10): o exemplo carrega as DUAS flags de selo — sem isso o
+# dono fazia tudo certo e nenhum selo aparecia na prévia do editor.
 _EXEMPLO = DadosProduto("Produto Exemplo", preco_por=Decimal("9.99"),
-                        preco_de=Decimal("12.99"))
+                        preco_de=Decimal("12.99"),
+                        mais18=True, marca_propria=True)
 
 
 class AtelieTela(QWidget):
@@ -74,10 +76,20 @@ class AtelieTela(QWidget):
         novo.setProperty("tipo", "primario")
         novo.setToolTip("Importar a arte de fundo e marcar a grade de células")
         novo.clicked.connect(self._novo)
+        # F13/F2: os 7 encartes do pacote Belo Brasil entram por DADOS
+        # (geometria dos geradores) — o detector por cor não os enxerga
+        enc = QPushButton(" Importar encartes…")
+        enc.setIcon(icone("camadas", tamanho=16))
+        enc.setProperty("tipo", "fantasma")
+        enc.setToolTip("Semeia os encartes do pacote Belo Brasil "
+                       "(Segunda dos Frios, Terça do Pão… Jornal do Mês) "
+                       "com células, validade e fontes prontas")
+        enc.clicked.connect(self._importar_encartes)
         dica = QLabel("Duplo-clique abre na Mesa (tabloide) ou na Fábrica (cartaz) "
                       "· botão direito para editar/duplicar/renomear/excluir")
         dica.setProperty("papel", "legenda")
         hb.addWidget(novo)
+        hb.addWidget(enc)
         hb.addStretch(1)
         hb.addWidget(dica)
 
@@ -104,9 +116,27 @@ class AtelieTela(QWidget):
             "Clique em “Novo layout” para importar a sua arte\n"
             "do Illustrator e marcar a grade.", acao=btn_vazio)
 
+        # F13-UNDECIMUS/U2: quando o pacote de encartes tem atualização
+        # (carimbo de versão diverge), um aviso DISCRETO com o botão —
+        # o dado importado ficava velho e ninguém sabia
+        self._aviso_pacote = QWidget()
+        self._aviso_pacote.setObjectName("avisoPacote")
+        hp = QHBoxLayout(self._aviso_pacote)
+        hp.setContentsMargins(t.ESP_2, t.ESP_1, t.ESP_2, t.ESP_1)
+        lbl_pac = QLabel("Os encartes têm atualização.")
+        lbl_pac.setProperty("papel", "legenda")
+        self._btn_atualizar_pacote = QPushButton(" Atualizar agora")
+        self._btn_atualizar_pacote.setIcon(icone("restaurar", tamanho=14))
+        self._btn_atualizar_pacote.clicked.connect(self._atualizar_pacote)
+        hp.addWidget(lbl_pac)
+        hp.addWidget(self._btn_atualizar_pacote)
+        hp.addStretch(1)
+        self._aviso_pacote.hide()
+
         corpo = QWidget()
         vc = QVBoxLayout(corpo)
         vc.setContentsMargins(0, 0, 0, 0)
+        vc.addWidget(self._aviso_pacote)
         vc.addWidget(self._vazio)
         vc.addWidget(self.lista)
 
@@ -156,6 +186,38 @@ class AtelieTela(QWidget):
         if self._db is None:
             self._db = Database().init()
         return self._db
+
+    # --- U2: pacote de encartes desatualizado -------------------------------------
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        self._verificar_pacote()
+
+    def _verificar_pacote(self) -> None:
+        """U2: compara o carimbo do pacote com o gravado no import —
+        diverge, o aviso aparece; senão, some. Nunca levanta (é aviso)."""
+        try:
+            from app.rendering.encartes import pacote_desatualizado
+            self._pacote_novo = pacote_desatualizado()
+        except Exception:
+            self._pacote_novo = None
+        self._aviso_pacote.setVisible(bool(self._pacote_novo))
+
+    def _atualizar_pacote(self) -> None:
+        """U2: reimporta da MESMA pasta do último import (upsert por
+        nome; o conteúdo fixo do dono é preservado por slot.id)."""
+        pasta = getattr(self, "_pacote_novo", None)
+        if not pasta:
+            return
+        from app.rendering.encartes import NOMES_EXIBICAO, importar_pacote
+        with self._banco().Session() as s:
+            importadas = importar_pacote(s, pasta)
+            s.commit()
+        self.recarregar()
+        self._verificar_pacote()
+        nomes = [NOMES_EXIBICAO[c] for c in importadas]
+        mostrar_toast(self, f"{len(importadas)} encarte(s) atualizados: "
+                            + ", ".join(nomes) + ".")
 
     # --- biblioteca ----------------------------------------------------------------
 
@@ -229,7 +291,23 @@ class AtelieTela(QWidget):
                 ldef, caixas = layout_grade_de_arte(arte)
                 aviso = f"Grade detectada: {len(caixas)} células."
             except Exception:
-                ldef, aviso = layout_de_arte(arte), "Sem grade detectada — marque no editor."
+                ldef, caixas = layout_de_arte(arte), []
+                aviso = "Sem grade detectada — marque no editor."
+            # F13/C8 (E-07): REVISÃO antes de persistir — o dono decide se
+            # a detecção presta (antes, a grade com lixo já estava no banco
+            # quando ele via qualquer coisa)
+            if caixas:
+                from app.qt.design.componentes import perguntar
+                if not perguntar(
+                        self, "Criar com a grade detectada?",
+                        f"A detecção achou {len(caixas)} células de preço "
+                        "na arte. Criar o layout já com essa grade? "
+                        "(Dá para ajustar tudo no editor depois.)",
+                        sim=f"Criar com {len(caixas)} células",
+                        nao="Criar sem grade (marcar no editor)",
+                        padrao_sim=True):
+                    ldef = layout_de_arte(arte)
+                    aviso = "Sem grade — marque as células no editor."
         else:
             ldef, aviso = layout_de_arte(arte), "Marque as regiões no editor."
 
@@ -240,6 +318,41 @@ class AtelieTela(QWidget):
         self.recarregar()
         mostrar_toast(self, f"“{nome.strip()}” criado. {aviso}")
         self._editar(lid, nome.strip())
+
+    def _importar_encartes(self) -> None:
+        """F13/F2: semeia os encartes do pacote Belo Brasil por DADOS.
+
+        Pede a pasta do pacote (a que contém ``artes/``), importa os
+        encartes COMPLETOS e nomeia o que ficou de fora (I2 — encarte
+        incompleto nunca some em silêncio)."""
+        from app.rendering.encartes import (
+            NOMES_EXIBICAO, chaves_do_pacote, importar_pacote)
+        pasta = QFileDialog.getExistingDirectory(
+            self, "Pasta do pacote de encartes (a que contém “artes”)")
+        if not pasta:
+            return
+        chaves = chaves_do_pacote(pasta)
+        if not chaves:
+            mostrar_toast(self, "Nenhum encarte nessa pasta — aponte a "
+                                "RAIZ do pacote (a que contém “artes/"
+                                "<encarte>/…-BASE.png”).")
+            return
+        with self._banco().Session() as s:
+            importadas = importar_pacote(s, pasta)
+            s.commit()
+        self.recarregar()
+        # F13-QUINQUE/A3: o import FALA — quantos, QUAIS pelo nome, e o
+        # que ficou de fora com o MOTIVO (I2); o dono vê a lista que
+        # acabou de ganhar, nunca um número mudo
+        nomes = [NOMES_EXIBICAO[c] for c in importadas]
+        fora = [NOMES_EXIBICAO[c] for c in NOMES_EXIBICAO
+                if c not in importadas]
+        msg = (f"{len(importadas)} encarte(s) na biblioteca: "
+               + ", ".join(nomes) + ".")
+        if fora:
+            msg += (" Ficaram de FORA (arte incompleta na pasta): "
+                    + ", ".join(fora) + " — confira os BASE.png do pacote.")
+        mostrar_toast(self, msg)
 
     # --- ações da lista ------------------------------------------------------------------
 
@@ -308,6 +421,18 @@ class AtelieTela(QWidget):
         return self._editor
 
     def _editar(self, layout_id: int, nome: str) -> None:
+        # F13/B2e (L-09, I2): ESTE é o ponto onde a edição não salva morre
+        # de verdade — o carregar() abaixo passa por cima. Nunca em silêncio.
+        ed = self._editor
+        if ed is not None and getattr(ed, "_sujo", False):
+            from app.qt.design.componentes import perguntar
+            de = ed.nome_layout_atual or "um layout"
+            if not perguntar(
+                    self, "Descartar a edição não salva?",
+                    f"O editor tem edição NÃO SALVA de “{de}”. "
+                    f"Abrir “{nome}” descarta essas mudanças.",
+                    sim="Descartar e abrir", nao="Voltar"):
+                return
         with self._banco().Session() as s:
             ldef = carregar_layout(s, layout_id)
         if ldef is None:
@@ -320,5 +445,18 @@ class AtelieTela(QWidget):
         editor.area.canvas.ajustar()
 
     def _voltar(self) -> None:
+        # F13/B2e (L-09): título com "•" e um clique em "Biblioteca" NÃO
+        # pode voltar em silêncio — 20 min de layout não somem assim (I2).
+        ed = self._editor
+        if ed is not None and getattr(ed, "_sujo", False):
+            from app.qt.design.componentes import perguntar
+            nome = ed.nome_layout_atual or "sem nome"
+            if not perguntar(
+                    self, "Sair sem salvar?",
+                    f"O layout “{nome}” tem edição NÃO SALVA. Saindo agora, "
+                    "abrir outro layout descarta essas mudanças. "
+                    "(Para salvar: Ctrl+S na barra do editor.)",
+                    sim="Sair sem salvar", nao="Ficar no editor"):
+                return
         self._paginas.setCurrentIndex(0)
         self.recarregar()      # miniaturas refletem o que foi salvo

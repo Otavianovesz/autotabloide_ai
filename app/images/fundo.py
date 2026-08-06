@@ -32,6 +32,23 @@ _sessoes: dict[str, object] = {}
 _trava_sessao = threading.Lock()
 
 
+def pasta_dos_modelos() -> Path:
+    """A pasta onde o rembg guarda os .onnx (U2NET_HOME ou ~/.u2net)."""
+    import os
+    return Path(os.environ.get("U2NET_HOME")
+                or Path.home() / ".u2net").expanduser()
+
+
+def modelo_baixado(modelo: str = MODELO_PADRAO) -> bool:
+    """F13/E1 (CA-01): o rembg BAIXA dentro do construtor da sessão — a
+    API não separa carregar de baixar. Esta é a pergunta 'o arquivo já
+    está no disco?' que faltava (o molde do ESRGAN, que sempre teve)."""
+    try:
+        return (pasta_dos_modelos() / f"{modelo}.onnx").is_file()
+    except OSError:
+        return False
+
+
 def _sessao(modelo: str):
     """Cacheia a sessão do rembg (carregar o modelo custa ~7 s, medido).
 
@@ -49,7 +66,14 @@ def _sessao(modelo: str):
 def aquecer(modelo: str = MODELO_PADRAO) -> None:
     """Pré-carrega o modelo em segundo plano (RG-02): a 1ª foto da sessão
     deixa de pagar os ~7 s de carga. Falha em silêncio ABENÇOADO aqui —
-    é só aquecimento; o uso real reporta o erro de verdade."""
+    é só aquecimento; o uso real reporta o erro de verdade.
+
+    F13/E1 (CA-01): aquecer NUNCA baixa — sem o .onnx no disco é no-op
+    (o boot disparava um download de 973 MB sem pedir, com o progresso
+    indo para o stderr morto do exe). Baixar é decisão do dono, no 1º
+    recorte (servico.garantir_modelo_recorte)."""
+    if not modelo_baixado(modelo):
+        return
     try:
         _sessao(modelo)
     except Exception:
@@ -86,9 +110,32 @@ def remover_fundo(imagem: str | Path, modelo: str = "birefnet-general") -> Image
     return remover_fundo_img(Image.open(imagem), modelo)
 
 
+def tem_alfa_util(img: Image.Image) -> bool:
+    """F13-DUODECIMUS/T6: a foto JÁ VEM recortada (alfa de verdade —
+    o "pão francês.png" do dono)? Então o rembg é PULADO: reprocessar
+    um recorte pronto só degrada. "Útil" = tem canal A com transparência
+    REAL (>2% dos pixels transparentes) e conteúdo (>10% opacos) — um
+    PNG com alfa todo opaco não conta (é um JPG disfarçado)."""
+    if "A" not in img.getbands():
+        return False
+    alfa = img.getchannel("A")
+    menor = alfa.copy()
+    menor.thumbnail((96, 96))
+    px = list(menor.getdata())
+    n = len(px) or 1
+    transparentes = sum(1 for a in px if a < 16) / n
+    opacos = sum(1 for a in px if a > 240) / n
+    return transparentes > 0.02 and opacos > 0.10
+
+
 def _pular_rembg_fundo_branco(imagem: str | Path) -> bool:
     """R-095: True se a Config `imagem.detector_fundo_branco` está ligada E a foto
-    já tem fundo branco uniforme (os 4 cantos). Nunca levanta."""
+    já tem fundo branco uniforme (os 4 cantos). Nunca levanta.
+
+    F13/D3 (VC-037): o padrão virou LIGADO — o detector estava pronto e
+    testado desde a F10, mas nascia desligado e o dono pagava 8s de rembg
+    em packshot que já vinha recortado em fundo branco. Quem desligar na
+    Configurações continua respeitado (False explícito vence)."""
     try:
         from app.core.database import Database
         from app.core.repositories import ConfigRepositorio
@@ -96,7 +143,7 @@ def _pular_rembg_fundo_branco(imagem: str | Path) -> bool:
         try:
             with db.Session() as s:
                 ligado = ConfigRepositorio(s).get(
-                    "imagem.detector_fundo_branco", False)
+                    "imagem.detector_fundo_branco", True)
         finally:
             db.engine.dispose()
         if not ligado:
@@ -111,6 +158,47 @@ def recortar_conteudo(img: Image.Image) -> Image.Image:
     """Recorta na caixa do conteúdo (bbox do canal alfa). Transparente puro -> igual."""
     bbox = img.getchannel("A").getbbox()
     return img if bbox is None else img.crop(bbox)
+
+
+def normalizar_luz(rgba: Image.Image) -> Image.Image:
+    """SEXTUSDECIMUS-ESTÚDIO: corrige exposição/branco do produto
+    (autocontrast no RGB, alfa intacto) — o "de vitrine" sem IA
+    generativa. Vivia só no Estúdio do Almoxarifado; agora é régua da
+    camada de imagem e roda também no caminho da curadoria."""
+    from PIL import ImageOps
+    r, g, b, a = rgba.convert("RGBA").split()
+    rgb = ImageOps.autocontrast(Image.merge("RGB", (r, g, b)), cutoff=1)
+    r2, g2, b2 = rgb.split()
+    return Image.merge("RGBA", (r2, g2, b2, a))
+
+
+def recorte_suspeito(original: Image.Image,
+                     recortada: Image.Image) -> str | None:
+    """A queixa do dono (03/08): "o removedor está cortando boa parte
+    dos produtos" — e cortava CALADO. A régua nomeada do aviso (I2):
+
+    - a área opaca que sobrou é MÍNIMA perto da foto original
+      (< 8% — o recorte quase apagou a foto), ou
+    - o que sobrou é ESBURACADO (área opaca < 35% da própria caixa
+      envolvente — embalagem inteira é maciça; buraco é pedaço comido).
+
+    Devolve a frase do aviso ou None. Avisar, nunca travar (F9)."""
+    try:
+        alfa = recortada.convert("RGBA").getchannel("A")
+        opacos = sum(1 for v in alfa.getdata() if v > 128)
+        area_orig = max(1, original.width * original.height)
+        if opacos / area_orig < 0.08:
+            return ("O recorte quase apagou a foto — confira e use "
+                    "“Refinar…” (pincel) para restaurar o produto.")
+        bbox = alfa.getbbox()
+        if bbox:
+            area_bbox = max(1, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+            if opacos / area_bbox < 0.35:
+                return ("O recorte parece ter comido pedaços do produto "
+                        "— use “Refinar…” (pincel) para restaurar.")
+    except Exception:
+        return None
+    return None
 
 
 def normalizar(img: Image.Image, lado: int = 1000, padding_frac: float = 0.06) -> Image.Image:
@@ -130,18 +218,40 @@ def processar_imagem(
     modelo: str = "birefnet-general",
     lado: int = 1000,
     padding_frac: float = 0.06,
+    luz_de_vitrine: bool = False,
+    aviso_cb=None,
 ) -> Path:
     """Pipeline completo: remove fundo -> recorta -> normaliza -> salva PNG.
 
     R-095: se o detector de fundo-branco estiver LIGADO (Config) e a foto já
     tiver fundo branco uniforme, PULA o rembg (economiza tempo e não estraga foto
-    boa) — só normaliza."""
+    boa) — só normaliza.
+
+    SEXTUSDECIMUS-ESTÚDIO (03/08): ``luz_de_vitrine`` aplica a correção
+    de exposição do Estúdio (o aprimoramento que só existia no
+    Almoxarifado); ``aviso_cb(str)`` recebe o aviso da régua
+    ``recorte_suspeito`` quando o recorte comeu demais (I2 — antes
+    cortava calado)."""
+    original = Image.open(imagem).convert("RGBA")
     if _pular_rembg_fundo_branco(imagem):
-        sem_fundo = Image.open(imagem).convert("RGBA")
+        sem_fundo = original
     else:
         sem_fundo = remover_fundo(imagem, modelo)
-    normalizado = normalizar(recortar_conteudo(sem_fundo), lado, padding_frac)
+        if aviso_cb is not None:
+            aviso = recorte_suspeito(original, sem_fundo)
+            if aviso:
+                aviso_cb(aviso)
+    justo = recortar_conteudo(sem_fundo)
+    if luz_de_vitrine:
+        justo = normalizar_luz(justo)
+    normalizado = normalizar(justo, lado, padding_frac)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     normalizado.save(destino, "PNG")
+    # F13-TER/V1: a versão JUSTA (a bbox do item, alfa preservado) vive
+    # AO LADO da normalizada — o quadrado é bom para a grade de
+    # miniaturas, mas a composição precisa do item no tamanho do item.
+    # Curadoria não-destrutiva (trava da F10): nada é apagado.
+    justo.save(destino.with_name(destino.stem + "_justa.webp"),
+               "WEBP", lossless=True)
     return destino

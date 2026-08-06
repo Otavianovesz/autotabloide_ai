@@ -82,7 +82,8 @@ def test_lei_da_casa_secao_nao_e_ocupavel_nem_gera_aviso(tmp_path):
 
     # pré-voo: grade completa + seções ligadas → ZERO aviso falso
     foto = tmp_path / "p.png"
-    Image.new("RGB", (50, 50), "#123456").save(foto)
+    from app.tests.acervo import foto_de_bancada
+    foto_de_bancada(foto, (18, 52, 86))     # F13/D10: nítida (nota boa)
     dados = {s.id: DadosProduto(f"Item {i}", preco_por=Decimal("1"),
                                 imagem_path=str(foto), categoria="Limpeza")
              for i, s in enumerate(pagina.slots)}
@@ -100,7 +101,8 @@ def test_secoes_desenham_so_quando_ligadas(tmp_path):
     lay = _grade_4()
     pagina = lay.paginas[0]
     foto = tmp_path / "p.png"
-    Image.new("RGB", (50, 50), "#777777").save(foto)
+    from app.tests.acervo import foto_de_bancada
+    foto_de_bancada(foto, (119, 119, 119))  # F13/D10: nítida (nota boa)
     dados = {s.id: DadosProduto(f"Item {i}", preco_por=Decimal("1"),
                                 imagem_path=str(foto), categoria="Limpeza")
              for i, s in enumerate(pagina.slots)}

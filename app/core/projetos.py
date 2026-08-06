@@ -44,6 +44,9 @@ class ProjetoAberto:
     layout: LayoutDef               # o layout DA ÉPOCA (inline)
     itens: list[dict] = field(default_factory=list)   # ItemMesa.to_dict()
     validade_oferta: str | None = None
+    # F13-TER/D1: a edição do Jornal ("Nº 178 · ANO 42") — real, muda
+    # por mês; autopreenchida por sugerir_edicao na recorrência
+    edicao: str | None = None
     criado_em: str = ""
     mapa: dict = field(default_factory=dict)          # slot_id → item.uid (I1)
     overrides: dict = field(default_factory=dict)     # F7.3: slot_id → {campo: v}
@@ -55,36 +58,36 @@ def _pasta(uuid: str) -> Path:
 
 def _gerar_miniatura(pasta: Path, layout: LayoutDef, itens: list[dict],
                      mapa: dict | None = None,
-                     overrides: dict | None = None) -> None:
+                     overrides: dict | None = None,
+                     validade_oferta: str | None = None,
+                     edicao: str | None = None) -> None:
     """Compõe a 1ª página em miniatura (cache do Dashboard). Nunca quebra o salvar.
 
     Com ``mapa`` (I1), compõe pelo casamento exato slot→uid; sem, por posição
     (legado). ``overrides`` (F7.3) entram por slot — a miniatura mostra o que
     o export mostraria. Caminhos são relativos à pasta (I3) — resolve aqui.
+
+    F13-SEPTIMUS/O3 (M-02 pela 4ª vez): a miniatura montava uma
+    TERCEIRA receita à mão — sem texto_legal (a validade!), descritor
+    e edição — a MESMA doença do Modo Pai que a frota F12 matou. Agora
+    compõe pela MONTAGEM OFICIAL (``dados_para_desenho``): a data
+    "SOMENTE 27/07" chega ao selo da página que o dono abre.
     """
     try:
-        from app.qt.telas.servico import ItemMesa, aplicar_override, preco_decimal
-        from app.rendering.compositor import DadosProduto, compor_pagina
+        from app.qt.telas.servico import (
+            ItemMesa,
+            aplicar_override,
+            dados_para_desenho,
+        )
+        from app.rendering.compositor import compor_pagina
 
-        def _dp(d: dict) -> DadosProduto:
-            from app.rendering.arranjo import ModoArranjo
-            from app.rendering.compositor import ImagemSlot
+        def _dp(d: dict):
             it = ItemMesa.from_dict(d)
-            try:
-                arranjo = ModoArranjo(it.arranjo) if it.arranjo \
-                    else ModoArranjo.LEQUE
-            except ValueError:
-                arranjo = ModoArranjo.LEQUE
-            return DadosProduto(
-                it.nome, preco_por=preco_decimal(it.preco),
-                preco_de=preco_decimal(it.preco_de),
-                imagem_path=_resolver(pasta, it.imagem),
-                imagens=[ImagemSlot(_resolver(pasta, c))
-                         for c in (it.imagens or [])],       # F7.1
-                modo_arranjo=arranjo,
-                mais18=it.mais18,
-                unidade=it.unidade,
-                categoria=it.categoria)                      # F8.2 (seções)
+            it.imagem = _resolver(pasta, it.imagem)
+            it.imagens = [_resolver(pasta, c)
+                          for c in (it.imagens or [])]       # F7.1
+            return dados_para_desenho(it, validade=validade_oferta,
+                                      edicao=edicao)
 
         if mapa:
             por_uid = {d.get("uid"): d for d in itens}
@@ -167,6 +170,7 @@ def salvar_projeto(
     itens: list[dict],
     validade_oferta: str | None = None,
     *,
+    edicao: str | None = None,
     nome_layout: str = "Layout do projeto",
     projeto_id: int | None = None,
     mapa: dict | None = None,
@@ -287,6 +291,7 @@ def salvar_projeto(
                 "layout": lay.to_dict(),
                 "itens": itens_frios,
                 "validade_oferta": validade_oferta,
+                "edicao": edicao,                    # F13-TER/D1
                 "mapa": dict(mapa or {}),
             })
             import hashlib
@@ -312,7 +317,9 @@ def salvar_projeto(
             elif versao_nova is not None:
                 _podar_versoes(pasta)            # FASE 2 (passo 59)
             _gerar_miniatura(pasta, lay, itens_frios, dict(mapa or {}),
-                             overrides_frios)
+                             overrides_frios,
+                             validade_oferta=validade_oferta,
+                             edicao=edicao)                # O3: a data
             s.commit()
             return row.id
     finally:
@@ -508,15 +515,21 @@ def duplicar_semana_passada(nome_evento: str) -> int | None:
     novo = duplicar_projeto(ultimo["id"], nome)
     if novo is None:
         return None
-    # validade re-sugerida pela campanha (ou limpa, se não há dia fixo)
-    from app.qt.telas.servico import sugerir_validade
+    # validade re-sugerida pela campanha (ou limpa, se não há dia fixo);
+    # F13-TER/D1: a EDIÇÃO idem — o clone do mês novo já nasce com o
+    # número incrementado (nunca herda o Nº da edição anterior)
+    from app.qt.telas.servico import sugerir_edicao, sugerir_validade
     sugestao = sugerir_validade(nome_evento)
+    ed_nova = sugerir_edicao(nome_evento)
     db = Database().init()
     try:
         with db.Session() as s:
             row = s.get(ProjetoSalvo, novo)
             dados = row.get_slots()
             dados["validade_oferta"] = sugestao
+            # sem sugestão a edição herdada é LIMPA (None): melhor o
+            # pré-voo avisar "sem número" do que repetir o Nº antigo calado
+            dados["edicao"] = ed_nova
             row.set_slots(dados)
             s.commit()
     finally:
@@ -736,6 +749,7 @@ def abrir_projeto(projeto_id: int) -> ProjetoAberto | None:
                 layout=layout,
                 itens=itens,
                 validade_oferta=dados.get("validade_oferta"),
+                edicao=dados.get("edicao"),          # F13-TER/D1
                 criado_em=row.criado_em.strftime("%d/%m/%Y %H:%M")
                 if row.criado_em else "",
                 mapa=dados.get("mapa", {}),

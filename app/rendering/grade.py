@@ -47,6 +47,11 @@ ATRIBUTOS_ESTILO = (
     # editar a célula-mestre muda "em todos os lugares" (a lacuna do Bloco F).
     "mascara", "mascara_raio_mm", "pill", "pill_cor", "pill_opacidade",
     "sombra", "contorno", "cor_efeito", "papel_texto",
+    # F13/C12 (E-11): o TEXTO da mestra propaga — a "tag inteligente"
+    # ("Fica a Dica", aviso fixo) editada na mestra muda em todas as
+    # células; override por célula continua vencendo, como todo atributo.
+    "texto_fixo",
+    "alinhamento_v",   # F13/C4: o vertical da mestra replica nas células
 )
 
 
@@ -216,6 +221,15 @@ def detectar_caixas_preco(caminho_arte: str, cabecalho_frac: float = 0.3) -> lis
         colmask = sub.sum(axis=0) > ((yb - ya) * 0.25)
         for xa, xb in _bandas(colmask):
             caixas.append((xa, ya, xb - xa, yb - ya))
+    # F13/C8 (E-06): respingo não é célula — área mínima (2% da largura ×
+    # 1,5% da altura da arte) e proporção sã (0,2..8). Sem isto, um risco
+    # fino ou um pingo vermelho na arte viravam "caixa de preço" e a grade
+    # inteira nascia do lixo (pior quando o lixo era a caixa[0]-mestre).
+    min_w = max(8, int(w * 0.02))
+    min_h = max(8, int(h * 0.015))
+    caixas = [c for c in caixas
+              if c[2] >= min_w and c[3] >= min_h
+              and 0.2 <= (c[2] / max(1, c[3])) <= 8.0]
     return caixas
 
 
@@ -252,29 +266,42 @@ def _id_grupo() -> str:
     return f"grupo_{uuid.uuid4().hex[:8]}"
 
 
-def agrupar_como_mestre(pagina: Pagina, regioes: list, slot_origem: Slot,
+def agrupar_como_mestre(pagina: Pagina, regioes: list, slot_origem: Slot | None = None,
                         mapa: dict | None = None) -> Slot:
-    """Cria um grupo replicável a partir de regiões livres (movidas do slot
-    de origem). Âncora = canto superior-esquerdo do conjunto.
+    """Cria um grupo replicável a partir de regiões livres (movidas dos
+    slots de origem). Âncora = canto superior-esquerdo do conjunto.
 
-    C5.3 (higiene na origem): se o slot de origem ficou SEM regiões, não é
-    mestre e não tem papel no ``mapa``, ele sai do layout — elimina o slot
-    fantasma na raiz (o undo restaura, como manda o D5).
+    F13/C1: com a criação nascendo SOLTA (cada região no seu slot
+    avulso), agrupar é o gesto que JUNTA — as regiões podem vir de
+    VÁRIOS slots livres; cada origem esvaziada some (C5.3, a higiene de
+    sempre, agora para todas as origens). ``slot_origem`` ficou por
+    compatibilidade de chamada e entra na varredura de higiene.
+
+    C5.3 (higiene na origem): origem que ficou SEM regiões, não é mestre
+    e não tem papel no ``mapa`` sai do layout — sem slot fantasma na
+    raiz (o undo restaura, como manda o D5).
     """
     ancora = (min(r.rect.x_mm for r in regioes),
               min(r.rect.y_mm for r in regioes))
     novo = Slot(_id_grupo(), mestre=True, origem_mm=ancora)
+    origens = []
+    if slot_origem is not None:
+        origens.append(slot_origem)
     for r in regioes:
-        if r in slot_origem.regioes:
-            slot_origem.regioes.remove(r)
+        for s in pagina.slots:
+            if r in s.regioes:
+                s.regioes.remove(r)
+                if s not in origens:
+                    origens.append(s)
         r.de_mestre = True
         r.ref_mestre = None
         novo.regioes.append(r)
     pagina.slots.append(novo)
-    if (not slot_origem.regioes and not slot_origem.mestre
-            and (mapa is None or slot_origem.id not in mapa)
-            and slot_origem in pagina.slots):
-        pagina.slots.remove(slot_origem)
+    for origem in origens:
+        if (not origem.regioes and not origem.mestre
+                and (mapa is None or origem.id not in mapa)
+                and origem in pagina.slots):
+            pagina.slots.remove(origem)
     return novo
 
 
@@ -326,6 +353,21 @@ def ordenar_slots_visualmente(slots: list) -> list:
                                       round(s.origem_mm[0], 1))) + sem
 
 
+def area_do_slot(slot) -> float:
+    """F13/D11: a ÁREA da célula em mm² — a caixa envolvente das regiões.
+    É a régua do DESTAQUE (a maior célula recebe o herói); mora aqui
+    porque a regra de slot vive neste módulo, uma vez só (a lei do A7).
+    Slot sem região tem área zero."""
+    regs = list(slot.regioes)
+    if not regs:
+        return 0.0
+    x0 = min(r.rect.x_mm for r in regs)
+    y0 = min(r.rect.y_mm for r in regs)
+    x1 = max(r.rect.x_mm + r.rect.larg_mm for r in regs)
+    y1 = max(r.rect.y_mm + r.rect.alt_mm for r in regs)
+    return max(0.0, x1 - x0) * max(0.0, y1 - y0)
+
+
 # Regiões que exibem CONTEÚDO DE PRODUTO (A7.1). TEXTO_LEGAL e SELO são
 # decorativos/derivados — um slot só com eles não pode "engolir" um produto.
 TIPOS_CONTEUDO = (TipoRegiao.IMAGEM, TipoRegiao.NOME,
@@ -340,9 +382,15 @@ def ocupaveis(slots: list) -> list:
     recebe produto: com 16+ itens, o 16º seria consumido pelo slot decorativo
     e sumiria do tabloide em silêncio (I2). Lição registrada pelo arquiteto:
     todo TIPO NOVO de slot/região reavalia "ocupável" e o pré-voo.
+
+    F13/F1: célula FIXA (``Slot.fixa``) tem foto/nome/preço — mas o
+    produto é DA ARTE (Terça 2, Segunda 1, Quarta 3). Sem este filtro o
+    auto-preencher despejaria a fila por cima do produto fixo, e o aviso
+    de vazios/pré-voo a cobraria como vaga.
     """
     return [s for s in slots
-            if any(r.tipo in TIPOS_CONTEUDO for r in s.regioes)]
+            if not s.fixa
+            and any(r.tipo in TIPOS_CONTEUDO for r in s.regioes)]
 
 
 def adicionar_pagina_de_arte(layout: LayoutDef, caminho_arte: str) -> Pagina:

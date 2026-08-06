@@ -8,6 +8,7 @@ a ignora (nunca em silêncio, I2).
 """
 
 from app.rendering.compositor import DadosProduto, compor_pagina, texto_composto_legal
+from app.tests import acervo
 from app.rendering.model import (
     Ajuste, LayoutDef, Mascara, Pagina, PapelPreco, PapelTexto, Regiao,
     Retangulo, Slot, TipoRegiao,
@@ -645,15 +646,15 @@ def test_undo_visual_salta_para_estado():
 # BLOCO E — migração do modelo + pré-voo dos papéis novos (passos 63-74)
 # ============================================================================
 
+@acervo.requer_arte_quintou
 def test_migracao_layout_antigo_real_do_acervo():
     """Passos 63-65: um layout REAL (detecção da arte de arte/quintou) com
     regiões TEXTO_LEGAL ANTIGAS (sem papel_texto) migra DE CARONA ao abrir —
     infere o papel do conteúdo, SEM perder texto, e é idempotente."""
-    from pathlib import Path
     from app.rendering.grade import layout_grade_de_arte
     from app.rendering.migracao import migrar_papeis_texto_dict
-    arte = Path("arte/quintou/frente_template.png")
-    assert arte.exists(), "arte real do acervo ausente"     # zero skips
+    # F13/A5: ancorado na raiz do repo; ausência é skip EXPLÍCITO e contado
+    arte = acervo.ARTE_QUINTOU / "frente_template.png"
     lay, _caixas = layout_grade_de_arte(str(arte))
     slot = lay.paginas[0].slots[0]
     slot.regioes += [

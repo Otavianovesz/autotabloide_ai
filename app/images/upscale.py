@@ -104,11 +104,19 @@ def melhorar_para_biblioteca(
 
 def ampliar_sob_demanda(imagem: str | Path, upscaler: Upscaler, alvo_px: int) -> Image.Image:
     """Export (ex.: cartaz A2): amplia sob demanda até ~alvo_px no maior lado; NÃO guarda."""
-    original = Image.open(imagem).convert("RGB")
+    # F13/E5 (CI-06): o convert("RGB") MATAVA o alfa — recorte transparente
+    # virava RETÂNGULO PRETO no cartaz ampliado. O alfa viaja à parte e
+    # volta redimensionado por cima do resultado.
+    bruto = Image.open(imagem)
+    alfa = bruto.getchannel("A") if "A" in bruto.getbands() else None
+    original = bruto.convert("RGB")
     if max(original.size) >= alvo_px:
-        return original
+        return bruto if alfa is not None else original
     grande = upscaler.ampliar(original)
     if max(grande.size) > alvo_px:
         f = alvo_px / max(grande.size)
         grande = grande.resize((round(grande.width * f), round(grande.height * f)), Image.LANCZOS)
+    if alfa is not None:
+        grande = grande.convert("RGBA")
+        grande.putalpha(alfa.resize(grande.size, Image.LANCZOS))
     return grande

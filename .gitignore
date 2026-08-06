@@ -85,6 +85,9 @@ verification_*.py
 
 # Galerias de artefatos das fases (grandes; geradas por script)
 saida_*/
+# F13 (§4.4 do selo): os junit dos blocos VIAJAM no repo — o arquiteto
+# não roda a suíte no sandbox dele e confere o placar por aqui
+!saida_f13/
 
 # Runtime da raiz gerenciada (dados do usuário; a logo em assets/ VAI)
 AutoTabloide_System_Root/fontes/
@@ -115,3 +118,5 @@ _pr_body.md
 AutoTabloide_System_Root/
 arquivo_morto_prototipo.zip
 _suite_limpeza*
+_suite_exemplos*
+_perf.txt

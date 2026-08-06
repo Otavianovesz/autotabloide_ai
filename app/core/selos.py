@@ -117,6 +117,31 @@ def excluir_selo(s, selo_id: int) -> bool:
     return True
 
 
+def definir_canto_automatico(regra: str, canto: str, raiz=None) -> bool:
+    """F13/C11 ("existe âncora, não existe controle"): muda o CANTO de um
+    selo automático (+18/Qualidade) direto do painel do editor. Devolve
+    False se a regra não existe ou o canto é inválido — nunca levanta."""
+    if canto not in CANTOS:
+        return False
+    try:
+        from app.core.database import Database
+        db = Database().init() if raiz is None else Database(raiz).init()
+        try:
+            with db.Session() as s:
+                migrar_selos(s)      # idempotente: garante os automáticos
+                selo = next((x for x in s.query(Selo).all()
+                             if x.regra == regra), None)
+                if selo is None:
+                    return False
+                selo.canto = canto
+                s.commit()
+                return True
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return False
+
+
 def config_automaticos(raiz=None) -> dict:
     """O que a COMPOSIÇÃO precisa saber dos automáticos, com defaults sãos
     (C3): {"MAIS18": {ativo, canto, arquivo_abs}, "QUALIDADE": {...}}.

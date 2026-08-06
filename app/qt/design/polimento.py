@@ -92,3 +92,25 @@ def ordenar_tab(raiz) -> None:
     _coletar_focaveis(raiz, focaveis)
     for a, b in zip(focaveis, focaveis[1:]):
         QWidget.setTabOrder(a, b)
+
+
+def clampar_a_tela(dialogo, tela=None, margem: int = 24) -> None:
+    """QUINTUSDECIMUS/L3: nenhum diálogo transborda a tela — a 1366×768
+    (o notebook mais comum do mundo) a fileira de botões da conciliação
+    ficava atrás da barra de tarefas e a importação NÃO FECHAVA.
+    ``availableGeometry`` já desconta a barra; o conteúdo rolável
+    (a tabela) encolhe por dentro e os botões ficam sempre visíveis.
+    ``tela`` explícita só nos testes (QRect)."""
+    if tela is None:
+        s = dialogo.screen()
+        if s is None:
+            return
+        tela = s.availableGeometry()
+    larg = min(dialogo.width(), tela.width() - margem)
+    alt = min(dialogo.height(), tela.height() - margem)
+    if (larg, alt) != (dialogo.width(), dialogo.height()):
+        dialogo.resize(larg, alt)
+    x = tela.x() + max(0, (tela.width() - larg) // 2)
+    y = tela.y() + max(0, (tela.height() - alt) // 2)
+    if dialogo.y() + alt > tela.y() + tela.height() or dialogo.y() < tela.y():
+        dialogo.move(x, y)

@@ -52,20 +52,29 @@ def test_busca_acha_os_3_grupos_com_acento_trocado(raiz_tmp):
 
 
 def test_ctrl_k_abre_em_duas_telas(raiz_tmp):
-    """Passo 78: a paleta de busca abre na Mesa e nas Configurações."""
+    """Passo 78, REESCRITO na F13/C13 (CF-02): o teste antigo chamava
+    ``_paleta_busca.abrir()`` DIRETO e ficou verde por cima de um atalho
+    MORTO — com a Mesa visível havia DOIS QShortcut Ctrl+K de janela
+    (o do shell e um cru da Mesa), o Qt declarava ambiguidade e nenhum
+    disparava. Agora a TECLA é apertada de verdade (L2)."""
     QApplication.instance() or QApplication([])
-    from app.editor_app import montar_janela
-
     from PySide6.QtCore import Qt
+
+    from app.editor_app import montar_janela
+    from app.tests.gestos import ativar_janela, drenar, teclar
     shell, editor = montar_janela()
     editor.close()
     shell.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     shell.resize(1200, 800)
     shell.show()
+    ativar_janela(shell)             # atalho de janela exige janela ATIVA
     assert hasattr(shell, "_paleta_busca")
     for tela in ("mesa", "configuracoes"):
         shell.ir_para(tela)
-        shell._paleta_busca.abrir()
-        assert shell._paleta_busca.isVisible()
+        drenar()                     # o showEvent da Mesa arma os atalhos dela
+        teclar(shell, Qt.Key.Key_K, mods=Qt.KeyboardModifier.ControlModifier)
+        assert shell._paleta_busca.isVisible(), (
+            f"Ctrl+K MORTO na tela '{tela}' — dois donos da mesma tecla "
+            "(CF-02/C13)")
         shell._paleta_busca.hide()
     shell.close()

@@ -91,7 +91,17 @@ class CanvasView(QGraphicsView):
         self.overrides: dict[str, dict] = {}
         self.ao_restaurar = None         # callback pós-undo (a Mesa realimenta dados)
         self.ao_override = None          # callable(slot_id) → a Mesa abre o modal
+        # F13-NONUS/F1: botão direito na célula FIXA → o diálogo dos itens
+        # fixos (só a Mesa liga — no Ateliê fica None, como o override)
+        self.ao_itens_fixos = None       # callable(slot_id)
+        # F13-NONUS/N3: os badges de papel (RG-57, "¶ Livre"/"📅 Validade")
+        # são ajuda de EDIÇÃO DO LAYOUT — a Mesa os desliga (o dono viu
+        # os badges e achou que eram a página)
+        self.badges_de_papel = True
         self.ao_soltar_imagem = None     # R-038: callable(slot_id, caminho) → Mesa
+        # RODADA-125 v3 (o pedido literal do dono: "pegar da tabela ali
+        # da direita e colocar no slot que eu quiser") — a Mesa liga
+        self.ao_soltar_item = None       # callable(slot_id, uid) → Mesa
         self.setAcceptDrops(True)        # R-038: arrastar PNG/JPG sobre a célula
         self._pagina_atual = 0           # D8.4: UMA página por vez, navegável
         # RG-55 (Fase 4): a região efetivamente CLICADA. Com o trio da célula
@@ -189,8 +199,24 @@ class CanvasView(QGraphicsView):
     # --- carregar / atualizar o preview ---------------------------------------
 
     def carregar(self, layout: LayoutDef, dados: DadosProduto, fundo_path=None) -> None:
+        """DOCUMENTO novo — zera o histórico de desfazer, de propósito.
+
+        F13/COND-4 (o contrato mora AQUI, não no chamador): ``carregar`` =
+        documento novo, histórico recomeça. ``atualizar_dados`` = dados
+        novos no MESMO documento, pilha preservada. **Refrescar dado com
+        ``carregar`` é o bug CD-01** (os 9 Ctrl+Z mortos da gravação)."""
+        # D2: pendência de digitação do documento ANTERIOR morre aqui
+        self._gesto_pendente = None
+        if hasattr(self, "_timer_gesto"):
+            self._timer_gesto.stop()
         self._layout, self._dados, self._fundo = layout, dados, fundo_path
         self._pagina_atual = 0
+        self._cascata_criacao = 0        # F13/C1: a escadinha recomeça
+        # F13/VC-010: o chip de medidas acompanha o sinal de sempre
+        if not getattr(self, "_chip_ligado", False):
+            self.medidas.connect(self._atualizar_chip_medidas)
+            self._chip_ligado = True
+        self.esconder_chip_medidas()
         self._scene.clear()
         self._bg = None
         self._itens = []
@@ -310,6 +336,12 @@ class CanvasView(QGraphicsView):
         self.ir_para_pagina(para)
         return True
 
+    # F13/D2 (X-01): a PRÉVIA compõe neste dpi e estica de volta ao tamanho
+    # da cena — a cena continua em pixels do dpi do LAYOUT (alças, réguas,
+    # guias e snap intactos; sem o re-escalonamento tudo desloca por ~3×).
+    # Exportar/salvar não passam por aqui: seguem no dpi cheio.
+    DPI_PREVIA = 96
+
     def _compor_fundo(self) -> None:
         """Recompõe o preview (fundo) pelo compositor Pillow — sem tocar nas alças."""
         if self._layout is None or self._dados is None:
@@ -317,8 +349,18 @@ class CanvasView(QGraphicsView):
         # D8.2: o _fundo explícito (legado) só vale na página 1; nas demais a
         # arte é da própria página (pagina.arquivo_fundo, via compositor)
         fundo = self._fundo if self._pagina_atual == 0 else None
-        img = compor_pagina(self._layout, self._pagina(), self._dados, fundo_path=fundo)
+        rapida = self._layout.dpi > self.DPI_PREVIA
+        img = compor_pagina(self._layout, self._pagina(), self._dados,
+                            fundo_path=fundo,
+                            dpi=self.DPI_PREVIA if rapida else None)
         pm = pil_para_qpixmap(img)
+        if rapida:
+            from app.rendering.compositor import mm_para_px
+            pm = pm.scaled(
+                round(mm_para_px(self._layout.largura_mm, self._layout.dpi)),
+                round(mm_para_px(self._layout.altura_mm, self._layout.dpi)),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
         if self._bg is None:
             self._bg = self._scene.addPixmap(pm)
             self._bg.setZValue(0)
@@ -580,6 +622,7 @@ class CanvasView(QGraphicsView):
         self.selecao_mudou.emit(None)
 
     def desfazer(self) -> bool:
+        self.despachar_edicoes()     # D2: o gesto pendente entra na pilha
         estado = self._historico.desfazer() if self._historico else None
         if estado is None:
             return False
@@ -587,6 +630,7 @@ class CanvasView(QGraphicsView):
         return True
 
     def refazer(self) -> bool:
+        self.despachar_edicoes()
         estado = self._historico.refazer() if self._historico else None
         if estado is None:
             return False
@@ -634,7 +678,11 @@ class CanvasView(QGraphicsView):
             Qt.TransformationMode.SmoothTransformation)
 
     def atualizar_dados(self, dados, *, compor: bool = True) -> None:
-        """Troca os dados compostos SEM resetar o histórico (pós-undo/remoção)."""
+        """Dados novos no MESMO documento — a pilha de desfazer FICA.
+
+        F13/COND-4: este é o caminho certo para refrescar conteúdo
+        (nome/preço/foto/mapa). ``carregar`` é só para DOCUMENTO novo —
+        usá-lo para refrescar dado é o bug CD-01."""
         self._dados = dados
         if compor:
             self._compor_fundo()
@@ -660,13 +708,16 @@ class CanvasView(QGraphicsView):
 
         itens = self.selecionados()
         if len(itens) < 1:
+            self._avisar("Agrupar: selecione primeiro as regiões que vão "
+                         "virar a célula (laço ou Ctrl+clique).")
             return None
         regs = [it.regiao for it in itens]
-        slots = {id(self._slot_de(r)) for r in regs}
-        if len(slots) != 1:
-            self._avisar("Agrupar: selecione regiões do mesmo lugar "
-                         "(as selecionadas estão em células diferentes).")
-            return None
+        # F13/C1: as regiões criadas pela barra nascem cada uma no seu
+        # slot avulso — agrupar é justamente o gesto que as JUNTA numa
+        # célula. Soltas de vários slots livres agrupam; o que não pode
+        # é misturar peça de célula EXISTENTE (derivada/mestra), abaixo.
+        slots_de_origem = {id(self._slot_de(r)) for r in regs}
+        varios_slots = len(slots_de_origem) != 1
         # passo 22 (lei da casa, reavaliada porque a fase mexe em agrupamento):
         # SELO e TEXTO_LEGAL são decorativos/automáticos — nunca viram mestre
         from app.rendering.grade import TIPOS_CONTEUDO
@@ -674,22 +725,35 @@ class CanvasView(QGraphicsView):
             self._avisar("Agrupar: selo e texto legal não entram no grupo "
                          "replicável — só imagem, nome, preço e unidade.")
             return None
-        origem = self._slot_de(regs[0])
-        if origem.ref_grupo is not None or any(r.ref_mestre for r in regs):
+        origens = [self._slot_de(r) for r in regs]
+        if (any(s is not None and s.ref_grupo is not None for s in origens)
+                or any(r.ref_mestre for r in regs)):
             self._avisar("Essas regiões são cópias de um grupo — edite o "
                          "grupo-mestre (ou restaure da mestra) em vez de reagrupar.")
             return None
-        if origem.mestre:
-            n = len(slots_do_grupo(self._pagina(), origem))
+        mestres_sel = [s for s in origens if s is not None and s.mestre]
+        if mestres_sel:
+            n = len(slots_do_grupo(self._pagina(), mestres_sel[0]))
             self._avisar("Essas regiões já são de um mestre"
                          + (f" com {n} cópia(s)" if n else "")
                          + " — carimbe cópias em vez de reagrupar.")
             return None
-        novo = agrupar_como_mestre(self._pagina(), regs, origem,
-                                   mapa=self.mapa)   # C5.3: limpa a origem vazia
+        novo = agrupar_como_mestre(self._pagina(), regs,
+                                   mapa=self.mapa)   # C5.3: limpa as origens vazias
         self._registrar_hist()
         self._compor_fundo()
         self._construir_itens()
+        # F13/C9: sucesso também FALA (a recusa já falava; o dono ficava
+        # sem saber se o agrupar pegou)
+        de_onde = "de células soltas " if varios_slots else ""
+        try:
+            from app.qt.design.toast import mostrar_toast
+            mostrar_toast(self, f"{len(regs)} região(ões) {de_onde}agrupadas "
+                                "como célula replicável — carimbe cópias "
+                                "pelo botão direito em área vazia.",
+                          tipo="sucesso")
+        except Exception:
+            pass                             # headless segue sem toast
         self.editou.emit(None)
         return novo
 
@@ -1182,6 +1246,15 @@ class CanvasView(QGraphicsView):
                 it.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not travado)
         self.editou.emit(reg)
 
+    def set_celula_fixa(self, slot, fixa: bool) -> None:
+        """F13/F1: célula FIXA carrega o produto da PRÓPRIA ARTE — sai da
+        fila do auto-preencher e não conta como vaga (a regra única mora
+        em ``grade.ocupaveis``). RG-56: o inverso fica no mesmo menu."""
+        slot.fixa = bool(fixa)
+        self._registrar_hist()
+        if slot.regioes:
+            self.editou.emit(slot.regioes[0])
+
     def mover_regiao(self, reg, delta: int) -> None:
         """Reordena a região no slot (z-order na composição)."""
         for slot in self._pagina().slots:
@@ -1231,14 +1304,21 @@ class CanvasView(QGraphicsView):
 
     def nomes_dos_itens(self) -> list[str]:
         """RG-25: os nomes dos produtos compostos agora (p/ a dica da IA)."""
+        return [n for n, _p in self.itens_para_dica()]
+
+    def itens_para_dica(self) -> list[tuple[str, object]]:
+        """ERRATA §13.5: pares (nome, preço) dos produtos compostos —
+        a dica cita 2-3 produtos DA PÁGINA com os preços reais."""
         from app.rendering.compositor import DadosProduto
         d = self._dados
         if isinstance(d, dict):
-            return [v.nome for v in d.values()
-                    if isinstance(v, DadosProduto) and v.nome]
-        if isinstance(d, (list, tuple)):
-            return [v.nome for v in d if isinstance(v, DadosProduto) and v.nome]
-        return [d.nome] if isinstance(d, DadosProduto) and d.nome else []
+            vivos = list(d.values())
+        elif isinstance(d, (list, tuple)):
+            vivos = list(d)
+        else:
+            vivos = [d]
+        return [(v.nome, getattr(v, "preco_por", None)) for v in vivos
+                if isinstance(v, DadosProduto) and v.nome]
 
     def tamanho_efetivo_pt(self, reg) -> float | None:
         """RG-18: o tamanho que o desenho REALMENTE usa (o ajuste só-reduz) —
@@ -1344,33 +1424,43 @@ class CanvasView(QGraphicsView):
         self.selecao_mudou.emit(sel)
 
     def _slot_para_novas_regioes(self):
-        """C1 (ORDEM_F5_6 §6): a região nova respeita o CONTEXTO.
+        """O slot de destino de um gesto DELIBERADO de colocação (colar,
+        diálogo nomeado): com seleção → o slot da seleção (na mestra
+        replica; numa cópia é adição própria); sem seleção → um slot
+        avulso novo.
 
-        Com seleção → o slot da seleção (na mestra replica; numa cópia é adição
-        própria). Sem seleção → um slot AVULSO da página (``livre_<uuid8>``,
-        sem âncora) — nunca cair no mestre da grade por acidente.
+        F13/C1: a CRIAÇÃO pela barra NÃO passa mais por aqui — usava a
+        seleção (que a própria criação anterior deixava acesa) e toda
+        região nova nascia GRUDADA na anterior, no mesmo slot e no mesmo
+        retângulo (E-01, o "tudo grudado" da gravação). Criar usa
+        ``_slot_novo_avulso``; colar continua deliberado por aqui.
         """
         sel = self.selecionada()
         if sel is not None:
             slot = self._slot_de(sel)
             if slot is not None:
                 return slot
+        return self._slot_novo_avulso()
+
+    def _slot_novo_avulso(self):
+        """F13/C1: um slot ``livre_<uuid8>`` NOVO, sempre — região criada
+        pela barra nasce SOLTA, nunca no slot de outra (nem no mesmo
+        ``livre_`` reaproveitado, que também grudava)."""
         import uuid
         from app.rendering.model import Slot
-        pagina = self._pagina()
-        livre = next((s for s in pagina.slots
-                      if s.id.startswith("livre_") and not s.mestre
-                      and s.ref_grupo is None), None)
-        if livre is None:
-            livre = Slot(f"livre_{uuid.uuid4().hex[:8]}")
-            pagina.slots.append(livre)
+        livre = Slot(f"livre_{uuid.uuid4().hex[:8]}")
+        self._pagina().slots.append(livre)
         return livre
 
     def adicionar_regiao(self, tipo, *, papel_texto=None, texto_fixo=None):
-        """Cria uma região nova (padrão no centro) e a seleciona (ferramenta F5.3).
+        """Cria uma região nova e a seleciona (o feedback do painel, RG-55).
 
-        Destino pela regra C1: slot da seleção, ou slot livre. Na mestra a
-        região nasce replicável e **propaga**; num slot livre nasce livre.
+        F13/C1 (E-01): a região criada pela barra nasce num slot avulso
+        PRÓPRIO, em CASCATA (cada criação desce um degrau) — duas
+        criações seguidas nunca nascem no mesmo retângulo nem viram
+        irmãs. Para pôr uma região DENTRO de uma célula existe o gesto
+        deliberado: colar (Ctrl+V) na seleção, ou criar na mestra pelo
+        próprio slot dela.
 
         RG-57: um TEXTO_LEGAL pode nascer já com o PAPEL escolhido e o texto
         inicial (o diálogo nomeado passa esses valores). Sem modal aqui — os
@@ -1379,8 +1469,12 @@ class CanvasView(QGraphicsView):
         from app.rendering.model import Regiao, Retangulo
 
         lw, lh = self._layout.largura_mm, self._layout.altura_mm
-        slot = self._slot_para_novas_regioes()
-        reg = Regiao(tipo, Retangulo(lw * 0.4, lh * 0.4, lw * 0.2, lh * 0.08),
+        slot = self._slot_novo_avulso()
+        passo = 0.04 * min(lw, lh)
+        n = getattr(self, "_cascata_criacao", 0)
+        self._cascata_criacao = (n + 1) % 8      # cascata cíclica (8 degraus)
+        reg = Regiao(tipo, Retangulo(lw * 0.4 + n * passo, lh * 0.4 + n * passo,
+                                     lw * 0.2, lh * 0.08),
                      nome=tipo.value.title())
         if papel_texto is not None:
             reg.papel_texto = papel_texto
@@ -1425,12 +1519,24 @@ class CanvasView(QGraphicsView):
 
     def dragEnterEvent(self, ev) -> None:  # noqa: N802 (Qt)
         if (ev.mimeData().hasFormat(self._MIME_TROCA)
+                or ev.mimeData().hasFormat(self._MIME_ITEM)
                 or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
         else:
             super().dragEnterEvent(ev)
 
     def dragMoveEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        if ev.mimeData().hasFormat(self._MIME_ITEM):
+            # v3: o cursor É o feedback — aceita só sobre célula que
+            # RECEBE produto (a régua ocupável da grade; célula da
+            # arte/decorativa mostra o proibido)
+            slot = self._slot_no_ponto(
+                self.mapToScene(ev.position().toPoint()))
+            if slot is not None and self._slot_recebe_produto(slot):
+                ev.acceptProposedAction()
+            else:
+                ev.ignore()
+            return
         if (ev.mimeData().hasFormat(self._MIME_TROCA)
                 or self._caminho_imagem_do_evento(ev) is not None):
             ev.acceptProposedAction()
@@ -1438,6 +1544,9 @@ class CanvasView(QGraphicsView):
             super().dragMoveEvent(ev)
 
     _MIME_TROCA = "application/x-autotabloide-trocar-slot"
+    # v3: o arrasto ESTANTE→célula carrega o uid do item (identidade,
+    # I1 — nunca índice de linha)
+    _MIME_ITEM = "application/x-autotabloide-item-uid"
 
     def dropEvent(self, ev) -> None:  # noqa: N802 (Qt)
         # OS F11.5 #36 (R-057): o drop do gesto Alt+arrastar → TROCA as células
@@ -1446,6 +1555,21 @@ class CanvasView(QGraphicsView):
             self.soltar_troca(self.mapToScene(ev.position().toPoint()), origem)
             ev.acceptProposedAction()
             return
+        # v3: o item da ESTANTE solto na célula — o dono escolhe o slot
+        if ev.mimeData().hasFormat(self._MIME_ITEM):
+            uid = bytes(ev.mimeData().data(self._MIME_ITEM)) \
+                .decode("utf-8").splitlines()[0].strip()
+            slot = self._slot_no_ponto(
+                self.mapToScene(ev.position().toPoint()))
+            if uid and slot is not None:
+                if callable(self.ao_soltar_item):
+                    self.ao_soltar_item(slot.id, uid)
+                else:
+                    self.atribuir_uid_ao_slot(slot.id, uid)
+            from PySide6.QtCore import Qt as _Qt
+            ev.setDropAction(_Qt.DropAction.CopyAction)
+            ev.accept()
+            return
         cam = self._caminho_imagem_do_evento(ev)
         if cam is None:
             super().dropEvent(ev)
@@ -1453,6 +1577,39 @@ class CanvasView(QGraphicsView):
         ponto = self.mapToScene(ev.position().toPoint())
         self.soltar_imagem(ponto, cam)
         ev.acceptProposedAction()
+
+    @staticmethod
+    def _slot_recebe_produto(slot) -> bool:
+        """A régua ocupável DA GRADE (a lei do A7: a regra mora lá, uma
+        vez só) — célula fixa/decorativa nunca recebe produto: o item
+        entraria no mapa e sumiria da página em silêncio (I2)."""
+        from app.rendering.grade import ocupaveis
+        return bool(ocupaveis([slot]))
+
+    def atribuir_uid_ao_slot(self, sid: str, uid: str) -> bool:
+        """v3 — o caminho oficial "atribuir UM item a UM slot" (antes só
+        havia ordem/lote: auto-preencher, reordenar, encher página).
+        Unicidade explícita: 1 uid = 1 célula (quem quer o produto 2×
+        tem o gesto oficial: duplicar o item, uid novo). Undo unificado
+        no molde do trocar_conteudo_slots — NUNCA um caminho paralelo
+        de composição (a lição do Modo Pai da F12)."""
+        lay = self._layout
+        slot = next((s for pg in (lay.paginas if lay else [])
+                     for s in pg.slots if s.id == sid), None)
+        if slot is None or not self._slot_recebe_produto(slot):
+            self._avisar_info("Esta célula é da arte — não recebe produto.")
+            return False
+        if self.mapa.get(sid) == uid:
+            return False                          # já está aqui: no-op
+        for s_ant in [s for s, u in self.mapa.items() if u == uid]:
+            self.mapa.pop(s_ant, None)            # 1 uid = 1 célula
+        self.mapa[sid] = uid
+        self._registrar_hist()
+        if callable(self.ao_restaurar):
+            self.ao_restaurar()
+        self._compor_fundo()
+        self.viewport().update()
+        return True
 
     def soltar_troca(self, ponto_cena, sid_origem: str) -> bool:
         """OS F11.5 #36 (R-057): o fim do gesto "arrastar um item SOBRE o
@@ -1570,12 +1727,21 @@ class CanvasView(QGraphicsView):
 
     def carimbar_modelo(self, modelo, x_mm=None, y_mm=None,
                         larg_mm=None, alt_mm=None):
-        """R-048: carimba um modelo de célula na caixa-alvo (padrão: a página
-        inteira). Os campos entram com o estilo salvo; o CONTEÚDO vem do item
-        do slot. As regiões nascem com uid fresco (I1)."""
+        """R-048: carimba um modelo de célula na caixa-alvo.
+
+        F13/C7 (E-04): SEM caixa explícita o carimbo nasce numa caixa
+        CENTRAL sensata (~35% da página) — antes nascia do tamanho da
+        PÁGINA INTEIRA, e "funcionava invisível". As regiões novas ficam
+        SELECIONADAS (o dono vê o que acabou de carimbar) e vão para um
+        slot avulso próprio. Uid fresco em tudo (I1)."""
         if self._layout is None:
             return []
         from app.rendering.modelos import carimbar_modelo as _carimbar
+        if larg_mm is None and alt_mm is None and x_mm is None and y_mm is None:
+            larg_mm = self._layout.largura_mm * 0.35
+            alt_mm = self._layout.altura_mm * 0.35
+            x_mm = (self._layout.largura_mm - larg_mm) / 2
+            y_mm = (self._layout.altura_mm - alt_mm) / 2
         x_mm = 0.0 if x_mm is None else x_mm
         y_mm = 0.0 if y_mm is None else y_mm
         larg_mm = larg_mm if larg_mm is not None else self._layout.largura_mm
@@ -1583,14 +1749,47 @@ class CanvasView(QGraphicsView):
         novas = _carimbar(modelo, x_mm, y_mm, larg_mm, alt_mm)
         if not novas:
             return []
-        slot = self._slot_para_novas_regioes()
+        slot = self._slot_novo_avulso()      # F13/C7: célula nova, slot próprio
         slot.regioes.extend(novas)
         self._apos_edicao(novas[0], None)
         self._registrar_hist()
         self._compor_fundo()
         self._construir_itens()
+        uids_novas = {r.uid for r in novas}
+        for it in self._itens:               # o dono VÊ o que carimbou
+            it.setSelected(it.regiao.uid in uids_novas)
         self.editou.emit(novas[0])
         return novas
+
+    def duplicar_celula(self, slot) -> list:
+        """F13/C6 (E-03): duplica a CÉLULA inteira — um slot NOVO com a
+        cópia de todas as peças (uids frescos, offset de +4mm, geometria
+        relativa preservada). O 'Duplicar' de peça continua no Ctrl+D."""
+        from app.rendering.model import Regiao as _Regiao
+        if slot is None or not slot.regioes:
+            return []
+        import uuid
+        novo = self._slot_novo_avulso()
+        copias = []
+        for r in slot.regioes:
+            copia = _Regiao.from_dict(r.to_dict())
+            copia.uid = uuid.uuid4().hex     # identidade própria (I1)
+            copia.ref_mestre = None
+            copia.de_mestre = False
+            copia.overrides = set()
+            copia.rect.x_mm += 4
+            copia.rect.y_mm += 4
+            novo.regioes.append(copia)
+            copias.append(copia)
+        self._apos_edicao(copias[0], None)
+        self._registrar_hist()
+        self._compor_fundo()
+        self._construir_itens()
+        uids = {c.uid for c in copias}
+        for it in self._itens:
+            it.setSelected(it.regiao.uid in uids)
+        self.editou.emit(copias[0])
+        return copias
 
     def salvar_selecao_como_modelo(self, nome: str) -> bool:
         """R-048: salva as regiões SELECIONADAS (ou todas do slot ativo) como
@@ -1614,16 +1813,51 @@ class CanvasView(QGraphicsView):
         for it in self._itens:               # o badge do item reflete na hora
             it.update()
 
-    def notificar_edicao(self, reg, attr: str | None = None) -> None:
+    def notificar_edicao(self, reg, attr: str | None = None, *,
+                         adiar: bool = False) -> None:
         """Recompõe após uma edição de propriedade (chamado pelo painel).
 
         ``attr`` identifica o que mudou: na mestra dispara a propagação; numa
         célula da grade vira override (precedência local).
-        """
+
+        F13/D2 (X-01 + CD-04): ``adiar=True`` = rajada de digitação. O
+        MODELO já mudou (o chamador fez o setattr) e o item reflete na
+        hora; histórico + recomposição + ``editou`` fecham JUNTOS no fim
+        do gesto (~300ms de pausa) em ``despachar_edicoes()`` — cada
+        tecla custava um compor_pagina inteiro e um estado de desfazer
+        (apagar um nome digitado eram 9 Ctrl+Z). Quem precisa do fecho
+        ANTES (desfazer/refazer, troca de seleção, documento novo) chama
+        ``despachar_edicoes()`` — edição nunca fica pendurada."""
         self._apos_edicao(reg, attr)
         if attr == "rotacao_graus":      # RG-12: contornos giram na hora
             for it in self._itens:       # (todos: a propagação da mestra
                 it.aplicar_rotacao()     # muda as derivadas também)
+        if adiar:
+            self._agendar_fecho_do_gesto(reg)
+            return
+        self._registrar_hist()
+        self._compor_fundo()
+        self.editou.emit(reg)
+
+    def _agendar_fecho_do_gesto(self, reg) -> None:
+        from PySide6.QtCore import QTimer
+        if not hasattr(self, "_timer_gesto"):
+            self._timer_gesto = QTimer(self)
+            self._timer_gesto.setSingleShot(True)
+            self._timer_gesto.setInterval(300)
+            self._timer_gesto.timeout.connect(self.despachar_edicoes)
+        self._gesto_pendente = reg
+        self._timer_gesto.start()
+
+    def despachar_edicoes(self) -> None:
+        """Fecha AGORA o gesto de digitação pendente (D2). Sem pendência,
+        não faz nada — seguro chamar de qualquer fronteira."""
+        reg = getattr(self, "_gesto_pendente", None)
+        if reg is None:
+            return
+        self._gesto_pendente = None
+        if hasattr(self, "_timer_gesto"):
+            self._timer_gesto.stop()
         self._registrar_hist()
         self._compor_fundo()
         self.editou.emit(reg)
@@ -1864,11 +2098,54 @@ class CanvasView(QGraphicsView):
         self._guias = []
         caneta = QPen(QColor(t.GUIA_SNAP), 0, Qt.PenStyle.DashLine)
         w, h = self._scene.width(), self._scene.height()
+        esc = max(self.transform().m11(), 1e-6)
         for tipo, coord in guias:
             linha = (self._scene.addLine(coord, 0, coord, h, caneta) if tipo == "x"
                      else self._scene.addLine(0, coord, w, coord, caneta))
             linha.setZValue(20)
             self._guias.append(linha)
+            # F13/VC-014: a guia DIZ onde está — a medida em mm junto da
+            # linha (antes era uma linha muda; o dono alinhava no olho)
+            from PySide6.QtWidgets import QGraphicsSimpleTextItem
+            mm = (self.cena_para_mm(coord, 0.0)[0] if tipo == "x"
+                  else self.cena_para_mm(0.0, coord)[1])
+            txt = QGraphicsSimpleTextItem(f"{mm:.0f} mm")
+            txt.setBrush(QColor(t.GUIA_SNAP))
+            txt.setScale(1.0 / esc)              # legível em qualquer zoom
+            if tipo == "x":
+                txt.setPos(coord + 4 / esc, 4 / esc)
+            else:
+                txt.setPos(4 / esc, coord + 4 / esc)
+            txt.setZValue(21)
+            self._scene.addItem(txt)
+            self._guias.append(txt)
+
+    def _atualizar_chip_medidas(self, texto: str) -> None:
+        """F13/VC-010 (L-12): a medida ao vivo LEGÍVEL — um chip no canto
+        do canvas enquanto o gesto acontece (a barra continua com o texto
+        de sempre; o chip morre no soltar)."""
+        chip = getattr(self, "_chip_medidas", None)
+        if chip is None:
+            from PySide6.QtWidgets import QLabel
+            chip = QLabel(self.viewport())
+            chip.setObjectName("chipMedidas")
+            chip.setStyleSheet(
+                "#chipMedidas { background: rgba(20, 20, 28, 210); "
+                "color: #FFFFFF; padding: 4px 10px; border-radius: 6px; "
+                "font-size: 13px; font-weight: 600; }")
+            chip.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            self._chip_medidas = chip
+        chip.setText(texto)
+        chip.adjustSize()
+        chip.move(10, self.viewport().height() - chip.height() - 10)
+        chip.show()
+        chip.raise_()
+
+    def esconder_chip_medidas(self) -> None:
+        chip = getattr(self, "_chip_medidas", None)
+        if chip is not None:
+            chip.hide()
 
     # --- R-027/028 (Fase 4): guias do usuário + grade magnética ----------------
 

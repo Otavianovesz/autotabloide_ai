@@ -56,7 +56,32 @@ def _quebrar_palavra(palavra: str, fonte, max_w: float) -> list[str]:
     return pedacos
 
 
-def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
+_MIN_LETRAS_HIFEN = 8
+"""VICESIMUS-OCTAVUS/L25 (o critério do estrangeiro, prática): só se
+parte palavra LONGA. As palavras que o hífen estragou no Quintou —
+"Cream" (5), "Supre|me" (7), "Gour|met" (7) — são curtas; as comuns
+que se partem bem ("Achocolatado", "Instantâneo", "Concentrado") têm
+9+. Marca longa (Andorinha, Campilar) é barrada pelo VOCABULÁRIO."""
+
+
+def _atomo(palavra: str, atomos: frozenset[str] | set[str]) -> bool:
+    """L25 — O HÍFEN NÃO ENTRA EM NOME PRÓPRIO: marca, submarca e nome
+    de linha são ÁTOMOS (nunca se partem). ``atomos`` chega do
+    chamador com o vocabulário de marcas normalizado."""
+    if not atomos:
+        return False
+    import unicodedata
+    p = unicodedata.normalize("NFKD", palavra.lower())
+    p = "".join(c for c in p if not unicodedata.combining(c)).strip(".,;:")
+    return p in atomos
+
+
+def _quebrar_linhas(texto: str, fonte, max_w: float,
+                    sem_hifen: bool = False,
+                    atomos: frozenset[str] | set[str] = frozenset()) -> list[str]:
+    """F13-BIS/T5: com ``sem_hifen`` a palavra NUNCA é partida — a linha
+    estoura a largura e o chamador (``ajustar_texto``) REDUZ O CORPO até
+    caber ("CERVEJA ITAPA-VA" na arte real virou prova de artefato)."""
     linhas: list[str] = []
     atual = ""
     for palavra in texto.split():
@@ -68,7 +93,9 @@ def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
         # de empurrar a palavra inteira para a próxima linha, tenta encher a
         # atual com um prefixo hifenizado (≥2 letras de cada lado; só em
         # palavras de verdade — "500g"/"R$" nunca ganham hífen).
-        if atual and palavra.isalpha() and len(palavra) >= 5:
+        if (not sem_hifen and atual and palavra.isalpha()
+                and len(palavra) >= _MIN_LETRAS_HIFEN
+                and not _atomo(palavra, atomos)):
             melhor = None
             for p in _DIC.positions(palavra):
                 if p < 2 or len(palavra) - p < 2:
@@ -84,7 +111,10 @@ def _quebrar_linhas(texto: str, fonte, max_w: float) -> list[str]:
         if atual:
             linhas.append(atual)
             atual = ""
-        if fonte.getlength(palavra) <= max_w:
+        if (fonte.getlength(palavra) <= max_w or sem_hifen
+                or _atomo(palavra, atomos)):
+            # sem_hifen (ou ÁTOMO da L25): inteira, mesmo estourando —
+            # quem cede é o corpo, nunca a marca partida ao meio
             atual = palavra
         else:
             pedacos = _quebrar_palavra(palavra, fonte, max_w)
@@ -117,6 +147,33 @@ def _truncar_com_reticencias(linhas, fonte, larg_px, alt_linha, alt_px):
     return mantidas
 
 
+def piso_do_celular(largura_pagina_mm: float) -> float:
+    """F13-UNDECIMUS/U1: o piso do tipo é uma REGRA, não um dado.
+
+    A régua do teste do celular (OCTAVUS/C1): o WhatsApp mostra a
+    página a ~37% — para o nome ter os 11 px mínimos legíveis no
+    celular, a LINHA precisa de 11/0,37 ≈ 30 px na página-régua de
+    1080 px de largura. Escalando pela largura real e convertendo a
+    pontos (linha ≈ corpo×1,2 × entrelinha 1,12), o piso é função SÓ
+    da largura física da página — vale para todo layout, inclusive os
+    que o dono desenhar amanhã. Na página dos encartes (285,75 mm) dá
+    ~16,8 pt: exatamente a calibração aprovada da Segunda.
+
+    Nunca desce do 6.0 histórico (etiquetas pequenas não são peça de
+    celular)."""
+    PX_MINIMOS_NO_CELULAR = 11.0
+    FATOR_WHATSAPP = 0.37
+    PAGINA_REGUA_PX = 1080.0
+    ALTURA_DE_LINHA = 1.2 * 1.12          # (asc+desc)/corpo × entrelinha
+    if not largura_pagina_mm or largura_pagina_mm <= 0:
+        return 6.0
+    linha_regua_px = PX_MINIMOS_NO_CELULAR / FATOR_WHATSAPP
+    larg_px_96 = largura_pagina_mm / 25.4 * 96.0
+    linha_px = linha_regua_px * (larg_px_96 / PAGINA_REGUA_PX)
+    piso = (linha_px / ALTURA_DE_LINHA) * 72.0 / 96.0
+    return max(6.0, piso)
+
+
 def ajustar_texto(
     texto: str,
     fonte_path: str | Path,
@@ -126,9 +183,18 @@ def ajustar_texto(
     dpi: int,
     tamanho_min_pt: float = 6.0,
     entrelinha: float = 1.12,
+    sem_hifen: bool = False,
+    atomos: frozenset[str] | set[str] = frozenset(),
 ) -> TextoAjustado:
-    """Maior tamanho <= teto que faz o texto caber (largura E altura)."""
+    """Maior tamanho <= teto que faz o texto caber (largura E altura).
+
+    F13-BIS/T5: ``sem_hifen`` faz da hifenização coisa proibida — a
+    palavra fica inteira e quem cede é o CORPO (busca binária); se nem
+    no mínimo couber, as reticências do R-045 seguram (nunca o hífen)."""
     fonte_path = str(fonte_path)
+    # F13-NONUS: piso acima do teto seria desenhar ACIMA do teto no
+    # ramo do truncamento — o teto manda
+    tamanho_min_pt = min(tamanho_min_pt, tamanho_max_pt)
 
     def _fonte(px: int):
         """Fonte com fallback (I2): pedida → Roboto ao lado → embutida do Pillow."""
@@ -144,7 +210,7 @@ def ajustar_texto(
     def tentar(pt: float) -> TextoAjustado | None:
         px = max(1, round(pt_para_px(pt, dpi)))
         fonte = _fonte(px)
-        linhas = _quebrar_linhas(texto, fonte, larg_px)
+        linhas = _quebrar_linhas(texto, fonte, larg_px, sem_hifen, atomos)
         if any(fonte.getlength(ln) > larg_px + 0.5 for ln in linhas):
             return None
         asc, desc = fonte.getmetrics()
@@ -176,7 +242,16 @@ def ajustar_texto(
     # linhas que cabem na altura e nunca transborda p/ a região vizinha.
     px = max(1, round(pt_para_px(tamanho_min_pt, dpi)))
     fonte = _fonte(px)
-    linhas = _quebrar_linhas(texto, fonte, larg_px)
+    # DUODETRICESIMUS §14 (achado do TESTE DOS OITO, CONFLITO DE LEIS
+    # DECLARADO): quando o piso é igual ao teto e nem UMA linha cabe
+    # na ALTURA, o bloco fica mais alto que a caixa. Ceder o corpo
+    # abaixo do piso resolveria o desenho e QUEBRARIA duas leis
+    # vigentes (U1/C1: o piso do celular é inviolável) — builder não
+    # derruba lei sem ordem. O piso FICA; a rede dos oito registra o
+    # caso como DÍVIDA DE LAYOUT (região pequena demais para o piso
+    # legível: ou a caixa cresce, ou o dono aceita o corte) e o
+    # arquiteto decide qual das duas leis cede.
+    linhas = _quebrar_linhas(texto, fonte, larg_px, sem_hifen, atomos)
     asc, desc = fonte.getmetrics()
     alt_linha = round((asc + desc) * entrelinha)
     linhas = _truncar_com_reticencias(linhas, fonte, larg_px, alt_linha, alt_px)

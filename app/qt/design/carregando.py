@@ -142,10 +142,18 @@ class IndicadorOcupado(QWidget):
 
 
 class OverlayOcupado(QWidget):
-    """Véu translúcido sobre um widget-alvo com o indicador centralizado.
+    """F13/D1 (I-01, VC-020 passo 1): o VÉU virou FAIXA DE RODAPÉ.
 
-    ``mostrar("Removendo fundo…")`` / ``esconder()``. Acompanha o redimensionar
-    do alvo. O trabalho pesado deve rodar fora da thread da UI.
+    O trabalho pesado já roda em thread — era este widget que sequestrava
+    a tela: cobria o alvo inteiro e comia todo clique (e só o mouse; o
+    teclado atravessava — a assimetria perigosa do CF-05). Agora ele é
+    uma faixa no PÉ do alvo: narra o trabalho (spinner + texto + tempo
+    decorrido) e o resto da tela continua LIVRE — a assimetria morreu
+    por simetria (nada é bloqueado; o rodapé conta a história).
+
+    ``mostrar("Removendo fundo…")`` / ``esconder()``. Acompanha o
+    redimensionar do alvo. A API não mudou: os 9 chamadores continuam
+    exatamente iguais.
     """
 
     def __init__(self, alvo: QWidget):
@@ -158,11 +166,11 @@ class OverlayOcupado(QWidget):
         caixa.setObjectName("overlayCaixa")
         caixa.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dentro = QVBoxLayout(caixa)
-        dentro.setContentsMargins(t.ESP_4, t.ESP_3, t.ESP_4, t.ESP_3)
-        dentro.setSpacing(t.ESP_2)
+        dentro.setContentsMargins(t.ESP_4, t.ESP_2, t.ESP_4, t.ESP_2)
+        dentro.setSpacing(t.ESP_1)
         linha = QHBoxLayout()
         linha.setSpacing(t.ESP_2)
-        self._spinner = Spinner(22)
+        self._spinner = Spinner(18)
         self._rotulo = QLabel("")
         linha.addWidget(self._spinner)
         linha.addWidget(self._rotulo)
@@ -174,22 +182,24 @@ class OverlayOcupado(QWidget):
         dentro.addWidget(self._barra)
 
         lay = QVBoxLayout(self)
-        lay.addStretch(1)
-        h = QHBoxLayout()
-        h.addStretch(1)
-        h.addWidget(caixa)
-        h.addStretch(1)
-        lay.addLayout(h)
-        lay.addStretch(1)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(caixa)
 
         alvo.installEventFilter(self)
         self.hide()
+
+    def _faixa_do_rodape(self):
+        """A tira no pé do alvo — nunca mais o retângulo inteiro (D1)."""
+        from PySide6.QtCore import QRect
+        r = self._alvo.rect()
+        alt = min(max(self.sizeHint().height(), 40), max(1, r.height()))
+        return QRect(0, r.height() - alt, r.width(), alt)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         # getattr: na destruição, o lado C++ ainda filtra depois do Python desmontar
         alvo = getattr(self, "_alvo", None)
         if alvo is not None and obj is alvo and event.type() == QEvent.Type.Resize:
-            self.setGeometry(alvo.rect())
+            self.setGeometry(self._faixa_do_rodape())
         return super().eventFilter(obj, event)
 
     def mostrar(self, texto: str) -> None:
@@ -207,7 +217,7 @@ class OverlayOcupado(QWidget):
                 self._timer.timeout.connect(self._tic)
             self._timer.start()
         self._tic()
-        self.setGeometry(self._alvo.rect())
+        self.setGeometry(self._faixa_do_rodape())
         self.show()
         self.raise_()
 

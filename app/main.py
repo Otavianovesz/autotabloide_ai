@@ -43,6 +43,8 @@ def main() -> int:
     _migrar_artes()                     # E-A3: arte antiga → pasta da raiz
     app = QApplication(sys.argv)
     aplicar_tema(app)
+    from app.qt.design.componentes import instalar_traducao_qt
+    instalar_traducao_qt(app)   # F13/B2c: nativos do Qt em PT-BR
     from app.qt.design.animacoes import instalar_vida
     from app.qt.design.polimento import instalar_polimento
     instalar_vida(app)          # FASE 1 (40-41): diálogos e hover com vida

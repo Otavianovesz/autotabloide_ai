@@ -32,11 +32,18 @@ class LinhaColada:
     preco: str | None            # texto cru, como veio (None = sem preço)
     preco_valido: bool           # preco_decimal(preco) is not None
     aviso: str | None = None
+    # TERTIUSDECIMUS/Q2: o desconto DECLARADO ("LANCHE NA CHAPA COM
+    # 20 % de DESCONTO") — item SEM preço que TEM valor comercial; a
+    # arte tem a pílula para ele e o pré-voo não reclama
+    desconto_pct: int | None = None
     # R-070/passo 62: multi-preço reconhecido NA COLAGEM ("3 por R$10", "leve 3
     # pague 2"). Quando presente, `preco` fica None e a linha TEM preço (não é
     # "sem preço"): é um FORMATO de promoção, não um valor. O "2x 5,00" proibido
     # nunca chega aqui — não casa o padrão (segue rejeitado pelo P0.3).
     multi_preco: str | None = None
+    # QUINTUSDECIMUS/J18: o "de" do padrão "de X por Y" — o riscado da
+    # oferta; `preco` leva o "por" (o preço que vale)
+    preco_de: str | None = None
 
 
 def _eh_lixo(linha: str) -> bool:
@@ -99,17 +106,39 @@ def _split_multi(raw: str) -> "tuple[str, MultiPreco] | None":
     return None
 
 
-def parse_colagem(texto: str) -> list[LinhaColada]:
+def parse_colagem(texto: str, *, balde: list | None = None) -> list[LinhaColada]:
     """Uma linha de produto por linha do texto colado; preço validado por P0.3
     (ambíguo → marcado, nunca criado em silêncio). Multi-preço reconhecido como
-    FORMATO (R-070) — não confundido com preço inválido."""
+    FORMATO (R-070) — não confundido com preço inválido.
+
+    F13-DUODECIMUS/T1: a tabela real do dono é 2/3 PROSA promocional
+    com números que parecem preço ("LEVE 3… GANHE 25 %", "50 % de
+    DESCONTO"). Linha SEM preço de moeda no fim não vira produto:
+    prosa COM número vai ao ``balde`` (mostrado ao dono — I2); prosa
+    sem número morre em silêncio. A colagem ESTRUTURADA (tab/;/| e
+    preço-no-fim) segue como sempre."""
     from app.qt.telas.servico import preco_decimal
 
     linhas: list[LinhaColada] = []
     for raw in (texto or "").splitlines():
         raw = raw.rstrip()
+        # Q4 (a Quarta): "▶"/"•" no início é marcador visual, não texto
+        raw = raw.lstrip("▶•·◦> ").rstrip()
         if not raw.strip() or _eh_lixo(raw):
             continue
+        # QUINTUSDECIMUS/J18: "de X por Y" ANTES do multi-preço — o
+        # _RE_N_POR mastigava "…5,99 por 4,99" como "99 por R$ 4,99"
+        # (o 99 do de virava quantidade). O padrão-mãe do varejo tem
+        # precedência: por = preço, de = riscado. Régua única de servico.
+        from app.qt.telas.servico import _RE_DE_POR, preco_de_por
+        dp_linha = preco_de_por(raw)
+        if dp_linha is not None:
+            m_dp = _RE_DE_POR.search(raw)
+            nome_dp = _limpar_nome_de_tabela(raw[:m_dp.start()])
+            if nome_dp:
+                linhas.append(LinhaColada(nome_dp, dp_linha[1], True,
+                                          preco_de=dp_linha[0]))
+                continue
         # passo 62: multi-preço PRIMEIRO — "Sabão;3 por R$10" é promoção, não
         # um preço "não entendido" (o split ingênuo cairia em vermelho falso).
         multi = _split_multi(raw)
@@ -132,17 +161,123 @@ def parse_colagem(texto: str) -> list[LinhaColada]:
                     f"preço “{preco_amb}” não foi entendido — confira "
                     "(ex.: 5,00; ou use “2 por 5,00” se for promoção)."))
             continue
+        # Rodada JM (B2B): "…<> S. OFERTA" no fim da linha é PREÇO-TEXTO
+        # (o valor varia no mês; a forma escreve SUPER OFERTA) — vem
+        # ANTES do balde: a linha real tinha "<>"/"." e morria como
+        # prosa-com-número, engolida
+        m_so = _RE_SUPER_OFERTA_FIM.search(raw)
+        if m_so is not None:
+            nome_so = _limpar_nome_de_tabela(raw[:m_so.start()])
+            if nome_so:
+                linhas.append(LinhaColada(nome_so, None, True,
+                                          multi_preco="SUPER OFERTA"))
+                continue
         nome, preco = _nome_preco(raw)
+        nome = _limpar_nome_de_tabela(nome)
         if not nome:
             continue
-        valido = bool(preco) and preco_decimal(preco) is not None
+        # T1 (a Terça): linha SEM preço só vira item se tiver CARA DE
+        # PRODUTO — curta, sem dígito solto, sem pontuação de frase
+        # ("Sabonete Dove" da lista de WhatsApp segue virando amarelo).
+        # PROSA com número (o 25%/50% da mecânica gravada na arte — T3)
+        # vai ao balde VISÍVEL; prosa sem número morre em silêncio.
+        if not preco:
+            eh_prosa = (re.search(r"[.!?“”\"…<>]|\.{2,}", raw)
+                        or len(nome.split()) > 8)
+            # Q2 (a Quarta): "LANCHE NA CHAPA COM 20 % de DESCONTO" —
+            # item cuja OFERTA é o percentual; linha curta com o padrão
+            # vira item-com-desconto (a prosa longa/pontuada continua
+            # indo ao balde — o leve-3 da Terça não engana)
+            m_desc = re.search(r"(?:com\s+)?(\d{1,3})\s*%\s*(?:de\s*)?"
+                               r"desconto", raw, re.IGNORECASE)
+            if m_desc and not eh_prosa:
+                nome_d = _limpar_nome_de_tabela(
+                    raw[:m_desc.start()].strip(" -–:;|"))
+                nome_d = re.sub(r"\bcom\s*$", "", nome_d,
+                                flags=re.IGNORECASE).strip()
+                if nome_d:
+                    linhas.append(LinhaColada(
+                        nome_d, None, True,
+                        desconto_pct=int(m_desc.group(1))))
+                    continue
+            if re.search(r"\d", raw):
+                if balde is not None:
+                    balde.append(raw.strip())
+                continue
+            if eh_prosa:
+                continue
+            linhas.append(LinhaColada(
+                nome, None, False,
+                "sem preço — vira amarelo na conciliação"))
+            continue
+        valido = preco_decimal(preco) is not None
         aviso = None
-        if preco and not valido:
+        if not valido:
             aviso = f"preço “{preco}” não foi entendido — confira (ex.: 5,00)"
-        elif not preco:
-            aviso = "sem preço — vira amarelo na conciliação"
         linhas.append(LinhaColada(nome, preco, valido, aviso))
+    _remover_codigos_de_coluna(linhas)
     return linhas
+
+
+# Rodada JM (B1.4): o código de coluna do documento ("T-1") — token
+# curto LETRA(S)-NÚMERO na BORDA do nome. A remoção é por FREQUÊNCIA no
+# lote: só quando o padrão se repete em ≥3 nomes E ≥30% das linhas ele é
+# coluna do documento; um "B-12" isolado (a vitamina) é nome e FICA — o
+# caso-limite escrito com a regra. v2 (a 2ª prova): a grafia SEM hífen
+# ("T1", que escapou até o descritor do composto) entra no MESMO
+# critério conservador — "B12" isolada continua ficando.
+_RE_CODIGO_COLUNA = re.compile(r"^[A-Za-z]{1,3}-?\d{1,3}$")
+
+
+def _remover_codigos_de_coluna(linhas: list[LinhaColada]) -> None:
+    if len(linhas) < 3:
+        return
+    com_codigo = 0
+    for li in linhas:
+        tokens = li.nome.split()
+        if tokens and (_RE_CODIGO_COLUNA.match(tokens[0])
+                       or _RE_CODIGO_COLUNA.match(tokens[-1])):
+            com_codigo += 1
+    if com_codigo < 3 or com_codigo < 0.3 * len(linhas):
+        return
+    for li in linhas:
+        tokens = li.nome.split()
+        while tokens and _RE_CODIGO_COLUNA.match(tokens[-1]):
+            tokens.pop()
+        while tokens and _RE_CODIGO_COLUNA.match(tokens[0]):
+            tokens.pop(0)
+        if tokens:
+            li.nome = " ".join(tokens)
+
+
+_RE_SUFIXO_PRECO = re.compile(
+    r"[\s_.·–-]*\b(por|s[óo])\b[\s_.·–-]*$", re.IGNORECASE)
+
+
+def _limpar_nome_de_tabela(nome: str | None) -> str:
+    """F13-SEXTUS/S1: a tabela real do dono é um documento de impressão
+    com ``______`` entre o nome e o preço e um prefixo "por"/"SÓ" que
+    varia de caixa — NADA disso é nome de produto. Come as sequências
+    de underscore/pontilhado e a palavra de prefixo no RABO do nome
+    (só isolada, nunca dentro de palavra)."""
+    if not nome:
+        return ""
+    # T4 (a Terça): o "À"/"A" ENTRE pontilhados é enfeite de
+    # preenchimento do documento ("OSSINHO ___À___100g") — sai ANTES da
+    # troca dos underscores; um "à" legítimo no nome (Frango à
+    # Passarinho) não tem underscores e fica
+    limpo = re.sub(r"_+\s*[àáa]\s*(?=_|\d)", " ", nome,
+                   flags=re.IGNORECASE)
+    # Rodada JM (B1.4): o "<>" do documento do Jornal é separador
+    # visual entre nome e preço — nunca é nome de produto
+    limpo = re.sub(r"[<>]+", " ", limpo)
+    limpo = re.sub(r"[_]{2,}", " ", limpo)
+    limpo = re.sub(r"\s{2,}", " ", limpo).strip(" _.·–-\t")
+    while True:
+        novo = _RE_SUFIXO_PRECO.sub("", limpo).strip(" _.·–-\t")
+        if novo == limpo:
+            return limpo
+        limpo = novo
 
 
 def linhas_para_tuplas(linhas: list[LinhaColada]):
@@ -158,6 +293,18 @@ def multi_precos_de(linhas: list[LinhaColada]):
     return [li.multi_preco for li in linhas]
 
 
+def descontos_de(linhas: list[LinhaColada]):
+    """Q2: lista de descontos declarados PARALELA às tuplas (mesma
+    ordem) — o "20% de desconto" do Lanche viaja ao ItemMesa."""
+    return [li.desconto_pct for li in linhas]
+
+
+def precos_de_de(linhas: list[LinhaColada]):
+    """J18: lista dos "de" (riscados) PARALELA às tuplas — o "de 18,81
+    por 6,90" viaja inteiro ao ItemMesa (por = preço, de = riscado)."""
+    return [li.preco_de for li in linhas]
+
+
 # ----------------------------------------------------------------------------
 # Multi-preço (R-070): "3 por R$10" / "leve 3 pague 2" — FORMATO explícito de
 # promoção por quantidade. Reconhecido AQUI, não pelo P0.3 (que rejeita
@@ -167,6 +314,21 @@ def multi_precos_de(linhas: list[LinhaColada]):
 
 _RE_N_POR = re.compile(r"\b(\d+)\s*por\s*(R\$\s*)?(\d[\d.]*(?:[.,]\d{2})?)", re.I)
 _RE_LEVE = re.compile(r"\bleve\s*(\d+)\s*pague\s*(\d+)\b", re.I)
+
+# Rodada JM (B2B, decisão do dono 03/08): "S. OFERTA" no lugar do preço
+# = o preço VARIA no mês e o cartaz escreve SUPER OFERTA dentro da forma.
+_RE_SUPER_OFERTA = re.compile(r"^s\.?\s*oferta$|^super\s+oferta$", re.I)
+_RE_SUPER_OFERTA_FIM = re.compile(r"(s\.?\s*oferta|super\s+oferta)\s*$", re.I)
+
+
+def preco_texto_oferta(texto: str | None) -> str | None:
+    """Reconhece as grafias da tabela ("S. OFERTA", "S.OFERTA", "SUPER
+    OFERTA") e devolve o CANÔNICO "SUPER OFERTA" — ou None. Slogans
+    ("OFERTA DO DIA") e formatos com dono próprio nunca casam."""
+    t = (texto or "").strip().strip("<>_ .·–-")
+    if not t:
+        return None
+    return "SUPER OFERTA" if _RE_SUPER_OFERTA.match(t.strip()) else None
 
 
 @dataclass

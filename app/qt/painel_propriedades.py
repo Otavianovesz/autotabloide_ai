@@ -79,13 +79,18 @@ class PainelPropriedades(QWidget):
 
         # --- campos ---
         self.nome = QLineEdit()
-        self.nome.textEdited.connect(lambda v: self._set("nome", v))
+        # F13/D2: digitação é RAJADA — coalesce (um gesto = um estado)
+        self.nome.textEdited.connect(
+            lambda v: self._set("nome", v, adiar=True))
+        self.nome.editingFinished.connect(
+            lambda: self.canvas.despachar_edicoes())
         self.fonte = QComboBox()
         self._popular_fontes()
         self.fonte.currentIndexChanged.connect(self._fonte_mudou)
         self.tam = QDoubleSpinBox()
         self.tam.setRange(4, 400)
-        self.tam.valueChanged.connect(lambda v: self._set("tamanho_max_pt", float(v)))
+        self.tam.valueChanged.connect(
+            lambda v: self._set("tamanho_max_pt", float(v), adiar=True))
         # cor: campo hex + amostra clicável que abre o seletor
         self.cor = QLineEdit()
         self.cor.setPlaceholderText("#000000")
@@ -103,6 +108,14 @@ class PainelPropriedades(QWidget):
         self.alinha = QComboBox()
         self.alinha.addItems([a.value for a in Alinhamento])
         self.alinha.currentTextChanged.connect(lambda v: self._set_enum("alinhamento", Alinhamento, v))
+        # F13/C4 (R-01): o vertical existe — TOPO/CENTRO/BASE
+        from app.rendering.model import AlinhamentoV
+        self.alinha_v = QComboBox()
+        self.alinha_v.addItems([a.value for a in AlinhamentoV])
+        self.alinha_v.setToolTip("Onde o bloco de texto ancora na caixa "
+                                 "(em pé): topo, centro ou base")
+        self.alinha_v.currentTextChanged.connect(
+            lambda v: self._set_enum("alinhamento_v", AlinhamentoV, v))
 
         self.subtipo = QComboBox()
         self.subtipo.addItems([s.value for s in SubtipoPreco])
@@ -134,7 +147,7 @@ class PainelPropriedades(QWidget):
         self.mascara_raio.setSuffix(" mm")
         self.mascara_raio.setToolTip("Raio dos cantos arredondados")
         self.mascara_raio.valueChanged.connect(
-            lambda v: self._set("mascara_raio_mm", float(v)))
+            lambda v: self._set("mascara_raio_mm", float(v), adiar=True))
         # R-032: centralizar a foto na caixa prevista pela arte de fundo
         self.btn_centralizar = QPushButton("Centralizar na arte")
         self.btn_centralizar.setToolTip(
@@ -154,7 +167,7 @@ class PainelPropriedades(QWidget):
         self.pill_opac.setToolTip("Opacidade da pílula (0 = transparente, "
                                   "255 = sólida)")
         self.pill_opac.valueChanged.connect(
-            lambda v: self._set("pill_opacidade", int(v)))
+            lambda v: self._set("pill_opacidade", int(v), adiar=True))
         self.pill_cor_btn = self._botao_cor("pill_cor")
         self.sombra = QCheckBox("Sombra no texto")
         self.sombra.toggled.connect(lambda v: self._set("sombra", v))
@@ -216,7 +229,7 @@ class PainelPropriedades(QWidget):
         self.rotacao.setToolTip("Gira o conteúdo em torno do centro da região "
                                 "(sentido horário; 90° = texto deitado)")
         self.rotacao.valueChanged.connect(
-            lambda v: self._set("rotacao_graus", float(v)))
+            lambda v: self._set("rotacao_graus", float(v), adiar=True))
 
         # RG-18: o campo mostra o TETO; o desenho usa o ajustado (só-reduz) —
         # este rótulo conta o efetivo quando difere ("confundiu" na auditoria)
@@ -270,6 +283,7 @@ class PainelPropriedades(QWidget):
         form.addRow("Texto fixo", caixa_fixo)        # linha 6: só TEXTO_LEGAL
         form.addRow("Rotação", self.rotacao)         # linha 7: qualquer região
         form.addRow("Peso", self.peso)               # linha 8: regiões de texto
+        form.addRow("Alinhar (em pé)", self.alinha_v)  # linha 9 (F13/C4)
         self._form = form   # linhas 1..5 = estilo/fonte/tamanho/cor/alinhar (texto)
         caixa_form = QWidget()
         caixa_form.setLayout(form)
@@ -295,6 +309,59 @@ class PainelPropriedades(QWidget):
         fi.addRow(self.btn_centralizar)
         self.grp_img = SecaoRecolhivel("Imagem", corpo_img)
 
+        # F13/VC-004 (Transform em mm — a "versão Adobe mais barata"): a
+        # posição e o tamanho da região em milímetros, EDITÁVEIS. É também
+        # a alternativa por painel do C5 (redimensionar rotacionada).
+        from PySide6.QtWidgets import QDoubleSpinBox as _Spin
+        corpo_pos = QWidget()
+        fpz = QFormLayout(corpo_pos)
+        fpz.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.pos_x, self.pos_y, self.pos_l, self.pos_a = (
+            _Spin(), _Spin(), _Spin(), _Spin())
+        for spin, attr, minimo in ((self.pos_x, "x_mm", -2000.0),
+                                   (self.pos_y, "y_mm", -2000.0),
+                                   (self.pos_l, "larg_mm", 1.0),
+                                   (self.pos_a, "alt_mm", 1.0)):
+            spin.setRange(minimo, 2000.0)
+            spin.setDecimals(1)
+            spin.setSuffix(" mm")
+            spin.valueChanged.connect(
+                lambda v, a=attr: self._set_rect_mm(a, float(v)))
+        fpz.addRow("X", self.pos_x)
+        fpz.addRow("Y", self.pos_y)
+        fpz.addRow("Largura", self.pos_l)
+        fpz.addRow("Altura", self.pos_a)
+        self.grp_pos = SecaoRecolhivel("Posição e tamanho (mm)", corpo_pos)
+
+        # F13/C11 ("existe âncora, não existe controle"): a região SELO
+        # ganha o CONTROLE dos automáticos — canto do +18 e do Qualidade,
+        # gravados no gestor (F3). O +18 segue TRAVADO em bebida.
+        corpo_selos = QWidget()
+        fs = QFormLayout(corpo_selos)
+        fs.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        from app.core.selos import CANTOS, REGRA_MAIS18, REGRA_QUALIDADE
+        self.canto_mais18 = QComboBox()
+        self.canto_mais18.addItems(list(CANTOS))
+        self.canto_mais18.setToolTip("Canto do selo +18 (bebida alcoólica; "
+                                     "o selo em si é travado — sai sempre)")
+        self.canto_mais18.currentTextChanged.connect(
+            lambda v: self._canto_automatico(REGRA_MAIS18, v))
+        self.canto_qualidade = QComboBox()
+        self.canto_qualidade.addItems(list(CANTOS))
+        self.canto_qualidade.setToolTip("Canto do selo Qualidade "
+                                        "(marca própria)")
+        self.canto_qualidade.currentTextChanged.connect(
+            lambda v: self._canto_automatico(REGRA_QUALIDADE, v))
+        aviso_selo = QLabel("Esta região é a ÂNCORA dos selos da célula. "
+                            "+18 e Qualidade entram sozinhos pela flag do "
+                            "produto; os manuais, pelo item na Mesa.")
+        aviso_selo.setWordWrap(True)
+        aviso_selo.setProperty("papel", "legenda")
+        fs.addRow(aviso_selo)
+        fs.addRow("Canto do +18", self.canto_mais18)
+        fs.addRow("Canto do Qualidade", self.canto_qualidade)
+        self.grp_selos = SecaoRecolhivel("Selos automáticos", corpo_selos)
+
         # R-034/R-035: legibilidade do texto sobre a foto (pill + sombra/contorno)
         corpo_leg = QWidget()
         fl = QFormLayout(corpo_leg)
@@ -317,6 +384,8 @@ class PainelPropriedades(QWidget):
         lay.addWidget(self.vazio)
         lay.addWidget(self.tipo_lbl)
         lay.addWidget(caixa_form)
+        lay.addWidget(self.grp_pos)      # F13/VC-004
+        lay.addWidget(self.grp_selos)    # F13/C11
         lay.addWidget(self.grp_preco)
         lay.addWidget(self.grp_img)
         lay.addWidget(self.grp_leg)
@@ -454,6 +523,10 @@ class PainelPropriedades(QWidget):
         self._popular_pesos()                   # RG-14: a família pode ter mudado
 
     def mostrar(self, reg) -> None:
+        # F13/D2: trocar de região FECHA o gesto de digitação da anterior
+        # (a edição pendente entra na pilha antes de o painel repovoar)
+        if self.reg is not reg:
+            self.canvas.despachar_edicoes()
         self.reg = reg
         self._carregando = True
         self.vazio.setVisible(reg is None)          # estado vazio com craft
@@ -463,12 +536,42 @@ class PainelPropriedades(QWidget):
             self.tipo_lbl.setText("")
         else:
             self.tipo_lbl.setText(f"Tipo: {reg.tipo.value}")
+            # ORDEM do arquiteto (03/08, "a edição não funciona"): o
+            # texto de papel VIVO (validade/edição) é DERIVADO — o dado
+            # da Mesa sobrescreve o que se digita aqui. O campo DIZ
+            # onde se edita de verdade (a lição D3), em vez de deixar
+            # o dono digitar num molde que a composição atropela.
+            from app.rendering.model import PapelTexto as _PT
+            papel_vivo = {
+                _PT.VALIDADE: "a VALIDADE viva — edite pelo chip da "
+                              "validade na Mesa",
+                _PT.EDICAO: "a EDIÇÃO viva (Nº/Ano) — edite pelo "
+                            "rótulo “Edição:” na Mesa",
+            }.get(getattr(reg, "papel_texto", None))
+            if papel_vivo:
+                self.texto_fixo.setPlaceholderText(
+                    f"Texto derivado: {papel_vivo}")
+                self.texto_fixo.setToolTip(
+                    f"Este texto é DERIVADO ({papel_vivo}). O que você "
+                    "digitar aqui é o RESERVA para quando não houver "
+                    "dado vivo.")
+            else:
+                self.texto_fixo.setPlaceholderText("")
+                self.texto_fixo.setToolTip(
+                    "Texto do LAYOUT (ex.: “Fica a Dica”) — desenha "
+                    "até em célula vazia")
             self.nome.setText(reg.nome)
             self._selecionar_fonte(reg.fonte)
             self.tam.setValue(reg.tamanho_max_pt)
             self.cor.setText(reg.cor)
             self._pintar_amostra(reg.cor)
             self.alinha.setCurrentText(reg.alinhamento.value)
+            self.alinha_v.setCurrentText(reg.alinhamento_v.value)  # F13/C4
+            # VC-004: posição e tamanho em mm, editáveis
+            self.pos_x.setValue(reg.rect.x_mm)
+            self.pos_y.setValue(reg.rect.y_mm)
+            self.pos_l.setValue(reg.rect.larg_mm)
+            self.pos_a.setValue(reg.rect.alt_mm)
             self.subtipo.setCurrentText(reg.subtipo_preco.value)
             self.papel.setCurrentText(reg.papel_preco.value)
             self.moeda.setChecked(reg.mostrar_moeda)
@@ -503,6 +606,16 @@ class PainelPropriedades(QWidget):
             if idx >= 0:
                 self.papel_texto.setCurrentIndex(idx)
         self._form.setRowVisible(8, texto)           # RG-14: peso da família
+        self._form.setRowVisible(9, texto)           # F13/C4: alinhar em pé
+        self.grp_pos.setVisible(reg is not None)     # VC-004: qualquer região
+        # F13/C11: o controle dos selos aparece na região SELO (a âncora)
+        eh_selo = reg is not None and reg.tipo == TipoRegiao.SELO
+        self.grp_selos.setVisible(eh_selo)
+        if eh_selo:
+            from app.core.selos import config_automaticos
+            cfg = config_automaticos()
+            self.canto_mais18.setCurrentText(cfg["MAIS18"]["canto"])
+            self.canto_qualidade.setCurrentText(cfg["QUALIDADE"]["canto"])
         if texto:
             self._popular_estilos()
             self._popular_pesos()
@@ -532,7 +645,9 @@ class PainelPropriedades(QWidget):
             mostrar_toast(self, "LM Studio não acessível — escreva a dica à "
                                 "mão ou ligue a IA.", tipo="erro")
             return
-        nomes = self.canvas.nomes_dos_itens()
+        pares = self.canvas.itens_para_dica()   # ERRATA §13.5: nome+preço
+        nomes = [n for n, _p in pares]
+        precos = [p for _n, p in pares]
         if not nomes:
             mostrar_toast(self, "Sem itens compostos ainda — preencha a grade "
                                 "antes de gerar a dica.", tipo="erro")
@@ -558,7 +673,8 @@ class PainelPropriedades(QWidget):
             except Exception:
                 marcas = []
             return gerar_dica(nomes, limite, motor, estilo=estilo,
-                              evitar=evitar, marcas_conhecidas=marcas)
+                              evitar=evitar, marcas_conhecidas=marcas,
+                              precos=precos)
 
         trab = Trabalhador(_tarefa)
 
@@ -746,7 +862,29 @@ class PainelPropriedades(QWidget):
         if self.canvas.restaurar_estilo(self.reg):
             self.mostrar(self.reg)
 
-    def _set(self, attr: str, valor) -> None:
+    def _canto_automatico(self, regra: str, canto: str) -> None:
+        """F13/C11: grava o canto do selo automático no gestor e recompõe
+        (a prévia mostra o selo pulando de canto na hora)."""
+        if self._carregando or self.reg is None:
+            return
+        from app.core.selos import definir_canto_automatico
+        if definir_canto_automatico(regra, canto):
+            self.canvas.recompor()
+
+    def _set_rect_mm(self, campo: str, valor: float) -> None:
+        """F13/VC-004: edita X/Y/L/A da região em mm pelo painel. Passa por
+        ``notificar_edicao(reg, "rect")`` — override de célula e propagação
+        da mestra funcionam como no arrasto — e reconstrói as alças."""
+        if self._carregando or self.reg is None:
+            return
+        setattr(self.reg.rect, campo, float(valor))
+        self.canvas.notificar_edicao(self.reg, "rect")
+        self.canvas._construir_itens()   # a alça acompanha o rect novo
+
+    def _set(self, attr: str, valor, *, adiar: bool = False) -> None:
+        """``adiar=True`` (F13/D2) nas fontes de RAJADA (textEdited e
+        valueChanged de arrasto): o modelo muda já; histórico/recompose
+        fecham no fim do gesto (canvas.despachar_edicoes)."""
         if self._carregando or self.reg is None:
             return
         setattr(self.reg, attr, valor)
@@ -754,7 +892,7 @@ class PainelPropriedades(QWidget):
         if self.reg.estilo and attr in ("fonte", "tamanho_max_pt", "cor"):
             self.reg.overrides_estilo.add(attr)
             self.btn_restaurar_estilo.setVisible(True)
-        self.canvas.notificar_edicao(self.reg, attr)
+        self.canvas.notificar_edicao(self.reg, attr, adiar=adiar)
         self._atualizar_tamanho_efetivo()   # RG-18: reflete a edição na hora
 
     def _set_enum(self, attr: str, enum, valor: str) -> None:

@@ -91,8 +91,14 @@ Regras:
 
 # --- RG-20: a REGRA DURA — nenhuma palavra do bruto pode sumir ---------------------
 
+# Rodada JM (B1.5): unidades e siglas de embalagem são stopwords — a
+# canonização "5 LTS"→"5L" nunca deve gritar; já "PÓ" (2 letras, palavra
+# de verdade) PRECISA gritar quando a IA o descarta — por isso o limiar
+# de tamanho desceu de 3 para 2 nas duas guardas abaixo.
 _STOPWORDS = {"de", "da", "do", "das", "dos", "com", "em", "e", "para", "por",
-              "a", "o", "as", "os", "un", "und", "cx", "pct"}
+              "a", "o", "as", "os", "un", "und", "cx", "pct",
+              "tp", "lv", "kg", "ml", "lt", "gr", "mg",
+              "kgs", "lts", "grs", "mls", "mgs"}
 
 
 def _normalizar_token(t: str) -> str:
@@ -115,7 +121,7 @@ def tokens_perdidos(bruto: str, sanitizado: str) -> list[str]:
     perdidos = []
     for original in bruto.split():
         tok = _normalizar_token(original)
-        if len(tok) < 3 or tok in _STOPWORDS:
+        if len(tok) < 2 or tok in _STOPWORDS:
             continue
         if not any(tok in cand or cand in tok for cand in alvo if cand):
             perdidos.append(original)
@@ -134,32 +140,109 @@ def tokens_inventados(bruto: str, sanitizado: str,
     inventados = []
     for original in sanitizado.split():
         tok = _normalizar_token(original)
-        if len(tok) < 3 or tok in _STOPWORDS or tok in liberados:
+        if len(tok) < 2 or tok in _STOPWORDS or tok in liberados:
             continue
         if not any(tok in cand or cand in tok for cand in base if cand):
             inventados.append(original)
     return inventados
 
 
+def _com_a_caixa_de(palavra: str, molde: str) -> str:
+    """Reveste a palavra devolvida com a caixa que a IA usou no lugar dela
+    (o bruto vem em CAIXA ALTA; a convenção 1ª-maiúscula continua valendo)."""
+    if molde.istitle():
+        return palavra.capitalize()
+    if molde.islower():
+        return palavra.lower()
+    if molde.isupper():
+        return palavra.upper()
+    return palavra
+
+
 def remover_inventados(nome: str, bruto: str, permitidos=()) -> str:
-    """#78/#95: tira do nome os tokens inventados (a guarda DURA, não pedido
-    no prompt). Se sobrar nada, devolve o nome como veio (nunca apaga tudo)."""
+    """#78/#95: trata os tokens inventados (a guarda DURA, não pedido no
+    prompt). Se sobrar nada, devolve o nome como veio (nunca apaga tudo).
+
+    F13/D6 (C-08): inventado que SUBSTITUIU uma palavra do bruto (o typo
+    agressivo da IA: HUPPERS→Ruppers) não é mais simplesmente REMOVIDO —
+    a palavra do dono VOLTA ao lugar. Remover o substituto mutilava o
+    nome (a marca sumia inteira) e a única testemunha era a lista
+    tokens_perdidos, que só a curadoria mostra. Acréscimo puro (sigla/
+    protocolo do nada: INMETRO, NBR — nada do bruto sumiu no lugar)
+    continua caindo fora, como sempre."""
     inv = set(tokens_inventados(bruto, nome, permitidos))
     if not inv:
         return nome
-    sobrou = " ".join(t for t in nome.split() if t not in inv)
+    import difflib
+    orfaos = tokens_perdidos(bruto, nome)   # palavras do bruto que sumiram
+    saida = []
+    for tok in nome.split():
+        if tok not in inv:
+            saida.append(tok)
+            continue
+        par, melhor = None, 0.0
+        for cand in orfaos:
+            razao = difflib.SequenceMatcher(
+                None, _normalizar_token(tok),
+                _normalizar_token(cand)).ratio()
+            if razao > melhor:
+                par, melhor = cand, razao
+        # limiar 0,75: "ruppers"×"huppers" (0,86) é TYPO e devolve;
+        # "produto"×"bruto" (0,67) é reescrita total — não é substituição
+        # (o guardião da Onda 1 fixa esse lado; o do D6 fixa o outro)
+        if par is not None and melhor >= 0.75:
+            saida.append(_com_a_caixa_de(par, tok))   # a palavra do dono
+            orfaos.remove(par)
+        # senão: acréscimo puro → cai fora (o contrato antigo)
+    sobrou = " ".join(saida)
     return sobrou or nome
 
 
+def _valores_criveis(precos) -> set:
+    """ERRATA §13.5: o universo de valores que uma dica PODE citar —
+    cada preço real e as somas de 2 e 3 deles (a dica cita 2-3
+    produtos: "almoço por menos de R$ 12" é a soma arredondada)."""
+    from decimal import Decimal
+    from itertools import combinations
+    base = []
+    for p in precos or ():
+        try:
+            base.append(Decimal(str(p).replace("R$", "").strip()
+                                .replace(",", ".")))
+        except Exception:
+            continue
+    valores = set(base)
+    for n in (2, 3):
+        for combo in combinations(base, n):
+            valores.add(sum(combo))
+    return valores
+
+
 def dica_alucinada(dica: str, nomes: list[str],
-                   marcas_conhecidas=()) -> bool:
+                   marcas_conhecidas=(), precos=None) -> bool:
     """OS F11.5 #12: checagem anti-alucinação do TEXTO da dica — a dica não
-    pode afirmar número de dinheiro/desconto (preço é papel do encarte, nunca
-    da dica) nem citar uma MARCA conhecida que não está nos itens da oferta."""
+    pode afirmar desconto (% é papel do encarte) nem citar MARCA conhecida
+    que não está nos itens. ERRATA §13.5: com ``precos`` fornecidos, número
+    de dinheiro é permitido SE bater um preço real ou a soma de 2-3 deles
+    (tolerância: arredondar para CIMA ao inteiro — "menos de R$ 12" para a
+    soma 11,39); sem ``precos``, dinheiro segue proibido como antes."""
     import re as _re
+    from decimal import Decimal
+    from math import ceil
     d = (dica or "").lower()
-    if _re.search(r"(r\$\s?\d|\d+\s?%)", d):
+    if _re.search(r"\d+\s?%", d):
         return True
+    dinheiro = _re.findall(r"r\$\s?(\d+(?:[.,]\d{1,2})?)", d)
+    if dinheiro:
+        criveis = _valores_criveis(precos)
+        if not criveis:
+            return True                  # sem lista real, R$ é invenção
+        for bruto in dinheiro:
+            v = Decimal(bruto.replace(",", "."))
+            ok = any(s == v or (s <= v <= Decimal(ceil(s)))
+                     for s in criveis)
+            if not ok:
+                return True              # número que a página não soma
     toks_dica = {_normalizar_token(t) for t in (dica or "").split()}
     toks_itens = {_normalizar_token(t)
                   for nome in nomes for t in str(nome).split()}
@@ -338,11 +421,20 @@ def limite_caracteres(larg_mm: float, alt_mm: float,
 
 # FASE 3 (passo 45, R-088): o prompt é EDITÁVEL na aba IA (chave
 # ``ia.prompt_dica``); {limite} é trocado pelo teto da região na hora.
+# ERRATA §13.5 da SEPTIMUSDECIMUS — o que "dica" quer dizer (o dono,
+# duas vezes): "dica dos itens que tem ali pra você fazer um preparo,
+# alguma história". Nunca chamada de compra genérica. O prompt exige
+# citar 2-3 produtos DA PÁGINA; os preços fornecidos podem aparecer
+# (a guarda dura confere número por número contra a lista real).
 PROMPT_DICA_PADRAO = (
     "Você escreve o quadro “Fica a Dica” de um encarte de "
-    "supermercado brasileiro: UMA dica curta, receita rápida ou "
-    "curiosidade simpática usando produtos da oferta. Tom leve, "
-    "direto, sem emoji, sem hashtag. Devolva SOMENTE JSON: "
+    "supermercado brasileiro: UMA sugestão de uso citando 2 ou 3 "
+    "produtos DA LISTA (um preparo, uma combinação, uma história "
+    "curta). Exemplo do formato: “sardinha em lata + molho de tomate "
+    "+ macarrão: almoço de domingo por menos de R$ 12”. Só cite "
+    "produtos que estão na lista; se citar valor, use SOMENTE os "
+    "preços listados ou a soma deles — nunca invente número. Tom "
+    "leve, direto, sem emoji, sem hashtag. Devolva SOMENTE JSON: "
     '{"dica": "texto com NO MÁXIMO {limite} caracteres"}')
 
 
@@ -379,22 +471,31 @@ ESTILOS_DICA: dict[str, str] = {
 def gerar_dica(nomes: list[str], limite_chars: int,
                motor: MotorIA | None, *, estilo: str | None = None,
                evitar: list[str] | None = None,
-               marcas_conhecidas: list[str] | None = None) -> str | None:
+               marcas_conhecidas: list[str] | None = None,
+               precos: list | None = None) -> str | None:
     """Gera a dica/receita/curiosidade a partir dos itens da oferta.
 
     `estilo` (R-083: receita·economia·curiosidade) muda o tom; `evitar` (R-083
     memória) lista dicas recentes para não repetir. None = sem motor/sem resposta
-    útil (quem chama avisa — I2; a dica é assistência). O limite vem da REGIÃO."""
+    útil (quem chama avisa — I2; a dica é assistência). O limite vem da REGIÃO.
+    ERRATA §13.5: ``precos`` pareado com ``nomes`` — o modelo vê "nome · preço"
+    e pode citar valores REAIS (a guarda dura confere cada número)."""
     if motor is None or not motor.disponivel() or not nomes:
         return None
     instrucao = ESTILOS_DICA.get(estilo or "", "")
     if evitar:
         instrucao += (" NÃO repita nem se pareça com estas dicas recentes: "
                       + " | ".join(evitar[:5]))
+    if precos and len(precos) == len(nomes):
+        itens_txt = "; ".join(
+            f"{n} (R$ {p})" if p else str(n)
+            for n, p in zip(nomes, precos))
+    else:
+        itens_txt = "; ".join(nomes)
     try:
         resposta = motor.chat([
             {"role": "system", "content": prompt_dica(limite_chars)},
-            {"role": "user", "content": "Itens da oferta: " + "; ".join(nomes)
+            {"role": "user", "content": "Itens da oferta: " + itens_txt
              + (f"\n{instrucao}" if instrucao else "")},
         ], formato_json=True, max_tokens=400)
         dica = str(json.loads(resposta).get("dica") or "").strip()
@@ -412,7 +513,8 @@ def gerar_dica(nomes: list[str], limite_chars: int,
             return None
         # OS F11.5 #12: anti-alucinação — dica com preço/% inventado ou
         # marca conhecida que NÃO está na oferta é rejeitada (guarda dura)
-        if dica_alucinada(dica, nomes, marcas_conhecidas or ()):
+        if dica_alucinada(dica, nomes, marcas_conhecidas or (),
+                          precos=precos):
             return None
         return dica[:limite_chars]        # o teto da região é lei
     except (IAIndisponivel, json.JSONDecodeError, TypeError, AttributeError):

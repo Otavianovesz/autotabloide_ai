@@ -172,6 +172,15 @@ class Shell(QMainWindow):
             self.adicionar_tela(chave, self._fabricas.pop(chave)())
         if chave not in self._telas:
             return
+        # F13/B2b (L-10): a paleta do Ctrl+K é filha do SHELL, não da tela —
+        # sem isto ela ficava desenhada por cima de 3 telas seguidas
+        paleta = getattr(self, "_paleta_busca", None)
+        if paleta is not None and paleta.isVisible():
+            paleta.hide()
+        # F13/B2 (L-01): rede de segurança da navegação — véu de diálogo e
+        # foto de crossfade órfãos morrem na fronteira da troca de tela
+        from app.qt.design.animacoes import varrer_veus_orfaos
+        varrer_veus_orfaos(self)
         # FASE 1 (passo 38): crossfade suave — nunca "pisca"; com
         # "Reduzir animações" a troca é seca como sempre foi
         from app.qt.design.animacoes import crossfade

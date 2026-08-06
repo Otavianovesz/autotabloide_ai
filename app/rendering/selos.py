@@ -81,9 +81,20 @@ def _badge_validade(tam: int, fonte_path) -> Image.Image:
     return img
 
 
+# F13-TER/V4: os assets vetoriais do PROJETO (o +18 redesenhado —
+# círculo de proibição + "18" forte + tarja; e o Qualidade Belo Brasil)
+# renderizados a 512 px. O badge desenhado vira o fallback (I2).
+_ASSETS = Path(__file__).parent / "assets" / "selos"
+_ASSET_POR_TIPO = {"MAIS18": "mais18.png", "QUALIDADE": "qualidade.png"}
+
+
 def render_selo(selo: Selo, tam: int, fonte_path=None) -> Image.Image:
     if selo.imagem_path and Path(selo.imagem_path).exists():
         return Image.open(selo.imagem_path).convert("RGBA").resize((tam, tam))
+    asset = _ASSETS / _ASSET_POR_TIPO.get(selo.tipo, "")
+    if selo.tipo in _ASSET_POR_TIPO and asset.exists():
+        return Image.open(asset).convert("RGBA").resize(
+            (tam, tam), Image.LANCZOS)
     if selo.tipo == "MAIS18":
         return _badge_mais18(tam, fonte_path)
     if selo.tipo == "QUALIDADE":
@@ -110,14 +121,20 @@ def _posicao(canto: Canto, x, y, w, h, tam, margem, i) -> tuple[int, int]:
 
 
 def desenhar_selos(base: Image.Image, anchor_px, selos: list[Selo], fonte_path=None) -> None:
-    """Desenha os selos nos cantos do retângulo âncora (px)."""
+    """Desenha os selos nos cantos do retângulo âncora (px).
+
+    F13-TER/V4: o dono — "o símbolo ficou minúsculo e quase não dá pra
+    ver". O tamanho é RELATIVO à célula (24% do menor lado, piso 32 px)
+    e o +18 é DESTAQUE (1,3×): em página de bebida ele é aviso legal,
+    não enfeite."""
     x, y, w, h = anchor_px
-    tam = max(24, round(min(w, h) * 0.20))
-    margem = max(3, round(tam * 0.14))
+    tam_base = max(32, round(min(w, h) * 0.24))
+    margem = max(3, round(tam_base * 0.14))
     por_canto: dict[Canto, list[Selo]] = defaultdict(list)
     for s in selos:
         por_canto[s.canto].append(s)
     for canto, lista in por_canto.items():
         for i, s in enumerate(lista):
+            tam = round(tam_base * 1.3) if s.tipo == "MAIS18" else tam_base
             img = render_selo(s, tam, fonte_path)
             base.paste(img, _posicao(canto, x, y, w, h, tam, margem, i), img)

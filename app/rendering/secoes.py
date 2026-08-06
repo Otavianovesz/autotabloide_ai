@@ -29,8 +29,11 @@ MARGEM_MM = 1.0                 # folga do contorno (RG-31: 1.6 invadia a
 RAIO_MM = 2.5
 TITULO_PT = 11.0
 
-# RG-31: os ESTILOS de seção ("a borda atual: feia") — modo global na Config
-ESTILOS_SECAO = ("CONTORNO", "SO_TITULO", "PILL", "SEM_DESENHO")
+# RG-31: os ESTILOS de seção ("a borda atual: feia") — modo global na Config.
+# F13-QUATER/A4: + JORNAL (versalete + fio grosso acima/fino abaixo, SEM
+# retângulo colorido — o estilo do broadsheet; o fluxo do Jornal o liga
+# POR PÁGINA via Pagina.estilo_secoes, matando o 2º motor de cabeçalho)
+ESTILOS_SECAO = ("CONTORNO", "SO_TITULO", "PILL", "SEM_DESENHO", "JORNAL")
 ESTILO_PADRAO = "CONTORNO"
 
 # paleta fixa p/ "cor por categoria" (determinística por nome — a MESMA
@@ -225,7 +228,8 @@ def desenhar_secoes(base, secoes: list[Secao], dpi: int, *,
                     espessura_mm: float = ESPESSURA_PADRAO_MM,
                     fontes_dir=None,
                     estilo: str = ESTILO_PADRAO,
-                    cores_por_categoria: bool = False) -> None:
+                    cores_por_categoria: bool = False,
+                    caixas_pagina_mm: list | None = None) -> None:
     """Desenha as seções NA IMAGEM (antes do conteúdo), no ESTILO escolhido.
 
     RG-31 — os estilos de verdade:
@@ -261,9 +265,22 @@ def desenhar_secoes(base, secoes: list[Secao], dpi: int, *,
         r, g, b = (int(c[i:i + 2], 16) for i in (1, 3, 5))
         return (r, g, b, 42)               # bem suave — fundo, não tinta
 
+    # RODADA-125: no ESTÁTICO (caixas medidas) cada categoria fala UMA
+    # vez — o cabeçalho vai ao MAIOR run dela; fragmentos ficam mudos
+    # (a página do dono tinha "BEBIDAS" 2× por fragmentação)
+    melhor_por_cat: dict = {}
+    if caixas_pagina_mm:
+        for sec in secoes:
+            atual = melhor_por_cat.get(sec.categoria)
+            if atual is None or sec.n_celulas > atual.n_celulas:
+                melhor_por_cat[sec.categoria] = sec
+
     for secao in secoes:
         cor_secao = (cor_da_categoria(secao.categoria)
                      if cores_por_categoria else cor)
+        if (estilo == "JORNAL" and caixas_pagina_mm
+                and melhor_por_cat.get(secao.categoria) is not secao):
+            continue
         # sub-retângulos por linha (px), com clamp às bordas da folha
         rects_px = []
         for r in secao.retangulos:
@@ -276,6 +293,80 @@ def desenhar_secoes(base, secoes: list[Secao], dpi: int, *,
             rects_px.append((x0, y0, x1, y1))
         if not rects_px:
             continue
+        if estilo == "JORNAL":
+            # F13-QUATER/A4+J4: o cabeçalho FORTE do broadsheet — fio
+            # GROSSO + versalete grande + fio fino, ACIMA do bloco (o
+            # fluxo reserva a faixa do cabeçalho). Sem retângulo nem
+            # etiqueta preenchida. RG-49 NÃO se aplica: seção de 1 item
+            # (a Pet inline) PRECISA do cabeçalho — ele é o organizador
+            # da leitura, não uma moldura.
+            # O fallback "Outros" (F8.2) NÃO desenha neste estilo: a
+            # capa (hero/chamadas sem categoria) não é seção — um
+            # "OUTROS" sobre a manchete era mentira de leitura. Nos
+            # demais estilos o Outros segue valendo.
+            if secao.categoria == "Outros":
+                continue
+            x0, y0, x1, _y1 = rects_px[0]
+            titulo = (secao.titulo or secao.categoria).upper()
+            cor_secao = "#262019"          # TINTA de jornal — o estilo
+            # é completo (nunca o azul da Config, alienígena no papel)
+            # QUINQUE/J12: o cabeçalho inteiro cabe em ≤28px — 5 seções
+            # a 60px comiam 27% da faixa
+            f_cab = fonte_segura(fontes_dir, "Archivo-Medium.ttf",
+                                 round(pt_para_px(11.0, dpi)))
+            cx_t = draw.textbbox((0, 0), titulo, font=f_cab)
+            alt_t = cx_t[3] - cx_t[1]
+            grosso = max(3, esp_px * 3)
+            y_fio = y0 - alt_t - grosso - round(mm_para_px(1.2, dpi))
+            # RODADA-125 Onda 2 (a seção PRÓPRIA do Jornal, medida): no
+            # estático não há faixa reservada — o cabeçalho só desenha
+            # se a FOLGA real acima do bloco o comporta (a fileira de
+            # cima é vizinha; escrever por cima dela era o defeito das
+            # fotos do dono). Sem folga: NADA — ausente é melhor que
+            # quebrado. Compacto: fonte 9pt quando a folga é justa.
+            if caixas_pagina_mm:
+                r0 = secao.retangulos[0]
+                base_acima, larg_acima = 0.0, 0.0
+                for (_cx0, _cy0, _cx1, cy1) in caixas_pagina_mm:
+                    if (cy1 <= r0.y_mm + 0.5
+                            and _cx0 < r0.x_mm + r0.larg_mm
+                            and _cx1 > r0.x_mm
+                            and cy1 > base_acima):
+                        base_acima = cy1
+                        larg_acima = _cx1 - _cx0
+                folga_px = round(mm_para_px(
+                    max(0.0, r0.y_mm - base_acima), dpi))
+                # vizinho LARGO acima = território editorial (manchete/
+                # subtítulo, baselines que transbordam a caixa): o
+                # respiro exigido DOBRA — melhor calar que riscar texto
+                if larg_acima > r0.larg_mm * 0.6:
+                    folga_px -= round(mm_para_px(4.0, dpi))
+                # o respiro extra cobre baselines que TRANSBORDAM a
+                # caixa vizinha (o subtítulo da manchete na prova real)
+                precisa = alt_t + grosso + max(1, esp_px) + \
+                    round(mm_para_px(3.2, dpi))
+                if folga_px < precisa:
+                    f_cab = fonte_segura(fontes_dir,
+                                         "Archivo-Medium.ttf",
+                                         round(pt_para_px(9.0, dpi)))
+                    cx_t = draw.textbbox((0, 0), titulo, font=f_cab)
+                    alt_t = cx_t[3] - cx_t[1]
+                    grosso = max(2, esp_px * 2)
+                    precisa = alt_t + grosso + max(1, esp_px) + \
+                        round(mm_para_px(2.2, dpi))
+                if folga_px < precisa:
+                    continue               # não cabe: não desenha
+                y_fio = max(y0 - precisa,
+                            y0 - folga_px + round(mm_para_px(0.4, dpi)))
+            draw.rectangle((x0, y_fio, x1, y_fio + grosso),
+                           fill=cor_secao)
+            y_txt = y_fio + grosso + round(mm_para_px(0.4, dpi))
+            draw.text((x0, y_txt - cx_t[1]), titulo, font=f_cab,
+                      fill=cor_secao)
+            y_fino = y_txt + alt_t + round(mm_para_px(0.4, dpi))
+            draw.rectangle((x0, y_fino, x1, y_fino + max(1, esp_px)),
+                           fill=cor_secao)
+            continue                       # sem retângulo, sem etiqueta
         if estilo == "CONTORNO":
             # RG-49: UM contorno de união (sem divisória entre linhas
             # irmãs). Run de EXATAMENTE 1 célula NÃO ganha caixa — só o

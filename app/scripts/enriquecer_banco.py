@@ -52,14 +52,18 @@ def enriquecer_banco(motor=None, *, log=print) -> dict:
                         f"{', '.join(enr.tokens_perdidos)}): {p.nome_bruto[:40]}")
                     continue
                 antes = p.nome_sanitizado   # antes do editar (que muta o ORM)
+                # F13/E5 (CC-01): a categoria calculada era JOGADA FORA
+                # quando o nome já estava certo — o `if` do nome governava
+                # o dict inteiro. Agora a categoria aplica SEMPRE que há
+                # palpite e o humano não mandou (independente do nome).
+                if (p.categoria_origem != "humano" and enr.categoria
+                        and (p.categoria is None
+                             or p.categoria_origem != "humano")):
+                    repo.editar(p.id, categoria=enr.categoria,
+                                categoria_origem="ia")
                 if enr.nome_sanitizado != antes or enr.mais18 != bool(p.selo_mais18):
-                    campos = {"nome_sanitizado": enr.nome_sanitizado,
-                              "selo_mais18": enr.mais18}
-                    # F8.1: categoria de HUMANO nunca é sobrescrita pela IA
-                    if p.categoria_origem != "humano" and enr.categoria:
-                        campos["categoria"] = enr.categoria
-                        campos["categoria_origem"] = "ia"
-                    repo.editar(p.id, **campos)
+                    repo.editar(p.id, nome_sanitizado=enr.nome_sanitizado,
+                                selo_mais18=enr.mais18)
                     atualizados += 1
                     log(f"[{i:>3}/{len(produtos)}] {antes[:34]:<34} → {enr.nome_sanitizado[:40]}")
                 else:
@@ -84,18 +88,35 @@ def categorizar_acervo(motor=None, *, log=print) -> dict:
     from app.core.modo import exigir_escrita
     exigir_escrita()                     # R-131: escreve categoria em lote
     motor = motor or ClienteOpenAICompat()
-    if not motor.disponivel():
-        log("LM Studio não acessível — nada a fazer (categorias como estão).")
-        return {"categorizados": 0, "sem_palpite": 0, "erros": 0}
-
+    vivo = motor.disponivel()
+    # F13/D4 (C-03 morto): o lote NÃO exige mais o LM Studio — o 1º degrau
+    # é o VIZINHO mais parecido do próprio acervo (embeddings quando o LM
+    # responde; fuzzy puro, 100% local, sem ele). A IA vira 2º degrau,
+    # só para quem ficou sem palpite e só com o motor vivo.
     db = Database().init()
-    categorizados = sem_palpite = erros = 0
+    categorizados = sem_palpite = erros = por_vizinho = 0
     try:
         with db.Session() as session:
+            from app.ai.conciliacao import Conciliador
+            conc = Conciliador(session, motor=motor if vivo else None,
+                               embedder=motor if vivo else None)
             repo = ProdutoRepositorio(session)
             alvo = [p for p in repo.listar(limit=10_000)
                     if p.categoria_id is None]
             for i, p in enumerate(alvo, 1):
+                cat, score = conc.categoria_do_vizinho(
+                    p.nome_sanitizado or p.nome_bruto)
+                if cat:
+                    repo.editar(p.id, categoria=cat,
+                                categoria_origem="vizinho")
+                    categorizados += 1
+                    por_vizinho += 1
+                    log(f"[{i:>3}/{len(alvo)}] {p.nome_sanitizado[:30]:<30} "
+                        f"→ {cat} (vizinho, {score:.0f})")
+                    continue
+                if not vivo:
+                    sem_palpite += 1     # sem LM: o vizinho era o teto
+                    continue
                 try:
                     enr = enriquecer(p.nome_bruto, motor)
                 except Exception as exc:
@@ -115,7 +136,7 @@ def categorizar_acervo(motor=None, *, log=print) -> dict:
     finally:
         db.engine.dispose()
     resumo = {"categorizados": categorizados, "sem_palpite": sem_palpite,
-              "erros": erros}
+              "erros": erros, "por_vizinho": por_vizinho}
     log(f"\nPronto: {resumo}")
     return resumo
 

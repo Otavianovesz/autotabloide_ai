@@ -68,8 +68,15 @@ def _tem_tinta(recorte: Image.Image, fundo=(255, 255, 255), tol=30) -> int:
 
 
 def _foto(tmp: Path, cor="orange") -> str:
+    # F13/D10: foto NÍTIDA (xadrez) — cor chapada tem Laplaciano zero e o
+    # avaliador (agora no pré-voo, certo!) a marcaria como RUIM
     p = tmp / "foto.png"
-    Image.new("RGB", (400, 400), cor).save(p)
+    img = Image.new("RGB", (600, 600), cor)
+    branco = Image.new("RGB", (16, 16), "white")
+    for x in range(0, 600, 32):
+        for y in range(0, 600, 32):
+            img.paste(branco, (x, y))
+    img.save(p)
     return str(p)
 
 
@@ -105,8 +112,10 @@ def test_desconto_region_desenha_e_some_por_conteudo():
     img_sem = compor_pagina(lay, lay.paginas[0], sem)
     assert _tem_tinta(_recorte(img_sem, reg, lay.dpi)) == 0    # nada sem "de"
 
-    # e o texto exato bate com o cálculo
-    assert texto_composto_legal(reg, com) == "-34%"
+    # e o texto exato bate com o cálculo (QUARTUSDECIMUS/Q4, rastro:
+    # "-34%" virou "34% OFF" — DECIDIDO pelo dono em 28/07 ("deixa 20%
+    # off mesmo") ao ver as duas opções renderizadas; vale em toda porta)
+    assert texto_composto_legal(reg, com) == "34% OFF"
     assert texto_composto_legal(reg, sem) == ""
 
 
@@ -171,8 +180,11 @@ def test_cartaz_relampago_prevoo_avisa_mas_exporta():
         assert "validade" in texto           # RG-58: validade nunca calada
 
 
-def test_cartaz_relampago_carimba_rascunho():
-    """Decisão travada: relâmpago é sempre RASCUNHO (sem projeto aprovado)."""
+def test_cartaz_relampago_sai_limpo_e_rascunho_e_opcao():
+    """VIRADO na F13/D8 (a trava #1 manda sobre a decisão da F11 — a
+    forma antiga, 'relâmpago é sempre RASCUNHO', vive no git log): o
+    relâmpago sai LIMPO por padrão; ``rascunho=True`` explícito
+    carimba."""
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         prod = {"nome": "Item", "preco": "5,00", "preco_de": "9,00",
@@ -180,15 +192,18 @@ def test_cartaz_relampago_carimba_rascunho():
         lay = cartaz.layout_cartaz_exemplo()
         dados = servico.dados_cartaz_de_produto(prod)
         limpo = compor_pagina(lay, lay.paginas[0], dados)
-        saida, _ = servico.cartaz_relampago(prod, str(tmp / "c.pdf"), layout=lay)
-        # a página do PDF NÃO é a composição limpa — a marca d'água entrou
-        pagina = PdfReader(str(saida)).pages[0]
-        # comparar por bytes da imagem embutida vs a limpa exportada à parte
         from app.rendering.export import exportar_pdf
         exportar_pdf(limpo, str(tmp / "limpo.pdf"), lay.dpi)
-        a = pagina.images[0].data
         b = PdfReader(str(tmp / "limpo.pdf")).pages[0].images[0].data
-        assert a != b               # rascunho carimbou (conteúdo diferente)
+
+        saida, _ = servico.cartaz_relampago(prod, str(tmp / "c.pdf"), layout=lay)
+        a = PdfReader(str(saida)).pages[0].images[0].data
+        assert a == b               # o PADRÃO agora é LIMPO (trava #1)
+
+        saida2, _ = servico.cartaz_relampago(prod, str(tmp / "c2.pdf"),
+                                             layout=lay, rascunho=True)
+        c = PdfReader(str(saida2)).pages[0].images[0].data
+        assert c != b               # a opção explícita ainda carimba
 
 
 # --- R-113: kit ponta-de-gôndola coerente ------------------------------------------
@@ -209,7 +224,8 @@ def test_kit_paginas_tamanhos_e_coerencia():
         # é byte-idêntica à composição manual com o mesmo DadosProduto
         dados = servico.dados_cartaz_de_produto(prod)
         lay = cartaz.layout_cartaz_a5()
-        esperado, _ = servico._compor_cartaz(lay, dados, rascunho=True)
+        # F13/D8: o kit sai LIMPO por padrão — a referência acompanha
+        esperado, _ = servico._compor_cartaz(lay, dados, rascunho=False)
         from app.rendering.export import exportar_pdf
         exportar_pdf(esperado, str(tmp / "esp.pdf"), lay.dpi)
         assert (r.pages[0].images[0].data

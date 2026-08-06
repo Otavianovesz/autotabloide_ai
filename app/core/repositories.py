@@ -20,6 +20,13 @@ from app.core.models import Categoria, Config, Produto, ProdutoAlias
 from app.core.sanitize import REGRAS_PADRAO, RegrasSanitizacao, ResultadoSanitizacao, sanitizar
 
 
+def _alias_limpo(texto: str) -> str:
+    """ADENDO 30/07: tira os marcadores de lista que o OCR/colagem
+    trazem na frente do nome ("• ", "▶ ", "> ") — enfeite não é
+    identidade; o match exato por alias compara os dois lados limpos."""
+    return (texto or "").strip().lstrip("•·▶>*–- ").strip()
+
+
 def _para_decimal(valor: Decimal | str | float | None) -> Decimal | None:
     """Converte preço para Decimal com segurança (aceita '5,95' ou '5.95')."""
     if valor is None:
@@ -66,7 +73,22 @@ class ProdutoRepositorio:
             .join(ProdutoAlias)
             .where(ProdutoAlias.alias_raw == alias_raw)
         )
-        return self.session.execute(stmt).scalars().first()
+        achado = self.session.execute(stmt).scalars().first()
+        if achado is not None:
+            return achado
+        # ADENDO 30/07: aliases herdados do OCR antigo carregam
+        # marcadores ("• FIGADO..."), e a consulta de hoje vem limpa
+        # (ou vice-versa) — o match exato compara os DOIS lados limpos
+        limpo = _alias_limpo(alias_raw)
+        pares = self.session.execute(
+            select(ProdutoAlias.produto_id, ProdutoAlias.alias_raw)
+        ).all()
+        for pid, raw in pares:
+            if _alias_limpo(raw) == limpo:
+                p = self.session.get(Produto, pid)
+                if p is not None and p.excluido_em is None:
+                    return p
+        return None
 
     def listar(self, limit: int = 100, offset: int = 0) -> list[Produto]:
         stmt = (
@@ -113,6 +135,10 @@ class ProdutoRepositorio:
         return cat
 
     def _garantir_alias(self, produto_id: int, alias_raw: str) -> None:
+        # ADENDO 30/07: o alias nasce LIMPO de marcadores de lista do
+        # OCR ("• ", "▶ ") — enfeite gravado no cru inutilizava o
+        # match exato das importações seguintes
+        alias_raw = _alias_limpo(alias_raw) or alias_raw
         stmt = select(ProdutoAlias).where(
             ProdutoAlias.produto_id == produto_id,
             ProdutoAlias.alias_raw == alias_raw,
@@ -176,11 +202,71 @@ class ProdutoRepositorio:
         self.session.flush()
         return produto
 
-    def excluir(self, produto_id: int) -> None:
-        produto = self.get(produto_id)
-        if produto is not None:
-            self.session.delete(produto)
+    # F13/B10 (D-07): o hard-delete público `excluir` foi REMOVIDO — zero
+    # chamadores (nem produção, nem teste). A exclusão oficial de produto
+    # é a lixeira (`excluir_suave("produto", id)`, 30 dias, reversível).
+
+    def definir_familia(self, produto_ids: list[int],
+                        familia_id: int | None) -> None:
+        """Rodada JM (B4): liga (ou desliga, com None) os produtos à
+        família — por id, nunca por posição (I1)."""
+        for pid in produto_ids:
+            produto = self.get(pid)
+            if produto is not None:
+                produto.familia_id = familia_id
+        self.session.flush()
+
+
+# ==============================================================================
+# FAMÍLIA DE PRODUTOS (Rodada JM, B4)
+# ==============================================================================
+
+
+class FamiliaRepositorio:
+    """A família de sabores ("Sardinha Coqueiro 125g") — cada membro é
+    um produto completo; a integridade da FK solta é DESTE serviço."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def obter_ou_criar(self, nome: str) -> int:
+        from app.core.models import FamiliaProduto
+        nome = (nome or "").strip()
+        stmt = select(FamiliaProduto).where(FamiliaProduto.nome == nome)
+        fam = self.session.execute(stmt).scalar_one_or_none()
+        if fam is None:
+            fam = FamiliaProduto(nome=nome)
+            self.session.add(fam)
             self.session.flush()
+        return fam.id
+
+    def membros(self, familia_id: int) -> list:
+        """Os produtos VIVOS da família (a lixeira não aparece — CI-01),
+        ordenados por id (identidade estável)."""
+        from app.core.models import Produto
+        stmt = (select(Produto)
+                .where(Produto.familia_id == familia_id,
+                       Produto.excluido_em.is_(None))
+                .order_by(Produto.id))
+        return list(self.session.execute(stmt).scalars())
+
+    def nome_de(self, familia_id: int) -> str | None:
+        from app.core.models import FamiliaProduto
+        fam = self.session.get(FamiliaProduto, familia_id)
+        return fam.nome if fam is not None else None
+
+    def dissolver(self, familia_id: int) -> None:
+        """Zera o vínculo dos membros e remove a família (reversível só
+        religando — a família sem membros não significa nada)."""
+        from app.core.models import FamiliaProduto, Produto
+        for p in self.session.execute(
+                select(Produto).where(
+                    Produto.familia_id == familia_id)).scalars():
+            p.familia_id = None
+        fam = self.session.get(FamiliaProduto, familia_id)
+        if fam is not None:
+            self.session.delete(fam)
+        self.session.flush()
 
 
 # ==============================================================================
@@ -227,6 +313,12 @@ def regras_de_config(session: Session) -> RegrasSanitizacao:
     if isinstance(glossario, dict) and glossario:
         regras = replace(regras, glossario_siglas=tuple(
             (str(k), str(v)) for k, v in glossario.items() if k and v))
+    # Rodada JM (B1.5): correções de grafia do dono ("fugini" → "fugini"
+    # do jeito certo da marca dele) — somadas ao vocabulário de mercado
+    ortografia = cfg.get("sanitizacao.ortografia")
+    if isinstance(ortografia, dict) and ortografia:
+        regras = replace(regras, ortografia=tuple(
+            (str(k), str(v)) for k, v in ortografia.items() if k and v))
     # FASE 3 (passo 51): palavras que ficam minúsculas no meio do nome
     minusculas = cfg.get("sanitizacao.palavras_minusculas")
     if isinstance(minusculas, list) and minusculas:

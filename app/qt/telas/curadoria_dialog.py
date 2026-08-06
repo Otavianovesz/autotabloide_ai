@@ -15,6 +15,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -37,7 +38,16 @@ _MINIATURA = 148
 class CuradoriaDialog(QDialog):
     def __init__(self, nome_produto: str, candidatos: list[str], parent=None,
                  *, nome_editavel: bool = True,
-                 tokens_perdidos: list[str] | None = None):
+                 tokens_perdidos: list[str] | None = None,
+                 possivel_composto: bool = False,
+                 componentes: list[str] | None = None,
+                 componentes_da_ia: bool = False,
+                 mais18: bool = False,
+                 sabores: list[str] | None = None,
+                 nome_familia_sugerido: str = "",
+                 marcas_detectadas: list[str] | None = None,
+                 contexto: str = "",
+                 posicao: tuple[int, int] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Escolher imagem")
         self.escolha: tuple[str, str | None] = ("nenhuma", None)
@@ -70,6 +80,86 @@ class CuradoriaDialog(QDialog):
             self.aviso_tokens.setStyleSheet(f"color: {tk.ALERTA};")
         else:
             self.aviso_tokens.hide()
+
+        # QUINTUSDECIMUS/J13 — a TERCEIRA pergunta: a linha com mais de
+        # um item pergunta O QUE ela é. A diferença entre "2 produtos" e
+        # "2 sabores" é uma pergunta, não um algoritmo — o dono decide
+        # com um rádio. (B3.2 evoluída; `chk_composto` agora É o rádio
+        # "2 produtos" — mesma API isChecked/setChecked.)
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
+        comps = list(componentes or [])
+        sabs = list(sabores or [])
+        tem_multi = possivel_composto or len(sabs) >= 2
+        self._aviso_composto = QLabel(
+            "Esta linha parece ter MAIS DE UM item:")
+        self._aviso_composto.setProperty("papel", "legenda")
+        self.chk_composto = QRadioButton(
+            "São 2 produtos diferentes (criar os dois e compor)")
+        self.chk_composto.setToolTip(
+            "Cada um vira um produto próprio no acervo e a célula "
+            "mostra os dois juntos — separável a qualquer momento")
+        self.comp_1 = QLineEdit(comps[0] if len(comps) > 0 else "")
+        self.comp_2 = QLineEdit(comps[1] if len(comps) > 1 else "")
+        for campo in (self.comp_1, self.comp_2):
+            campo.setPlaceholderText("nome do produto…")
+        self.rb_sabores = QRadioButton(
+            "São SABORES do mesmo produto (criar a família)")
+        self.rb_sabores.setToolTip(
+            "Um produto por sabor, ligados à família — a célula mostra "
+            "o leque; a foto escolhida vai ao 1º sabor")
+        self.nome_familia = QLineEdit(nome_familia_sugerido)
+        self.nome_familia.setPlaceholderText("nome da família…")
+        self.chks_sabores = [QCheckBox(s) for s in sabs]
+        for c in self.chks_sabores:
+            c.setChecked(True)
+        # RODADA-125 v2 (o Biscoito): a 4ª resposta — MARCAS × SABORES.
+        # Antes o cartesiano era código morto: exigia "2 produtos" E
+        # "sabores" marcados juntos, mas os rádios são exclusivos.
+        self._marcas_detectadas = list(marcas_detectadas or [])
+        n_cart = len(self._marcas_detectadas) * len(sabs)
+        self.rb_cartesiano = QRadioButton(
+            f"São {len(self._marcas_detectadas)} MARCAS × {len(sabs)} "
+            f"SABORES (criar os {n_cart}, todos da mesma família)"
+            if n_cart else "São MARCAS × SABORES")
+        self.rb_cartesiano.setToolTip(
+            "Um produto por combinação marca+sabor "
+            f"({', '.join(self._marcas_detectadas)}) — quem já existe "
+            "no acervo é casado, nunca recriado")
+        self.rb_um = QRadioButton("É um produto só (o nome é assim mesmo)")
+        self._grupo_multi = QButtonGroup(self)
+        for rb in (self.chk_composto, self.rb_sabores,
+                   self.rb_cartesiano, self.rb_um):
+            self._grupo_multi.addButton(rb)
+        if not (len(self._marcas_detectadas) >= 2 and len(sabs) >= 2):
+            self.rb_cartesiano.hide()
+        if tem_multi:
+            # a IA/gesto que JÁ decidiu pré-marca "2 produtos"; sabores
+            # detectados sem decisão pré-marcam nada além do neutro
+            if componentes_da_ia:
+                self.chk_composto.setChecked(True)
+            else:
+                self.rb_um.setChecked(True)
+            for rb in (self.chk_composto, self.rb_sabores,
+                       self.rb_cartesiano, self.rb_um):
+                rb.toggled.connect(self._habilitar_multi)
+            if not sabs:
+                self.rb_sabores.hide()
+                self.nome_familia.hide()
+            self._habilitar_multi()
+        else:
+            for w in ([self._aviso_composto, self.chk_composto,
+                       self.comp_1, self.comp_2, self.rb_sabores,
+                       self.nome_familia, self.rb_cartesiano, self.rb_um]
+                      + self.chks_sabores):
+                w.hide()
+
+        # Rodada JM (B3.5): o +18 automático é VISÍVEL e editável (I2) —
+        # antes `proposta.mais18` viajava invisível até o banco
+        self.chk_mais18 = QCheckBox("+18 (bebida alcoólica)")
+        self.chk_mais18.setChecked(bool(mais18))
+        self.chk_mais18.setToolTip(
+            "Grava bebida alcoólica no produto — o selo +18 entra "
+            "sozinho em toda peça (decisão travada da casa)")
 
         # A3 (ORDEM_F5_8): re-busca com termo editável (o antídoto do caso
         # "Mococa → unhas de manicure")
@@ -158,16 +248,42 @@ class CuradoriaDialog(QDialog):
                                     "(restaurar/apagar)")
         self.btn_refinar.setEnabled(False)
         self.btn_refinar.clicked.connect(self._refinar_candidato)
+        # ESTÚDIO na curadoria (pedido do dono, 03/08): a "melhor versão
+        # de design" a um clique — antes só existia no Almoxarifado
+        self.btn_estudio = QPushButton(" Estúdio")
+        self.btn_estudio.setIcon(icone("lampada", tamanho=16))
+        self.btn_estudio.setToolTip(
+            "Foto → packshot de design: recorte + luz + sombra + "
+            "enquadramento (e o refino de IA, se o gerador estiver "
+            "ligado nas Configurações)")
+        self.btn_estudio.setEnabled(False)
+        self.btn_estudio.clicked.connect(self._estudio_candidato)
         self.usar = QPushButton(" Usar esta")
         self.usar.setIcon(icone("check_circulo", cor=t.ACENTO_TEXTO, tamanho=16))
         self.usar.setProperty("tipo", "primario")
         self.usar.setEnabled(False)
         self.usar.clicked.connect(self._usar)
+        # LUPA (pedido do dono, 02/08): conferir a GRAMATURA no rótulo
+        # exige ver a foto GRANDE — botão, tecla Espaço e botão direito
+        self.btn_lupa = QPushButton(" Ampliar")
+        self.btn_lupa.setIcon(icone("busca", tamanho=16))
+        self.btn_lupa.setToolTip("Vê a foto selecionada em tamanho real "
+                                 "— para conferir a gramatura no rótulo "
+                                 "(atalho: Espaço)")
+        self.btn_lupa.setEnabled(False)
+        self.btn_lupa.clicked.connect(self._ampliar)
+        from PySide6.QtGui import QKeySequence, QShortcut
+        atalho_lupa = QShortcut(QKeySequence(Qt.Key.Key_Space),
+                                self.lista, self._ampliar)
+        atalho_lupa.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.lista.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lista.customContextMenuRequested.connect(self._menu_lista)
 
         botoes = QHBoxLayout()
         botoes.setSpacing(t.ESP_2)
-        for b in (arquivo, colar, url, acervo, self.btn_ajustar,
-                  self.btn_refinar):
+        for b in (arquivo, colar, url, acervo, self.btn_lupa,
+                  self.btn_estudio, self.btn_ajustar, self.btn_refinar):
             botoes.addWidget(b)
         botoes.addStretch(1)
         botoes.addWidget(sem)
@@ -182,14 +298,49 @@ class CuradoriaDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(t.ESP_4, t.ESP_4, t.ESP_4, t.ESP_4)
         lay.setSpacing(t.ESP_2)
+        # QUINTUSDECIMUS/J23: o diálogo DIZ de onde veio e quantas
+        # faltam — numa sessão de 42 itens, o dono precisa do contexto
+        self._contexto = QLabel("")
+        self._contexto.setProperty("papel", "legenda")
+        self._contexto.setWordWrap(True)
+        partes_ctx = []
+        if contexto:
+            partes_ctx.append(f"Linha importada: “{contexto}”")
+        if posicao:
+            partes_ctx.append(f"item {posicao[0]} de {posicao[1]}")
+        if partes_ctx:
+            self._contexto.setText("  ·  ".join(partes_ctx))
+        else:
+            self._contexto.hide()
+
         lay.addWidget(titulo)
+        lay.addWidget(self._contexto)            # J23: contexto + n de N
         lay.addWidget(self.aviso_tokens)   # RG-20: aviso nominal da perda
+        lay.addWidget(self._aviso_composto)      # J13: a 3ª pergunta
+        lay.addWidget(self.chk_composto)
+        linha_comp = QHBoxLayout()
+        linha_comp.setSpacing(t.ESP_2)
+        linha_comp.addWidget(self.comp_1, 1)
+        linha_comp.addWidget(self.comp_2, 1)
+        lay.addLayout(linha_comp)
+        lay.addWidget(self.rb_sabores)
+        lay.addWidget(self.rb_cartesiano)        # v2: a 4ª resposta
+        linha_sab = QHBoxLayout()
+        linha_sab.setSpacing(t.ESP_2)
+        linha_sab.addWidget(self.nome_familia, 1)
+        for c in self.chks_sabores:
+            linha_sab.addWidget(c)
+        lay.addLayout(linha_sab)
+        lay.addWidget(self.rb_um)
+        lay.addWidget(self.chk_mais18)           # B3.5: +18 visível
         lay.addWidget(dica)
         lay.addLayout(caixa_busca)
         lay.addWidget(self.lista, 1)
         lay.addWidget(vazio, 1)
         lay.addLayout(botoes)
-        self.resize(720, 520)
+        # J23: o diálogo em que o dono escolhe 42 fotos seguidas merece
+        # espaço — miniaturas maiores, botões nunca cortados
+        self.resize(1040, 680)
 
         from app.qt.design.carregando import OverlayOcupado
         from app.qt.workers import GerenciadorTrabalhos
@@ -206,6 +357,58 @@ class CuradoriaDialog(QDialog):
 
         from app.qt.design.polimento import ordenar_tab
         ordenar_tab(self)               # FASE 1 (passo 66): Tab visual
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        from app.qt.design.polimento import clampar_a_tela
+        clampar_a_tela(self)            # L3: cabe em qualquer notebook
+
+    def _habilitar_multi(self, *_a) -> None:
+        dois = self.chk_composto.isChecked()
+        sab = self.rb_sabores.isChecked()
+        cart = self.rb_cartesiano.isChecked()
+        self.comp_1.setEnabled(dois)
+        self.comp_2.setEnabled(dois)
+        self.nome_familia.setEnabled(sab or cart)
+        for c in self.chks_sabores:
+            c.setEnabled(sab or cart)
+
+    # compat com o chamador antigo (B3.2)
+    _habilitar_composto = _habilitar_multi
+
+    def componentes_finais(self) -> list[str]:
+        """B3.2/J13: os DOIS nomes confirmados pelo humano — [] quando
+        a resposta não é "2 produtos" ou algum campo ficou vazio."""
+        if not self.chk_composto.isChecked():
+            return []
+        a = self.comp_1.text().strip()
+        b = self.comp_2.text().strip()
+        return [a, b] if a and b else []
+
+    def sabores_finais(self) -> tuple[str, list[str]] | None:
+        """J13: (nome da família, sabores MARCADOS) quando a resposta é
+        "são sabores" — None nas demais respostas ou sem 2+ marcados."""
+        if not self.rb_sabores.isChecked():
+            return None
+        nome = self.nome_familia.text().strip()
+        marcados = [c.text() for c in self.chks_sabores if c.isChecked()]
+        return (nome, marcados) if nome and len(marcados) >= 2 else None
+
+    def cartesiano_final(self) -> tuple[str, list[str], list[str]] | None:
+        """RODADA-125 v2 (o Biscoito): ``(nome da família, MARCAS,
+        SABORES marcados)`` quando a resposta é "marcas × sabores" —
+        None nas demais respostas ou com menos de 2×2."""
+        if not self.rb_cartesiano.isChecked():
+            return None
+        nome = self.nome_familia.text().strip()
+        marcados = [c.text() for c in self.chks_sabores if c.isChecked()]
+        if not (nome and len(self._marcas_detectadas) >= 2
+                and len(marcados) >= 2):
+            return None
+        return nome, list(self._marcas_detectadas), marcados
+
+    def mais18_final(self) -> bool:
+        return self.chk_mais18.isChecked()
 
     # --- nome final (A2) ----------------------------------------------------------
 
@@ -263,6 +466,64 @@ class CuradoriaDialog(QDialog):
         self.usar.setEnabled(tem)
         self.btn_ajustar.setEnabled(tem)
         self.btn_refinar.setEnabled(tem)
+        self.btn_lupa.setEnabled(tem)
+        self.btn_estudio.setEnabled(tem)
+
+    def _estudio_candidato(self) -> None:
+        """ESTÚDIO: o candidato vira packshot de design (degrau 1 + o
+        gerador quando ligado) — a troca é in-place, como no Ajustar."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.telas import servico as _svc
+        if not _svc.garantir_modelo_recorte(self):      # CA-01
+            return
+        from app.qt.workers import Trabalhador
+        cam = sel[0].data(Qt.ItemDataRole.UserRole)
+        trab = Trabalhador(lambda st, c=cam:
+                           _svc.aprimorar_no_estudio(c, st))
+        trab.status.connect(self._overlay.mostrar)
+
+        def _pronto(res):
+            self._overlay.esconder()
+            caminho, aviso = res
+            self._trocar_candidato(caminho)
+            from app.qt.design.toast import mostrar_toast
+            if aviso:
+                mostrar_toast(self, aviso)     # degrau 2 degradou: honesto
+            else:
+                mostrar_toast(self, "Packshot do Estúdio pronto — "
+                                    "“Usar esta” para aplicar.",
+                              tipo="sucesso")
+
+        trab.ok.connect(_pronto)
+        trab.erro.connect(lambda m: (self._overlay.esconder(),
+                                     self._falhou_estudio(m)))
+        self._trabalhos.rodar(trab)
+
+    def _falhou_estudio(self, msg: str) -> None:
+        from app.qt.design.toast import mostrar_toast
+        mostrar_toast(self, msg, tipo="erro")
+
+    def _ampliar(self) -> None:
+        """LUPA: a foto selecionada em tamanho real — o gesto de conferir
+        a gramatura antes de escolher."""
+        sel = self.lista.selectedItems()
+        if not sel:
+            return
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, sel[0].data(Qt.ItemDataRole.UserRole))
+
+    def _menu_lista(self, pos) -> None:
+        item = self.lista.itemAt(pos)
+        if item is None:
+            return
+        self.lista.setCurrentItem(item)
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        menu.addAction("Ampliar (ver a gramatura)", self._ampliar)
+        menu.addAction("Usar esta", self._usar)
+        menu.exec(self.lista.mapToGlobal(pos))
 
     def _trocar_candidato(self, novo_caminho: str) -> None:
         """#46: o candidato selecionado passa a apontar para a versão

@@ -177,11 +177,16 @@ def _extensao(content_type: str, url: str) -> str:
 
 # Peso/unidade/embalagem: tudo que polui a busca de IMAGEM (o preço/gramatura
 # importa no layout, não na busca). Ordem: alternativas longas antes das curtas.
+# Rodada JM (B1.1/B1.2): os PLURAIS da tabela real ("5 Kgs", "5 LTS") e
+# a metragem ("12 x 30M") também poluem a query. Metragem solta exige
+# 2+ dígitos — "3M" com um dígito é MARCA (a fita), nunca metro.
 _PESO_RE = re.compile(
     r"""\b(
-        \d+\s?x\s?\d+(?:[.,]\d+)?\s?(?:ml|litros?|lt|l|kg|g|un)   # multipack 12x350ml
+        \d+\s?x\s?\d+(?:[.,]\d+)?\s?
+            (?:mls?|litros?|lts?|l|kgs?|grs?|g|un|mts?|metros?|m)  # multipack
       | c/\s?\d+                                                   # c/12
-      | \d+(?:[.,]\d+)?\s?(?:ml|litros?|lt|l|kg|gr|g|mg
+      | \d{2,}\s?(?:mts?|metros?|m)                                # metragem
+      | \d+(?:[.,]\d+)?\s?(?:mls?|litros?|lts?|l|kgs?|grs?|g|mgs?
             |unid(?:ade)?s?|und|un|cx|kit|pct|pcte|pacote
             |fardo|dz|d[uú]zia|rolos?|folhas?)
     )\b""",

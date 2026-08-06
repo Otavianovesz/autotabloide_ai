@@ -30,15 +30,12 @@ CORES = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00",
 @pytest.fixture()
 def raiz_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
-    import shutil
     from app.core.database import Database
     from app.core.paths import SystemRoot
+    from app.tests import acervo
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     Database(root).init().engine.dispose()
     return root
 
@@ -334,16 +331,19 @@ def test_fluxo_real_grade_mais_destaque(raiz_tmp, tmp_path):
     grade_antes = {s.id: [r.uid for r in s.regioes]
                    for s in layout.paginas[0].slots}
 
-    # C1: sem seleção → a 1ª região nasce num slot LIVRE (nunca no mestre!)
+    # F13/C1 (contrato NOVO — o antigo "acompanha a seleção" era o E-01):
+    # cada criação nasce num slot livre PRÓPRIO, nunca no mestre nem
+    # grudada na anterior; o agrupar (abaixo) é quem JUNTA as soltas.
     v._scene.clearSelection()
     r1 = v.adicionar_regiao(TipoRegiao.IMAGEM)
     slot_livre = v._slot_de(r1)
     assert slot_livre.id.startswith("livre_")
     assert not r1.de_mestre and r1.ref_mestre is None
-    # as seguintes acompanham a seleção (r1 ficou selecionada) → mesmo slot
     r2 = v.adicionar_regiao(TipoRegiao.NOME)
     r3 = v.adicionar_regiao(TipoRegiao.PRECO)
-    assert v._slot_de(r2) is slot_livre and v._slot_de(r3) is slot_livre
+    assert v._slot_de(r2) is not slot_livre          # E-01 morto: sem grude
+    assert v._slot_de(r3) is not v._slot_de(r2)
+    assert all(v._slot_de(r).id.startswith("livre_") for r in (r2, r3))
     # posiciona o destaque na área livre
     r1.rect = Retangulo(12, 120, 24, 14)
     r1.ajuste = Ajuste.PREENCHER
@@ -365,13 +365,15 @@ def test_fluxo_real_grade_mais_destaque(raiz_tmp, tmp_path):
             it.setSelected(True)
     assert v.agrupar_selecao() is None
 
-    # agrupar o destaque (regiões livres) → ok; carimbar 2 cópias
+    # agrupar o destaque (as 3 soltas, cada uma no seu slot — F13/C1: o
+    # agrupar JUNTA soltas de vários slots livres) → ok; carimbar 2 cópias
     v._scene.clearSelection()
     for it in v._itens:
-        if v._slot_de(it.regiao) is slot_livre:
+        if it.regiao in (r1, r2, r3):
             it.setSelected(True)
     mestre_g = v.agrupar_selecao()
     assert mestre_g is not None and mestre_g.origem_mm == (12, 120)
+    assert len(mestre_g.regioes) == 3            # as 3 soltas viraram UMA célula
     # C5.3: o slot livre_ esvaziado saiu do layout — sem fantasma na raiz
     assert all(not s.id.startswith("livre_")
                for s in v._layout.paginas[0].slots)
@@ -639,17 +641,40 @@ def test_adversarial_multi_imagem_por_conteudo(raiz_tmp, tmp_path):
                          modo_arranjo=modo)
         return compor_pagina(layout, layout.paginas[0], {slot0.id: d})
 
-    # 1. LADO_A_LADO: terço a terço, NA ORDEM da lista
-    img = _compor(tres, ModoArranjo.LADO_A_LADO)
-    for i in range(3):
-        assert _cor_em(img, layout, slot0, (i + 0.5) / 3, 0.5) == rgb[i], \
-            f"terço {i}: a foto não é a da posição {i} da lista!"
+    # 1+2. LADO_A_LADO (RODADA-125, contrato editado de propósito: o
+    # desenho virou VITRINE EM CAMADAS — a identidade I5 se afirma pela
+    # ORDEM esquerda→direita dos CENTROIDES de cada cor e pelas TRÊS
+    # cores visíveis; inverter a lista inverte os centroides)
+    def _centroides_x(imagem):
+        reg_i = next(r for r in slot0.regioes
+                     if r.tipo == TipoRegiao.IMAGEM)
+        xa = round(mm_para_px(reg_i.rect.x_mm, layout.dpi))
+        ya = round(mm_para_px(reg_i.rect.y_mm, layout.dpi))
+        xb = round(mm_para_px(reg_i.rect.x_mm + reg_i.rect.larg_mm,
+                              layout.dpi))
+        yb = round(mm_para_px(reg_i.rect.y_mm + reg_i.rect.alt_mm,
+                              layout.dpi))
+        rec = imagem.crop((xa, ya, xb, yb))
+        somas = {c: [0, 0] for c in rgb}
+        for py in range(0, rec.height, 2):
+            for px in range(0, rec.width, 2):
+                p = rec.getpixel((px, py))[:3]
+                if p in somas:
+                    somas[p][0] += px
+                    somas[p][1] += 1
+        return {c: (s[0] / s[1] if s[1] else None)
+                for c, s in somas.items()}
 
-    # 2. trocar a ORDEM da lista troca os pixels (a ordem é conteúdo)
-    invertida = list(reversed(tres))
-    img2 = _compor(invertida, ModoArranjo.LADO_A_LADO)
-    for i in range(3):
-        assert _cor_em(img2, layout, slot0, (i + 0.5) / 3, 0.5) == rgb[2 - i]
+    img = _compor(tres, ModoArranjo.LADO_A_LADO)
+    cx = _centroides_x(img)
+    for c in rgb:
+        assert cx[c] is not None, f"a vitrine engoliu a cor {c}!"
+    assert cx[rgb[0]] < cx[rgb[1]] < cx[rgb[2]], \
+        f"a ordem esquerda→direita não é a da lista: {cx}"
+    img2 = _compor(list(reversed(tres)), ModoArranjo.LADO_A_LADO)
+    cx2 = _centroides_x(img2)
+    assert cx2[rgb[2]] < cx2[rgb[1]] < cx2[rgb[0]], \
+        "inverter a lista tinha de inverter as posições (I5)"
 
     # 3. LEQUE: as TRÊS cores aparecem (sobreposição não engole ninguém)
     img3 = _compor(tres, ModoArranjo.LEQUE)
@@ -686,14 +711,15 @@ def test_adversarial_multi_imagem_por_conteudo(raiz_tmp, tmp_path):
         assert Path(cam).exists()
         assert Path(cam).read_bytes() == bytes_originais[k], \
             f"foto {k} do congelado não é byte-idêntica (ordem trocada?)"
-    # e compõe do congelado com os pixels na ordem certa
+    # e compõe do congelado com a ordem certa (RODADA-125: os
+    # centroides afirmam a identidade na vitrine em camadas)
     d = DadosProduto("Multi", preco_por=Decimal("1"),
                      imagens=[ImagemSlot(c) for c in reaberto["imagens"]],
                      modo_arranjo=ModoArranjo.LADO_A_LADO)
     img4 = compor_pagina(p.layout, p.layout.paginas[0], {slot0.id: d})
-    for i in range(3):
-        assert _cor_em(img4, p.layout, p.layout.paginas[0].slots[0],
-                       (i + 0.5) / 3, 0.5) == rgb[i]
+    cx4 = _centroides_x(img4)
+    assert all(cx4[c] is not None for c in rgb)
+    assert cx4[rgb[0]] < cx4[rgb[1]] < cx4[rgb[2]]
 
     # 5. duplicar: o duplicado tem as PRÓPRIAS cópias, mesma ordem
     pid2 = projetos.duplicar_projeto(pid, "Multi Adv 2")
@@ -892,6 +918,12 @@ def test_preco_decimal_adversarial():
         "2 un 9,90": None,
         # número único com decoração continua ok
         "17,71 /kg": Decimal("17.71"), "10,00.": Decimal("10.00"),
+        # P0.3c (bancada dos Exemplos, semana real do dono): porcentagem
+        # NUNCA é preço — "50% de desconto" virava R$ 50,00 no balcão
+        "50% de desconto": None, "COM 20 % de DESCONTO": None,
+        "leve 3 pague 2": None,
+        # o % sai da mesa e o preço que SOBRAR continua valendo
+        "10% off por 9,90": Decimal("9.90"),
     }
     for entrada, esperado in casos.items():
         assert servico.preco_decimal(entrada) == esperado, f"falhou: {entrada!r}"

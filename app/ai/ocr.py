@@ -25,11 +25,46 @@ PROMPT_OCR = (
     "Devolva SOMENTE um objeto JSON com duas chaves: "
     '"validade_oferta" (o período de validade da oferta, ex: '
     '"01/07/2026 até 27/07/2026", geralmente no rodapé; null se não houver) e '
-    '"linhas" (um array, um objeto por produto: '
+    '"linhas" (um array, um objeto por oferta: '
     '{"descricao": "<texto do produto como está na tabela>", '
     '"preco": "<preço no formato brasileiro, ex: 5,90>"}). '
     "Não invente itens nem pule itens. Ignore a coluna de quantidade/numeração. "
-    "Se um preço não estiver legível, use null. Leia a imagem:"
+    "Se um preço não estiver legível, use null. "
+    # bancada dos Exemplos (semana real do dono): promoção escrita em frase
+    # ("leve 3 e ganhe 25% de desconto", "pão francês com 50% de desconto",
+    # "lanche na chapa com 20% de desconto") era PULADA pelo modelo — e
+    # pular linha em silêncio é bug (I2)
+    "ATENÇÃO: promoção SEM preço numérico (desconto em %, leve-X-pague-Y, "
+    "brinde) TAMBÉM é uma linha de oferta — nunca a pule: ponha o produto em "
+    '"descricao" e o texto da promoção em "preco" (ex: "20% de desconto", '
+    '"leve 3 pague 2"). Isso vale até quando a promoção está no meio do '
+    "TEXTO CORRIDO do cabeçalho (ex: 'leve 3 sonhos e ganhe 25% de "
+    "desconto' vira uma linha) — mas SÓ promoção com mecânica concreta "
+    "(%, leve-X, brinde); slogan e frase de efeito não são oferta. "
+    # Rodada JM (B2B): a tabela do dono escreve "S. OFERTA" na coluna de
+    # preço quando o valor varia no mês — é preço em TEXTO, não slogan
+    'EXCEÇÃO: se a COLUNA DE PREÇO da linha diz "S. OFERTA", "S.OFERTA" '
+    'ou "SUPER OFERTA", isso É o preço da linha — transcreva no campo '
+    '"preco" exatamente como está (nunca pule a linha nem use null). '
+    # K2\L4 (QUINTUSDECIMUS): nessas linhas o NÚMERO costuma morar na
+    # própria descrição, atrás de "<>" — sem ele o carimbo sai sem preço
+    'Nessas linhas transcreva a célula de descrição INTEIRA, até o fim: '
+    'ela costuma terminar com "<>" seguido de um valor "R$ …" '
+    '(ex: "ARROZ X 5 Kgs <> R$ 18,81") — copie esse valor JUNTO na '
+    "descrição, nunca o descarte. "
+    "Ignore também códigos de coluna curtos no meio da linha (ex: T-1). "
+    # VICESIMUS-QUARTUS §2.1: a tabela do dono tem GRAMÁTICA — linha
+    # TACHADA (um traço riscando o texto) quer dizer "esta oferta foi
+    # CANCELADA". Ler o texto não é ler o documento: duas riscadas foram
+    # impressas como oferta válida. O modelo NUNCA decide sozinho —
+    # transcreve e MARCA; quem cancela é o humano.
+    'IMPORTANTE: se uma linha estiver RISCADA/TACHADA (um traço cortando '
+    "o texto — oferta cancelada), NÃO a omita: transcreva a linha "
+    'normalmente e acrescente "riscada": true no objeto dela. Na dúvida '
+    '(traço fraco, rasura em cima do texto), também marque "riscada": '
+    "true — o aplicativo pergunta ao humano. Linha limpa não leva a "
+    "chave. "
+    "Leia a imagem:"
 )
 
 
@@ -37,6 +72,9 @@ PROMPT_OCR = (
 class LinhaOferta:
     descricao: str
     preco: str | None = None
+    # VICESIMUS-QUARTUS §2.1: linha tachada na tabela (oferta cancelada
+    # pelo dono) — viaja marcada, nunca entra calada nem some calada
+    riscada: bool = False
 
 
 @dataclass
@@ -107,7 +145,8 @@ def ler_tabela(imagem: str | Path, motor: MotorIA, *, min_lado: int = 1024,
         desc = (d.get("descricao") or "").strip()
         if desc:
             preco = d.get("preco")
-            linhas.append(LinhaOferta(desc, str(preco).strip() if preco else None))
+            linhas.append(LinhaOferta(desc, str(preco).strip() if preco else None,
+                                      riscada=bool(d.get("riscada"))))
 
     validade = dados.get("validade_oferta")
     validade = validade.strip() if isinstance(validade, str) and validade.strip() else None
@@ -141,12 +180,27 @@ def _cache_carregar() -> dict:
     return {}
 
 
+def _versao_prompt() -> str:
+    """Assinatura curta do PROMPT_OCR — quando o prompt evolui (bancada dos
+    Exemplos: ele aprendeu promoções em %), o cache velho INVALIDA sozinho;
+    sem isto, a foto relida devolvia a leitura do prompt antigo."""
+    import hashlib
+    return hashlib.sha1(PROMPT_OCR.encode("utf-8")).hexdigest()[:10]
+
+
 def cache_consultar(caminho: str | Path, modelo_visao: str) -> TabelaOCR | None:
-    """Leitura anterior da MESMA foto (mesmo conteúdo, mesmo modelo) — ou None."""
+    """Leitura anterior da MESMA foto (mesmo conteúdo, mesmo modelo e mesmo
+    PROMPT) — ou None."""
     entrada = _cache_carregar().get(_hash_arquivo(caminho))
     if not entrada or entrada.get("modelo") != modelo_visao:
         return None
-    linhas = [LinhaOferta(d, p) for d, p in entrada.get("linhas", []) if d]
+    if entrada.get("prompt") != _versao_prompt():
+        return None                      # prompt evoluiu: reler de verdade
+    # §2.1: entrada antiga é o par [desc, preco]; a nova é o trio com
+    # "riscada" — o leitor aceita as duas (cache velho não envenena)
+    linhas = [LinhaOferta(ln[0], ln[1],
+                          riscada=bool(ln[2]) if len(ln) > 2 else False)
+              for ln in entrada.get("linhas", []) if ln and ln[0]]
     if not linhas:
         return None
     return TabelaOCR(linhas=linhas,
@@ -178,9 +232,11 @@ def cache_guardar(caminho: str | Path, modelo_visao: str,
     from datetime import datetime
     entradas = _cache_carregar()
     entradas[_hash_arquivo(caminho)] = {
-        "linhas": [[ln.descricao, ln.preco] for ln in tabela.linhas],
+        "linhas": [[ln.descricao, ln.preco, ln.riscada]
+                   for ln in tabela.linhas],
         "validade_oferta": tabela.validade_oferta,
         "modelo": modelo_visao,
+        "prompt": _versao_prompt(),
         "arquivo": Path(caminho).name,
         "quando": datetime.now().isoformat(timespec="seconds"),
     }

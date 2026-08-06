@@ -420,3 +420,518 @@ Sistema de design profissional sobre o Qt, sem tocar no motor. **Passo 1 ✓ (ap
   **[MÁQUINA DO DONO] para a sessão de aceitação:** instalador num Windows LIMPO,
   migração com o banco antigo REAL, SDXL degrau 2 (se houver GPU), test-drive +
   ressalvas + **o SELO HUMANO (passos 96–98)**.
+- **FASE 13 — RESGATE (`docs/ORDEM_F13_RESGATE.md`, arquiteto 25/07/2026)**: ▶
+  **Bloco A (a bancada que enxerga gesto) EXECUTADO (25/07/2026) — PARADO no fim
+  do bloco aguardando o selo do arquiteto (L7).** Linha de base do §0 conferida
+  ANTES de tocar: 851/0/0 exit-0. Entregue: **A1** `app/tests/gestos.py`
+  (clicar/teclar/acionar/arrastar por QTest/sendEvent + `vigia_dialogo` — responde
+  o modal por clique REAL dentro do próprio exec, nunca monkeypatch); **A2/A3**
+  `app/tests_janela/` (suíte com janela REAL, sem offscreen, `instalar_vida` +
+  `instalar_polimento` AUTOUSE; 4 verdes na máquina real; rodar antes de cada
+  selo: `pytest app/tests_janela -q`); **A4** `test_dialogos_reais_f13.py`
+  (confirmar_destrutivo/confirmar_pre_voo pelo QMessageBox REAL, 5 testes);
+  **A5** `app/tests/acervo.py` — acervo do dono ancorado na RAIZ do repo, skip
+  explícito "REQUER ACERVO DO DONO" CONTADO e ESTAMPADO no fim do relatório,
+  padrão de fontes unificado nos 13 arquivos (a degradação silenciosa para a
+  fonte do Pillow morreu, §1.5 da varredura); **A6** flag `--ordem-invertida` no
+  conftest. **Definição de pronto CUMPRIDA: as 6 mutações do §1.4, reaplicadas
+  uma a uma, deixaram CADA UMA um vigia vermelho** (`test_bancada_gesto_f13.py`;
+  árvore restaurada e conferida limpa após cada rodada; nº2/3/4 são
+  caracterização deliberada do bug atual — flipam nos consertos C1/C3/C5).
+  Placares (junit): raiz **862 verdes ×2, zero skips, exit-0** (851→862); de
+  OUTRA pasta **862/0/0** (antes: 10 vermelhos + 8 pulados — o placar agora é do
+  repositório, não da pasta); ordem invertida: os MESMOS 2 vermelhos de
+  `animacoes.py`, PRESERVADOS de propósito — são a prova que o B2 deixa verde.
+  Produção tocada e declarada (L6): `editor_app.py` (âncora no pacote +
+  `montar_editor` com o fallback da F12 que faltava — o boot morria de outra
+  pasta/clone antes da janela). NENHUM dos 6 achados 🔴 consertado (proibido no
+  bloco). Resposta completa do builder no fim de `docs/ORDEM_F13_RESGATE.md`.
+  **Bloco A SELADO pelo arquiteto (§4 da ordem, 25/07)** com 3 condições
+  (COND-1/2/3) e a correção do §4.2 (quem morria de outra pasta eram os 4
+  scripts de bancada, não o boot do dono); commit `f649732`.
+  —— **Bloco B (AS HEMORRAGIAS) EXECUTADO (25/07/2026) — PARADO no fim do
+  bloco aguardando o selo do arquiteto (L7).** Os 15 itens (B1..B10 +
+  B2b/c/d/e), TODOS na disciplina L1 (rodada vermelha REGISTRADA antes de
+  cada conserto; 24 testes novos em `test_bloco_b_f13.py`, por gesto/conteúdo
+  sobre a bancada do A): B1 editar nome/preço preserva o desfazer
+  (`_aplicar_mapa` só recria histórico em documento novo; mapa novo vira
+  estado D5); B2 véu vive como `_VeuDialogo` (Resize da mãe + destroyed
+  DESTRÓI — COND-1 verde) + `varrer_veus_orfaos` na troca de tela; B2b foto
+  do crossfade nomeada com prazo de morte + paleta Ctrl+K fecha no ir_para
+  (COND-2 verde pela sequência real do §19); B2c os 8 Yes/No viraram
+  `perguntar()` PT-BR com padrão seguro + tradutor qtbase + varredura de
+  identificador; B2d o "Recuperar rascunho?" tem 3 saídas e o X/Esc DEIXA O
+  RASCUNHO (e "1 item" concorda); B2e sair do editor sujo pergunta no
+  "← Biblioteca" E no abrir-por-cima; B3 Enter/Esc caem no Cancelar
+  declarado; B4 a poda NUNCA mata a versão mais antiga (a original é eterna);
+  B5 quick_check antes do snapshot do boot (corrompido não entra nem
+  rotaciona os bons; log em logs/cofre.log); B6 receita ÚNICA
+  `dados_cartaz_de_item` (o +18 voltou à etiqueta em lote POR PIXEL; projeto
+  CARTAZ reaberto não perde mais18/categoria); B7 o juiz respeita a
+  confiança (piso `conciliacao.juiz_confianca` 0,6, ambíguo = AMARELO nos 2
+  ramos); B8 a revisora confere PARES nome+preço (preço TROCADO entre duas
+  células agora acusa nominal); B9 purga por item, linha antes dos arquivos,
+  preso relatado ("FICOU na lixeira") e o boot não cai; B10 os 2 hard-deletes
+  públicos removidos (varredura de ausência). **Achado próprio maior (não
+  estava em dossiê nenhum): `stop()` NÃO emite `finished` no Qt** — toda
+  animação interrompida ficava em `_VIVAS` para sempre (o comentário da casa
+  era lenda); conserto na raiz com `stateChanged→Stopped` + prazo de
+  autoencerramento + pulso do Skeleton se desliga invisível. **Placares
+  (junit VERSIONADO em `saida_f13/`): 886 verdes ×2, zero skips, exit-0;
+  `--ordem-invertida` 886/0/0 (o critério do §4.5, VERDE); janela real
+  4/0/0.** Fora (anotado na resposta): marca_propria no ItemMesa,
+  QInputDialog nativo (tradutor cobre; spec confere no E), guarda de fechar
+  o app (revertida por L8 + risco de pendurar a bancada; ideia anotada com
+  event.spontaneous()). **Bloco B SELADO pelo arquiteto (§5 da ordem, 25/07;
+  commit `5a4f0d0`)** — o achado do stop() virou LEI do projeto (CLAUDE.md);
+  COND-4 (contrato carregar×atualizar_dados DENTRO do canvas.py) e COND-5
+  (marca_propria no ItemMesa) herdadas pelo C; contrato dos vigias ativado
+  (§5.7: C1 inverte mut2, C3 inverte mut3, C5 inverte mut4 — nunca apagar).
+  —— **Bloco C (O EDITOR PARA DE BRIGAR — a trava nº 2 CAI) EXECUTADO
+  (25/07/2026) — PARADO no fim do bloco aguardando o selo do arquiteto (L7).**
+  Os 13 itens + VC-004/010/014, disciplina L1 em todos (rodada vermelha antes
+  de cada conserto; testes novos em `test_bloco_c_f13.py` sobre a bancada do
+  A): **C1** região nova NUNCA herda slot — cada uma nasce em `livre_<uuid8>`
+  PRÓPRIO com cascata de 4% (E-01 morto nas DUAS pernas: herança por seleção
+  E reuso do mesmo slot avulso; `test_mut2` INVERTIDO); **C2** o trio caiu —
+  clique/arrasto pega SÓ a peça clicada; "mover a célula inteira" virou gesto
+  próprio (menu: Selecionar/Duplicar a célula inteira; os testes do trio nas
+  4 suítes antigas FLIPADOS com docstring); **C3** Subir/Descer desinvertidos
+  + painel exibe topo=frente (convenção Illustrator; nascimento na frente
+  mantido e agora VISÍVEL; `test_mut3` INVERTIDO); **C4** `AlinhamentoV`
+  (TOPO/CENTRO/BASE) no modelo + `_y_alinhado` no compositor + combo no
+  painel, provado por PIXEL; **C5** resize sob rotação em coordenadas LOCAIS
+  com reancoragem sem deriva + campos Posição/tamanho em mm no painel
+  (VC-004; `test_mut4` INVERTIDO); **C6** duplicar a célula inteira (slot
+  novo, uids frescos, +4mm, selecionada); **C7** carimbar sem caixa nasce
+  central (35%), visível e selecionado; **C8** detector de grade com área
+  mínima + proporção (risco/respingo fora) e REVISÃO antes de salvar ("Criar
+  com N células"/"Criar sem grade"); **C9** agrupar explica CADA recusa por
+  toast nominal e confirma o sucesso; multi-slot de verdade
+  (`agrupar_como_mestre` junta soltas de várias origens); **C10** PREENCHER
+  recorta no caminho rápido (`img.crop` — nunca vaza da célula, por pixel);
+  **C11** selos com CONTROLE no painel (canto do +18/qualidade →
+  `definir_canto_automatico` + recompor) e o exemplo do Ateliê com
+  `mais18=True` (o selo aparece na prévia); **COND-5 decidida aqui:
+  `ItemMesa.marca_propria`** flui do catálogo→conciliação→composição→cartaz;
+  **C12** a mestra propaga `texto_fixo` (e `alinhamento_v`) —
+  ATRIBUTOS_ESTILO; **C13** Ctrl+K com UM dono (QShortcut cru removido;
+  paleta da Mesa em Ctrl+Shift+P via catálogo) + teste que APERTA a tecla;
+  **VC-010** chip de medidas VIVO no arrasto (some no soltar); **VC-014**
+  guias com medida em mm. **COND-4 cumprida** (contrato nos docstrings de
+  `carregar`/`atualizar_dados` no canvas.py). **Definição de pronto VERDE: o
+  teste da gravação** (criar IMAGEM/TEXTO/PREÇO por botão real, arrastar cada
+  uma, independência provada por pixel) **+ adversarial I1–I5 atualizado**
+  (fluxo_real com o contrato novo do agrupar multi-slot). Achados próprios
+  (L6): o trio mordia no ARRASTO (o clique parado já colapsava — os testes
+  antigos fixavam contrato morto); wrapper de item MORRE no commit do arrasto
+  (itens reconstruídos — repescar por `regiao is`); zona de disputa do z no
+  clique (margem de alça ±9px da vizinha acima rouba o clique — flake que SÓ
+  a ordem invertida pegou, 2×); atalho de janela exige janela ATIVA
+  (`ativar_janela` na bancada). **Placares (junit em `saida_f13/`): 904
+  verdes ×2, zero skips, exit-0; `--ordem-invertida` 904/0/0; janela real
+  4/0/0.** Fora (anotado na resposta): P5/`Regiao.grupo` não construído
+  (L8); região nova DENTRO da mestra agora só por colar/mover; toasts e
+  tutorial sem teste de pixel; QInputDialog nativo segue no tradutor.
+  **Bloco C SELADO pelo arquiteto (§6 da ordem, 25/07; commit `ee15eb9`)**
+  — com a CORREÇÃO de diagnóstico do builder que virou condição: a "zona
+  de disputa do z" era na verdade **alça em objeto não selecionado** (o
+  hover exigia seleção, o press não) → **COND-6** (igualar as portas +
+  restaurar o teste ao alvo original) e **COND-7** (renomear os 3 vigias).
+  —— **Bloco D (O DIA DE 5 MINUTOS — as travas #1 e #3 CAEM) EXECUTADO
+  (25/07/2026) — PARADO no fim do bloco aguardando o selo (L7).** Os 14
+  itens + COND-6/7, disciplina L1 (stash dance; logs em saida_f13/):
+  **COND-6** cumprida E estendida (a margem do shape também era
+  incondicional — a entrega do clique pelo Qt e o resolver_selecao davam a
+  região de cima com margem; boundingRect condicional + prova: 905×2 E
+  invertida com o teste no alvo ORIGINAL); **COND-7** vigias renomeados.
+  **D1** o véu virou FAIXA DE RODAPÉ (OverlayOcupado; 9 chamadores num
+  ponto; a assimetria CF-05 morta; lote do Estúdio narra item a item);
+  **D2** digitação COALESCE (adiar=True nas rajadas, fecho do gesto em
+  despachar_edicoes com flush em desfazer/seleção/editingFinished/carregar;
+  UM desfazer devolve a palavra) + prévia em 96dpi esticada ao tamanho da
+  cena (compor_pagina ganhou dpi=); **D3** detector de fundo branco LIGADO
+  por padrão (False explícito respeitado; guardião virado); **D4**
+  `Conciliador.categoria_do_vizinho` público em 2 degraus (embeddings/
+  fuzzy local) + `categorizar_acervo` não aborta sem LM (origem "vizinho");
+  **D5** a conciliação conserta o acervo (produto casado sem categoria
+  ganha a do vizinho; humano nunca vencido) + a FRESTA da grade fechada
+  (categoria_origem="humano"); **D6** `remover_inventados` devolve a
+  palavra SUBSTITUÍDA pelo typo da IA (limiar 0,75; acréscimo puro segue
+  caindo) + o aviso chega nos 2 furos (modo rápido abre curadoria; o lote
+  não cadastra perda e NOMEIA); **D7** o canal ESTRUTURAL da validade (o
+  vazio do compositor herda o texto_legal da página — o rodapé fora de
+  célula recebe a validade VIVA; achado do scout fora de todos os dossiês)
+  + self._evento vive (salvar/reabrir/rascunho) + sugerir_validade no
+  EXPORT (trava #3); **D8** exportar LIMPO por padrão nas 9 portas +
+  RASCUNHO opção explícita (paleta na Mesa; checkbox no perfis/Fábrica/
+  Publicar; param nos headless) + botão APROVAR real na Mesa E na Fábrica
+  (checklist modo-cartaz sem a pergunta da validade da oferta; Fábrica
+  ganhou _salvo real) — aprovação segue como SELO por hash (trava #1);
+  **D9** estante↔célula acesos nos 2 sentidos (guarda _sinc_estante) +
+  MINIATURA na linha (cache caminho+mtime); **D10** o pré-voo ganhou o
+  piso da revisora (heuristicas_do_pre_voo público) e a nota da foto
+  (avaliar_foto com cache; só RUIM avisa; dedupe do PROCON no cartaz);
+  **D11** o herói vai para a MAIOR célula (area_do_slot em grade.py);
+  **D12** "Atualizar os preços dos atuais" por chave natural (3º botão;
+  prévia→confirma; mapa/overrides/undo INTACTOS); **D13** a conciliação
+  lembra geometria e colunas (Interactive; done() grava; splitter com
+  memória); **D14** projeto LIMPO não gera rascunho (dirty flag; par
+  anti-exagero verde). **Guardiões do contrato antigo VIRADOS com rastro**
+  (fase8 ×2, fase11 relâmpago, fase12 etiquetas, fase10 detector, onda1
+  modo rápido). **DoD MEDIDO na máquina real com as 30 ofertas REAIS do
+  Quintou** (`saida_f13/bloco_d_medicoes.md`): conciliar 30 = 0,07s
+  (30/30 🟢); compor a frente real 105ms (rajada de 13 teclas = UMA
+  recomposição, antes 13×); arte 300dpi: prévia 2,0×; detector 13ms vs
+  8-26s de rembg; export frente+verso 0,17s; pré-voo 0,02s. **Lei nova da
+  bancada: pytest-timeout em TODA rodada** (2 suítes penduraram para
+  sempre num modal sem resposta; agora o culpado sai nomeado) + saída em
+  log, nunca Out-Null. Achados L6 na resposta (contenção de ~5s por
+  Database().init concorrente → nominal p/ o E; o LM real interfere em
+  bancada fora do pytest; foto chapada = RUIM legítimo → helper
+  foto_de_bancada com miolo puro; undo reconstrói o layout). Placares
+  finais e o que ficou de fora: resposta do builder no fim da ordem.
+  **Bloco D SELADO pelo arquiteto (§7, 25/07; commit `d7bb6b9`)** — as 9
+  portas varridas ("nenhuma decide mais por não-aprovado"); COND-6 "melhor
+  do que pedi" (o teste ficou mais hostil); o furo achado virou **COND-8**
+  (duas legendas ensinavam a lei morta) e 2 leituras da medição foram para
+  o **H** (M-03 continua aberto: falta o caso parecido-não-idêntico em
+  acervo grande; o 105ms é sem foto).
+  —— **Bloco E (CONFIABILIDADE E PRIMEIRA EXECUÇÃO) EXECUTADO
+  (25-26/07/2026) — PARADO aguardando o selo (L7).** Rodada VERMELHA em
+  LOTE (9 de uma vez) + stash dance; testes em `test_bloco_e_f13.py`.
+  **E10/COND-8**: as 2 legendas contam a regra viva + varredura virou
+  teste permanente. **E1**: o boot NUNCA baixa (`modelo_baixado` +
+  `aquecer` no-op; molde do ESRGAN); a PERGUNTA no 1º recorte
+  (`garantir_modelo_recorte`: completo/leve ~5MB/agora não — Enter no
+  não) nos 6 chamadores; GUIA_RAPIDO corrigido (quem baixava era o BOOT).
+  **E2**: `app/core/erros.py` (excepthook encadeado → logs/erros.log,
+  molde do vigia) nos entrypoints; o zip de diagnóstico leva os 4 logs.
+  **E3**: prova de ESCRITA no criar_estrutura + `_montar_shell_seguro`
+  (a fase nua morria sem janela: OperationalError não herda de OSError).
+  **E4**: Cofre ×3 + `aplicar_importacao` com `exigir_escrita`; snapshot
+  do boot PULA em somente-leitura; o mapa do modo.py parou de se declarar
+  completo (nomeia o que segue fora). **E6**: `migrar_produtos_absolutos`
+  (o gêmeo do migrar_artes) no boot. **E7**: `PRAGMA user_version` +
+  backup pré-migração DENTRO do init (a ordem certa por construção — no
+  entrypoint real o ALTER rodava antes do snapshot); banco do futuro não
+  é rebaixado. **E8**: PRAGMA nas cruas + o 8º caminho (o engine do
+  pacote sem listener). **E9**: índices (modelos + migrador — create_all
+  pula tabela existente). **E5 PARCIAL declarado**: 47 rastreados pelo
+  scout (6 já caíram em B/C/D); consertados os de perda real (CI-01
+  lixeira invisível à conciliação, CI-06 alfa morto no upscale do cartaz,
+  CC-01 categoria jogada fora) + os estruturais (=E1..E4); ~26 NOMINAIS
+  com linha de hoje — pedido de decisão ao arquiteto (selo parcial com
+  herança pro G, ou extensão do E). **§5.5 respondido**: mesma FAMÍLIA
+  (objeto agendado para morrer cujo dono morre primeiro), não
+  necessariamente a mesma raiz única — a regra do conftest continua
+  necessária; limites honestos na resposta. Placares e o resto: resposta
+  do builder no fim da ordem. Execução real em Windows limpo = lição de
+  casa do Otaviano (§3).
+  —— **E SELADO (§8, `a04c411`): E5 parcial virou COND-9 (LEDGER — o G
+  zera); o segfault virou COND-10 (H8); medições+M-03 = H9; o exe = H10.**
+  —— **Bloco F (OS 7 ENCARTES NOVOS) EXECUTADO (26/07/2026) — PARADO
+  aguardando o selo (L7).** COND-9 ✓: `docs/LEDGER_I2_F13.md` (48 linhas ·
+  13 CONSERTADOS · 32 ABERTOS · 0 DISPENSADOS). **Lei nova da bancada**:
+  o LM Studio REAL fica FORA do pytest (fixture autouse no conftest;
+  escape `@pytest.mark.lm_real`) — 2 baselines penduraram no probe de 3s.
+  **F8**: a tabela exata nos geradores do pacote ("CRIADO E PRODUZIDO"
+  ×2; a faixa sem "MARCA PRÓPRIA"; "fatiados na hora" só no cabeçalho;
+  o período do Jornal virou camada do app; logo relativo nos 7) + extras
+  declarados (21 saídas absolutas → relativas; `encoding='utf-8'` nos
+  writes; a linha-fina "até o fim do mês" — a mesma alegação em
+  paráfrase). **F1**: célula FIXA (`Slot.fixa` aditivo; `ocupaveis` é o
+  ponto único — fora da fila E do aviso de vazios; menu RG-56 com
+  inverso; adversarial I5: a fixa GIGANTE não rouba o herói). **F2**:
+  `app/rendering/encartes.py` — a geometria dos 7 por DADOS (as 8
+  tabelas do scout; viewBox 96dpi, página 192dpi = 285,75×381mm; 92
+  células), `layout_de_encarte`/`importar_pacote` (upsert por nome, arte
+  internada I3, fontes do pacote copiadas) + botão "Importar encartes…"
+  no Ateliê; o Jornal com caminho próprio (N-04: zero `celula-N`; 2
+  páginas num LayoutDef, ids únicos). **F3** validado no encarte real
+  (herói→banner da Quarta, nunca nas fixas). **F4** Fica-a-Dica (papel
+  DICA) nas 2 páginas. **F5** seções ligadas no Jornal (N-05). **F6**
+  validade ROTACIONADA por encarte (as 7 rotações; prova de TINTA por
+  pixel nas 8 páginas). **F7** o slot do combo da Terça encolhido
+  210→194 (fora do círculo do selo de 25%). **F9** pct parâmetro no
+  gerador + papel DESCONTO na fixa-3 (o % calculado de verdade). **F10**
+  zero Baloo 2 (o "ã" defeituoso) no gerador e no app. **DoD**: as 8
+  páginas compostas com as 30 ofertas REAIS por pixel vs PREVIEW +
+  galeria lado-a-lado (`saida_f13/galeria_bloco_f/`) INSPECIONADA — a
+  inspeção visual pegou 3 defeitos que a suíte verde não pegou
+  (retabelados e re-inspecionados). A regeração dos PNGs do pacote
+  (Playwright+Chromium) fica para o dono/arquiteto — as fontes `.py`
+  estão corrigidas e portáteis.
+  —— **SELO DO F REVOGADO pelo dono (26/07: "amador") — a extração
+  pegou a CAIXA e jogou fora o DESENHO. `docs/ORDEM_F13_BIS_ENCARTES_
+  FIEIS.md` emitida e EXECUTADA (26/07): laço de inspeção por encarte.**
+  Motor: `FormaPreco` de 1ª classe (8 formas: medalhão de cera 18
+  pétalas, disco escalopado pendurado, tag, oval, bandeirola com ponta,
+  carimbo perfurado, pílula, texto) com o texto no PALCO da forma;
+  `TipoRegiao.SUBTITULO` + `DadosProduto.descritor` (montagem oficial);
+  `sem_hifen` (o corpo cede, nunca o hífen); `centavos_na_base`;
+  TEXTO_LEGAL veste forma (o "-XX%" calculado na pílula laranja).
+  **T6 RODOU**: Playwright+Chromium instalados,
+  `app/scripts/regenerar_encartes.py` (fontes por @font-face base64 —
+  sistema do dono intocado; calibração na Terça: 0,24% de pixels), os
+  16 PNGs regenerados — "CRIADA E PRODUZIDA"/"SENEPOL MARCA PRÓPRIA"/
+  "O MÊS INTEIRO" SAÍRAM do produto. Laço completo nos 7 com DADOS
+  REAIS (`app/scripts/inspecao_encartes.py`: 58 fotos reais da
+  biblioteca, preços do banco, fixas com conteúdo fixo, +18 provado);
+  galeria em `saida_f13/galeria_f13_bis/` + `LEITURA_DO_LACO.md` (a
+  frase honesta por página). 3 correções factuais contra a ordem BIS
+  declaradas (Sexta foto-à-esquerda; Sábado texto dourado sem fita;
+  Peixe TEXTO legítimo).
+  —— **3ª RODADA (dono reprovou de novo, 26/07): `docs/ORDEM_F13_TER_
+  ENCARTES_ENCORPADOS.md` EXECUTADA (27/07).** V1 (Ajuste.ASSENTAR — o
+  quadrado 1000×1000 do acervo morre na composição: crop pela bbox do
+  alfa + âncora no rodapé; CONTER byte-idêntico); V2 (TipoRegiao.ADORNO
+  — a foto POR BAIXO da cesta/toldo/banda); V3 (+1 degrau); V4 (+18
+  vetorial novo por asset, selos relativos ≥24% da célula); V5 (a
+  `_justa.webp` no pipeline); S1 (Senepol por RADICAL, teste
+  permanente). **QUINTOU no pacote (o 8º, FRENTE+VERSO)** — geometria
+  por DIFF Fundo×Real (grade 4×4 270×258; painel 588,18,468,226;
+  validade 90°; verso: 16 posições + disclaimer no topo),
+  `FormaPreco.ETIQUETA_LISTRADA`, peso no nome (SUBTITULO suprime a
+  unidade automática — quem tem descritor nunca duplica), par
+  app|PUBLICADO na galeria + 2 opções do painel renderizadas. **D1**:
+  a edição do Jornal é REAL — `PapelTexto.EDICAO` condicional (rótulo
+  cravado morreu), campo do projeto, `sugerir_edicao` (mês corrido +
+  virada de ano), `registrar_edicao_publicada` no export realimenta a
+  base, recorrência clona com o Nº novo, pré-voo avisa vazia/repetida.
+  **D2**: TODAS as etiquetas condicionais nascem vazias (vazia não
+  desenha nem a forma; varredura permanente). **D3**: 3 opções do
+  período renderizadas (decisão do dono). **N1**: `Slot.conteudo_fixo`
+  (produto+foto escolhida+preço fixo OU da semana, congela com o
+  template; compositor = ponto único em toda porta;
+  `atualizar_fixos_pela_tabela` por chave natural na conciliação;
+  diálogo com prévia na célula real; foto de fora INTERNA em `_fixos/`
+  I3). **N2**: Jornal por SEÇÕES em fluxo — `app/rendering/
+  fluxo_jornal.py` (degraus TABELADOS: colunas/altura 202→178→156/
+  transbordo com aviso; última linha CENTRALIZA; seção de 1 item
+  INLINE compartilhando a linha), `TipoRegiao.FILETE` (fio do
+  cabeçalho versalete; lei do tipo novo cumprida), arte regenerada com
+  réguas de coluna CONTÍNUAS, `layout_de_encarte(..., secoes=…)`
+  compat total; demo real 26 itens/6 seções na galeria. **N3**: Fica a
+  Dica = UM bloco editorial na p2 (caixa 366×114, corpo 3 linhas); a
+  tarja da capa MORREU (2 guardiões antigos flipados com rastro).
+  Suíte 982×2 zero skips exit-0 + invertida + janela (junit
+  `bloco_fter_*` em `saida_f13/`). Resposta do builder no fim da ordem
+  TER com as 4 PERGUNTAS ao dono (painel A×B, período 1/2/3, seções,
+  dica fora da capa).
+  —— **4ª RODADA (dono reprovou; arquiteto confirmou as 3 acusações —
+  "você está IMITANDO em vez de USAR"): `docs/ORDEM_F13_QUATER_USE_O_
+  QUE_EXISTE.md` EXECUTADA (27/07).** LEI L9 (asset do dono é fonte da
+  verdade e é CONSUMIDO): a arte do preço é a CAMADA da página inteira
+  → `Pagina.arquivo_camada` no motor (etiquetas + divisórias 1:1, o
+  app só escreve o número); Quicksand no pacote (Quintou inteiro);
+  nomes copiam o publicado; painel = recorte do publicado. **A6 — o
+  MEDIDOR de fidelidade** (`app/scripts/medidor_quintou.py`: % global
+  + por célula + "fora das fotos" + mapa de calor): frente 27,6%
+  global / **10,2% fora das fotos (meta <12% ✓)**, painel 0,0%; verso
+  13,5% fora das fotos com 8 substitutos declarados. O mapa pagou: a
+  validade girada estava ESMAGADA há 3 rodadas (caixa pós-rotação —
+  RG-12 espera o rect PRÉ-rotação). **A4 — um motor de seção só**:
+  estilo JORNAL no `secoes.py` + `Pagina.estilo_secoes`; o fluxo não
+  gera mais jsec/FILETE (legado tolerado, LEDGER QU-01). **J1–J8**:
+  última linha ESTICA (flip com rastro), altura única testada, réguas
+  fora da arte, cabeçalho forte, 3ª faixa do rodapé, hero remontado
+  (a foto do sabão era um CLIPART de balões — QU-02), linha-fina sem
+  eco, carimbos ±3°. Tabela de rastreio A5 item-a-item na resposta.
+  Suíte 987 ×2 zero skips + invertida + janela DE PRIMEIRA (junit
+  bloco_fquater_*).
+  —— **5ª RODADA — O ACHADO MAIS GRAVE (dono: "simplesmente nada está
+  lá"; o banco real tinha os 9 layouts ANTIGOS — seis rodadas
+  validaram RAM): `docs/ORDEM_F13_QUINQUE_ENTREGUE_NO_APP.md`
+  EXECUTADA (27/07).** LEI L10: encarte só é feito quando ALCANÇÁVEL
+  pelo dono na interface. A1: galeria e produto compartilham a PORTA
+  (`layout_do_banco` = importar_pacote → carregar_layout → compor; o
+  medidor idem) — e expôs que `arquivo_camada` não era internado
+  (consertado, I3). **A2: o import RODOU NA RAIZ REAL** (backup
+  `core_pre_quinque_20260727.db`; SELECT de prova na resposta: ids
+  10–15 novos + Sexta/Terça atualizados por upsert — **o Ateliê do
+  dono agora TEM os 8 encartes**). A3: o toast nomeia. A4: teste de
+  GESTO do botão real. J10–J14: Jornal denso (4 colunas, cabeçalho
+  ≤28px, padding zero, nome 2 linhas, carimbo no canto; RÉGUA ≥55% de
+  foto POR TESTE — 64/61/57% nos degraus). Rótulos PESCA DO DIA/
+  COLHEITA: DECIDIDO NÃO CRAVAR, registrado (D2). Rastreio A5 de
+  TODAS as ordens. Suíte 991 ×2 + invertida + janela DE PRIMEIRA
+  (bloco_fquinque_*).
+  —— **6ª RODADA — `docs/ORDEM_F13_SEXTUS_A_SEGUNDA_REAL.md`
+  EXECUTADA (27/07): o 1º teste ponta a ponta com DADO REAL.** A
+  reauditoria das 8 (arquiteto): Quintou PUBLICÁVEL (1,02 vs o
+  publicado); Jornal reprovado por número → J16 (2 passes no fluxo,
+  sobra distribuída, teto 1,6× no esticar — o caso do Oral-B) e
+  J17/J18 (guarda de foto com 2+ OBJETOS no avaliador — pega o
+  fantasma do Ninho e o clipart do Sabão). §3: **a Segunda de 27/07
+  está NO BANCO DO DONO** (`montar_segunda_real.py`): a foto do Kit
+  (Ativo 2.png) internada na fixa com preço DA SEMANA, S3 provado ao
+  vivo (39,00 pela chave natural), **projeto id=7 exportável pela
+  Mesa**; S1 parser come por/SÓ/pontilhados (linhas reais); S5
+  TP/1,5LT→TP 1,5L (2 bugs reais do sanitize); S2 correção factual:
+  7 livres + 1 fixa — a tabela de 8 fecha EXATA (vazias: 0). Suíte
+  995 ×2 zero skips + invertida + janela DE PRIMEIRA (bloco_fsextus_*).
+  **PARADO: o dono abre a Mesa (projeto id=7), confere e exporta; as
+  decisões (painel/período/dica na célula 13) seguem dele.**
+  —— **7ª RODADA — `docs/ORDEM_F13_SEPTIMUS_O_ORCAMENTO_DA_CELULA.md`
+  EXECUTADA (27/07): o dono viu a Segunda ("imagens imensas… texto
+  minúsculo… Kit pequeneninho… data estranha"); a lição do arquiteto:
+  RÉGUA NUMÉRICA TEM FAIXA, NUNCA PISO (o ≥55% sem teto virou teto).**
+  O1 orçamento da célula (foto 55–68% da altura útil, texto nunca
+  cede — celula-2 estava a 87%); O2 a zona do Kit era banner 312×90
+  herdado do placeholder → 192×112; O3 a MINIATURA era a 3ª receita à
+  mão (a doença do Modo Pai) → `_gerar_miniatura` compõe pela
+  montagem oficial, teste por pixel; ACHADO: o upsert do import
+  APAGAVA o `conteudo_fixo` → preserva por slot.id (teste). Suíte 999
+  ×2 + invertida + janela (bloco_fseptimus_*).
+  —— **8ª RODADA — ORDEM F13-OCTAVUS, O TESTE DO CELULAR (27/07; o
+  dono: "quase… as escritas quase não dá pra ler… a data continua
+  estranha").** C1 o PISO DO TIPO (WhatsApp reduz a 37%: nome ≥17pt de
+  piso/19pt de corpo = linha ≥30px em 1080; uniformidade ≤1,3× — estava
+  2,2×; precedência dura: a FAIXA cresce e a foto cede — bandas da arte
+  regeneradas 52/56/53,5→80/84/80 px; nome que não coube encurta PELO
+  DESCRITOR, nunca encolhe); C2 o descritor de volta (a causa: os
+  ItemMesa do caso real nasciam sem `unidade`); C3 `Regiao.so_data` — o
+  selo escreve SÓ "27/07" no miolo LIMPO medido por pixel no BASE
+  (y 82–106, x 890–970), com guarda (sem data → texto completo). §3
+  decidido: a faixa da foto passa a **55–70%** (o Quintou padrão-ouro
+  vence a régua; registrado na SEPTIMUS §O1 + teste). Projeto id=7
+  recomposto e enviado ao dono — **a Segunda 27/07 é a candidata a 1ª
+  página publicada**. Suíte ×2 + invertida + janela (bloco_foctavus_*).
+  —— **9ª RODADA — `docs/ORDEM_F13_NONUS_A_REGRA_TEM_QUE_SER_CODIGO.md`
+  EXECUTADA (27/07): o dono montou a Segunda SOZINHO e truncou 4 de 7
+  nomes — os passos 4/5 da precedência eram PROCEDIMENTO do builder,
+  não código (a 3ª encarnação do §17/QUINQUE). LEI L11: toda regra em
+  prosa termina numa função nomeada, no caminho de produção, testada
+  com dado NOVO.** N1: `app/rendering/nome_fit.py::precedencia_do_nome`
+  — os 6 passos em runtime, chamados pelo compositor para TODA célula
+  em TODA porta (banda cresce/foto cede em runtime dentro do O1; o
+  nome encurta pelo FIM com `sanitize.separar_peso`; elipse só como
+  último recurso COM aviso — a revisora usa a MESMA cadeia); C2 no
+  motor (peso migra ao descritor com dedupe); prova-mestra: dado CRU
+  compõe BYTE-IDÊNTICO ao alfaiatado. N3: badges de papel só no Ateliê
+  (a Mesa desliga — era o que o dono viu); nenhuma porta exporta do
+  canvas (as 8 auditadas usam compor_pagina); botão **" Ver como vai
+  sair"** na Mesa (a receita do export num diálogo). N2: pisos com
+  FAIXA por default nos helpers (`tam−3`/`tam−1,5`) — ~83 regiões em
+  6.0 inerte mortas, as 6 fixas incluídas; varredura das 8 por teste.
+  F1: itens fixos com 3 portas (menu da célula fixa, "···" permanente,
+  paleta) + correção factual: Ctrl+K é busca global, a paleta de ações
+  é Ctrl+Shift+P (ROTEIRO anotado); 9 ações só-paleta nomeadas. F2:
+  teste de gesto do CAMINHO INTEIRO (Ateliê→Mesa→importar→auto→salvar→
+  reabrir). §6.4: `segunda_pelo_caminho_do_dono.py` na raiz REAL — os
+  7 produtos JÁ EXISTIAM no banco e casaram VERDE COM FOTO; projeto
+  id=8 novo (id=7 intacto); a página saiu SEM UMA RETICÊNCIA com os
+  nomes selvagens do acervo ("Italac TP", "Parmalat L.V."). Abertos:
+  preço-da-semana do fixo exige item na estante; duplicação fixo×
+  estante; vigia que retenta; os 8 sem-porta. Suíte ×2 + invertida +
+  janela (bloco_fnonus_*).
+  —— **10ª RODADA — `docs/ORDEM_F13_DECIMUS_A_VALIDADE_SE_RESOLVE_
+  SOZINHA.md` EXECUTADA (27/07): o P-01/P-02 do dossiê — o defeito
+  mais antigo vivo. A automação da validade morria em
+  dia_do_evento(None): abrir layout pelo Ateliê nunca definia _evento
+  e o dono não tem por que cadastrar Evento. Três rodadas consertaram
+  o TRANSPORTE da data (D7/O3/C3); nenhuma a ORIGEM — que estava no
+  NOME do arquivo.** D1: cascata (entidade → Config → `dia_pelo_nome`
+  por palavra INTEIRA; jornal→"DE 01/mm A 27/mm") + o autopreenchimento
+  na porta que faltava (carregar_layout — abrir o encarte JÁ preenche);
+  achado: a conciliação apagava a validade da cascata (guardada). D2:
+  o chip permanente (nunca vazio; alerta/vermelho; tooltip) + o
+  popover com respostas prontas (ValidadeDialog — a sugerida já
+  marcada; os 2 QInputDialog morreram). D3: a mensagem diz ONDE
+  ("clique no 📅 na barra") e o aviso clicável abre o popover; 6
+  mensagens sem-endereço nomeadas para o G. D4: guardas (passado/mês/
+  dia-não-bate — avisos, nunca veto) nos 2 pré-voos. §6: teste de
+  gesto SEM evento no banco + selo por pixel; o script da raiz real
+  parou de tocar a validade (assert: nasceu da cascata). Suíte ×2 +
+  invertida + janela (bloco_fdecimus_*).
+  —— **11ª+12ª RODADAS — UNDECIMUS ("a regra não pode ser dado") +
+  DUODECIMUS ("a Terça do Pão") EXECUTADAS (27-28/07).** U1: 115 de
+  123 regiões NOME no banco real estavam com piso inerte (o código
+  certo, o artefato velho — a QUINQUE pela 4ª vez) → o piso virou
+  REGRA DE RUNTIME (`text_fit.piso_do_celular` ≈ largura/17, reproduz
+  o 17pt aprovado por construção; `tamanho_min_pt` virou override
+  só-para-cima; o 6.0 velho deixou de ser consultado — byte-idêntico
+  por teste). U2: carimbo de versão do pacote no import + o Ateliê
+  avisa com "Atualizar agora" (gesto testado). DUODECIMUS: T1/T3 a
+  PROSA não vira produto (balde visível; percentuais 50/25 intactos na
+  arte); T2 o 5º item fora da grade VISÍVEL; T4 o "À" de enfeite sai,
+  unidade solta desce, "Coxa Sob Coxa"→"Coxa Sobrecoxa" POR DECISÃO DO
+  DONO com alias APRENDIDO; T5 o PAR Sonho+Croissant
+  (conteudo_fixo["imagens"] por zona); T6 as 3 fotos pelo pipeline —
+  alfa útil pula rembg (guarda nova), o Sonho limpo (J18 nem acendeu),
+  o croissant SEM a tábua (reprocesso = gesto do Estúdio, declarado),
+  Real-ESRGAN provou vida (621→1200 em 76s) com a régua da célula
+  respeitada. §4 na raiz real: validade SOMENTE 28/07 sozinha NA
+  terça, densidade 1,00 (era 0,60), zero "…", projeto id=11. Guardião
+  do marco virado com rastro (o pré-voo agora AVISA os 16 nomes abaixo
+  do piso no layout antigo — o U1 valendo; avisa, nunca veta). Achados
+  para o G: o LM inventou "1" em KG→"1kg" (furo fino RG-20); botão
+  "reprocessar" do Estúdio; reuso de projeto por nome. Suíte ×2 +
+  invertida + janela (bloco_fduodecimus_*).
+  —— **13ª RODADA — TERTIUSDECIMUS (os 2 acertos da Terça + a QUARTA)
+  EXECUTADA (28/07).** A1: o texto nunca sai do painel — o remendo das
+  cestas cresceu na ARTE (regenerada) + o passo 3 só cresce COLADO na
+  foto + a rede de clamp no desenho + o TESTE DE MÁSCARA nas 8 (todo
+  pixel de texto dentro do bbox da região). A2: SÓ A DATA nos oito
+  selos (miolos medidos por pixel em cada BASE; exceções de arte
+  declaradas: Jornal e verso do Quintou). A3 com dado: a página era o
+  projeto id=12 QUE O DONO MONTOU SOZINHO (a aceitação de verdade).
+  QUARTA: o OCR VENCEU a foto de monitor (8 itens, preços exatos, 67s,
+  zero tratamento); conta exata 3+5=8; item-com-percentual no modelo
+  (desconto_pct: parser→estante→pílula DESCONTO→pré-voo calado→
+  atualizar_fixos); os 3 modos do fixo numa página; validade 29/07
+  sozinha; projeto id=13. Achados p/ o G: o desconto não passa pelo
+  parser do OCR; o diálogo dos fixos não mostra qual célula tem papel
+  DESCONTO; critério do Concluir com vermelho-resolvido. Suíte 1043 ×2
+  + invertida + janela (bloco_ftertius_*).
+  —— **14ª RODADA — QUARTUSDECIMUS (a foto enche a zona; a unidade
+  nunca se perde) EXECUTADA (28/07).** As duas regras que o arquiteto
+  confessou ter escrito errado (§6), corrigidas COM caso-limite: Q2 o
+  descritor tem DUAS METADES em código (`nome_fit.dividir_descritor`)
+  — qualificador sacrificável, UNIDADE+SIGLA DE EMBALAGEM protegidas;
+  o passo 4 só derruba descritor sem unidade; o SUBTITULO estreito
+  corta o qualificador, nunca elipsa o número; espião nas 8 páginas
+  (vermelho no código antigo). Q1 a régua e o plano viraram runtime
+  (`app/rendering/foto_fit.py`): 3 arranjos candidatos (lateral/
+  vertical/MISTO — a sugestão literal do dono venceu nas 3 fixas da
+  Quarta: 36/37/25% → 100%, área da foto +74%), marca `Regiao.
+  zona_flex`, guardas de célula vestida (ADORNO)/rotação/multi-zona,
+  caso-limite da garrafa-em-pé POR TESTE (o Óleo não regride). Q3
+  pílula do desconto VERDE (a cor segue a coluna; nota factual: o
+  gerador estava laranja hardcoded, não há "original verde" no
+  pacote). Q4 os 2 formatos renderizados p/ o dono ("20% OFF"
+  provisório, L9). Q6 L.V. no glossário de siglas. Q8 densidade da
+  Terça 1,00 (cestas vestidas: a âncora é da arte). FROTA (19
+  agentes): 5 confirmados TODOS consertados (pílula do misto vazando
+  o bbox c/ foto 10:1; a sigla TP caindo no corte do desenho; o corte
+  silencioso → a revisora anuncia; a fixa duplicando descritor em
+  unidade; a máscara afrouxada → híbrida) + 2 endurecimentos + 4
+  refutados com prova. 3 páginas recompostas na raiz real (backup
+  core_pre_quartusdecimus). Suíte 1061 ×2 + invertida + janela
+  (bloco_fquartusdecimus_*). **ADENDO DO DONO (28/07):** "20% OFF"
+  DECIDIDO; a data da Quarta cresceu (miolo re-medido, 28,5→40pt); as
+  3 fixas no arranjo QUE ELE DESENHOU (foto topo-centro 274×132 flex,
+  nome em largura total, descrição inferior-esquerda, pílula
+  inferior-direita) — com um achado de MOTOR no caminho: o
+  `_crescer_banda` estimava a altura de 2 linhas por métrica de fonte
+  e subestimava; agora cresce MEDINDO com o próprio `_cabe` (bisseção)
+  — uma régua só; e o abraço do foto_fit ancora no RODAPÉ quando há
+  texto colado abaixo (centralizar matava o passo 3). As 5 livres da
+  Quarta com zona_flex (rede futura). Suíte ×2 + invertida + janela
+  (bloco_fquartus_adendo_*).
+  —— **ADENDO QUINTOU (30/07)** e **ADENDO DIA-A-DIA (01/08)** — dois
+  pedidos diretos do dono usando o app. QUINTOU: o piso do celular
+  CEDE antes da tesoura em célula sem SUBTITULO (nomes completos em
+  corpo reduzido, revisora avisa); Fica a Dica no painel; aviso das
+  imagens + data neon no verso (medidos no publicado). DIA-A-DIA
+  (`docs/ADENDO_F13_DIA_A_DIA.md`): "Novo produto…" no Almoxarifado;
+  o motor da conciliação deixou de esconder irmãos de gramatura
+  (corpus multi-pid + desempate por PESO), ganhou exclusividade de
+  lote, divergência tolerante (BB-X/grafia OCR) e aliases limpos de
+  marcadores; a UI ganhou "Vincular…"/"Outro…" (o vínculo forçado que
+  APRENDE — F9), re-conciliar ao corrigir texto, candidatos visíveis,
+  miniatura e desfazer no Ignorar; aliases do id=50 corrompido
+  devolvidos ao produto certo (backup core_pre_diaadia). 9 testes L1
+  (test_f13_diaadia.py). Suíte ×2 + invertida + janela
+  (bloco_fdiaadia_*).

@@ -247,3 +247,29 @@ def dia_do_evento_v2(s, nome_ou_id) -> int | None:
     if ev is not None and ev.dia_semana is not None:
         return ev.dia_semana
     return _dia_da_config(s, str(nome_ou_id)) if nome_ou_id else None
+
+
+def nome_da_proxima_edicao(nome: str, dia_semana: int | None,
+                           hoje=None) -> str:
+    """SEXTUSDECIMUS/M10: num evento semanal, a sugestão do "Duplicar
+    (nova edição)" é a PRÓXIMA data do dia do evento — "Segunda dos
+    Frios 27/07" vira "Segunda dos Frios 03/08", não "(nova)". A data
+    no nome (dd/mm ou dd/mm/aaaa) é substituída; sem data, ela é
+    anexada. Se a próxima ocorrência já está escrita no nome, pula uma
+    semana (duplicar NO dia sugere a semana seguinte). Sem dia
+    conhecido, o "(nova)" de sempre."""
+    import re
+    from datetime import date, timedelta
+
+    if dia_semana is None or not (0 <= int(dia_semana) <= 6):
+        return f"{nome} (nova)"
+    hoje = hoje or date.today()
+    prox = hoje + timedelta(days=(int(dia_semana) - hoje.weekday()) % 7)
+    alvo = prox.strftime("%d/%m")
+    padrao = re.compile(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b")
+    if padrao.search(nome) and padrao.search(nome).group(0)[:5] == alvo:
+        prox += timedelta(days=7)
+        alvo = prox.strftime("%d/%m")
+    if padrao.search(nome):
+        return padrao.sub(alvo, nome, count=1)
+    return f"{nome} {alvo}"

@@ -22,9 +22,11 @@ from app.core.sentinela import faixas_por_categoria, preco_suspeito
 
 _PROMPT = (
     "Você é um revisor de encarte de supermercado. Olhe a imagem e liste, em "
-    "JSON, os PREÇOS e os NOMES de produto que você consegue LER claramente. "
-    'Responda só o JSON: {"precos": ["5,90", "12,49"], "nomes": ["Arroz 5kg"]}. '
-    "Não invente — se não conseguir ler, deixe a lista vazia."
+    "JSON, os PARES produto+preço que você consegue LER claramente juntos "
+    "(o preço que está NA CÉLULA daquele produto): "
+    '{"itens": [{"nome": "Arroz 5kg", "preco": "5,90"}], '
+    '"precos": ["5,90"], "nomes": ["Arroz 5kg"]}. '
+    "Não invente — se não conseguir ler um par completo, não o liste."
 )
 
 
@@ -69,6 +71,15 @@ def _pares_de_calibracao(dados_por_slot):
     return pares
 
 
+def heuristicas_do_pre_voo(layout, dados_por_slot,
+                           fontes_dir=None) -> list[str]:
+    """F13/D10 (VC-050): o piso determinístico EXPOSTO para o pré-voo —
+    a mesma lista do revisar_export, sem precisar compor o PNG. O app
+    sempre soube detectar (nome cortado, preço fora de faixa, de≤por);
+    só contava no botão 'Revisar' — agora pergunta na hora certa."""
+    return _heuristicas(layout, dados_por_slot, fontes_dir)
+
+
 def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
     """As checagens que rodam SEM visão (o piso, decisão travada): nome que não
     cabe na medida da região, preço de ≤ por (PROCON), preço fora da faixa da
@@ -90,38 +101,132 @@ def _heuristicas(layout, dados_por_slot, fontes_dir) -> list[str]:
         susp = preco_suspeito(d.preco_por, d.categoria, faixas)
         if susp:
             avisos.append(f"{rot}: {susp}")
-        # nome cortado por medida (reusa o text_fit do compositor)
+        # nome cortado por medida — a MESMA cadeia do compositor
+        # (F13-NONUS/N1): a precedência encurta pelo descritor antes de
+        # qualquer elipse; o aviso só sai quando NEM a cadeia salvou
+        # (o que a composição de verdade vai truncar)
         slot = slots.get(sid)
         reg = _regiao_nome(slot) if slot is not None else None
         if reg is not None and (d.nome or "").strip() and fontes_dir is not None:
             try:
-                from app.rendering.text_fit import ajustar_texto
-                from app.rendering.units import mm_para_px
+                from app.rendering.nome_fit import precedencia_do_nome
+                from app.rendering.text_fit import piso_do_celular
                 dpi = getattr(layout, "dpi", 300)
-                aj = ajustar_texto(
-                    d.nome, str(Path(fontes_dir) / reg.fonte),
-                    round(mm_para_px(reg.rect.larg_mm, dpi)),
-                    round(mm_para_px(reg.rect.alt_mm, dpi)),
-                    reg.tamanho_max_pt, dpi, reg.tamanho_min_pt)
-                if any("…" in ln for ln in aj.linhas):
+                # v3 (achado da frota): a simulação roda com as MESMAS
+                # marcas do desenho — sem elas a revisora via OUTRA
+                # página (a hierarquia canônica muda nome e descritor)
+                # e nenhum corte real era anunciado
+                aj = precedencia_do_nome(
+                    d.nome, getattr(d, "descritor", None),
+                    getattr(d, "unidade", None), slot.regioes, dpi,
+                    Path(fontes_dir),
+                    piso_pt=piso_do_celular(
+                        getattr(layout, "largura_mm", 0)),
+                    marcas=getattr(d, "marcas_nome", ()))
+                if aj is not None and aj.elipsa:
                     avisos.append(f"{rot}: o nome não cabe inteiro na célula — "
                                   "aparece cortado (…).")
+                if aj is not None and getattr(aj, "piso_cedeu", False):
+                    avisos.append(f"{rot}: o nome só coube abaixo do piso "
+                                  "de legibilidade do celular (corpo "
+                                  "reduzido — confira no zoom).")
+                # QUARTUSDECIMUS (frota, I2): o corte do QUALIFICADOR
+                # no desenho do SUBTITULO nunca é silencioso — a MESMA
+                # decisão do desenho (descritor_que_cabe), anunciada
+                from app.rendering.model import TipoRegiao
+                from app.rendering.nome_fit import descritor_que_cabe_ex
+                reg_sub = next(
+                    (r for r in slot.regioes
+                     if r.tipo == TipoRegiao.SUBTITULO and r.visivel),
+                    None)
+                desc_f = (aj.descritor if aj is not None
+                          else getattr(d, "descritor", None))
+                uni_f = (None if aj is not None and aj.descritor_saiu
+                         else getattr(d, "unidade", None))
+                cheio = desc_f or uni_f
+                if aj is not None and aj.descritor_saiu \
+                        and (getattr(d, "descritor", None) or "").strip():
+                    # v3: o passo 4 calou a 2ª linha INTEIRA — com a
+                    # hierarquia canônica ela carrega marca/sabores;
+                    # o desenho declarou, alguém tem que anunciar
+                    avisos.append(
+                        f"{rot}: a 2ª linha saiu para o nome caber — "
+                        f"perdeu “{d.descritor}”.")
+                if reg_sub is not None and cheio:
+                    vai, cortado = descritor_que_cabe_ex(
+                        desc_f, uni_f, reg_sub, dpi, Path(fontes_dir))
+                    if cortado:
+                        avisos.append(
+                            f"{rot}: o descritor não coube — perdeu "
+                            f"“{cortado}” (sai “{vai}”).")
             except Exception:
                 pass
     return avisos
 
 
+def _norm_nome(txt: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(txt))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return " ".join(t.lower().split())
+
+
+def _casa_nome(lido: str, esperado: str) -> bool:
+    """O nome LIDO na peça é o produto ESPERADO? Tolerante ao OCR: um
+    contém o outro, ou similaridade alta (difflib)."""
+    a, b = _norm_nome(lido), _norm_nome(esperado)
+    if not a or not b:
+        return False
+    if a in b or b in a:
+        return True
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, a, b).ratio() >= 0.75
+
+
 def _revisao_por_visao(png_path, dados_por_slot, motor) -> list[str]:
-    """Compara o que o modelo de visão LÊ na peça com os preços esperados dos
-    dados. Preço visível que não bate com nenhum esperado = provável troca."""
+    """Compara o que o modelo de visão LÊ na peça com o que o projeto
+    espera. F13/B8 (CI-02): o prompt sempre pediu os NOMES e a revisora
+    os jogava fora — preço TROCADO entre dois itens (os dois preços
+    existem no projeto!) passava limpo, a coisa que ela existe para
+    pegar. Agora os PARES nome+preço são conferidos item a item."""
     from app.ai.ocr import _extrair_json_obj
     esperados = {_fmt_preco(d.preco_por) for d in dados_por_slot.values()
                  if d.preco_por is not None}
     esperados.discard(None)
     resp = motor.visao(str(png_path), _PROMPT, max_tokens=1024)
     obj = _extrair_json_obj(resp)
-    lidos = [_norm_preco(p) for p in obj.get("precos", []) if str(p).strip()]
     avisos: list[str] = []
+
+    # 1) os PARES (a prova do preço trocado)
+    itens_do_projeto = [(d.nome, _fmt_preco(d.preco_por))
+                        for d in dados_por_slot.values()
+                        if d.nome and d.preco_por is not None]
+    for par in obj.get("itens", []) or []:
+        nome_lido = str(par.get("nome", "")).strip()
+        preco_lido = _norm_preco(par.get("preco", ""))
+        if not nome_lido or not preco_lido:
+            continue
+        casados = [(n, p) for n, p in itens_do_projeto
+                   if _casa_nome(nome_lido, n)]
+        if not casados:
+            continue                      # nome que não é do projeto: ruído
+        if any(p == preco_lido for _n, p in casados):
+            continue                      # o par confere
+        certo = casados[0][1]
+        dono_do_preco = next((n for n, p in itens_do_projeto
+                              if p == preco_lido), None)
+        if dono_do_preco is not None:
+            avisos.append(
+                f"A peça mostra “{nome_lido}” com R$ {preco_lido}, que é o "
+                f"preço de “{dono_do_preco}” (o esperado era R$ {certo}) — "
+                "parece PREÇO TROCADO entre as células.")
+        else:
+            avisos.append(
+                f"A peça mostra “{nome_lido}” com R$ {preco_lido}, mas o "
+                f"projeto diz R$ {certo} — confira essa célula.")
+
+    # 2) a rede antiga (preço solto que não pertence a ninguém)
+    lidos = [_norm_preco(p) for p in obj.get("precos", []) if str(p).strip()]
     for p in lidos:
         if p and esperados and p not in esperados:
             avisos.append(f"A peça mostra o preço R$ {p}, que não bate com "

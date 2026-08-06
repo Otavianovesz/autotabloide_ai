@@ -112,19 +112,14 @@ def test_a4_cor_invalida_nao_aplica():
 def test_a4_atelie_preenche_nome_do_layout(tmp_path, monkeypatch):
     _app()
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
-    import shutil
-    from pathlib import Path
-
     from app.core.database import Database
     from app.core.paths import SystemRoot
     from app.rendering.cartaz import layout_cartaz_exemplo
     from app.rendering.persistencia import salvar_layout
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    from app.tests import acervo
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     db = Database(root).init()
     with db.Session() as s:
         row = salvar_layout(s, "Meu Cartaz", layout_cartaz_exemplo(),

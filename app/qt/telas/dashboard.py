@@ -467,16 +467,30 @@ class DashboardTela(QWidget):
             f"{s.get('pct_foto', 0)}%")
         self._cartoes_numero["edicoes"].set_valor(
             str(d.get("total_projetos", 0)))
-        # o próximo evento: o de dia_semana mais perto de hoje (círculo de 7)
+        # o próximo evento: o de dia_semana mais perto de hoje (círculo de 7).
+        # SEXTUSDECIMUS/M9 + L12 (a régua soma): o dia gravado OU o dia
+        # lido do NOME ("Segunda dos Frios" → segunda) — os eventos
+        # nascidos do texto ficavam de fora e o cartão dizia "—" com a
+        # Segunda amanhã (medido pelo arquiteto na máquina do dono).
         try:
             from datetime import datetime
-            com_dia = [e for e in self._eventos()
-                       if e.get("dia_semana") is not None]
+
+            from app.qt.telas import servico as _svc
+            com_dia = []
+            for e in self._eventos():
+                dia = e.get("dia_semana")
+                if dia is None:
+                    dia = _svc.dia_do_evento(e["nome"])
+                if isinstance(dia, int) and 0 <= dia <= 6:
+                    com_dia.append((dia, e))
             if com_dia:
                 hoje = datetime.now().weekday()
-                prox = min(com_dia,
-                           key=lambda e: (e["dia_semana"] - hoje) % 7)
-                self._cartoes_numero["evento"].set_valor(prox["nome"])
+                dia, prox = min(com_dia,
+                                key=lambda de: (de[0] - hoje) % 7)
+                quando = {0: " (hoje)", 1: " (amanhã)"}.get(
+                    (dia - hoje) % 7, "")
+                self._cartoes_numero["evento"].set_valor(
+                    prox["nome"] + quando)
             else:
                 self._cartoes_numero["evento"].set_valor("—")
         except Exception:
@@ -726,6 +740,13 @@ class DashboardTela(QWidget):
         self._fluir_grade()
         self._coluna.addWidget(grade_caixa)
         self._coluna.addStretch(1)
+        # SEXTUSDECIMUS/M7: o drill-down de evento era um SNAPSHOT — o
+        # "Duplicar (nova edição)" recarregava a home invisível e a
+        # grade aberta ficava velha (o dono saía e voltava para ver).
+        # Com um evento aberto, a visão é REFEITA do cache novo.
+        if (self._pilha.currentIndex() == 1
+                and getattr(self, "_evento_aberto", None)):
+            self._abrir_evento_por_nome(self._evento_aberto)
         # passo 31: entrada em cascata (60 ms por cartão; reduzidas = seco)
         if self.isVisible():
             from app.qt.design.animacoes import cascata
@@ -1219,6 +1240,12 @@ class DashboardTela(QWidget):
             self._resumo_projetos(avulsos), "",
             lambda: self._abrir_visao("Avulsos", t.BORDA_FORTE, avulsos))
 
+    def _voltar_ao_inicio(self) -> None:
+        """M7: sair do drill-down LIMPA a lembrança — o recarregar não
+        rouba a tela de volta ao evento."""
+        self._evento_aberto = None
+        self._pilha.setCurrentIndex(0)
+
     def _abrir_evento_por_nome(self, nome: str) -> None:
         itens = [p for p in getattr(self, "_projetos", [])
                  if (p["evento"] or "").strip().lower()
@@ -1232,6 +1259,8 @@ class DashboardTela(QWidget):
     def _abrir_visao(self, titulo: str, cor: str, itens: list[dict],
                      nome_evento: str | None = None) -> None:
         """Passo 20: a prateleira antiga, agora POR DENTRO do cartão."""
+        # M7: o evento aberto fica lembrado — o recarregar refaz a visão
+        self._evento_aberto = nome_evento
         while self._visao_lay.count():
             filho = self._visao_lay.takeAt(0)
             if filho.widget():
@@ -1241,7 +1270,7 @@ class DashboardTela(QWidget):
         voltar = QPushButton(" Início")
         voltar.setIcon(icone("seta_cima", tamanho=14))
         voltar.setProperty("tipo", "fantasma")
-        voltar.clicked.connect(lambda: self._pilha.setCurrentIndex(0))
+        voltar.clicked.connect(self._voltar_ao_inicio)
         faixa = QLabel()
         faixa.setFixedSize(5, 18)
         faixa.setStyleSheet(f"background: {cor}; border-radius: 2px;")
@@ -1406,9 +1435,21 @@ class DashboardTela(QWidget):
         if escolha == a_abrir:
             self._abrir(item)
         elif escolha == a_dup:
+            # SEXTUSDECIMUS/M10: num evento semanal a sugestão é a
+            # PRÓXIMA data ("Segunda dos Frios 03/08"), não "(nova)"
+            from app.qt.telas import servico as _svc
+            from app.qt.telas.eventos import nome_da_proxima_edicao
+            ev_nome = (p.get("evento") or "").strip()
+            dia = next((e.get("dia_semana") for e in self._eventos()
+                        if e["nome"].strip().lower()
+                        == ev_nome.lower()), None)
+            if dia is None and ev_nome:
+                dia = _svc.dia_do_evento(ev_nome)
+            if not isinstance(dia, int):
+                dia = None
             nome, ok = QInputDialog.getText(
                 self, "Duplicar projeto", "Nome da nova edição:",
-                text=f'{p["nome"]} (nova)')
+                text=nome_da_proxima_edicao(p["nome"], dia))
             if ok and nome.strip():
                 novo = projetos.duplicar_projeto(p["id"], nome.strip())
                 if novo is not None:     # FASE 2 (passo 48): 4º caminho

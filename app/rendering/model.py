@@ -29,6 +29,48 @@ class TipoRegiao(str, Enum):
     PRECO = "PRECO"
     SELO = "SELO"
     TEXTO_LEGAL = "TEXTO_LEGAL"   # data/validade da oferta, "beba com moderação", etc.
+    # F13-BIS/T2: a linha de DESCRITOR do item ("senepol · m. própria ·
+    # 100 g") — todo encarte do pacote tem duas linhas por produto e o
+    # app tinha uma. NÃO é conteúdo ocupável (lei do tipo novo: um slot
+    # só com subtítulo não engole produto — grade.TIPOS_CONTEUDO).
+    SUBTITULO = "SUBTITULO"
+    # F13-TER/V2: recola o recorte do FUNDO ORIGINAL por cima do que já
+    # foi desenhado — é o que põe a foto POR BAIXO da cesta/toldo/banda
+    # da arte ("deixar ela preencher todo o vazio"). Decoração pura:
+    # fora do ocupável e do pré-voo (lei do tipo novo).
+    ADORNO = "ADORNO"
+    # F13-TER/N2: o FIO tipográfico — retângulo chapado na ``cor`` da
+    # região (o cabeçalho de seção do Jornal é fio + versalete, e o
+    # fluxo põe o fio onde a linha CAIU, não onde a arte cravou).
+    # Decoração pura: fora do ocupável e do pré-voo (lei do tipo novo).
+    FILETE = "FILETE"
+
+
+class FormaPreco(str, Enum):
+    """F13-BIS/T1: a FORMA do preço é conceito de 1ª classe.
+
+    O diagnóstico-raiz da reprovação do dono: sete encartes com sete
+    formas de preço no desenho (medalhão, etiqueta pendurada, tag,
+    oval, bandeira girada, carimbo) e o app desenhava UMA — texto preto
+    corrido. A forma leva fundo/borda (``forma_cor``/``forma_cor_borda``),
+    o texto usa ``cor``/fontes/subtipo da região, e o giro é o
+    ``rotacao_graus`` de sempre. Os VALORES saem dos geradores do
+    pacote, nunca de defaults."""
+
+    TEXTO = "TEXTO"                        # o comportamento antigo (padrão)
+    TAG_ARREDONDADA = "TAG_ARREDONDADA"    # Quarta (pricepod), Sexta (patches)
+    PILULA = "PILULA"                      # cápsula cheia (nenhum gerador usa)
+    OVAL = "OVAL"                          # elipse (bancas da Sexta)
+    MEDALHAO_ESTRELA = "MEDALHAO_ESTRELA"  # Segunda (selo de cera, 18 pétalas)
+    ETIQUETA_GIRADA = "ETIQUETA_GIRADA"    # Sábado (bandeirola c/ ponta à dir.)
+    ETIQUETA_PENDURADA = "ETIQUETA_PENDURADA"  # Terça (disco escalopado + cordão)
+    # (extensão declarada ao T1: o scout provou que o Jornal usa uma 8ª
+    # forma — o carimbo de borda perfurada — que a lista da ordem não tinha)
+    CARIMBO = "CARIMBO"                    # Jornal (borda tracejada, sem fundo)
+    # F13-TER: a 9ª forma — o QUINTOU entrou no pacote (o publicado
+    # real usa etiqueta vermelha com LISTRAS diagonais; ref. nas artes
+    # de preço 4500×5418 do próprio dono)
+    ETIQUETA_LISTRADA = "ETIQUETA_LISTRADA"
 
 
 class SubtipoPreco(str, Enum):
@@ -59,6 +101,16 @@ class PapelTexto(str, Enum):
                                # — puxa `dados.observacao`; condicional (vazia não desenha)
     DESCONTO = "DESCONTO"  # R-109 (Fase 11): "-XX%" CALCULADO de (de−por)/de;
                            # condicional — some se não houver "de" (nunca digitado)
+    EDICAO = "EDICAO"      # F13-TER/D1: "Nº X · ANO Y" do Jornal — puxa a
+                           # edição VIVA do projeto; condicional (sem dado não
+                           # desenha — rótulo que não é sempre verdade não
+                           # pode estar na estrutura)
+    OFERTA = "OFERTA"      # Rodada JM (B2B): o preço-texto do item
+                           # ("SUPER OFERTA" dentro da estrela do Jornal) —
+                           # puxa `dados.multi_preco`; cai no texto_fixo do
+                           # dono; vazio = a forma nem desenha (D2).
+                           # ATENÇÃO: from_dict é ESTRITO — o membro nasce
+                           # junto de qualquer layout que o use.
 
 
 class Alinhamento(str, Enum):
@@ -68,9 +120,28 @@ class Alinhamento(str, Enum):
     JUSTIFICADO = "JUSTIFICADO"
 
 
+class AlinhamentoV(str, Enum):
+    """F13/C4 (R-01): alinhamento VERTICAL do bloco de texto na caixa.
+
+    Não era bug de UI — o campo NÃO EXISTIA no modelo (o compositor
+    centralizava incondicional). CENTRO é o padrão: layout antigo compõe
+    byte-idêntico."""
+
+    TOPO = "TOPO"
+    CENTRO = "CENTRO"
+    BASE = "BASE"
+
+
 class Ajuste(str, Enum):
     CONTER = "CONTER"       # aspect-fit (cabe inteira dentro do retângulo)
     PREENCHER = "PREENCHER"  # cobre o retângulo (pode cortar)
+    # F13-TER/V1: a causa-raiz do "pequeneninhas" — o acervo guarda um
+    # QUADRADO 1000×1000 com o item pequeno dentro, e o CONTER ajusta o
+    # quadrado. ASSENTAR recorta pela bbox do ALFA na composição (o
+    # quadrado morre sem reprocessar o acervo), escala pelo maior fator
+    # que caiba e ancora o produto no RODAPÉ da zona (assenta, não
+    # flutua). É o ajuste dos encartes.
+    ASSENTAR = "ASSENTAR"
 
 
 class Mascara(str, Enum):
@@ -146,6 +217,10 @@ class Regiao:
     cor: str = "#000000"
     alinhamento: Alinhamento = Alinhamento.ESQUERDA
     incluir_unidade: bool = True
+    # VICESIMUS-QUINTUS/L23 (o publicado do Quintou grafa "700G",
+    # "269ML"): a UNIDADE do nome sai em CAIXA ALTA nesta região —
+    # transformação SÓ de exibição, o banco segue minúsculo
+    unidade_caixa_alta: bool = False
 
     # --- preço ---
     subtipo_preco: SubtipoPreco = SubtipoPreco.COMPLETO
@@ -154,6 +229,21 @@ class Regiao:
     fonte_centavos: str | None = None
     mostrar_moeda: bool = True   # se a arte já tem "R$", desligue: desenha só o número
     riscado: bool = False        # preço "de" riscado (cartaz de gôndola)
+    # F13-BIS/T1: a FORMA desenhada atrás do preço (medalhão/tag/oval…).
+    # TEXTO = o comportamento antigo (layout velho carrega TEXTO). O giro
+    # da forma é o rotacao_graus; o texto usa cor/fontes/subtipo daqui.
+    forma_preco: FormaPreco = FormaPreco.TEXTO
+    forma_cor: str = "#C0392B"           # fundo da forma
+    forma_cor_borda: str | None = None   # contorno (None = sem contorno)
+    # F13-BIS/T1: no pacote, SÓ a Quarta sobrescreve os centavos (dy<0);
+    # os selos/discos/bandeiras usam UMA baseline com centavos menores.
+    # False = sobrescrito (o comportamento de sempre do SEPARADO).
+    centavos_na_base: bool = False
+    # VICESIMUS-SEXTUS/L24: TIPO DENTRO DE ELEMENTO DE ARTE SE
+    # DIMENSIONA PELO ELEMENTO — o corpo do número é CALCULADO para
+    # preencher a caixa (cresce até o teto de largura/altura), nunca
+    # lido de tamanho_max_pt. O carimbo do Quintou liga isto.
+    preenche_caixa: bool = False
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -161,6 +251,16 @@ class Regiao:
     # p/ ARREDONDADO. Recorte é no compositor por alpha — não muda o rect (I1).
     mascara: Mascara = Mascara.RETANGULO
     mascara_raio_mm: float = 4.0
+    # QUARTUSDECIMUS/Q1: a célula é REPLANEJÁVEL por dentro — a zona de
+    # foto muda de forma conforme a proporção da foto da semana, e os
+    # textos deslocam DENTRO do bbox da célula (foto_fit.py). Só onde a
+    # arte de fundo é lisa (as fábricas dos encartes marcam); False =
+    # geometria do template intocada (o de sempre).
+    zona_flex: bool = False
+    # VICESIMUS-QUINTUS/L23 (C6): em arte CARREGADA (o tijolo do
+    # Quintou) o leque polui — a zona declara que o produto NUNCA se
+    # repete nela (exceção declarada da L19, nunca inferida)
+    sem_leque: bool = False
 
     # --- legibilidade sobre foto (R-035 pill, R-034 sombra/contorno) ---
     # pill: faixa/pílula semitransparente atrás do texto (nome). sombra/contorno:
@@ -176,6 +276,10 @@ class Regiao:
     # texto_fixo: conteúdo do LAYOUT (ex.: "Fica a Dica"), não do produto.
     # Tem precedência sobre dados.texto_legal e desenha mesmo em slot vazio.
     texto_fixo: str | None = None
+    # F13-OCTAVUS/C3: região VALIDADE que escreve SÓ A DATA ("27/07")
+    # — o selo da Segunda tem texto curvo GRAVADO na arte e o app
+    # escrevia a frase inteira por cima; aditivo (padrão False)
+    so_data: bool = False
 
     # --- papel do texto (RG-57/R-153, Fase 5) ---
     # papel_texto: para regiões TEXTO_LEGAL, DIZ o que a região é (aviso legal,
@@ -189,6 +293,13 @@ class Regiao:
     # rect (o rect em si não muda — âncora e vínculo ficam estáveis, I1).
     # A "data deitada" do template real do dono é rotacao_graus=90.
     rotacao_graus: float = 0.0
+
+    # F13/C4 (R-01): vertical do texto — CENTRO = o comportamento de sempre
+    alinhamento_v: AlinhamentoV = AlinhamentoV.CENTRO
+
+    # F13-BIS/T5: hifenizar é o ÚLTIMO recurso — nas células estreitas
+    # dos encartes o hífen destruía os nomes; com sem_hifen o corpo cede.
+    sem_hifen: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -225,8 +336,19 @@ class Regiao:
             "contorno": self.contorno,
             "cor_efeito": self.cor_efeito,
             "texto_fixo": self.texto_fixo,
+            "so_data": self.so_data,                     # OCTAVUS/C3
             "papel_texto": self.papel_texto.value,
             "rotacao_graus": self.rotacao_graus,
+            "alinhamento_v": self.alinhamento_v.value,   # F13/C4
+            "forma_preco": self.forma_preco.value,       # F13-BIS/T1
+            "forma_cor": self.forma_cor,
+            "forma_cor_borda": self.forma_cor_borda,
+            "centavos_na_base": self.centavos_na_base,
+            "sem_hifen": self.sem_hifen,                 # F13-BIS/T5
+            "zona_flex": self.zona_flex,                 # QUARTUSDECIMUS/Q1
+            "sem_leque": self.sem_leque,                 # QUINTUS/C6
+            "unidade_caixa_alta": self.unidade_caixa_alta,   # QUINTUS/L23
+            "preenche_caixa": self.preenche_caixa,       # SEXTUS/L24
         }
 
     @classmethod
@@ -265,8 +387,21 @@ class Regiao:
             contorno=d.get("contorno", False),
             cor_efeito=d.get("cor_efeito", "#000000"),
             texto_fixo=d.get("texto_fixo"),
+            so_data=d.get("so_data", False),             # C3 aditivo
             papel_texto=PapelTexto(d.get("papel_texto", "LIVRE")),  # antigo: LIVRE
             rotacao_graus=d.get("rotacao_graus", 0.0),   # layout antigo: 0
+            # F13/C4: layout antigo sem a chave = CENTRO (byte-idêntico)
+            alinhamento_v=AlinhamentoV(d.get("alinhamento_v", "CENTRO")),
+            # F13-BIS/T1+T5: região antiga = TEXTO/hifeniza (como sempre)
+            forma_preco=FormaPreco(d.get("forma_preco", "TEXTO")),
+            forma_cor=d.get("forma_cor", "#C0392B"),
+            forma_cor_borda=d.get("forma_cor_borda"),
+            centavos_na_base=d.get("centavos_na_base", False),
+            sem_hifen=d.get("sem_hifen", False),
+            zona_flex=d.get("zona_flex", False),         # Q1 aditivo
+            sem_leque=d.get("sem_leque", False),         # QUINTUS aditivo
+            unidade_caixa_alta=d.get("unidade_caixa_alta", False),
+            preenche_caixa=d.get("preenche_caixa", False),   # L24 aditivo
         )
 
 
@@ -284,6 +419,18 @@ class Slot:
     mestre: bool = False
     origem_mm: tuple | None = None
     ref_grupo: str | None = None
+    # F13/F1: célula FIXA carrega produto da PRÓPRIA ARTE (Terça 2,
+    # Segunda 1, Quarta 3) — fica fora do auto-preencher e não conta
+    # como vaga (grade.ocupaveis é o ponto único da regra).
+    fixa: bool = False
+    # F13-TER/N1: o CONTEÚDO do item fixo, guardado COM o template —
+    # produto + foto ESCOLHIDA pelo dono + preço fixo OU da semana:
+    # {"nome", "descritor", "preco", "preco_da_semana", "imagem",
+    #  "marca"}; imagem relativa resolve contra biblioteca_imagens
+    # (I3). O compositor desenha em TODA porta; a tabela da semana só
+    # atualiza o preço quando preco_da_semana=True (chave natural,
+    # D12) — nunca depende de OCR.
+    conteudo_fixo: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -292,6 +439,9 @@ class Slot:
             "mestre": self.mestre,
             "origem_mm": list(self.origem_mm) if self.origem_mm else None,
             "ref_grupo": self.ref_grupo,
+            "fixa": self.fixa,
+            "conteudo_fixo": (dict(self.conteudo_fixo)
+                              if self.conteudo_fixo else None),
         }
 
     @classmethod
@@ -303,6 +453,8 @@ class Slot:
             mestre=d.get("mestre", False),
             origem_mm=tuple(origem) if origem else None,
             ref_grupo=d.get("ref_grupo"),
+            fixa=d.get("fixa", False),      # layout antigo: nunca fixa
+            conteudo_fixo=d.get("conteudo_fixo") or None,   # N1 aditivo
         )
 
 
@@ -312,6 +464,11 @@ class Pagina:
     # D8.2 (ORDEM_F5_8): frente e verso têm ARTES diferentes — fundo POR
     # página; None = herda o arquivo_fundo do layout (compat total).
     arquivo_fundo: str | None = None
+    # F13-QUATER/L9: a CAMADA do dono — arte de overlay (RGBA) colada
+    # sobre o fundo, escalada à página, com alfa (a camada de etiquetas
+    # de preço do Quintou: o asset É a fonte da verdade e é CONSUMIDO,
+    # nunca imitado em código). None = página sem camada (compat total).
+    arquivo_camada: str | None = None
     # F8.2: seções visuais (contorno + título por categoria). São camada
     # DERIVADA — a página só guarda o liga/desliga e os títulos editados;
     # os retângulos são recalculados do mapa a cada composição. A seção
@@ -319,6 +476,9 @@ class Pagina:
     # por construção (a 3ª aplicação da lei do tipo novo).
     secoes_ligadas: bool = False
     titulos_secoes: dict = field(default_factory=dict)   # categoria → título
+    # F13-QUATER/A4: o ESTILO de seção POR PÁGINA (None = o global da
+    # Config) — o Jornal em fluxo liga "JORNAL" aqui; aditivo
+    estilo_secoes: str | None = None
     # FASE 4 (Bloco E, R-027/028): guias arrastáveis e grade magnética.
     # `guias`: lista de (orientacao 'x'|'y', coord_mm) — coordenadas em mm
     # RELATIVAS à página (I3: portável, nunca px absoluto). `grade_*`: o
@@ -330,8 +490,10 @@ class Pagina:
     def to_dict(self) -> dict:
         return {"slots": [s.to_dict() for s in self.slots],
                 "arquivo_fundo": self.arquivo_fundo,
+                "arquivo_camada": self.arquivo_camada,     # QUATER/L9
                 "secoes_ligadas": self.secoes_ligadas,
                 "titulos_secoes": dict(self.titulos_secoes),
+                "estilo_secoes": self.estilo_secoes,       # A4 aditivo
                 "guias": [list(g) for g in self.guias],
                 "grade_magnetica": self.grade_magnetica,
                 "grade_passo_mm": self.grade_passo_mm}
@@ -340,8 +502,10 @@ class Pagina:
     def from_dict(cls, d: dict) -> "Pagina":
         return cls(slots=[Slot.from_dict(s) for s in d["slots"]],
                    arquivo_fundo=d.get("arquivo_fundo"),
+                   arquivo_camada=d.get("arquivo_camada"),  # L9 aditivo
                    secoes_ligadas=d.get("secoes_ligadas", False),
                    titulos_secoes=dict(d.get("titulos_secoes") or {}),
+                   estilo_secoes=d.get("estilo_secoes"),   # A4 aditivo
                    guias=[tuple(g) for g in (d.get("guias") or [])],
                    grade_magnetica=d.get("grade_magnetica", False),
                    grade_passo_mm=float(d.get("grade_passo_mm", 5.0)))

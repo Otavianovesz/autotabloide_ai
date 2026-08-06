@@ -24,6 +24,23 @@ def _app():
     return QApplication.instance() or QApplication([])
 
 
+def _vivas_nominais(anim):
+    """F13/B2: quando o zero falhar, o vermelho DIZ quem ficou em voo
+    (tipo, duração, estado, dono) — foi assim que a caça achou a lenda
+    do stop()-sem-finished; fica como instrumento permanente da bancada."""
+    saida = []
+    for a in anim._VIVAS:
+        try:
+            p = a.parent()
+            saida.append(
+                f"{type(a).__name__} dur={a.duration()} loop={a.loopCount()} "
+                f"state={a.state()} pai={type(p).__name__ if p else None} "
+                f"nome_pai={p.objectName() if p is not None else ''}")
+        except RuntimeError:
+            saida.append(f"{type(a).__name__} [C++ MORTO]")
+    return " | ".join(saida) or "(vazio)"
+
+
 def _config_animacoes(valor: str) -> None:
     from app.core.database import Database
     from app.core.repositories import ConfigRepositorio
@@ -88,7 +105,7 @@ def test_reduzidas_significa_zero_animacoes_em_voo(raiz_tmp):
         esqueleto = Skeleton(parent=None)
         esqueleto.show()                     # loop do pulso NÃO nasce
         QCoreApplication.processEvents()
-        assert anim.animacoes_ativas() == 0
+        assert anim.animacoes_ativas() == 0, _vivas_nominais(anim)
         assert pilha.currentWidget() is b    # o EFEITO aconteceu (seco)
         assert w.isVisible()
         esqueleto.hide()
@@ -111,7 +128,7 @@ def test_ligadas_registra_e_finaliza(raiz_tmp):
     while time.monotonic() < fim and anim.animacoes_ativas():
         QCoreApplication.processEvents()
         time.sleep(0.01)
-    assert anim.animacoes_ativas() == 0
+    assert anim.animacoes_ativas() == 0, _vivas_nominais(anim)
     # morte ORDENADA (deleteLater + drenagem) — matar um widget animado
     # pelo GC do Python deixa restos que derrubam o processEvents seguinte
     w.hide()

@@ -99,7 +99,13 @@ class RegiaoItem(QGraphicsItem):
     # --- geometria -------------------------------------------------------------
 
     def boundingRect(self) -> QRectF:
-        m = self.TAM
+        # COND-6 (selo do C, §6): a margem das alças SÓ existe quando as
+        # alças existem — na SELEÇÃO. Como o shape() default é este rect,
+        # a margem também decide QUEM captura o clique: sem a condição,
+        # uma região não selecionada acima no z roubava o clique dado a
+        # ±TAM da borda dela (o "clico no nome e ele pega o preço").
+        # Sem seleção sobra uma folga mínima para o traço da borda.
+        m = self.TAM if self.isSelected() else 2.0
         return QRectF(-m, -m, self._w + 2 * m, self._h + 2 * m)
 
     def _cantos(self):
@@ -135,6 +141,10 @@ class RegiaoItem(QGraphicsItem):
         dos pontinhos de override do topo-direito). Reconhecível de relance."""
         from app.rendering.model import TipoRegiao as _TR
         if self.regiao.tipo != _TR.TEXTO_LEGAL:
+            return
+        # F13-NONUS/N3: o badge é do EDITOR de layout — a Mesa desliga
+        # (o dono viu "¶ Livre" no lugar do chip e achou que era a peça)
+        if not getattr(self.canvas, "badges_de_papel", True):
             return
         from PySide6.QtCore import QSize
         from app.qt.design.icones import icone
@@ -284,6 +294,10 @@ class RegiaoItem(QGraphicsItem):
     # --- snapping ao mover -----------------------------------------------------
 
     def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedChange:
+            # COND-6: o boundingRect depende da seleção — avisa a cena
+            # ANTES de o estado virar (senão fica rastro de alça pintada)
+            self.prepareGeometryChange()
         if (
             change == QGraphicsItem.GraphicsItemChange.ItemPositionChange
             and self.scene() is not None
@@ -322,11 +336,12 @@ class RegiaoItem(QGraphicsItem):
                     and slot.regioes[0] is self.regiao)
 
     def _selecao_por_clique(self, com_modificador: bool, ponto_cena=None) -> None:
-        """RG-15 ("clico e dá errado"): o 1º clique numa célula seleciona o
-        TRIO inteiro; o 2º clique (sem arrastar) entra na região. Chamado
-        APÓS a seleção padrão do Qt; Ctrl/Shift preservam o gesto multi.
-        DENTRO da célula ISOLADA (duplo clique, estilo Illustrator) o clique
-        é DIRETO na peça — o trio não acende nem colapsa."""
+        """F13/C2 — a trava #2 caiu (decisão do dono, 24/07): o clique (e o
+        arrasto que nasce dele) é SÓ na peça clicada. O trio do RG-15 não
+        acende mais sozinho — mover a célula inteira virou gesto
+        DELIBERADO ("Selecionar a célula inteira" no menu, ou laço/Ctrl).
+        Ctrl/Shift preservam o multi; o RG-55 continua: a PRIMÁRIA (o que
+        o painel mostra) é resolvida no topo do z sob o clique."""
         self._colapsar_no_release = False
         from app.qt.design import diag_selecao
         if com_modificador or not self.isSelected():
@@ -335,56 +350,31 @@ class RegiaoItem(QGraphicsItem):
                     "clique_ignorado", **self.canvas._contexto_regiao(self.regiao),
                     com_modificador=com_modificador, estava_selecionada=self.isSelected())
             return
-        # RG-55 (passos 9-12): a PRIMÁRIA (o que o painel mostra) é a região
-        # CONCRETA no topo do z sob o clique, resolvida por `resolver_selecao`
-        # — o mesmo picking dos passos 9-12, no caminho de produção. Sem ponto
-        # (chamadas legadas), cai na própria região.
         prim = (self.canvas.resolver_selecao(ponto_cena)
                 if ponto_cena is not None else None)
         self.canvas._primaria = prim if prim is not None else self.regiao
-        # Isolamento de CÉLULA: cada peça edita sozinha (RG-55 intacto — a
-        # primária já é a região clicada; o painel a mostra)
-        if self.canvas.celula_isolada(self.canvas._slot_de(self.regiao)):
-            if diag_selecao.ligado():
-                diag_selecao.anotar(
-                    "clique_isolado", **self.canvas._contexto_regiao(self.regiao))
-            return
-        irmas = self._irmas()
-        if not irmas:
-            if diag_selecao.ligado():
-                diag_selecao.anotar(
-                    "clique_solta", **self.canvas._contexto_regiao(self.regiao))
-            return
-        grupo_ja_ativo = any(it.isSelected() for it in irmas)
         if diag_selecao.ligado():
+            isolada = self.canvas.celula_isolada(
+                self.canvas._slot_de(self.regiao))
             diag_selecao.anotar(
-                "clique_grupo", **self.canvas._contexto_regiao(self.regiao),
-                tinha_irmas=True, grupo_ja_ativo=grupo_ja_ativo,
-                # seleciona o TRIO (multi-seleção); com a cura do RG-55 o
-                # painel mostra a PRIMÁRIA (nunca órfão), não None
-                vai_selecionar_trio=not grupo_ja_ativo)
-        if grupo_ja_ativo:
-            # o grupo já estava ativo: marcar p/ entrar na região no release
-            # (no release, porque o clique também pode ser o início de um
-            # arrasto do grupo inteiro — aí a seleção fica)
-            self._colapsar_no_release = True
-        else:
-            for it in irmas:             # 1º clique: a célula vira o grupo
-                it.setSelected(True)
+                "clique_isolado" if isolada else "clique_peca",
+                **self.canvas._contexto_regiao(self.regiao))
 
     def _colapsar_se_clique_parado(self) -> None:
-        """RG-15: 2º clique SEM arrasto = entrar na região (o grupo colapsa).
-        Se houve arrasto, o grupo fica (mover a célula inteira é gesto)."""
-        parado = self.pos() == self._pos_press
-        if self._colapsar_no_release and parado:
-            from app.qt.design import diag_selecao
-            if diag_selecao.ligado():
-                diag_selecao.anotar(
-                    "colapso_no_release", **self.canvas._contexto_regiao(self.regiao))
-            for it in self._irmas():
-                it.setSelected(False)
-            self.setSelected(True)
+        """F13/C2: sem trio automático não há o que colapsar — fica como
+        costura vazia (o release chama; remover a chamada mexeria em mais
+        pontos do que a trava pede)."""
         self._colapsar_no_release = False
+
+    def selecionar_celula_inteira(self) -> None:
+        """F13/C2: o gesto DELIBERADO que substitui o trio — acende todas
+        as peças do slot; arrastar move a célula junta (o commit multi de
+        sempre aplica o mesmo delta a todas as selecionadas)."""
+        self.setSelected(True)
+        for it in self._irmas():
+            it.setSelected(True)
+        self.canvas._primaria = self.regiao
+        self.canvas._emitir_selecao()
 
     def _marcar_hover_grupo(self, ligado: bool) -> None:
         # dentro da célula isolada o trio não acende nem no hover — cada
@@ -433,9 +423,15 @@ class RegiaoItem(QGraphicsItem):
         return None
 
     def mousePressEvent(self, event) -> None:
-        # RG-12: região girada não redimensiona pelas alças (a matemática do
-        # arrasto assume item reto) — mover funciona; tamanho pelo painel
-        if not self.regiao.travado and not (self.regiao.rotacao_graus % 360):
+        # F13/C5 (E-08): a guarda de rotação CAIU — a conta do resize agora
+        # roda em coordenadas LOCAIS do item (a rotação já vem descontada
+        # pelo Qt), então a alça funciona girada. A "alternativa pelo
+        # painel" que o comentário antigo prometia também existe (campos
+        # X/Y/L/A em mm, VC-004).
+        # COND-6: a alça só existe em região SELECIONADA — a mesma
+        # condição do hover (:391); sem ela o press dava a alça que o
+        # cursor negava e uma região não selecionada capturava o resize.
+        if not self.regiao.travado and self.isSelected():
             h = self._handle_em(event.pos())
             if h is not None:
                 self._resize = h
@@ -455,12 +451,23 @@ class RegiaoItem(QGraphicsItem):
 
     def mouseMoveEvent(self, event) -> None:
         if self._resize is not None:
-            m = event.scenePos()
-            x0, y0 = self._fixo.x(), self._fixo.y()
+            # F13/C5 (E-08): a conta em coordenadas LOCAIS — o `event.pos()`
+            # já chega com a rotação do item descontada, então o mesmo
+            # cálculo vale reto e girado. O canto OPOSTO (self._fixo, em
+            # cena) fica PARADO: depois de recalcular tamanho/origem, o
+            # item é reposicionado para a âncora não andar.
+            p = event.pos()
+            fx, fy = {0: (self._w, self._h), 1: (0.0, self._h),
+                      2: (self._w, 0.0), 3: (0.0, 0.0)}[self._resize]
+            nw = max(self.MIN, abs(p.x() - fx))
+            nh = max(self.MIN, abs(p.y() - fy))
             self.prepareGeometryChange()
-            self.setPos(min(x0, m.x()), min(y0, m.y()))
-            self._w = max(self.MIN, abs(m.x() - x0))
-            self._h = max(self.MIN, abs(m.y() - y0))
+            self._w, self._h = nw, nh
+            # a origem da rotação é o CENTRO — mudou de lugar com o tamanho
+            self.setTransformOriginPoint(self._w / 2, self._h / 2)
+            fl = {0: (nw, nh), 1: (0.0, nh), 2: (nw, 0.0), 3: (0.0, 0.0)}
+            deriva = self._fixo - self.mapToScene(*fl[self._resize])
+            self.setPos(self.pos() + deriva)     # devolve o canto ao lugar
             self.update()
             self._emitir_medidas()          # R-041: L/A ao vivo ao redimensionar
             return
@@ -470,6 +477,7 @@ class RegiaoItem(QGraphicsItem):
         self._resize = None
         super().mouseReleaseEvent(event)
         self.canvas.mostrar_guias([])
+        self.canvas.esconder_chip_medidas()   # F13/VC-010: o chip morre aqui
         self._colapsar_se_clique_parado()
         self.canvas._commit_regiao(self)
 
@@ -492,8 +500,10 @@ class RegiaoItem(QGraphicsItem):
         3 estados, sem divergir. Devolve (menu, acoes)."""
         def _agrupar():
             self.setSelected(True)
-            self.canvas.agrupar_selecao()
-            self.canvas.abrir_tutorial_agrupar(primeira_vez=True)   # passo 26
+            # F13/C9: o tutorial só abre quando o agrupar PEGOU — abrir a
+            # aula em cima de uma recusa era ruído por cima do aviso
+            if self.canvas.agrupar_selecao() is not None:
+                self.canvas.abrir_tutorial_agrupar(primeira_vez=True)
 
         slot = self.canvas._slot_de(self.regiao)
         menu = QMenu()
@@ -510,6 +520,20 @@ class RegiaoItem(QGraphicsItem):
         a_dup = menu.addAction(icone("duplicar", tamanho=16), "Duplicar")
         a_dup.setShortcut("Ctrl+D")
         acoes[a_dup] = lambda: self.canvas.duplicar_regiao(self.regiao)
+        # F13/C2: o substituto deliberado do trio (a trava #2 caiu) — só
+        # aparece quando a célula tem mais de uma peça
+        if slot is not None and len(slot.regioes) > 1:
+            a_cel = menu.addAction(icone("camadas", tamanho=16),
+                                   "Selecionar a célula inteira")
+            a_cel.setToolTip("Acende todas as peças desta célula — "
+                             "arrastar move a célula junta")
+            acoes[a_cel] = self.selecionar_celula_inteira
+            # F13/C6 (E-03): duplicar a CÉLULA (o Ctrl+D duplica a peça)
+            a_dcel = menu.addAction(icone("duplicar", tamanho=16),
+                                    "Duplicar a célula inteira")
+            a_dcel.setToolTip("Um slot novo com a cópia de todas as peças "
+                              "desta célula")
+            acoes[a_dcel] = lambda: self.canvas.duplicar_celula(slot)
         a_del = menu.addAction(icone("lixeira", tamanho=16), "Excluir")
         a_del.setShortcut("Del")
         acoes[a_del] = lambda: self.canvas.excluir_regiao(self.regiao)
@@ -520,6 +544,22 @@ class RegiaoItem(QGraphicsItem):
             a_trav = menu.addAction(icone("cadeado", tamanho=16), "Travar")
         acoes[a_trav] = lambda: self.canvas.set_travado(
             self.regiao, not self.regiao.travado)
+        # F13/F1: célula FIXA (produto da própria arte) — fora do
+        # auto-preencher; RG-56: marcar e desmarcar no MESMO lugar
+        if slot is not None:
+            if slot.fixa:
+                a_fx = menu.addAction(
+                    icone("cadeado_aberto", tamanho=16),
+                    "Devolver a célula ao auto-preencher")
+                a_fx.setToolTip("A célula volta a receber produto da fila")
+            else:
+                a_fx = menu.addAction(
+                    icone("cadeado", tamanho=16),
+                    "Célula fixa (fora do auto-preencher)")
+                a_fx.setToolTip("O produto desta célula é da própria arte — "
+                                "a fila do auto-preencher não a usa")
+            acoes[a_fx] = lambda: self.canvas.set_celula_fixa(
+                slot, not slot.fixa)
 
         # Modo de isolamento (estilo Illustrator) — RG-56: todo estado tem o
         # inverso a UM clique; o menu ensina o gesto do duplo clique. A
@@ -599,6 +639,19 @@ class RegiaoItem(QGraphicsItem):
                                      "seguir o item da estante")
                 acoes[a_ov_rest] = lambda sid=slot.id: \
                     self.canvas.set_override(sid, None)
+
+        # F13-NONUS/F1: a célula FIXA abre o diálogo dos itens fixos AQUI —
+        # o gesto natural (clicar no que quer mudar); antes só existia na
+        # paleta invisível (o mesmo defeito do P-06/U-01)
+        if slot is not None and getattr(slot, "fixa", False) \
+                and callable(getattr(self.canvas, "ao_itens_fixos", None)):
+            menu.addSeparator()
+            a_fx = menu.addAction(icone("caixa", tamanho=16),
+                                  "Conteúdo fixo desta célula…")
+            a_fx.setToolTip("O produto, a foto e o preço desta célula "
+                            "vivem no TEMPLATE — sobrevivem à tabela da "
+                            "semana")
+            acoes[a_fx] = lambda sid=slot.id: self.canvas.ao_itens_fixos(sid)
 
         # --- RG-56 (Fase 4): agrupar/desagrupar VISÍVEL e reversível ---
         # SEMPRE a ação pertinente ao estado (passo 15); todo estado tem o

@@ -1,7 +1,5 @@
 """Testes do Ateliê (F6.2) — persistência CRUD + fumaça da tela (offscreen)."""
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -9,7 +7,6 @@ from app.rendering.cartaz import layout_cartaz_exemplo
 from app.rendering.persistencia import (
     carregar_layout,
     duplicar_layout,
-    excluir_layout,
     listar_layouts,
     renomear_layout,
     salvar_layout,
@@ -24,11 +21,8 @@ def banco_tmp(tmp_path, monkeypatch):
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
     # as miniaturas/preview do Ateliê compõem texto → precisam das fontes
-    import shutil
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    from app.tests import acervo
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     db = Database(root).init()
     yield db
     db.engine.dispose()
@@ -54,9 +48,11 @@ def test_crud_de_layout(banco_tmp):
         assert ldef is not None
         assert len(ldef.paginas[0].slots[0].regioes) == n_esperado
 
+    # F13/B10: o hard-delete `excluir_layout` foi removido (mina latente,
+    # D-07) — a exclusão oficial é a LIXEIRA, e a lista a respeita
+    from app.core import lixeira
+    lixeira.excluir_suave("layout", lid)
     with banco_tmp.Session() as s:
-        excluir_layout(s, lid)
-        s.commit()
         assert [r.nome for r in listar_layouts(s)] == ["Cartaz A cópia"]
 
 

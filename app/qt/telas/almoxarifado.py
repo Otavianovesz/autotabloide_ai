@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -279,6 +278,15 @@ class AlmoxarifadoTela(QWidget):
         self.filtro.addItem("● Sem imagem", "VERMELHO")
         self.filtro.addItem("● Incompletos", "AMARELO")
         self.filtro.currentIndexChanged.connect(self._rebuscar)
+        # ADENDO 30/07 (a queixa do dono): não havia COMO cadastrar um
+        # item avulso — a única porta era a importação na Mesa
+        btn_novo = QPushButton(" Novo produto…")
+        btn_novo.setProperty("tipo", "primario")
+        btn_novo.setIcon(icone("caixa", tamanho=16))
+        btn_novo.setToolTip("Cadastrar um produto do zero — digite o nome "
+                            "(com peso, se tiver) e complete no painel; a "
+                            "foto entra por “Trocar imagem…”")
+        btn_novo.clicked.connect(self._novo_produto)
         corrigir = QPushButton(" Corrigir nomes (IA)")
         corrigir.setIcon(icone("texto", tamanho=16))
         corrigir.setToolTip("Enriquecer todos os nomes do banco com a IA "
@@ -323,6 +331,7 @@ class AlmoxarifadoTela(QWidget):
         btn_intel.clicked.connect(self._abrir_inteligencia)
         hb.addWidget(self.busca)
         hb.addWidget(self.filtro)
+        hb.addWidget(btn_novo)
         hb.addWidget(corrigir)
         hb.addWidget(categorizar)
         hb.addWidget(btn_estudio_lote)
@@ -376,6 +385,10 @@ class AlmoxarifadoTela(QWidget):
         self.foto = QLabel("—")
         self.foto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.foto.setFixedHeight(170)
+        # LUPA (pedido do dono): duplo clique na foto do painel amplia
+        self._foto_caminho: str | None = None
+        self.foto.setToolTip("Duplo clique amplia (confira a gramatura)")
+        self.foto.mouseDoubleClickEvent = lambda _ev: self._ampliar_foto()
         # OS F11.5 #27/#28 (R-085): a NOTA da foto (boa/atenção/ruim) com os
         # motivos no tooltip — pequena demais liga o aviso do upscale
         self.nota_foto = QLabel("")
@@ -564,6 +577,42 @@ class AlmoxarifadoTela(QWidget):
         else:                            # fora do shell (bancada): avisa
             mostrar_toast(self, "Abra a tela Mesa para importar ofertas.")
 
+    def _novo_produto(self) -> None:
+        """ADENDO 30/07: cadastrar um item AVULSO — o nome basta (a
+        porta única ``importar`` sanitiza e nunca duplica); o painel
+        inline vira o formulário para completar, e a foto entra pelo
+        “Trocar imagem…” de sempre."""
+        from PySide6.QtWidgets import QInputDialog
+
+        nome, ok = QInputDialog.getText(
+            self, "Novo produto",
+            "Nome do produto (com peso, se tiver — ex.: "
+            "\"Pão de Queijo Tradicional 500g\"):")
+        if not ok or not nome.strip():
+            return
+        try:
+            pid, nome_san = servico.criar_produto_manual(nome)
+        except Exception as exc:                    # somente-leitura etc.
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        # a busca filtra até ele e a seleção abre o painel de edição
+        self.busca.setText(nome_san)
+        self._rebuscar()
+        from PySide6.QtCore import QTimer
+
+        def _selecionar(p=pid):
+            for i, d in enumerate(self.modelo._linhas):
+                if d.get("id") == p:
+                    ix = self.modelo.index(i, 0)
+                    self.lista.setCurrentIndex(ix)
+                    self._selecionou(ix)
+                    self.nome.setFocus()
+                    break
+
+        QTimer.singleShot(150, _selecionar)
+        mostrar_toast(self, f"“{nome_san}” cadastrado — complete os "
+                            "campos no painel.", tipo="sucesso")
+
     def _dado_atual(self) -> dict | None:
         return (self.modelo._linhas[self._linha_atual]
                 if 0 <= self._linha_atual < len(self.modelo._linhas) else None)
@@ -593,13 +642,21 @@ class AlmoxarifadoTela(QWidget):
                 220, 164, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             self.foto.setPixmap(pm)
+            self._foto_caminho = d["imagem"]     # LUPA: o original
             self._mostrar_nota_foto(d["imagem"])
         else:
             self.foto.setPixmap(QPixmap())
             self.foto.setText("sem imagem")
+            self._foto_caminho = None
             self.nota_foto.setText("")
             self.nota_foto.setToolTip("")
         self._carregando = False
+
+    def _ampliar_foto(self) -> None:
+        """LUPA (pedido do dono): a foto do produto em tamanho real —
+        a gramatura do rótulo se confere aqui."""
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, self._foto_caminho)
 
     def _mostrar_nota_foto(self, caminho: str) -> None:
         """OS F11.5 #27/#28 (R-085): a nota da foto, com cor por faixa e os
@@ -681,6 +738,8 @@ class AlmoxarifadoTela(QWidget):
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            return
 
         def _fluxo(st, v=valor, pid=d["id"]):
             tratada = servico.tratar_imagem(v, st)
@@ -753,6 +812,8 @@ class AlmoxarifadoTela(QWidget):
         # OS F11.5 #20: a flag da Config liga o degrau 2 (sem GPU degrada com
         # aviso); #8: o packshot passa por PRÉVIA antes/depois — só aplica se
         # o dono aprovar (nada muda sozinho)
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            return
         com_gerador = servico.estudio_gerador_ligado()
 
         def _fluxo(st, fonte=d["imagem"]):
@@ -819,13 +880,14 @@ class AlmoxarifadoTela(QWidget):
         if not alvos:
             mostrar_toast(self, "Nenhuma foto na lista atual para tratar.")
             return
-        from PySide6.QtWidgets import QMessageBox
-        r = QMessageBox.question(
-            self, "Estúdio em lote",
-            f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
-            "vira uma versão (dá para restaurar no Histórico).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if r != QMessageBox.StandardButton.Yes:
+        from app.qt.design.componentes import perguntar
+        if not perguntar(
+                self, "Estúdio em lote",
+                f"Passar o packshot em {len(alvos)} foto(s)? Cada original "
+                "vira uma versão (dá para restaurar no Histórico).",
+                sim=f"Tratar {len(alvos)} foto(s)", nao="Cancelar"):
+            return
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
             return
         com_gerador = servico.estudio_gerador_ligado()
 
@@ -838,7 +900,16 @@ class AlmoxarifadoTela(QWidget):
 
         fila = TrabalhadorFila(alvos, _um)
         erros: list[str] = []
+        feitos: list[str] = []
         fila.item_falhou.connect(lambda ch, _m: erros.append(ch))
+        # F13/D1: o rodapé NARRA o progresso item a item — o sinal
+        # item_pronto sempre existiu e este lote era o único que não o
+        # ligava (texto estático do início ao fim, achado do scout)
+        fila.item_pronto.connect(lambda ch, _r: (
+            feitos.append(ch),
+            self._overlay.mostrar(
+                f"Estúdio em lote — {len(feitos) + len(erros)} de "
+                f"{len(alvos)} fotos…")))
         fila.fila_terminou.connect(lambda: (
             self._overlay.esconder(),
             self._rebuscar(),
@@ -909,6 +980,21 @@ class AlmoxarifadoTela(QWidget):
         a_kit = menu.addAction(icone("impressora", tamanho=16),
                                "Kit ponta-de-gôndola…")
         menu.addSeparator()
+        # Rodada JM (B4): sabores viram FAMÍLIA — 2+ selecionados ligam;
+        # 1 selecionado que JÁ tem família desliga
+        a_familia = a_desligar = None
+        if len(selecao) >= 2:
+            a_familia = menu.addAction(
+                icone("caixa", tamanho=16),
+                f"Ligar {len(selecao)} como família de sabores…")
+            a_familia.setToolTip("Cada sabor segue produto completo; na "
+                                 "importação o app oferece o check de "
+                                 "sabores e o leque de fotos")
+        elif servico.familia_do_item(
+                self.modelo._linhas[selecao[0]].get("id")):
+            a_desligar = menu.addAction(icone("restaurar", tamanho=16),
+                                        "Desligar da família")
+        menu.addSeparator()
         rotulo = (f"Excluir {len(selecao)} produtos" if len(selecao) > 1
                   else "Excluir")
         a_del = menu.addAction(icone("lixeira", tamanho=16), rotulo)
@@ -930,6 +1016,10 @@ class AlmoxarifadoTela(QWidget):
         elif escolha == a_kit:
             self._selecionou(index)
             self._cartaz_relampago(kit=True)
+        elif a_familia is not None and escolha == a_familia:
+            self._ligar_familia(selecao)
+        elif a_desligar is not None and escolha == a_desligar:
+            self._desligar_familia(self.modelo._linhas[selecao[0]]["id"])
         elif escolha == a_del:
             from app.qt.design.componentes import confirmar_destrutivo
             if confirmar_destrutivo(              # passo 78: verbo no botão
@@ -938,6 +1028,46 @@ class AlmoxarifadoTela(QWidget):
                     f"Excluir {len(selecao)} produto(s)"):
                 ids = [self.modelo._linhas[r]["id"] for r in selecao]
                 self._excluir(ids)
+
+    def _ligar_familia(self, selecao: list[int]) -> None:
+        """Rodada JM (B4): os selecionados viram uma FAMÍLIA de sabores
+        — o nome sugerido é o prefixo comum, editável no diálogo."""
+        from PySide6.QtWidgets import QInputDialog
+        linhas = [self.modelo._linhas[r] for r in selecao]
+        nomes = [d.get("nome") or "" for d in linhas]
+        sugestao = servico.nome_de_familia(nomes)
+        nome, ok = QInputDialog.getText(
+            self, "Família de sabores",
+            "Nome da família (o que os sabores têm em comum):",
+            text=sugestao)
+        if not ok or not nome.strip():
+            return
+        try:
+            servico.criar_familia_de([d["id"] for d in linhas],
+                                     nome.strip())
+        except Exception as e:
+            mostrar_toast(self, f"Não deu para ligar a família: {e}",
+                          tipo="erro")
+            return
+        mostrar_toast(self, f"Família “{nome.strip()}” com "
+                            f"{len(linhas)} sabor(es) ligada.")
+
+    def _desligar_familia(self, produto_id: int) -> None:
+        from app.core.database import Database
+        from app.core.repositories import ProdutoRepositorio
+        try:
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    ProdutoRepositorio(s).definir_familia(
+                        [produto_id], None)
+                    s.commit()
+            finally:
+                db.engine.dispose()
+        except Exception as e:
+            mostrar_toast(self, f"Não deu para desligar: {e}", tipo="erro")
+            return
+        mostrar_toast(self, "Produto desligado da família.")
 
     def _excluir(self, ids: list[int]) -> None:
         """RG-05: exclusão fora do thread da UI (com acervo grande, o commit

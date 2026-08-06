@@ -14,16 +14,14 @@ via `BibliotecaImagens`) — I1.
 
 from __future__ import annotations
 
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageFilter
 
 
 def _normalizar_luz(rgba: Image.Image) -> Image.Image:
-    """Corrige exposição/branco do PRODUTO (autocontrast no RGB, alfa intacto) —
-    "de vitrine" sem IA generativa."""
-    r, g, b, a = rgba.split()
-    rgb = ImageOps.autocontrast(Image.merge("RGB", (r, g, b)), cutoff=1)
-    r2, g2, b2 = rgb.split()
-    return Image.merge("RGBA", (r2, g2, b2, a))
+    """A régua única mora na camada de imagem (SEXTUSDECIMUS-ESTÚDIO):
+    a mesma luz roda no Estúdio E no caminho da curadoria."""
+    from app.images.fundo import normalizar_luz
+    return normalizar_luz(rgba)
 
 
 def cor_sombra_do_tema(tema: str | None) -> tuple[int, int, int]:

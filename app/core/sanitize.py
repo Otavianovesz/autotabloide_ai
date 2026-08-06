@@ -72,8 +72,11 @@ class RegrasSanitizacao:
 
     # Siglas que devem ficar em MAIÚSCULO (glossário editável — espírito DIY).
     # Ex.: "TP" (Tetra Pak). Pode ser sobrescrito pela tabela Config.
+    # QUARTUSDECIMUS/Q6: "L.V." (Longa Vida, com e sem pontos) — sigla de
+    # embalagem como o TP: desce ao descritor na precedência do nome
+    # ("Leite Integral Parmalat" + "L.V. · 1 L").
     siglas: frozenset[str] = frozenset(
-        {"TP", "BB", "XL", "XXL", "TV", "DVD", "CD", "LED"}
+        {"TP", "BB", "XL", "XXL", "TV", "DVD", "CD", "LED", "L.V.", "LV"}
     )
 
     # Glossário de EXPANSÃO de siglas da tabela de ofertas (C1 do Bloco D):
@@ -82,8 +85,15 @@ class RegrasSanitizacao:
     # A expansão roda ANTES da caixa — o resultado ganha a formatação normal.
     glossario_siglas: tuple[tuple[str, str], ...] = ()
 
+    # Rodada JM (B1.5): correções de grafia EXTRAS do dono (Config
+    # 'sanitizacao.ortografia'), somadas ao vocabulário de mercado de
+    # `app/core/ortografia.py` (extras vencem colisão).
+    ortografia: tuple[tuple[str, str], ...] = ()
+
     # Caracteres claramente lixo a remover.
-    lixo_chars: str = "®©™°"
+    # Rodada JM (B1.4): "<"/">" — o separador "<>" do documento do dono
+    # nunca é nome de produto (vale para OCR e colagem).
+    lixo_chars: str = "®©™°<>"
 
 
 REGRAS_PADRAO = RegrasSanitizacao()
@@ -127,6 +137,10 @@ def _limpar(texto: str, regras: RegrasSanitizacao) -> str:
     """Remove caracteres-lixo, runs de sublinhado e espaços sobrando."""
     for ch in regras.lixo_chars:
         texto = texto.replace(ch, "")
+    # F13-SEXTUS/S5: "TP/1,5LT" — a barra entre SIGLA e NÚMERO cola o
+    # token e ele atravessa inteiro a caixa (saía "Tp/1,5l"); separada,
+    # a sigla vira TP e o volume vira 1,5L pelos caminhos de sempre
+    texto = re.sub(r"(?<=[A-Za-zÀ-ÿ])/(?=\d)", " ", texto)
     texto = _RUNS_LIXO.sub(" ", texto)
     return _MULTI_ESPACO.sub(" ", texto).strip()
 
@@ -136,6 +150,38 @@ def _regex_unidades(regras: RegrasSanitizacao) -> re.Pattern[str]:
     corpo = "|".join(re.escape(k) for k in chaves)
     # número (com , ou . decimal) seguido, opcionalmente com espaço, da unidade
     return re.compile(rf"(\d+(?:[.,]\d+)?)\s*(?:{corpo})\b", re.IGNORECASE)
+
+
+# Rodada JM (B3.4) → v2: tokens de EMBALAGEM do vocabulário do dono —
+# o composto os declara por componente ("Fugini (pouch) e Bonare
+# (lata)") e a exibição os desce ao descritor quando colados ao peso
+# ("Batata 104g Tubo" → "tubo" é qualificador, nunca tipo). Módulo
+# core: o rendering e o serviço leem a MESMA lista.
+EMBALAGENS = frozenset({
+    "lata", "pouch", "vidro", "vd", "tp", "pet", "sache", "sachê",
+    "pote", "caixeta", "garrafa", "tetra", "cartela", "bandeja",
+    "tubo",
+})
+
+# Rodada JM (B1.2): METRAGEM ("30M" do papel higiênico/alumínio) exige
+# 2+ DÍGITOS — "3M" com um dígito é MARCA (a fita adesiva), nunca metro.
+# O caso-limite escrito com a regra (§6).
+_RE_METRAGEM = re.compile(r"\b(\d{2,})\s*(?:mts|mt|metros|metro|m)\b",
+                          re.IGNORECASE)
+# contagem de venda no FIM do nome ("12 Rolos", "2 Folhas", "10 un") —
+# desce ao descritor como o peso desce; nunca é colada ("12rolos" não
+# é grafia de encarte)
+_RE_CONTAGEM_FIM = re.compile(
+    r"(\d+)\s*(rolos?|folhas?|unidades?|unid|und|un)\.?$", re.IGNORECASE)
+# metragem no FIM, com multiplicador opcional ("12 x 30M")
+_RE_METRAGEM_FIM = re.compile(
+    r"(\d+\s*[xX×]\s*)?(\d{2,})\s*(?:mts|mt|metros|metro|m)\.?$",
+    re.IGNORECASE)
+
+
+def _normalizar_metragem(texto: str) -> str:
+    """Cola número à metragem e canoniza ("30 M" → "30m")."""
+    return _RE_METRAGEM.sub(lambda m: f"{m.group(1)}m", texto)
 
 
 def _canonizar_unidade(bruta: str, regras: RegrasSanitizacao) -> str:
@@ -178,7 +224,14 @@ def _titulo(token: str, regras: RegrasSanitizacao) -> str:
         return token
     if token[0].isdigit():         # tokens de peso (5kg, 1L, 2x1) ficam intactos
         return token
-    return token[0].upper() + token[1:].lower()
+    base = token[0].upper() + token[1:].lower()
+    # VICESIMUS-SEPTIMUS: nome próprio com APÓSTROFO capitaliza dos dois
+    # lados — "D'Ajuda" (a marca do dono) virava "D'ajuda"; a régua é
+    # conservadora: só o prefixo de UMA letra, o padrão do português
+    # (d'/D'), nunca "Hellmann's" (o apóstrofo no fim é posse)
+    if len(base) > 2 and base[1] == "'" and base[2].isalpha():
+        base = base[:2] + base[2].upper() + base[3:]
+    return base
 
 
 def _expandir_glossario(texto: str, regras: RegrasSanitizacao) -> str:
@@ -274,19 +327,130 @@ def formatar_nome(texto: str, regras: RegrasSanitizacao = REGRAS_PADRAO) -> str:
     ``150ml``), caixa Title Case e siglas. NÃO reordena nem detecta pendências.
     Usado na 2ª etapa do enriquecimento: a IA cuida do sentido, isto do acabamento.
     """
-    limpo = _limpar(texto, regras)
-    com_unidades = _normalizar_unidades(limpo, regras)
+    from app.core.ortografia import corrigir_acentos
+
+    limpo = corrigir_acentos(_limpar(texto, regras), regras.ortografia)
+    com_unidades = _normalizar_metragem(_normalizar_unidades(limpo, regras))
     expandido = _expandir_glossario(com_unidades, regras)
     return _aplicar_caixa(expandido, regras)
+
+
+def separar_peso(
+    texto: str, regras: RegrasSanitizacao = REGRAS_PADRAO
+) -> tuple[str, str | None]:
+    """F13-NONUS/N1: separa a expressão de peso/volume do FIM do nome.
+
+    "Leite Condensado Triangulo 395g" → ("Leite Condensado Triangulo",
+    "395 g") — o peso volta FORMATADO para leitura (espaço entre número
+    e unidade, decimal com vírgula), do jeito que o descritor dos
+    encartes escreve. Aceita a forma crua ("395 GR", "1,5 LT") porque o
+    caminho real do dono traz item novo sem sanitizar. O multiplicador
+    vai junto ("Kit 4x120g" → peso "4x120 g" — nunca sobra um "4x"
+    órfão no nome). Peso no MEIO do texto não é tocado: a ordem dos
+    tokens nunca muda (a lei desta camada)."""
+    base = texto.rstrip()
+    ultimo = None
+    for m in _regex_unidades(regras).finditer(base):
+        ultimo = m
+    if ultimo is None or ultimo.end() != len(base):
+        return _separar_medida_nao_peso(texto, base, regras)
+    numero = ultimo.group(1).replace(".", ",")
+    unidade_bruta = ultimo.group(0)[len(ultimo.group(1)):].strip()
+    unidade = _canonizar_unidade(unidade_bruta, regras)
+    inicio = ultimo.start()
+    resto = base[:inicio]
+    mult = re.search(r"(\d+\s*[xX×]\s*)$", resto)
+    prefixo = ""
+    if mult:
+        prefixo = mult.group(1).replace(" ", "").replace("X", "x")
+        resto = resto[:mult.start()]
+    nome = resto.rstrip(" -–·")
+    if not nome:
+        return texto, None          # o "nome" era só o peso: não separa
+    peso = f"{prefixo}{numero} {unidade}"
+    # RODADA-125 (a página do dono, 03/08): a oferta MULTI-TAMANHO traz
+    # DOIS pesos consecutivos no fim ("Milho Pipoca Yoki 400g 500g",
+    # "Kitubaina 1,5L 1,6L", "Creme Dental 90g 102g") — sem isto o 2º
+    # ficava no nome e o descritor saía "400 g · 500g" com grafia
+    # mista. Os dois descem JUNTOS: "400 g ou 500 g". Só o fim
+    # imediato: peso no meio segue intocado (a lei da camada).
+    if not prefixo:
+        nome2, peso2 = separar_peso(nome, regras)
+        if peso2 and "x" not in peso2:
+            # RODADA-125 v2 (a 2ª prova): "Kitubaina 1,5L 1,6L" NÃO é
+            # multi-tamanho — o 2º quase-igual é RELEITURA do OCR (o
+            # dono confirmou: 1,6 era erro). Mesma unidade e razão
+            # ≤1,10 → fica só o primeiro; diferença real ("400g 500g"
+            # razão 1,25; Kolynos "90g 102g" razão 1,13 — dois tubos
+            # REAIS) segue "ou".
+            if _quase_o_mesmo_peso(peso2, peso):
+                return nome2, peso2
+            return nome2, f"{peso2} ou {peso}"
+    return nome, peso
+
+
+def _quase_o_mesmo_peso(a: str, b: str) -> bool:
+    """Dois pesos de MESMA unidade cuja razão é ≤1,10 — a assinatura do
+    OCR relendo o próprio número (nunca uma oferta de dois tamanhos)."""
+    try:
+        na, ua = a.rsplit(" ", 1)
+        nb, ub = b.rsplit(" ", 1)
+        if ua.lower() != ub.lower():
+            return False
+        va = float(na.replace(",", "."))
+        vb = float(nb.replace(",", "."))
+        if not va or not vb:
+            return False
+        razao = max(va, vb) / min(va, vb)
+        return razao <= 1.10
+    except (ValueError, AttributeError):
+        return False
+
+
+def _separar_medida_nao_peso(
+    texto: str, base: str, regras: RegrasSanitizacao
+) -> tuple[str, str | None]:
+    """Rodada JM (B1.2/B1.3): os três cortes que o Jornal pediu quando o
+    FIM da linha não é peso — metragem no fim ("Papel Aluminio 30M"),
+    contagem no fim ("12 Rolos") e peso no INÍCIO ("1 LT INTE GRAL",
+    sobra de coluna/divisão). O peso no MEIO segue intocado — a lei da
+    camada (a ordem dos tokens nunca muda) não abre exceção."""
+    m = _RE_METRAGEM_FIM.search(base)
+    if m:
+        nome = base[:m.start()].rstrip(" -–·")
+        if nome:
+            prefixo = (m.group(1) or "").replace(" ", "").replace("X", "x")
+            return nome, f"{prefixo}{m.group(2)} m"
+    m = _RE_CONTAGEM_FIM.search(base)
+    if m:
+        nome = base[:m.start()].rstrip(" -–·")
+        if nome:
+            contagem = m.group(2).lower()
+            if contagem in ("unid", "und", "unidade", "unidades"):
+                contagem = "un"
+            return nome, f"{m.group(1)} {contagem}"
+    m = _regex_unidades(regras).match(base)
+    if m and m.end() < len(base):
+        nome = base[m.end():].lstrip(" -–·")
+        # preposição órfã do corte ("200g de Presunto" → "Presunto")
+        nome = re.sub(r"^(?:de|da|do)\s+", "", nome, flags=re.IGNORECASE)
+        if nome:
+            numero = m.group(1).replace(".", ",")
+            unidade_bruta = m.group(0)[len(m.group(1)):].strip()
+            unidade = _canonizar_unidade(unidade_bruta, regras)
+            return nome, f"{numero} {unidade}"
+    return texto, None
 
 
 def sanitizar(
     nome_bruto: str, regras: RegrasSanitizacao = REGRAS_PADRAO
 ) -> ResultadoSanitizacao:
     """Sanitiza um nome cru aplicando só as regras determinísticas."""
-    limpo = _limpar(nome_bruto, regras)
+    from app.core.ortografia import corrigir_acentos
+
+    limpo = corrigir_acentos(_limpar(nome_bruto, regras), regras.ortografia)
     peso_valor, peso_unidade = _extrair_peso(limpo, regras)
-    com_unidades = _normalizar_unidades(limpo, regras)
+    com_unidades = _normalizar_metragem(_normalizar_unidades(limpo, regras))
     expandido = _expandir_glossario(com_unidades, regras)
     nome = _aplicar_caixa(expandido, regras)
 

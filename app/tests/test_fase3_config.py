@@ -192,9 +192,15 @@ def test_testar_conexao_endpoint_falso_mostra_vermelho(raiz_tmp):
     tela.close()
 
 
+@pytest.mark.lm_real
 def test_interruptor_mestre_desliga_a_ia(raiz_tmp):
     """Passo 46: ia.usar=False -> disponivel() é False SEM tocar a rede
-    (o modo determinístico assume; chave com consumo real)."""
+    (o modo determinístico assume; chave com consumo real).
+
+    F13/F: marcado lm_real — este teste exercita o CÓDIGO REAL do
+    disponivel() (o bloqueio de bancada do LM Studio o substituiria por
+    um lambda e a prova viraria tautologia); continua sem rede porque o
+    interruptor decide antes dela."""
     from app.ai.client import ClienteOpenAICompat, ConfigIA
     from app.core.database import Database
     from app.core.repositories import ConfigRepositorio

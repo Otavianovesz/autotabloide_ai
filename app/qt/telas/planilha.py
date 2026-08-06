@@ -88,7 +88,11 @@ def aplicar_edicao(item, coluna: str, texto: str) -> tuple[bool, str | None]:
         return True, None
     if coluna == "Categoria":
         item.categoria = texto or None
-        return True, _persistir_cadastro(item, categoria=texto or None)
+        # F13/D4 (furo achado pelo scout): a categoria digitada na GRADE é
+        # correção HUMANA — sem a marcação, o passe de lote/vizinho podia
+        # vencê-la depois (a lei "correção humana nunca é vencida")
+        return True, _persistir_cadastro(item, categoria=texto or None,
+                                         categoria_origem="humano")
     if coluna == "Observação":
         # R-071: observação por item ("limite 2 por cliente") — texto livre,
         # opcional; alimenta a região de papel OBSERVACAO (condicional).

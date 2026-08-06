@@ -12,6 +12,7 @@ nome sai só sanitizado); sem rede → item sem candidatos de imagem.
 
 from __future__ import annotations
 
+import re
 import tempfile
 import uuid as _uuid_mod
 from dataclasses import dataclass, field
@@ -38,9 +39,17 @@ class ItemMesa:
     produto_id: int | None = None
     imagem: str | None = None      # caminho ABSOLUTO da imagem atual (ou None)
     mais18: bool = False
+    # F13/COND-5 (selo do B, §5.6): a marca própria FLUI — o selo
+    # "Qualidade" tinha o mesmo furo que o +18 tinha (campo que não
+    # viajava do banco até a receita do cartaz/tabloide)
+    marca_propria: bool = False
     via: str = ""                  # exato | alias | fuzzy | juiz | novo | banco
     score: float = 0.0
     candidato_nome: str = ""       # melhor palpite do banco (para o 🟡)
+    # ADENDO 30/07: os TOP candidatos do banco viajam à UI (o motor
+    # sempre calculou 5 e jogava fora 4 — se o certo era o nº2, o dono
+    # criava duplicata). Lista de dicts {produto_id, nome, score}.
+    candidatos: list = field(default_factory=list)
     preco_de: str | None = None    # preço vigente no banco (o "de" do cartaz)
     validade: str | None = None    # validade do ITEM (cartaz, perto de vencer)
     unidade: str | None = None     # peso/medida ("500g") p/ a região UNIDADE
@@ -65,10 +74,35 @@ class ItemMesa:
     # por quantidade; quando presente, a região de preço desenha ele (não o
     # Decimal) e o pré-voo o trata como preço (não "sem preço").
     multi_preco: str | None = None
+    # F13-TERTIUSDECIMUS/Q2: desconto DECLARADO na tabela ("com 20% de
+    # desconto", sem preço) — a célula mostra o percentual (papel
+    # DESCONTO) e o pré-voo não acusa "sem preço"
+    desconto_pct: int | None = None
     # R-071 (Fase 7): observação por item ("limite 2 por cliente") — texto
     # OPCIONAL que vira uma região condicional (papel OBSERVACAO): só desenha
     # se preenchida; vazia não é problema no pré-voo (não-ocupável, lei da casa).
     observacao: str | None = None
+    # Rodada JM (B3): os CÓDIGOS de pendência do sanitize ("multiplos",
+    # "letra_isolada"…) viajam com o item VERMELHO — a curadoria usa
+    # (a pergunta "são 2 produtos?" nasce daqui). Aditivo: from_dict
+    # filtra chaves, projeto antigo abre normal.
+    pendencias: list = field(default_factory=list)
+    # QUINTUSDECIMUS/J18: o "de" veio DA TABELA ("de 18,81 por 6,90") —
+    # quando True, o de/por e o % calculado desenham no tabloide (o
+    # preco_de do BANCO continua só painel/cartaz, como sempre foi)
+    preco_de_da_tabela: bool = False
+    # QUINTUSDECIMUS: o MOTIVO do semáforo (a frase do veredito) viaja
+    # até a tela — o amarelo diz POR QUÊ (tooltip da Situação)
+    motivo: str = ""
+    # Rodada JM (B4): a FAMÍLIA de sabores do produto casado —
+    # {"id", "nome", "membros": [{"produto_id","nome","imagem"}]}.
+    # Acende o "Sabores da família…" na estante; None = produto sem
+    # família (o caminho comum não muda). Congela com o projeto.
+    familia: dict | None = None
+    # SEXTUSDECIMUS/M3: os SABORES da linha da oferta ("Branco", "Oreo").
+    # O nome da célula fica o base da família; os sabores vão ao
+    # DESCRITOR ("Branco ou Oreo · 45 g") — o cliente descobre o que há.
+    sabores: list = field(default_factory=list)
     # Identidade estável do item (invariante I1) — o mapa slot→item usa o uid.
     uid: str = field(default_factory=lambda: _uuid_mod.uuid4().hex)
 
@@ -108,6 +142,10 @@ def preco_decimal(txt: str | None) -> Decimal | None:
     if txt is None:
         return None
     import re
+    # Bancada dos Exemplos (P0.3c): porcentagem NUNCA é preço — "50% de
+    # desconto" virava R$ 50,00 (valor errado é pior que ausente, I2); o
+    # número colado num % sai da mesa e o que sobrar decide
+    txt = re.sub(r"[\d.,]+\s*%", " ", str(txt))
     # P0.3b: tokens numéricos do texto ORIGINAL (nunca fundir grupos de dígitos)
     tokens = [t for t in re.findall(r"[\d.,]+", str(txt)) if re.search(r"\d", t)]
     if len(tokens) != 1:
@@ -161,6 +199,50 @@ def _motor_se_disponivel():
 
     motor = ClienteOpenAICompat()
     return motor if motor.disponivel() else None
+
+
+def garantir_modelo_recorte(pai) -> bool:
+    """F13/E1 (CA-01): a PERGUNTA do 1º recorte — o download de ~973 MB
+    era disparado pelo BOOT, sem pedir, com o progresso indo para o
+    stderr morto do exe. Três saídas: baixar o completo, usar o LEVE
+    (~5 MB — grava na MESMA chave do combo das Configurações) ou agora
+    não. True = pode seguir (o download em si acontece no worker do
+    tratamento, narrado pela faixa de rodapé do D1)."""
+    from app.images.fundo import modelo_baixado, modelo_configurado
+    modelo = modelo_configurado()
+    if modelo_baixado(modelo):
+        return True
+    from PySide6.QtWidgets import QMessageBox
+    caixa = QMessageBox(pai)
+    caixa.setWindowTitle("Modelo de recorte")
+    caixa.setIcon(QMessageBox.Icon.Question)
+    caixa.setText(
+        "Para recortar o fundo das fotos, o app precisa baixar um modelo "
+        "(uma vez só — precisa de internet).\n\n"
+        "• Completo: qualidade máxima (~973 MB, demora)\n"
+        "• Leve: ~5 MB, qualidade menor — dá para trocar depois nas "
+        "Configurações › Imagens.")
+    b_full = caixa.addButton("Baixar o completo (973 MB)",
+                             QMessageBox.ButtonRole.AcceptRole)
+    caixa.addButton("Usar o leve (~5 MB)",
+                    QMessageBox.ButtonRole.ActionRole)
+    b_nao = caixa.addButton("Agora não", QMessageBox.ButtonRole.RejectRole)
+    caixa.setDefaultButton(b_nao)      # a lei do B3: Enter não baixa 1 GB
+    caixa.setEscapeButton(b_nao)
+    caixa.exec()
+    clicado = caixa.clickedButton()
+    if clicado is b_nao:
+        return False
+    if clicado is not b_full:          # o leve: grava a escolha na Config
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                ConfigRepositorio(s).set("imagem.modelo_rembg", "u2netp")
+                s.commit()
+        finally:
+            db.engine.dispose()
+    return True
 
 
 # --- catálogo (Almoxarifado) -----------------------------------------------------
@@ -604,6 +686,7 @@ def item_do_catalogo(d: dict) -> ItemMesa:
         descricao=d.get("nome_bruto") or d["nome"], preco=d.get("preco"),
         semaforo="VERDE", nome=d["nome"], produto_id=d["id"],
         imagem=d.get("imagem"), mais18=d.get("mais18", False),
+        marca_propria=d.get("marca_propria", False),        # F13/COND-5
         via="banco", preco_de=d.get("preco"), unidade=unidade,
         categoria=d.get("categoria") or None,               # F8
         imagens=list(d.get("imagens") or []),               # RG-28
@@ -655,7 +738,9 @@ def aplicar_override(dados, ov: dict):
 
 def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                        registro_selos: list | None = None,
-                       validade: str | None = None):
+                       validade: str | None = None,
+                       edicao: str | None = None,
+                       marcas: set[str] | frozenset[str] | None = None):
     """A montagem OFICIAL item→DadosProduto — a MESMA para Mesa, export e
     Modo Pai (frota F12: o Modo Pai montava a peça 'à mão' e imprimia
     DIFERENTE do export — sem multi-preço, sem selo +18, sem validade)."""
@@ -665,9 +750,17 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
     except ValueError:
         arranjo = ModoArranjo.LEQUE           # valor estranho: leque padrão
-    # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
-    nome = (abreviar_para_tabloide(it.nome, abreviacoes)
-            if abreviacoes else it.nome)
+    # RG-22 → VICESIMUS-SEPTIMUS §2: a abreviação vale SÓ para o
+    # desenho (banco/estante intactos) e virou DEGRAU DA ESCADA — o
+    # nome sai COMPLETO e a cadeia do nome_fit só troca pelo abreviado
+    # quando o completo não cabe (a lei v4 do dono: informação
+    # completa SEMPRE que couber; abreviar antes de precisar era
+    # decidir por ele)
+    nome = it.nome
+    nome_abrev = (abreviar_para_tabloide(it.nome, abreviacoes)
+                  if abreviacoes else None)
+    if nome_abrev == nome:
+        nome_abrev = None
     # RG-33: os selos escolhidos do item viram selos_extra do passe final
     extras = selos_do_item(it.selos, registro_selos) if it.selos else []
     # RG-34: item com validade cadastrada ganha "De olho na validade"
@@ -675,17 +768,64 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
     if it.validade:
         from app.rendering.selos import Canto, Selo
         extras = extras + [Selo("VALIDADE", Canto.INFERIOR_ESQUERDO)]
+    # F13-BIS/T2: o DESCRITOR da 2ª linha dos encartes ("marca própria ·
+    # 100 g") — composto do que o item carrega hoje; a observação NÃO
+    # entra (tem região própria, R-071)
+    # SEXTUSDECIMUS/M3: os SABORES da linha abrem o descritor ("Tomate,
+    # Óleo ou Limão · 125 g") — o nome fica o base da família e o
+    # cliente descobre o que existe
+    # VICESIMUS-QUARTUS §1.2 (o K6 da ordem 12, agora executável): UM
+    # ITEM TEM UM PESO SÓ. A unidade do item (tabela/campo estruturado)
+    # e o peso escrito no NOME do cadastro divergiam ("500ml" × "497ml"
+    # — a correção do dono) e a arte imprimia OS DOIS ("500ml · 497 ml").
+    # Vence o do CADASTRO; a divergência é aviso da conciliação (J10),
+    # nunca texto na arte. Este é o ponto ÚNICO que monta o descritor.
+    from app.rendering.nome_fit import mesmo_peso_exibido, peso_do_cadastro
+    unidade_arte = it.unidade
+    peso_cad = peso_do_cadastro(nome)
+    if peso_cad and it.unidade and not mesmo_peso_exibido(peso_cad,
+                                                          it.unidade):
+        unidade_arte = peso_cad
+    descritor = " · ".join(p for p in (
+        juntar_com_ou(getattr(it, "sabores", None) or []) or None,
+        "marca própria" if it.marca_propria else None,
+        unidade_arte) if p) or None
+    # RODADA-125 v2 — a REGRA CANÔNICA da célula: as marcas conhecidas
+    # do nome viajam no dado; a cadeia do nome_fit as desce ao
+    # descritor (e dedupa o peso repetido) SÓ onde há SUBTITULO — em
+    # célula sem descritor a marca fica no nome (nada some, I2)
+    marcas_nome: tuple[str, ...] = ()
+    if marcas:
+        from app.core.marcas import marcas_no_nome
+        marcas_nome = tuple(marcas_no_nome(nome, marcas))
     return DadosProduto(
         nome,
         selos_extra=extras,
         preco_por=preco_decimal(it.preco),
+        # QUINTUSDECIMUS/J18: o "de" que veio DA TABELA desenha no
+        # tabloide (riscado + % calculado onde o layout tiver as
+        # regiões) — o preco_de do BANCO segue só painel/cartaz, para
+        # não mudar páginas existentes por baixo do dono
+        preco_de=(preco_decimal(it.preco_de)
+                  if getattr(it, "preco_de_da_tabela", False) else None),
         multi_preco=it.multi_preco,          # R-070: "3 por R$10"
         observacao=it.observacao,            # R-071: "limite 2 por cliente"
         imagem_path=it.imagem,
         imagens=[ImagemSlot(c) for c in (it.imagens or [])],
         modo_arranjo=arranjo,
+        # VICESIMUS-TERTIUS/L20: o COMPOSTO nunca esconde uma marca
+        # atras da outra (o Somar cobria o Tio Bonini na capa)
+        composto=bool(getattr(it, "origem_composto", None)),
         mais18=it.mais18,
-        unidade=it.unidade,
+        marca_propria=it.marca_propria,                     # F13/COND-5
+        # §1.2: a unidade da ARTE é a resolvida (o cadastro vence) — é
+        # contra ela que o nome_fit dedupa o peso do nome
+        unidade=unidade_arte,
+        descritor=descritor,                 # F13-BIS/T2
+        desconto_pct=getattr(it, "desconto_pct", None),   # Q2
+        marcas_nome=marcas_nome,             # v2: a hierarquia canônica
+        nome_abreviado=nome_abrev,           # SEPTIMUS: o degrau 2
+        sabores=tuple(getattr(it, "sabores", None) or ()),   # v3
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");
         # o legado ("ATÉ 24/07" do OCR/RG-24) ganha o prefixo
@@ -693,7 +833,64 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
                      if (validade or "").upper().startswith("OFERTA")
                      else f"Ofertas válidas {validade}"
                      if validade else None),
+        edicao=edicao,                       # F13-TER/D1: a edição viva
     )
+
+
+def aplicar_secoes_do_agrupar(paginas, agrupar: bool) -> None:
+    """RODADA-125 (achado 1 das seções): o agrupar SÓ liga o DESENHO de
+    seções onde a página define estilo PRÓPRIO — os encartes da
+    biblioteca (o Jornal) nascem com ``secoes_ligadas=False`` de
+    propósito e o toggle antigo os ligava no CONTORNO global: chips por
+    cima de títulos, molduras cortando colunas (as fotos do dono,
+    03/08). Sem estilo próprio, agrupar vale como ORDENAÇÃO da fila.
+    Desagrupar desliga em todas (o toggle por página, B3, segue
+    mandando depois)."""
+    for pag in paginas:
+        if agrupar:
+            if getattr(pag, "estilo_secoes", None):
+                pag.secoes_ligadas = True
+        else:
+            pag.secoes_ligadas = False
+
+
+def marcas_para_exibicao() -> set[str]:
+    """RODADA-125 v2 — o vocabulário de marcas da REGRA CANÔNICA da
+    célula: o seed do mercado + as marcas do acervo + as próprias da
+    Config, normalizado. Carregar 1× POR LOTE/página (a lição de
+    desempenho da Rodada JM) e passar a ``dados_para_desenho``."""
+    from app.core.marcas import marcas_conhecidas
+    return marcas_conhecidas(tuple(marcas_do_acervo()))
+
+
+def dados_de_pagina(validade: str | None):
+    """QUINTUSDECIMUS/J24: um DadosProduto "de página" que carrega SÓ o
+    texto_legal (a validade formatada) — vai no dict sob a chave
+    "__pagina__", que nunca casa slot algum: nada desenha por ele, mas
+    os textos de página (manchete viva, rodapé) o enxergam via
+    `_campo_vivo_da_pagina` mesmo com a página ainda vazia."""
+    from app.rendering.compositor import DadosProduto
+    return DadosProduto(
+        "", texto_legal=(validade
+                         if (validade or "").upper().startswith("OFERTA")
+                         else (f"Ofertas válidas {validade}"
+                               if validade else None)))
+
+
+def dados_cartaz_de_item(it: "ItemMesa", *,
+                         validade_texto: str | None = None):
+    """F13/B6 (F-01): a receita ÚNICA ItemMesa→DadosProduto de cartaz e
+    etiqueta. Havia TRÊS receitas quase-iguais (a da Fábrica, a das
+    etiquetas em lote e o dict do projeto reaberto) e a divergência era a
+    causa da etiqueta de bebida sair SEM o selo +18 (decisão travada
+    ferida em silêncio) e do projeto CARTAZ reaberto perder mais18 e
+    categoria. Toda porta de cartaz passa por AQUI."""
+    return dados_cartaz_de_produto({
+        "nome": it.nome, "preco": it.preco, "preco_de": it.preco_de,
+        "imagem": it.imagem, "validade": it.validade,
+        "mais18": it.mais18, "categoria": it.categoria,
+        "marca_propria": it.marca_propria,                  # F13/COND-5
+    }, validade_texto=validade_texto)
 
 
 def dados_de_projeto_aberto(aberto):
@@ -711,21 +908,23 @@ def dados_de_projeto_aberto(aberto):
             if it is None:
                 faltas.append(f"célula {sid}: o item do projeto sumiu")
                 continue
-            dados[sid] = dados_cartaz_de_produto(
-                {"nome": it.nome, "preco": it.preco,
-                 "preco_de": it.preco_de, "imagem": it.imagem,
-                 "validade": it.validade},
-                validade_texto=aberto.validade_oferta)
+            # F13/B6: a receita ÚNICA — o dict incompleto daqui perdia
+            # mais18/categoria no projeto CARTAZ reaberto (Modo Pai incluso)
+            dados[sid] = dados_cartaz_de_item(
+                it, validade_texto=aberto.validade_oferta)
     else:
         abrev = abreviacoes_tabloide()
         registro = selos_disponiveis()
+        mset = marcas_para_exibicao()        # v2: 1× por projeto aberto
         for sid, uid in (aberto.mapa or {}).items():
             it = por_uid.get(uid)
             if it is None:
                 faltas.append(f"célula {sid}: o item do projeto sumiu")
                 continue
             d = dados_para_desenho(it, abrev or None, registro,
-                                   aberto.validade_oferta)
+                                   aberto.validade_oferta,
+                                   edicao=getattr(aberto, "edicao", None),
+                                   marcas=mset)
             ov = (aberto.overrides or {}).get(sid)
             dados[sid] = aplicar_override(d, ov) if ov else d
     for sid, d in dados.items():
@@ -740,33 +939,45 @@ def dados_de_projeto_aberto(aberto):
 OUTROS = "Outros"
 
 
-def checklist_final(itens: list[ItemMesa], validade: str | None):
+def checklist_final(itens: list[ItemMesa], validade: str | None,
+                    *, cartaz: bool = False):
     """R-063: checklist antes de exportar, gerado do ESTADO REAL do projeto —
-    marca sozinho o que já está ok. Devolve [(pergunta, ok, detalhe)]."""
+    marca sozinho o que já está ok. Devolve [(pergunta, ok, detalhe)].
+
+    F13/D8: no modo ``cartaz`` a pergunta da validade DA OFERTA sai — o
+    cartaz não tem validade de oferta (a de item é o RG-58); era por isso
+    que a aprovação seria inalcançável na Fábrica (P-07)."""
     n = len(itens)
     sem_foto = [it for it in itens if not (it.imagem or it.imagens)]
     sem_preco = [it for it in itens
                  if preco_decimal(it.preco) is None and not it.multi_preco]
     bebidas = [it for it in itens if it.mais18]
-    return [
+    perguntas = [
         ("Todos os itens têm foto?", not sem_foto,
          "ok" if not sem_foto else f"{len(sem_foto)} sem foto"),
         ("Todos os itens têm preço entendido?", not sem_preco,
          "ok" if not sem_preco else f"{len(sem_preco)} sem preço"),
-        ("A validade da oferta está definida?", bool(validade),
-         validade or "defina a validade de/até"),
+    ]
+    if not cartaz:
+        perguntas.append(
+            ("A validade da oferta está definida?", bool(validade),
+             validade or "defina a validade de/até"))
+    perguntas += [
         ("As bebidas alcoólicas estão com +18?", True,
          f"{len(bebidas)} bebida(s) — o selo +18 é automático"
          if bebidas else "nenhuma bebida alcoólica"),
         ("Há itens na oferta?", n > 0, f"{n} item(ns)"),
     ]
+    return perguntas
 
 
-def aprovar_projeto(projeto_id, itens: list[ItemMesa], validade: str | None):
+def aprovar_projeto(projeto_id, itens: list[ItemMesa], validade: str | None,
+                    *, cartaz: bool = False):
     """R-068 (aprovação em 2 etapas): aprovar EXIGE a conferência — roda o
     checklist da F7 e só aprova se TUDO estiver ok. Não é clique cego. Devolve
     (aprovado, faltas) — `faltas` é a lista de perguntas ainda não resolvidas."""
-    faltas = [p for p, ok, _d in checklist_final(itens, validade) if not ok]
+    faltas = [p for p, ok, _d in
+              checklist_final(itens, validade, cartaz=cartaz) if not ok]
     if faltas:
         return False, faltas
     if projeto_id is not None:
@@ -806,6 +1017,54 @@ def diff_edicoes(atual: list[ItemMesa], anterior: list[ItemMesa]):
         if ant is not None and (it.preco or "") != (ant.preco or ""):
             precos.append((it, ant.preco, it.preco))
     return {"novos": novos, "removidos": removidos, "precos": precos}
+
+
+# --- F13/D12 (VC-081): atualizar preços da oferta ABERTA por chave natural --
+
+@dataclass
+class PlanoPrecos:
+    """A prévia do 'Atualizar preços' — nada muda até aplicar (o padrão
+    prévia→confirma da ponte Excel R-118)."""
+
+    atualizaveis: list = field(default_factory=list)   # (da_estante, novo)
+    sem_par: list = field(default_factory=list)        # novos sem par
+    nao_citados: list = field(default_factory=list)    # da estante, fora
+    identicos: int = 0
+
+
+def plano_atualizar_precos(estante: list["ItemMesa"],
+                           novos: list["ItemMesa"]) -> PlanoPrecos:
+    """A semana RECORRENTE: casa estante×tabela nova por CHAVE NATURAL
+    (nunca posição, I1) e lista o que mudaria. Não grava nada."""
+    por_chave: dict = {}
+    for it in estante:
+        por_chave.setdefault(chave_natural(it), it)
+    plano = PlanoPrecos()
+    casados: set = set()
+    for n in novos:
+        alvo = por_chave.get(chave_natural(n))
+        if alvo is None:
+            plano.sem_par.append(n)
+            continue
+        casados.add(alvo.uid)
+        if ((n.preco or "") != (alvo.preco or "")
+                or n.preco_de != alvo.preco_de
+                or n.multi_preco != alvo.multi_preco):
+            plano.atualizaveis.append((alvo, n))
+        else:
+            plano.identicos += 1
+    plano.nao_citados = [it for it in estante if it.uid not in casados]
+    return plano
+
+
+def aplicar_atualizacao_precos(plano: PlanoPrecos) -> int:
+    """Muta SÓ os campos de preço dos itens da ESTANTE — o uid, o mapa,
+    os overrides e a montagem ficam exatamente onde estão (I1)."""
+    for alvo, novo in plano.atualizaveis:
+        alvo.preco = novo.preco
+        alvo.preco_de = novo.preco_de
+        alvo.multi_preco = novo.multi_preco
+    return len(plano.atualizaveis)
 
 
 # --- R-058: frases prontas com variáveis {data}/{evento} --------------------
@@ -1135,13 +1394,57 @@ def abreviacoes_tabloide() -> dict[str, str]:
 # quinta; "Sexta Verde" é sexta). FASE 2: o dia mora no Evento (entidade);
 # a tabela de nomes→número vive em eventos._DIAS.
 
+# F13-DECIMUS/D1: o período do mês (o Jornal) — sentinela devolvida no
+# lugar do dia da semana quando o nome fala de mês, não de dia
+PERIODO_MES = "mes"
 
-def dia_do_evento(evento: str | None) -> int | None:
-    """O dia da semana (0=seg…6=dom) do evento, ou None.
+# os radicais do dia no NOME do layout — casados por PALAVRA INTEIRA,
+# sem acento e sem caixa (a disciplina do extrair_marca: ambíguo = None)
+_RADICAIS_DIA = (
+    (0, ("segunda", "seg")),
+    (1, ("terca", "ter")),
+    (2, ("quarta", "qua")),
+    (3, ("quinta", "quintou", "qui")),
+    (4, ("sexta", "sex")),
+    (5, ("sabado", "sab")),
+    (6, ("domingo", "dom")),
+)
+_RADICAIS_PERIODO = ("jornal", "mes", "mensal")
 
-    FASE 2 (passo 7): a verdade agora é o ENTIDADE Evento (dia_semana);
-    a Config antiga `eventos.dias` continua como fallback (bancos legados
-    e nomes ainda não migrados)."""
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in t if not unicodedata.combining(c))
+
+
+def dia_pelo_nome(nome: str | None):
+    """F13-DECIMUS/D1: o dia da semana escrito no NOME do layout.
+
+    "Segunda dos Frios" É segunda-feira — a resposta estava no nome do
+    arquivo o tempo todo (P-01). Casa por PALAVRA INTEIRA, nunca por
+    pedaço ("Promoção Relâmpago" nunca vira segunda por conter "ão").
+    Devolve 0..6, ``PERIODO_MES`` (jornal/mensal) ou None."""
+    if not nome:
+        return None
+    tokens = set(_sem_acento(nome).lower().split())
+    if tokens & set(_RADICAIS_PERIODO):
+        return PERIODO_MES
+    for dia, radicais in _RADICAIS_DIA:
+        if tokens & set(radicais):
+            return dia
+    return None
+
+
+def dia_do_evento(evento: str | None):
+    """O dia da semana (0=seg…6=dom) do evento, ``PERIODO_MES`` ou None.
+
+    F13-DECIMUS/D1 — a CASCATA de fontes, nesta ordem:
+    1. a entidade Evento (``dia_semana``) — continua mandando;
+    2. a Config antiga ``eventos.dias`` (fallback legado);
+    3. o NOME em si (``dia_pelo_nome``) — o dono abre "Segunda dos
+       Frios" e o app SABE que é segunda, zero configuração;
+    4. nada casou → None, e aí sim o app pergunta."""
     if not evento:
         return None
     try:
@@ -1149,11 +1452,14 @@ def dia_do_evento(evento: str | None) -> int | None:
         db = Database().init()
         try:
             with db.Session() as s:
-                return dia_do_evento_v2(s, evento)
+                dia = dia_do_evento_v2(s, evento)
         finally:
             db.engine.dispose()
     except Exception:
-        return None
+        dia = None
+    if dia is not None:
+        return dia
+    return dia_pelo_nome(evento)
 
 
 def proxima_ocorrencia(dia_semana: int, hoje=None):
@@ -1193,8 +1499,195 @@ def sugerir_validade(evento: str | None, hoje=None) -> str | None:
     dia = dia_do_evento(evento)
     if dia is None:
         return None
+    if dia == PERIODO_MES:
+        # F13-DECIMUS/D1: o Jornal vale do dia 1º ao 27 — o período
+        # corrente enquanto o 27 não passou; depois, o do mês seguinte
+        # (a mesma semântica do "hoje conta" da próxima ocorrência)
+        h = hoje or date.today()
+        if h.day > 27:
+            h = (h.replace(day=1) + timedelta(days=32)).replace(day=1)
+        return f"DE 01/{h.month:02d} A 27/{h.month:02d}"
     data = proxima_ocorrencia(dia, hoje)
     return f"SOMENTE {data.strftime('%d/%m')}"
+
+
+def avisos_da_validade(validade: str | None, nome_layout: str | None = None,
+                       evento: str | None = None, hoje=None) -> list[str]:
+    """F13-DECIMUS/D4: as guardas de sanidade da data — AVISAM, nunca
+    vetam (a trava #3 caiu e continua caída), e toda frase diz ONDE
+    clicar. Com a data preenchendo sozinha, o risco novo é data errada
+    passar despercebida (o M-02: o marco publicado com validade de maio
+    em julho).
+
+    Rodada JM (B2A): as guardas leem o PAR (início, fim) da régua única
+    `datas_da_validade` — o "já passou" compara com a data-FIM (o falso
+    positivo que gritaria o mês inteiro do Jornal morreu), o ano escrito
+    é respeitado e o "fora do mês" olha o INTERVALO, não a 1ª data.
+
+    Validade sem data nenhuma ("enquanto durarem os estoques") passa em
+    silêncio — as guardas são DE DATA."""
+    import re as _re
+    from datetime import date as _date
+
+    from app.core.validade import datas_da_validade
+    if not (validade or "").strip():
+        return []
+    if not _re.search(r"\d{1,2}/\d{1,2}", validade):
+        return []                       # escolha legítima sem data
+    hoje = hoje or _date.today()
+    de, ate = datas_da_validade(validade, hoje)
+    if de is None and ate is None:
+        return [f"a validade “{validade}” tem uma data que não existe — "
+                "clique no 📅 na barra da Mesa"]
+    inicio = de or ate
+    fim = ate or de
+    avisos: list[str] = []
+    if fim < hoje:
+        avisos.append(f"a validade “{validade}” já passou — clique no 📅 "
+                      "na barra da Mesa para corrigir")
+    elif not ((inicio.year, inicio.month) <= (hoje.year, hoje.month)
+              <= (fim.year, fim.month)):
+        avisos.append(f"a validade “{validade}” está fora do mês corrente "
+                      "— confira no 📅 da barra da Mesa (pode ser "
+                      "legítimo no Jornal)")
+    # o dia da semana só faz sentido para oferta de UM dia
+    if inicio == fim:
+        dia = dia_do_evento(evento) if evento else None
+        if dia is None:
+            dia = dia_pelo_nome(nome_layout)
+        if isinstance(dia, int) and inicio.weekday() != dia:
+            avisos.append(f"a validade “{validade}” não bate com o dia do "
+                          "encarte — confira no 📅 da barra da Mesa")
+    return avisos
+
+
+# --- F13-TER/D1: a EDIÇÃO do Jornal é REAL ("Nº 177 · ANO 42" mudava todo
+# mês e estava cravada na arte) --------------------------------------------------
+
+
+def sugerir_edicao(evento: str | None, hoje=None) -> str | None:
+    """A edição sugerida a partir da BASE registrada (o nº/ano de uma
+    edição conhecida do evento): o NÚMERO incrementa por mês corrido
+    desde a base e o ANO (de circulação do jornal) vira junto com o ano
+    civil. Sem base registrada, sem palpite (None) — a região EDICAO
+    fica muda e o pré-voo avisa; um número inventado seria rótulo
+    mentindo (§4 da ordem TER)."""
+    from datetime import date
+    if not evento:
+        return None
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                mapa = ConfigRepositorio(s).get("eventos.edicao_base") or {}
+        finally:
+            db.engine.dispose()
+    except Exception:
+        return None
+    base = next((v for k, v in mapa.items()
+                 if k.strip().lower() == evento.strip().lower()), None)
+    if not isinstance(base, dict):
+        return None
+    try:
+        numero, ano = int(base["numero"]), int(base["ano"])
+        ano_civil, mes = (int(x) for x in str(base["quando"]).split("-")[:2])
+    except (KeyError, TypeError, ValueError):
+        return None
+    d = hoje or date.today()
+    meses = (d.year - ano_civil) * 12 + (d.month - mes)
+    if meses < 0:
+        return None                       # base do futuro: sem palpite
+    return f"Nº {numero + meses} · ANO {ano + (d.year - ano_civil)}"
+
+
+def registrar_edicao_publicada(evento: str | None, edicao: str | None,
+                               hoje=None) -> None:
+    """Grava a edição EXPORTADA do evento — o pré-voo compara contra ela
+    para avisar "esta edição já foi publicada" (nunca repetir o número
+    da edição anterior). Se a edição parsear ("Nº 178 · ANO 42"), também
+    REALIMENTA a base da sugestão: o dono digita uma vez e os meses
+    seguintes se sugerem sozinhos. Nunca levanta (registro é rede)."""
+    import re
+    from datetime import date
+    if not evento or not (edicao or "").strip():
+        return
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                repo = ConfigRepositorio(s)
+                mapa = repo.get("eventos.edicao_publicada") or {}
+                mapa[evento.strip().lower()] = edicao.strip()
+                repo.set("eventos.edicao_publicada", mapa)
+                m = re.search(r"N[º°o]?\s*(\d+).*?ANO\s*(\d+)",
+                              edicao, re.IGNORECASE)
+                if m:
+                    d = hoje or date.today()
+                    base = repo.get("eventos.edicao_base") or {}
+                    base[evento.strip().lower()] = {
+                        "numero": int(m.group(1)), "ano": int(m.group(2)),
+                        "quando": f"{d.year:04d}-{d.month:02d}"}
+                    repo.set("eventos.edicao_base", base)
+                s.commit()
+        finally:
+            db.engine.dispose()
+    except Exception:
+        pass
+
+
+def atualizar_fixos_pela_tabela(layout, itens) -> list[str]:
+    """F13-TER/N1: item FIXO com "preço da semana" atualiza quando o
+    produto APARECE na tabela importada — casamento por CHAVE NATURAL
+    (D12, nunca OCR forçado). Preço fixo nunca é tocado; ausente mantém
+    o que está. Devolve avisos NOMEADOS (I2) das atualizações feitas."""
+    from app.core.portabilidade import chave_natural
+    avisos: list[str] = []
+    por_chave = {chave_natural(it.nome, getattr(it, "marca", None)): it
+                 for it in itens}
+    for pagina in getattr(layout, "paginas", []) or []:
+        for slot in pagina.slots:
+            cf = getattr(slot, "conteudo_fixo", None)
+            if not (getattr(slot, "fixa", False) and cf
+                    and cf.get("preco_da_semana")):
+                continue
+            it = por_chave.get(
+                chave_natural(cf.get("nome"), cf.get("marca")))
+            if it is None:
+                continue                      # ausente: mantém o que está
+            # Q2 (TERTIUSDECIMUS): a oferta do fixo pode ser um DESCONTO
+            # declarado ("Lanche na Chapa com 20%") — atualiza como o
+            # preço da semana atualiza
+            dp = getattr(it, "desconto_pct", None)
+            if dp and cf.get("desconto_pct") != dp:
+                cf["desconto_pct"] = dp
+                avisos.append(f"item fixo “{cf.get('nome')}”: desconto "
+                              f"da semana atualizado para {dp}%")
+            if not (it.preco or "").strip():
+                continue
+            if (cf.get("preco") or "").strip() != it.preco.strip():
+                cf["preco"] = it.preco.strip()
+                avisos.append(f"item fixo “{cf.get('nome')}”: preço da "
+                              f"semana atualizado para {cf['preco']}")
+    return avisos
+
+
+def _edicoes_publicadas() -> set[str]:
+    """As edições já exportadas (todas as campanhas) — para o aviso do
+    pré-voo. Nunca levanta (sem banco = sem aviso, não sem export)."""
+    try:
+        from app.core.repositories import ConfigRepositorio
+        db = Database().init()
+        try:
+            with db.Session() as s:
+                mapa = ConfigRepositorio(s).get(
+                    "eventos.edicao_publicada") or {}
+        finally:
+            db.engine.dispose()
+        return {str(v).strip() for v in mapa.values() if str(v).strip()}
+    except Exception:
+        return set()
 
 
 # --- RG-43: assistente de preço (pesquisa §3 — charm pricing) ----------------------
@@ -1273,6 +1766,34 @@ def montar_validade_oferta(de: str | None, ate: str | None) -> str | None:
     return None
 
 
+def normalizar_validade_tabela(texto: str | None) -> str | None:
+    """Rodada JM (B2A): o rodapé CRU da tabela ("OFERTAS VALIDAS
+    03/08/2026 ATÉ 27/08/2026") vira o vocabulário canônico da casa
+    ("OFERTA VÁLIDA DE 03/08 ATÉ 27/08") antes de entrar no chip e no
+    desenho. Sem data parseável → None (o chamador decide o que fazer
+    com o cru)."""
+    from app.core.validade import datas_da_validade
+    de, ate = datas_da_validade(texto)
+    if de is None and ate is None:
+        return None
+    return montar_validade_oferta(
+        de.strftime("%d/%m") if de else None,
+        ate.strftime("%d/%m") if ate else None)
+
+
+def validade_vence(atual: str | None, origem: str | None,
+                   da_tabela: str | None) -> bool:
+    """Rodada JM (B2A): a validade ESCRITA NA TABELA vence o vazio e o
+    palpite da CASCATA do calendário (documento > palpite) — mas NUNCA
+    sobrescreve em silêncio a escolha do dono (origem manual/projeto);
+    nesse caso o chamador avisa (I2) e o 📅 troca."""
+    if not (da_tabela or "").strip():
+        return False
+    if not (atual or "").strip():
+        return True
+    return origem == "cascata"
+
+
 def abreviar_para_tabloide(nome: str,
                            glossario: dict[str, str] | None = None) -> str:
     """RG-22: aplica as abreviações SÓ ao nome desenhado no tabloide — o
@@ -1330,10 +1851,25 @@ def categorias_ordenadas(session) -> list[str]:
 
 # --- item composto (F7.2, Etapa D do Bloco E): dois produtos, UM uid -------------
 
-def nome_composto(nome_a: str, nome_b: str) -> str:
-    """Monta o nome do composto: "Arroz Camil 5kg" + "Arroz Rei 5kg" →
-    "Arroz Camil e Rei 5kg" (prefixo e sufixo comuns preservados; os miolos
-    distintos entram com "e"). Sempre editável pelo humano no diálogo."""
+# Rodada JM (B3.4) → v2: a lista de EMBALAGENS subiu ao core (o
+# rendering desce "tubo"/"caixeta" ao descritor pela MESMA régua)
+from app.core.sanitize import EMBALAGENS as _EMBALAGENS  # noqa: E402
+
+
+def _embalagem_do_nome(tokens: list[str]) -> str | None:
+    """O token de embalagem conhecido do nome (minúsculo) — ou None."""
+    for tk in tokens:
+        if tk.lower() in _EMBALAGENS:
+            return tk.lower()
+    return None
+
+
+def _juntar_com_e(nome_a: str, nome_b: str,
+                  rotulo_a: str | None = None,
+                  rotulo_b: str | None = None) -> str:
+    """O miolo histórico do composto: prefixo/sufixo comuns preservados,
+    miolos distintos com "e" — agora com rótulo opcional por miolo (a
+    embalagem entre parênteses, B3.4)."""
     ta, tb = nome_a.split(), nome_b.split()
     pre = 0
     while pre < min(len(ta), len(tb)) and ta[pre].lower() == tb[pre].lower():
@@ -1346,13 +1882,181 @@ def nome_composto(nome_a: str, nome_b: str) -> str:
     miolo_b = " ".join(tb[pre:len(tb) - suf or None])
     if not miolo_a or not miolo_b:
         return f"{nome_a} e {nome_b}"
+    if rotulo_a:
+        miolo_a = f"{miolo_a} ({rotulo_a})"
+    if rotulo_b:
+        miolo_b = f"{miolo_b} ({rotulo_b})"
     partes = ta[:pre] + [f"{miolo_a} e {miolo_b}"] + (ta[len(ta) - suf:]
                                                       if suf else [])
     return " ".join(partes)
 
 
+def nome_composto(nome_a: str, nome_b: str) -> str:
+    """Monta o nome do composto — decisão do dono (03/08): com peso
+    COMUM aos dois, o peso sai do nome e vira descritor com "·"
+    ("Arroz Somar e Tio Bonini · 5 kg"); embalagens DIFERENTES por
+    componente entram entre parênteses ("Milho Verde Fugini (pouch) e
+    Bonare (lata) · 170 g"). Sem peso comum, o formato de sempre.
+    Sempre editável pelo humano no diálogo."""
+    from app.core.sanitize import separar_peso
+    na, pa = separar_peso(nome_a)
+    nb, pb = separar_peso(nome_b)
+    if not (pa and pb and pa == pb):
+        return _juntar_com_e(nome_a, nome_b)
+    ta, tb = na.split(), nb.split()
+    ea, eb = _embalagem_do_nome(ta), _embalagem_do_nome(tb)
+    rot_a = rot_b = None
+    if ea and eb and ea != eb:
+        # a embalagem sai do miolo e vira o rótulo entre parênteses
+        ta = [tk for tk in ta if tk.lower() != ea]
+        tb = [tk for tk in tb if tk.lower() != eb]
+        rot_a, rot_b = ea, eb
+    base = _juntar_com_e(" ".join(ta), " ".join(tb), rot_a, rot_b)
+    return f"{base} · {pa}"
+
+
 def eh_composto(it: ItemMesa) -> bool:
     return bool(it.origem_composto)
+
+
+# --- FAMÍLIAS de sabores (Rodada JM, B4) ---------------------------------------
+
+
+def nome_de_familia(nomes: list[str]) -> str:
+    """A sugestão de nome da família: o PREFIXO comum de tokens dos
+    membros ("Sardinha Coqueiro 125g Tomate" + "… Óleo" → "Sardinha
+    Coqueiro 125g"). Sem prefixo comum, o primeiro nome serve."""
+    listas = [n.split() for n in nomes if (n or "").strip()]
+    if not listas:
+        return ""
+    comum: list[str] = []
+    for tokens in zip(*listas):
+        if all(t.lower() == tokens[0].lower() for t in tokens):
+            comum.append(tokens[0])
+        else:
+            break
+    comum_txt = " ".join(comum).strip(" ·-")
+    return comum_txt or " ".join(listas[0])
+
+
+def criar_familia_de(produto_ids: list[int], nome: str) -> int:
+    """Cria (ou reusa) a família e liga os produtos — a porta única de
+    nascimento de família (Mesa e Almoxarifado chamam aqui)."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
+    from app.core.repositories import FamiliaRepositorio, ProdutoRepositorio
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            fid = FamiliaRepositorio(s).obter_ou_criar(nome)
+            ProdutoRepositorio(s).definir_familia(list(produto_ids), fid)
+            s.commit()
+            return fid
+    finally:
+        db.engine.dispose()
+
+
+def familia_do_item(produto_id: int | None) -> dict | None:
+    """A família do produto, pronta para a UI: {"id","nome","membros"}
+    com caminhos de imagem ABSOLUTOS — None sem família/produto."""
+    if not produto_id:
+        return None
+    from app.core.models import Produto
+    from app.core.repositories import FamiliaRepositorio
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            p = s.get(Produto, produto_id)
+            if p is None or not p.familia_id:
+                return None
+            fam = FamiliaRepositorio(s)
+            membros = [{"produto_id": m.id,
+                        "nome": m.nome_sanitizado,
+                        "imagem": _imagem_absoluta(m.caminho_imagem)}
+                       for m in fam.membros(p.familia_id)]
+            return {"id": p.familia_id,
+                    "nome": fam.nome_de(p.familia_id) or "",
+                    "membros": membros}
+    finally:
+        db.engine.dispose()
+
+
+def sabor_do_membro(nome_membro: str, nome_familia: str) -> str:
+    """SEXTUSDECIMUS/M3: o SABOR de um membro é o nome dele sem o prefixo
+    da família ("Sardinha Coqueiro 125g Tomate" → "Tomate"); se a grafia
+    não bate, o nome inteiro fica (nunca devolve vazio)."""
+    m, f = (nome_membro or "").strip(), (nome_familia or "").strip()
+    if f and m.lower().startswith(f.lower()):
+        resto = m[len(f):].strip(" ·—-")
+        if resto:
+            return resto
+    return m
+
+
+def sabores_fatorados(nomes_membros: list[str],
+                      nome_familia: str = "") -> list[str]:
+    """ORDEM do arquiteto (03/08, a Rosquinha): o descritor concatenava
+    os NOMES QUASE COMPLETOS quando a base não era o prefixo exato
+    (família batizada "Rosquinha" → sabor "Mabel 600g Coco"). O
+    fatorador de verdade: o SABOR é o que DIFERE entre os irmãos —
+    os tokens comuns a TODOS os membros saem, sobra o distintivo de
+    cada um, na ordem do nome. Com um membro só (nada a comparar), o
+    prefixo da família decide como sempre."""
+    nomes = [n for n in (nomes_membros or []) if n]
+    if len(nomes) < 2:
+        return [sabor_do_membro(n, nome_familia) for n in nomes]
+    conjuntos = [{t.lower() for t in n.split()} for n in nomes]
+    comuns = set.intersection(*conjuntos)
+    saida = []
+    for n in nomes:
+        resto = " ".join(t for t in n.split() if t.lower() not in comuns)
+        saida.append(resto or sabor_do_membro(n, nome_familia))
+    return saida
+
+
+def juntar_com_ou(nomes: list[str]) -> str:
+    """"Tomate", "Tomate ou Óleo", "Tomate, Óleo ou Limão" — a prosa da
+    célula (§2.2 da SEXTUSDECIMUS)."""
+    limpos = [n for n in (nomes or []) if n]
+    if not limpos:
+        return ""
+    if len(limpos) == 1:
+        return limpos[0]
+    return ", ".join(limpos[:-1]) + " ou " + limpos[-1]
+
+
+def juntar_com_e_texto(nomes: list[str]) -> str:
+    """v4: o irmão do juntar_com_ou para MARCAS que somam ("Bulnez e
+    Adoralle", "A, B e C") — o conjunto oferece as duas, não uma OU
+    outra."""
+    limpos = [n for n in (nomes or []) if n]
+    if not limpos:
+        return ""
+    if len(limpos) == 1:
+        return limpos[0]
+    return ", ".join(limpos[:-1]) + " e " + limpos[-1]
+
+
+def aplicar_sabores(item: ItemMesa, membros: list[dict]) -> ItemMesa:
+    """O CHECK vira o LEQUE: as fotos dos membros escolhidos entram no
+    ITEM (congela com o projeto — o imagens_json por-produto do RG-28
+    não entra aqui, I3) na ordem por produto_id (identidade, I1).
+    M3: os NOMES dos sabores escolhidos viajam também — o descritor da
+    célula os anuncia ("Tomate, Óleo ou Limão")."""
+    escolhidos = sorted(membros, key=lambda m: m.get("produto_id") or 0)
+    # RODADA-125: a régua do CABER — até MAX_FOTOS_CELULA todas entram;
+    # acima, a seleção espaçada (o descritor segue falando por TODOS)
+    item.imagens = selecionar_fotos_da_celula(
+        [m["imagem"] for m in escolhidos if m.get("imagem")])
+    base = (item.familia or {}).get("nome") or item.nome or ""
+    # ORDEM do arquiteto (a Rosquinha): o sabor é o que DIFERE entre
+    # os irmãos — a base digitada curta nunca mais concatena o nome
+    # quase completo ("Mabel 600g Coco ou Mabel 600g Leite")
+    item.sabores = sabores_fatorados(
+        [m.get("nome") or "" for m in escolhidos], base)
+    if item.imagens:
+        item.arranjo = "LEQUE"
+    return item
 
 
 def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
@@ -1378,6 +2082,7 @@ def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
         imagens=fotos if len(fotos) == 2 else [],
         arranjo="LADO_A_LADO",         # o padrão da ordem para 2 produtos
         mais18=a.mais18 or b.mais18,
+        marca_propria=a.marca_propria or b.marca_propria,   # F13/COND-5
         via="composto",
         unidade=a.unidade if a.unidade == b.unidade else None,
         origem_composto=[a.to_dict(), b.to_dict()],
@@ -1385,24 +2090,30 @@ def compor_itens(a: ItemMesa, b: ItemMesa, nome: str | None = None,
 
 
 def criar_como_composto(item: ItemMesa, nomes_componentes: list[str],
-                        mais18: bool, imagem_tratada: str | None,
+                        mais18: bool,
+                        imagens_tratadas: str | list | None,
                         categoria: str | None = None) -> ItemMesa:
     """RG-29: a linha com DUAS marcas ("Coração e Língua") já NASCE composta
     na conciliação — cada componente vira produto PRÓPRIO no banco (nunca um
     nome remendado), e o item da estante é o composto de sempre (F7.2:
     separável, rastreável, 1 slot → 1 uid).
 
-    A foto da curadoria vai ao PRIMEIRO componente (o segundo fica para a
-    curadoria contínua do Almoxarifado — avisado no pré-voo como sempre).
+    Rodada JM (B3.3): ``imagens_tratadas`` aceita a LISTA paralela aos
+    componentes (foto por componente); a string única dos chamadores
+    antigos segue valendo (vai ao 1º — o 2º fica para a curadoria do
+    Almoxarifado, avisado no pré-voo como sempre).
     """
     from app.core.modo import exigir_escrita
     exigir_escrita()                 # R-131: PC da loja não edita
+    if isinstance(imagens_tratadas, (str, type(None))):
+        imagens: list[str | None] = [imagens_tratadas, None]
+    else:
+        imagens = list(imagens_tratadas) + [None, None]
     subs: list[ItemMesa] = []
     for i, nome in enumerate(nomes_componentes[:2]):
         sub = ItemMesa(descricao=nome, preco=item.preco,
                        semaforo="VERMELHO", nome=nome)
-        subs.append(finalizar_criacao(sub, nome, mais18,
-                                      imagem_tratada if i == 0 else None,
+        subs.append(finalizar_criacao(sub, nome, mais18, imagens[i],
                                       categoria=categoria))
     comp = compor_itens(subs[0], subs[1], preco=item.preco)
     comp.descricao = item.descricao      # a linha ORIGINAL fica no rastro
@@ -1419,6 +2130,37 @@ def separar_item(comp: ItemMesa) -> list[ItemMesa]:
 
 
 # --- pré-voo de exportação (P0.4, invariante I2: nada some em silêncio) ---------
+
+_NOTAS_FOTO: dict = {}
+
+
+def _nota_da_foto(caminho):
+    """D10 (VC-040): avaliar_foto com cache por (caminho, mtime) — o
+    pré-voo roda SÍNCRONO no exportar/salvar; 30 fotos sem cache pagam o
+    Laplaciano 30× por gesto. Nunca levanta (None quando nem dá)."""
+    try:
+        p = Path(caminho)
+        chave = (str(p), p.stat().st_mtime_ns)
+        av = _NOTAS_FOTO.get(chave)
+        if av is None:
+            from app.images.avaliador import avaliar_foto
+            av = avaliar_foto(p)
+            _NOTAS_FOTO[chave] = av
+        return av
+    except Exception:
+        return None
+
+
+def avisos_de_riscadas(itens, mapa: dict | None) -> list[str]:
+    """VICESIMUS-QUARTUS §2.1: item RISCADO na tabela que está NA PÁGINA
+    (uid no mapa) — o pré-voo pergunta antes de salvar/exportar; oferta
+    cancelada nunca vai à rua calada. Aviso, nunca veto (trava #3)."""
+    na_grade = set((mapa or {}).values())
+    return [f"“{it.nome or it.descricao}” estava RISCADO na tabela "
+            "(oferta cancelada?) — confirme que ele vale"
+            for it in (itens or [])
+            if it.uid in na_grade and "riscada" in (it.pendencias or [])]
+
 
 def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                        fontes_dir=None) -> list[str]:
@@ -1472,7 +2214,26 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                     avisos.append(
                         f"{rotulo} ({nome}): usando foto GENÉRICA (placeholder)"
                         f"{idx} — troque pela foto real quando puder")
-        if d.preco_por is None and not d.multi_preco:   # R-070: multi-preço TEM preço
+                else:
+                    # F13/D10 (VC-040): a NOTA da foto entra no pré-voo —
+                    # o avaliador só falava no tooltip do Almoxarifado
+                    av = _nota_da_foto(c)
+                    if av is not None and av.nota == "ruim":
+                        avisos.append(
+                            f"{rotulo} ({nome}): foto com nota RUIM{idx} — "
+                            + "; ".join(av.motivos))
+        # RODADA-125 v3 (a Sardinha): a célula que ANUNCIA N sabores e
+        # só tem M fotos fala no pré-voo — 3 telas prometiam esse
+        # aviso e nenhuma cumpria (promessa falsa fere a I2)
+        sabs = tuple(getattr(d, "sabores", ()) or ())
+        if sabs and caminhos and len(caminhos) < len(sabs):
+            avisos.append(
+                f"{rotulo} ({nome}): anuncia {len(sabs)} sabores e só "
+                f"{len(caminhos)} têm foto — complete as fotos da "
+                "família (botão direito → Sabores da família)")
+        if d.preco_por is None and not d.multi_preco \
+                and not getattr(d, "desconto_pct", None):
+            # R-070: multi-preço TEM preço; Q2: desconto declarado idem
             avisos.append(f"{rotulo} ({nome}): sem preço (ou preço não entendido)")
         # FASE 3 (passo 73, I2): selo escolhido cuja ARTE sumiu do disco —
         # o desenho cairia no badge genérico sem ninguém saber por quê
@@ -1511,18 +2272,133 @@ def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                 msg = None
                 if (reg.papel_texto == PapelTexto.VALIDADE
                         and not texto_composto_legal(reg, d).strip()):
-                    msg = f"{rot}: papel “Validade da oferta” sem data — defina a validade"
+                    # F13-DECIMUS/D3: a mensagem que pede ação DIZ ONDE
+                    # (a frase antiga fez o dono dizer "não faço a
+                    # mínima ideia de como fazer isso")
+                    msg = (f"{rot}: papel “Validade da oferta” sem data — "
+                           "clique no 📅 na barra da Mesa, ao lado de "
+                           "Exportar")
+                elif reg.papel_texto == PapelTexto.LIVRE and fixo:
+                    # Rodada JM (B2A): o período gravado no molde ("do
+                    # dia 1º ao 27") só vira o REAL quando a validade
+                    # tem par de datas — sem par, o texto fixo mentiria
+                    from app.core.validade import (_RE_PERIODO_FIXO,
+                                                   datas_da_validade)
+                    if _RE_PERIODO_FIXO.search(fixo):
+                        de_, ate_ = datas_da_validade(
+                            (d.texto_legal if d else None) or "")
+                        if not (de_ and ate_ and de_ != ate_):
+                            msg = (f"{rot}: o texto tem período gravado "
+                                   "(“do dia … ao …”) e a validade não diz "
+                                   "o período — clique no 📅 na barra da "
+                                   "Mesa e escolha “De … até …”")
                 elif reg.papel_texto == PapelTexto.DICA and not fixo:
                     msg = f"{rot}: papel “Fica a Dica” sem texto — gere a dica pela IA"
                 elif reg.papel_texto == PapelTexto.LEGAL and not fixo:
                     msg = f"{rot}: papel “Aviso legal” sem texto — escolha um preset"
+                elif reg.papel_texto == PapelTexto.EDICAO:
+                    # F13-TER/D1: a edição é REAL — sem dado avisa; igual
+                    # a uma JÁ EXPORTADA avisa ("nunca publicar com o
+                    # número da edição anterior"). Aviso, nunca veto.
+                    from app.rendering.compositor import (
+                        _campo_vivo_da_pagina,
+                    )
+                    ed = (_campo_vivo_da_pagina(dados_por_slot, "edicao")
+                          or "").strip()
+                    if not ed:
+                        msg = (f"{rot}: papel “Edição” sem número — defina "
+                               "a edição do jornal (Nº/Ano)")
+                    elif ed in _edicoes_publicadas():
+                        msg = (f"{rot}: a edição “{ed}” já foi publicada — "
+                               "incremente antes de exportar")
                 if msg and msg not in vistos:
                     vistos.add(msg)
                     avisos.append(msg)
+
+    # F13/D10 (VC-050): o piso determinístico da REVISORA entra no pré-voo
+    # (nome cortado por medida, preço fora da faixa aprendida, de≤por).
+    # No cartaz o "de ≤ por" de cima já cobre POR CÉLULA — pula o par.
+    from app.ai.revisora import heuristicas_do_pre_voo
+    for a in heuristicas_do_pre_voo(layout, dados_por_slot, fontes_dir):
+        if cartaz and "risco PROCON" in a:
+            continue
+        if a not in avisos:
+            avisos.append(a)
     return avisos
 
 
 # --- importar + conciliar -----------------------------------------------------
+
+# QUINTUSDECIMUS/J18: "de X por Y" é o padrão-mãe do varejo — preço de
+# PRIMEIRA classe, nunca exceção rejeitada. Y é o preço; X é o riscado.
+_RE_DE_POR = re.compile(
+    r"\bde\s*(?:R\$\s*)?(\d[\d.,]*)\s*(?:por|->|→)\s*(?:R\$\s*)?"
+    r"(\d[\d.,]*)", re.IGNORECASE)
+
+
+def preco_de_por(texto: str | None) -> tuple[str, str] | None:
+    """Reconhece "de X por Y" (com ou sem R$) → ``(de, por)`` — os dois
+    validados pelo P0.3. Sem o padrão (ou com número inválido) → None;
+    a guarda P0.3b do `preco_decimal` segue intocada."""
+    m = _RE_DE_POR.search(texto or "")
+    if not m:
+        return None
+    de, por = m.group(1), m.group(2)
+    if preco_decimal(de) is None or preco_decimal(por) is None:
+        return None
+    return de, por
+
+
+# §13.5/L4: o preço INLINE da tabela do dono — o número mora na
+# DESCRIÇÃO atrás do "<>" e a coluna de valor diz "S. OFERTA"
+_RE_PRECO_INLINE = re.compile(r"(?:<>\s*)?R\$\s*(\d+[.,]\d{2})")
+
+
+def preco_inline_da_descricao(descricao: str | None
+                              ) -> tuple[str, str | None]:
+    """K2/L4: quando a coluna de valor é TEXTO ("S. OFERTA") e a
+    descrição carrega UM número monetário ("… <> R$ 18,81"), esse
+    número É o preço — devolve ``(descricao_limpa, preco)``. Dois
+    números = ambíguo, não extrai (a lei do P0.3b); zero = nada muda."""
+    texto = (descricao or "")
+    achados = _RE_PRECO_INLINE.findall(texto)
+    if len(achados) != 1:
+        return texto, None
+    limpo = _RE_PRECO_INLINE.sub(" ", texto)
+    limpo = re.sub(r"\s{2,}", " ", limpo).strip(" -–·<>")
+    # o código de coluna que apontava o preço ("… 5 Kgs T-1 <> R$ …")
+    # sobra colado no FIM — só AQUI ele é sempre código (a limpa geral
+    # exige frequência no lote); "VITAMINA B-12" segue intocada, por
+    # regra escrita
+    limpo = re.sub(r"(?<!VITAMINA )(?<!COMPLEXO )\b[A-Z]{1,2}-\d+$", "",
+                   limpo, flags=re.IGNORECASE).strip(" -–·")
+    return limpo, achados[0]
+
+
+def classificar_preco_ocr(texto_preco: str | None
+                          ) -> tuple[str | None, str | None, str | None]:
+    """Rodada JM (B2B) + J18: a regra nomeada do filtro do import —
+    devolve ``(preco, multi_preco, preco_de)`` a partir do campo
+    "preco" do OCR. "de X por Y" vira preço Y com o "de" X a bordo;
+    preço em TEXTO ("S. OFERTA") vira o canônico "SUPER OFERTA";
+    promoção com mecânica (%, leve-X, brinde) segue multi_preco cru
+    (R-070); o resto é o preço numérico de sempre."""
+    from app.qt.telas.colagem import preco_texto_oferta
+
+    texto = (texto_preco or "").strip()
+    dp = preco_de_por(texto)
+    if dp:
+        return dp[1], None, dp[0]
+    canonico = preco_texto_oferta(texto)
+    if canonico:
+        return None, canonico, None
+    if texto and preco_decimal(texto) is None and (
+            "%" in texto or any(t in texto.lower() for t in
+                                ("leve", "pague", "ganhe",
+                                 "desconto", "brinde"))):
+        return None, texto, None
+    return texto_preco, None, None
+
 
 def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
     """Lê a fonte (foto → OCR; texto → parse) e concilia tudo com o banco."""
@@ -1553,21 +2429,78 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
                     "Ligue o LM Studio ou importe a tabela como arquivo de texto.")
             tabela = ler_tabela(caminho, motor, status_cb=status_cb)
             cache_guardar(caminho, modelo_visao, tabela)
-        linhas = [(ln.descricao, ln.preco, None) for ln in tabela.linhas]
+        # bancada dos Exemplos (semana real): "preço" que é PROMOÇÃO em
+        # texto ("20% de desconto", "leve 3 pague 2") não é preço — vira
+        # multi_preco (R-070) e a bolha desenha a promoção, como a arte do
+        # dono faz ("R$ 20%"); o preço numérico segue o caminho de sempre
+        linhas = []
+        multi_precos: list[str | None] = []
+        precos_de: list[str | None] = []
+        riscadas: list[bool] = []
+        for ln in tabela.linhas:
+            preco, mp, pde = classificar_preco_ocr(ln.preco)
+            desc = ln.descricao
+            # L4: carimbo sem número + número inline na descrição →
+            # o número é o preço e sai da descrição (junto, nunca no
+            # lugar — K2)
+            if mp and not preco:
+                desc, inline = preco_inline_da_descricao(desc)
+                if inline:
+                    preco = inline
+            linhas.append((desc, preco, None))
+            multi_precos.append(mp)
+            precos_de.append(pde)
+            riscadas.append(ln.riscada)      # §2.1: o gesto viaja junto
         validade = tabela.validade_oferta
-    else:
-        status_cb("Lendo a tabela…")
-        from app.scripts.importar_tabela import parse_tabela_ean
-        linhas = parse_tabela_ean(caminho)   # RG-41: o EAN da tabela flui
+        return conciliar_linhas(linhas, status_cb, validade=validade,
+                                aviso=aviso_cache,
+                                caminho_fonte=str(caminho),
+                                multi_precos=multi_precos,
+                                precos_de=precos_de,
+                                riscadas=riscadas)
 
-    fonte = str(caminho) if caminho.suffix.lower() in _EXT_IMAGEM else None
+    status_cb("Lendo a tabela…")
+    from app.scripts.importar_tabela import parse_tabela_ean
+    linhas = parse_tabela_ean(caminho)   # RG-41: o EAN da tabela flui
     return conciliar_linhas(linhas, status_cb, validade=validade,
-                            aviso=aviso_cache, caminho_fonte=fonte)
+                            aviso=aviso_cache, caminho_fonte=None)
+
+
+def sem_numeracao_de_lote(linhas: list) -> list:
+    """VICESIMUS-OCTAVUS §3: a tabela do dono é NUMERADA (1..31) e o
+    número da linha vazou para o nome ("14 Bis Lacta Xtra Branco…").
+
+    A decisão é do LOTE, nunca da linha: "3 Corações" e "1 Kg" também
+    começam com número. Só remove quando a MAIORIA das linhas abre com
+    inteiro e a sequência é CRESCENTE — a assinatura de uma coluna de
+    numeração, que nenhum nome de produto tem. Devolve a lista nova
+    (as tuplas intactas onde não há numeração)."""
+    import re as _re
+    if len(linhas) < 4:
+        return linhas
+    pref = []
+    for tupla in linhas:
+        m = _re.match(r"^\s*(\d{1,3})\s+(?=\D)", str(tupla[0] or ""))
+        pref.append(int(m.group(1)) if m else None)
+    com = [n for n in pref if n is not None]
+    if len(com) < len(linhas) * 0.7:
+        return linhas
+    if any(b <= a for a, b in zip(com, com[1:])):
+        return linhas                     # não é sequência crescente
+    saida = []
+    for tupla, n in zip(linhas, pref):
+        if n is None:
+            saida.append(tupla)
+            continue
+        desc = _re.sub(r"^\s*\d{1,3}\s+", "", str(tupla[0] or ""), count=1)
+        saida.append((desc,) + tuple(tupla[1:]))
+    return saida
 
 
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                      aviso=None, caminho_fonte=None,
-                     multi_precos=None) -> ResultadoMesa:
+                     multi_precos=None, descontos=None,
+                     precos_de=None, riscadas=None) -> ResultadoMesa:
     """Concilia uma lista de tuplas ``(descricao, preco, ean)`` com o banco —
     o MESMO caminho que ``importar_ofertas`` usa. A COLAGEM (R-050, Fase 7)
     reusa isto: o parser de colagem produz as tuplas e cai aqui, sem duplicar
@@ -1577,6 +2510,8 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
     reconhecido na colagem (R-070) para o ItemMesa — a tupla só carrega o valor,
     o formato de promoção viaja aqui."""
     status_cb("Conciliando com o banco…")
+    # §3: a numeração de linha da tabela é METADADO — nunca nome
+    linhas = sem_numeracao_de_lote(list(linhas))
     from app.ai.conciliacao import Conciliador
 
     motor = _motor_se_disponivel()
@@ -1586,34 +2521,188 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
         with db.Session() as session:
             conc = Conciliador(session, motor=motor, embedder=motor,
                                status_cb=status_cb)
+            # ADENDO 30/07: 1ª passada concilia TUDO; a exclusividade
+            # de lote roda sobre os vereditos (duas linhas nunca casam
+            # verdes com o mesmo produto em silêncio); a 2ª monta os
+            # itens da Mesa
+            from app.ai.conciliacao import (PISO_CANDIDATO_EXIBIDO,
+                                            Semaforo,
+                                            categoria_dos_candidatos,
+                                            exclusividade_de_lote)
+            from app.core.mais18 import eh_bebida_alcoolica
+            from app.core.sanitize import sanitizar
+            vereditos = []
             for i, (desc, preco, ean) in enumerate(linhas, 1):
                 status_cb(f"Conciliando {i}/{len(linhas)}…")
-                v = conc.conciliar(desc)
+                vereditos.append(conc.conciliar(desc))
+            exclusividade_de_lote(vereditos)
+            houve_categoria = False
+            cache_familias: dict[int, dict] = {}     # B4: 1 consulta/família
+            for i, ((desc, preco, ean), v) in enumerate(
+                    zip(linhas, vereditos), 1):
                 p = v.produto
+                # F13/D5 (C-01): o acervo se conserta SOZINHO a cada
+                # importação — produto casado SEM categoria ganha a do
+                # vizinho (humano nunca é vencido: só escreve onde está
+                # VAZIO). No PC da loja (somente leitura) pula sem drama.
+                # Rodada JM (B1.6): a categoria sai dos candidatos que o
+                # veredito JÁ carrega (nada de refazer fuzzy+embedding);
+                # o match EXATO vem com um candidato só (ele mesmo) — só
+                # nele a busca de vizinhos roda de verdade. Um commit
+                # por LOTE, não por item.
+                if p is not None and p.categoria is None:
+                    cat, _sc = categoria_dos_candidatos(
+                        v.candidatos, conc.limiares.amarelo)
+                    if not cat and v.via == "exato":
+                        cat, _sc = conc.categoria_do_vizinho(desc)
+                    if cat:
+                        try:
+                            from app.core.repositories import (
+                                ProdutoRepositorio,
+                            )
+                            ProdutoRepositorio(session).editar(
+                                p.id, categoria=cat,
+                                categoria_origem="vizinho")
+                            houve_categoria = True
+                        except Exception:
+                            session.rollback()
                 mp = (multi_precos[i - 1] if multi_precos
                       and i - 1 < len(multi_precos) else None)
+                dp = (descontos[i - 1] if descontos
+                      and i - 1 < len(descontos) else None)
+                pde = (precos_de[i - 1] if precos_de
+                       and i - 1 < len(precos_de) else None)
+                # B1.5/B3: o VERMELHO nasce sanitizado e com as
+                # pendências a bordo. QUINTUSDECIMUS/J9: o sanitize roda
+                # para TODOS — linha que parece 2 produtos ("multiplos")
+                # casada VERDE desce a AMARELO com o motivo dito (duas
+                # marcas nunca viram uma em silêncio); o match
+                # EXATO/alias fica: é aprendizado confirmado pelo dono.
+                san = sanitizar(desc, conc.regras)
+                # RODADA-125 Onda 3 (o print do dono): a linha MULTI
+                # tenta primeiro o CONJUNTO do acervo — se todos os
+                # membros declarados JÁ existem, o item nasce VERDE
+                # montado (leque das fotos dele, sabores no descritor)
+                # e ninguém refaz nada. Parcial não inventa: segue o
+                # fluxo normal.
+                if any(pd.codigo == "multiplos"
+                       for pd in san.pendencias) or " e " in desc.lower():
+                    conjunto = conjunto_do_acervo(desc)
+                    if conjunto is not None:
+                        itens.append(item_do_conjunto(
+                            desc, preco, ean or None, conjunto,
+                            mp=mp, dp=dp))
+                        continue
+                if (v.semaforo == Semaforo.VERDE and v.via != "exato"
+                        and any(pd.codigo == "multiplos"
+                                for pd in san.pendencias)):
+                    v.semaforo = Semaforo.AMARELO
+                    v.motivo = ("a linha parece ter 2 produtos no mesmo "
+                                "preço — confira antes de aceitar "
+                                "(o Criar abre a pergunta)")
+                # J18: preço ILEGÍVEL nunca sai verde calado — a recusa
+                # do P0.3b vira pendência dita (era um `—` silencioso
+                # nos dois destaques da página do dono)
+                pendencias = [pd.codigo for pd in san.pendencias]
+                if ((preco or "").strip() and mp is None and dp is None
+                        and preco_decimal(preco) is None):
+                    pendencias.append("preco_ilegivel")
+                    if v.semaforo == Semaforo.VERDE:
+                        v.semaforo = Semaforo.AMARELO
+                    v.motivo = (f"o preço «{preco}» não foi entendido — "
+                                "corrija na coluna Preço"
+                                + (f" · {v.motivo}" if v.motivo else ""))
+                # VICESIMUS-QUARTUS §2.1 (a gramática da tabela): linha
+                # RISCADA é oferta CANCELADA pelo dono — o app lia as
+                # letras e ignorava o gesto (duas riscadas IMPRESSAS no
+                # Quintou). Ela PARA em vermelho perguntando: nunca casa
+                # produto sozinha, nunca entra calada e nunca some
+                # calada (L15) — fica à vista, fora dos fluxos em lote.
+                ri = (bool(riscadas[i - 1]) if riscadas
+                      and i - 1 < len(riscadas) else False)
+                if ri:
+                    pendencias.append("riscada")
+                    v.semaforo = Semaforo.VERMELHO
+                    v.motivo = ("a linha está RISCADA na tabela (oferta "
+                                "cancelada?) — só entra se você confirmar"
+                                + (f" · casaria com {p.nome_sanitizado}"
+                                   if p is not None else ""))
+                    p = None
                 itens.append(ItemMesa(
                     descricao=desc,
                     preco=preco,
                     multi_preco=mp,                          # R-070 (colagem)
+                    desconto_pct=dp,                         # Q2 (declarado)
                     ean=ean or (p.ean if p else None),
                     semaforo=v.semaforo.value,
-                    nome=p.nome_sanitizado if p else desc,
+                    # Rodada JM (B1.5): o item NOVO nasce com o nome
+                    # SANITIZADO (acentos/unidades/caixa) — a descrição
+                    # CRUA fica em `descricao` (alias/identidade, I1)
+                    nome=p.nome_sanitizado if p else san.nome_sanitizado,
+                    pendencias=pendencias,
+                    motivo=v.motivo,
                     produto_id=p.id if p else None,
                     imagem=_imagem_absoluta(p.caminho_imagem) if p else None,
-                    mais18=bool(p.selo_mais18) if p else False,
+                    # L12 (A RÉGUA SOMA — §13.2/L1): o dado do banco
+                    # SOMA com a heurística, nunca a substitui. O item
+                    # novo (27 de 42 no Jornal) ganhava mais18=False
+                    # cravado e a Amstel ia à página SEM selo; e o
+                    # cadastro velho (selo_mais18=0 de antes da régua)
+                    # também envelhecia. `or`, nunca if/else.
+                    mais18=((bool(p.selo_mais18) if p else False)
+                            or eh_bebida_alcoolica(
+                                p.nome_sanitizado if p
+                                else san.nome_sanitizado)),
+                    marca_propria=bool(p.marca_propria) if p else False,
                     via=v.via,
                     score=v.confianca,
                     candidato_nome=(v.candidatos[0].produto.nome_sanitizado
                                     if v.candidatos else ""),
-                    preco_de=_preco_texto(p.preco_atual) if p else None,
+                    # J11: a VITRINE só mostra candidato plausível — o
+                    # motor segue com os top-5 por dentro
+                    candidatos=[{"produto_id": c.produto.id,
+                                 "nome": c.produto.nome_sanitizado,
+                                 "score": round(float(c.score), 1)}
+                                for c in (v.candidatos or [])
+                                if c.score >= PISO_CANDIDATO_EXIBIDO],
+                    # J18: o "de" DA TABELA vence o preço vigente do
+                    # banco (o documento manda; o banco é o fallback)
+                    preco_de=(pde or (_preco_texto(p.preco_atual)
+                                      if p else None)),
+                    preco_de_da_tabela=bool(pde),
                     unidade=(f"{_qtd_texto(p.peso_valor)}{p.peso_unidade}"
                              if p and p.peso_valor is not None and p.peso_unidade
                              else None),
                     categoria=(p.categoria.nome
                                if p and p.categoria else None),   # F8
                     imagens=imagens_do_produto(p) if p else [],   # RG-28
+                    # B4: a família viaja com o item casado (cache por
+                    # lote — irmãos da mesma família = 1 consulta)
+                    familia=(_familia_em_lote(
+                        session, p.familia_id, cache_familias)
+                        if p is not None
+                        and getattr(p, "familia_id", None) else None),
                 ))
+                # RODADA-125 v2 (achado 11): a linha MULTI casada com
+                # UM produto de FAMÍLIA nunca mais sai muda ("Amaciante
+                # / 5 L" sem fragrância nenhuma) — o leque e os sabores
+                # dos membros entram na hora; a escolha fina segue do
+                # dono (a linha multi casada já desce a amarelo, J9)
+                it_v2 = itens[-1]
+                if (it_v2.familia
+                        and "multiplos" in (it_v2.pendencias or [])
+                        and not it_v2.sabores):
+                    aplicar_sabores(it_v2, it_v2.familia["membros"])
+                    # a célula fala pela FAMÍLIA — o nome vira o base
+                    # (o sabor específico do produto casado sairia
+                    # como se fosse o único da oferta)
+                    it_v2.nome = (it_v2.familia.get("nome")
+                                  or it_v2.nome)
+            if houve_categoria:
+                try:
+                    session.commit()          # 1 commit por lote (B1.6)
+                except Exception:
+                    session.rollback()
         # I2 (frota F12): a degradação do conciliador (embeddings mortos)
         # sobe até a tela — antes ficava engolida e o dono acreditava que
         # a camada de significado tinha trabalhado
@@ -1623,6 +2712,23 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
         db.engine.dispose()
     return ResultadoMesa(itens=itens, validade_oferta=validade, aviso=aviso,
                          caminho_fonte=caminho_fonte)
+
+
+def _familia_em_lote(session, familia_id: int, cache: dict) -> dict | None:
+    """B4: o dict da família DENTRO da sessão do lote (o cache evita a
+    consulta repetida quando vários irmãos aparecem na mesma tabela)."""
+    if familia_id in cache:
+        return cache[familia_id]
+    from app.core.repositories import FamiliaRepositorio
+    fam = FamiliaRepositorio(session)
+    dado = {"id": familia_id,
+            "nome": fam.nome_de(familia_id) or "",
+            "membros": [{"produto_id": m.id,
+                         "nome": m.nome_sanitizado,
+                         "imagem": _imagem_absoluta(m.caminho_imagem)}
+                        for m in fam.membros(familia_id)]}
+    cache[familia_id] = dado
+    return dado
 
 
 def importar_varios(caminhos, status_cb: StatusCb, progresso_cb=None):
@@ -1679,10 +2785,13 @@ def montar_pelo_chat(texto: str, status_cb: StatusCb) -> ResultadoMesa:
     REUSANDO a conciliação (parse de colagem + conciliar_linhas) — não um pipeline
     novo. É sempre rascunho para AJUSTAR (nunca publicado direto, I2)."""
     from app.qt.telas.colagem import (
-        linhas_para_tuplas, multi_precos_de, parse_colagem)
+        descontos_de, linhas_para_tuplas, multi_precos_de, parse_colagem,
+        precos_de_de)
     linhas = parse_colagem(texto)
     return conciliar_linhas(linhas_para_tuplas(linhas), status_cb,
-                            multi_precos=multi_precos_de(linhas))
+                            multi_precos=multi_precos_de(linhas),
+                            descontos=descontos_de(linhas),
+                            precos_de=precos_de_de(linhas))
 
 
 def ordenar_por_prioridade(pares, foco=None):
@@ -1762,9 +2871,11 @@ def dados_cartaz_de_produto(produto: dict, *,
     )
 
 
-def _compor_cartaz(layout, dados, *, rascunho: bool = True, qr_texto=None):
-    """Compõe 1 página de cartaz a partir de um DadosProduto (com marca d'água
-    RASCUNHO e QR opcional). Devolve (imagem, avisos_extra)."""
+def _compor_cartaz(layout, dados, *, rascunho: bool = False, qr_texto=None):
+    """Compõe 1 página de cartaz a partir de um DadosProduto (QR opcional).
+
+    F13/D8 (a trava #1, decisão do dono 24/07): sai LIMPO por padrão —
+    a marca d'água RASCUNHO virou opção EXPLÍCITA (``rascunho=True``)."""
     from app.rendering.compositor import compor_pagina
 
     avisos: list[str] = []
@@ -1785,14 +2896,17 @@ def _compor_cartaz(layout, dados, *, rascunho: bool = True, qr_texto=None):
 
 def cartaz_relampago(produto: dict, destino, *, layout=None,
                      validade_texto: str | None = None, qr_texto=None,
+                     rascunho: bool = False,
                      status_cb: StatusCb = lambda _m: None):
     """R-110: do produto ao PDF do cartaz num passo — sem montar nada na Mesa.
 
     Usa o layout padrão de cartaz + os dados do produto (de/por, foto oficial).
-    Roda o pré-voo cartaz=True (sem foto/preço/“de” avisa ANTES do PDF, I2) e
-    carimba a marca d'água RASCUNHO — não há projeto aprovado por trás, e um
-    preço de balcão errado não pode ir limpo ao PDV (decisão travada; a 3ª
-    porta de exportação). Devolve (Path, avisos)."""
+    Roda o pré-voo cartaz=True (sem foto/preço/“de” avisa ANTES do PDF, I2).
+
+    F13/D8 (a trava #1 derrubada pelo dono, 24/07 — manda sobre a decisão
+    da F11): o relâmpago sai LIMPO por padrão; a marca RASCUNHO virou
+    opção explícita. O pré-voo continua avisando ANTES do PDF (I2).
+    Devolve (Path, avisos)."""
     from app.rendering.cartaz import layout_cartaz_exemplo
     from app.rendering.export import exportar_pdf_multipagina
 
@@ -1802,7 +2916,8 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
     status_cb("Conferindo o cartaz…")
     avisos = validar_composicao(layout, {slot_id: dados}, cartaz=True)
     status_cb("Compondo o cartaz…")
-    img, extra = _compor_cartaz(layout, dados, rascunho=True, qr_texto=qr_texto)
+    img, extra = _compor_cartaz(layout, dados, rascunho=rascunho,
+                                qr_texto=qr_texto)
     avisos.extend(extra)
     status_cb("Gravando o PDF…")
     caminho = exportar_pdf_multipagina([img], destino, layout.dpi)
@@ -1812,16 +2927,16 @@ def cartaz_relampago(produto: dict, destino, *, layout=None,
 def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
                          status_cb: StatusCb = lambda _m: None,
                          *, dpi_folha: int | None = None,
-                         rascunho: bool = True):
+                         rascunho: bool = False):
     """R-144 (FASE 12): dezenas de etiquetas por FOLHA — uma etiqueta por
     item selecionado (a mesma fonte de verdade do cartaz), impostas em A4
     com marcas de corte (imposição CONTROLADA, só no fluxo do cartaz).
     Devolve (caminho_pdf, avisos) — item sem preço entendido é AVISADO e a
     etiqueta sai mesmo assim (I2: aviso, nunca silêncio nem bloqueio).
 
-    ``rascunho=True`` é o PADRÃO (frota F12: esta era a 4ª PORTA esquecida
-    — relâmpago foi a 3ª, a Fábrica a 2ª): etiqueta com preço só sai LIMPA
-    quando o chamador prova aprovação (`not pode_exportar_limpo` → True)."""
+    F13/D8 (a trava #1, decisão do dono 24/07 — manda sobre a lei da
+    frota F12): sai LIMPA por padrão; ``rascunho=True`` é a opção
+    EXPLÍCITA que carimba. As 9 portas seguem o MESMO padrão."""
     from app.rendering.cartaz import layout_etiqueta
     from app.rendering.compositor import compor_pagina
     from app.rendering.export import exportar_pdf_multipagina
@@ -1835,10 +2950,9 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
     etiquetas = []
     for i, it in enumerate(itens, 1):
         status_cb(f"Etiqueta {i}/{len(itens)}…")
-        d = dados_cartaz_de_produto({
-            "nome": it.nome, "preco": it.preco,
-            "preco_de": it.preco_de, "imagem": it.imagem,
-            "validade": it.validade})
+        # F13/B6 (F-01): a receita ÚNICA — o dict local daqui não passava
+        # mais18 e a etiqueta de bebida saía SEM o selo +18, calada
+        d = dados_cartaz_de_item(it)
         avisos.extend(f"“{it.nome}”: {a}"
                       for a in validar_composicao(lay, {sid: d}, cartaz=True))
         img = compor_pagina(lay, lay.paginas[0], {sid: d})
@@ -1855,6 +2969,7 @@ def gerar_etiquetas_lote(itens: list[ItemMesa], destino,
 def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
                       layout_etiqueta_fn=None, n_etiquetas: int = 1,
                       validade_texto: str | None = None, qr_texto=None,
+                      rascunho: bool = False,
                       status_cb: StatusCb = lambda _m: None):
     """R-113: o KIT ponta-de-gôndola — cartaz + etiquetas do MESMO item de uma
     vez, num PDF (página 1 = cartaz; as demais = etiquetas).
@@ -1876,13 +2991,13 @@ def gerar_kit_gondola(produto: dict, destino, *, layout_cartaz_fn=None,
         avisos.extend(f"{quando}: {a}"
                       for a in validar_composicao(lay, {sid: dados}, cartaz=True))
     status_cb("Compondo o cartaz…")
-    cartaz_img, extra = _compor_cartaz(lay_cartaz, dados, rascunho=True,
+    cartaz_img, extra = _compor_cartaz(lay_cartaz, dados, rascunho=rascunho,
                                        qr_texto=qr_texto)
     avisos.extend(extra)
     paginas = [cartaz_img]
     for k in range(max(1, n_etiquetas)):
         status_cb(f"Compondo etiqueta {k + 1}/{max(1, n_etiquetas)}…")
-        etiq_img, _ = _compor_cartaz(lay_etiq, dados, rascunho=True)
+        etiq_img, _ = _compor_cartaz(lay_etiq, dados, rascunho=rascunho)
         paginas.append(etiq_img)
     status_cb("Gravando o kit…")
     # o cartaz e a etiqueta têm o MESMO DPI; o PDF fica multipágina/multitamanho
@@ -1989,10 +3104,18 @@ def esquecer_correcao(alias_id: int) -> bool:
 
 # --- aceitar 🟡 (aprende alias) -------------------------------------------------
 
-def aceitar_correspondencia(item: ItemMesa) -> ItemMesa:
-    """Confirma o palpite do banco para o item 🟡 e APRENDE o alias."""
+def aceitar_correspondencia(item: ItemMesa,
+                            produto_id: int | None = None) -> ItemMesa:
+    """Confirma o palpite do banco para o item 🟡 e APRENDE o alias.
+
+    ADENDO 30/07: ``produto_id`` explícito é o VÍNCULO FORÇADO — o dono
+    escolheu o produto (no menu de candidatos ou na busca do acervo) e
+    a escolha humana é a confirmação por excelência (F9): vira alias e
+    a próxima importação casa sozinha, VERDE exato."""
     from app.core.repositories import ProdutoRepositorio
 
+    if produto_id is not None:
+        item.produto_id = produto_id
     db = Database().init()
     try:
         with db.Session() as session:
@@ -2011,6 +3134,65 @@ def aceitar_correspondencia(item: ItemMesa) -> ItemMesa:
     return item
 
 
+def criar_produto_manual(nome: str, preco: str | None = None) -> tuple[int, str]:
+    """ADENDO 30/07 (a queixa 1 do dono): cadastrar um item AVULSO no
+    Almoxarifado, sem passar por importação. Reusa a porta única de
+    nascimento (``ProdutoRepositorio.importar``: sanitiza, casa por
+    nome/alias — não duplica se já existe — e aprende o alias).
+    Devolve (produto_id, nome_sanitizado)."""
+    from app.core.modo import exigir_escrita
+    from app.core.repositories import ProdutoRepositorio
+
+    exigir_escrita()
+    db = Database().init()
+    try:
+        with db.Session() as session:
+            r = ProdutoRepositorio(session).importar(nome.strip(),
+                                                     preco=preco)
+            session.commit()
+            return r.produto.id, r.produto.nome_sanitizado
+    finally:
+        db.engine.dispose()
+
+
+def buscar_produtos_para_vinculo(texto: str, limite: int = 30) -> list[dict]:
+    """ADENDO 30/07: a busca do gesto "é ESTE aqui" — produtos do acervo
+    para o dono escolher o vínculo na conciliação. Dados planos p/ a UI."""
+    from app.core.repositories import ProdutoRepositorio
+
+    db = Database().init()
+    try:
+        with db.Session() as session:
+            repo = ProdutoRepositorio(session)
+            achados = (repo.buscar(texto, limit=limite) if texto.strip()
+                       else repo.listar(limit=limite))
+            return [{"produto_id": p.id,
+                     "nome": p.nome_sanitizado,
+                     "imagem": _imagem_absoluta(p.caminho_imagem),
+                     "preco": _preco_texto(p.preco_atual)}
+                    for p in achados]
+    finally:
+        db.engine.dispose()
+
+
+def reconciliar_item(item: ItemMesa) -> ItemMesa:
+    """ADENDO 30/07: o dono corrigiu o texto do OCR na linha — a linha
+    RE-CONCILIA na hora (muitos vermelhos viram verdes só com o nome
+    certo; antes a correção não recalculava nada e nascia duplicata).
+    Preserva a identidade (uid) e o que é da OFERTA, não do matching."""
+    resultado = conciliar_linhas([(item.descricao, item.preco, item.ean)],
+                                 lambda *_a, **_k: None)
+    if not resultado.itens:
+        return item
+    novo = resultado.itens[0]
+    novo.uid = item.uid                     # I1: a identidade fica
+    novo.multi_preco = item.multi_preco
+    novo.desconto_pct = item.desconto_pct
+    novo.observacao = item.observacao
+    novo.selos = item.selos
+    return novo
+
+
 # --- criar 🔴: enriquecer + candidatos de imagem --------------------------------
 
 @dataclass
@@ -2027,6 +3209,508 @@ class PropostaCriacao:
     # RG-29: DUAS marcas na mesma linha → nomes dos componentes (a criação
     # nasce composta; lista vazia = produto único de sempre)
     componentes: list[str] = field(default_factory=list)
+    # Rodada JM (B3): a linha PARECE 2 produtos (a pendência "multiplos"
+    # do sanitize dividiu limpo) — a curadoria PERGUNTA "são 2
+    # produtos?" com a sugestão nos campos; quem decide é o humano.
+    possivel_composto: bool = False
+    sugestao_componentes: list[str] = field(default_factory=list)
+    # True quando os componentes vieram do LM (a curadoria pré-marca o
+    # check — e DESMARCAR cancela o composto: a IA nunca decide sozinha)
+    componentes_da_ia: bool = False
+
+
+def _cabeca_pre_medida(texto: str) -> str:
+    """RODADA-125 v2 (o Biscoito do dono): a linha se corta na ÚLTIMA
+    medida — o que vem antes é a CABEÇA (tipo+marcas+peso), o que vem
+    depois é rabo de sabores. As réguas de composto olham SÓ a cabeça:
+    a barra do rabo ("C. CRACKER/LEITE/AGUA E SAL") não pode vetar o
+    " e " das marcas da frente."""
+    from app.core.sanitize import REGRAS_PADRAO, _regex_unidades
+    ultimo = None
+    for m in _regex_unidades(REGRAS_PADRAO).finditer(texto):
+        ultimo = m
+    return texto[:ultimo.end()].strip() if ultimo else texto
+
+
+def dividir_em_dois(descricao: str | None) -> list[str]:
+    """Rodada JM (B3.1): a SUGESTÃO determinística para a linha com
+    duas marcas num preço — corta no primeiro " e ", replica o peso
+    comum do fim e o TIPO (1º token) no 2º componente, e sanitiza os
+    dois. É sugestão: quem decide é o humano na curadoria.
+
+    BARRA na CABEÇA = sabores/variantes (caso de FAMÍLIA), nunca
+    composto de marcas → lista vazia. Sem " e " idem. v2 (o Biscoito):
+    o veto e a busca do " e " valem na CABEÇA pré-medida — o rabo de
+    sabores não cala mais as marcas da frente."""
+    import re as _re
+
+    from app.core.sanitize import sanitizar, separar_peso
+    texto = _cabeca_pre_medida((descricao or "").strip())
+    if not texto or "/" in texto:
+        return []
+    m = _re.search(r"\s+e\s+", texto, flags=_re.IGNORECASE)
+    if not m:
+        return []
+    esq, dir_ = texto[:m.start()].strip(), texto[m.end():].strip()
+    esq_nome, esq_peso = separar_peso(esq)
+    dir_nome, dir_peso = separar_peso(dir_)
+    peso = dir_peso or esq_peso        # o peso do fim da LINHA é comum
+    if not esq_nome.strip() or not dir_nome.strip():
+        return []
+    tipo = esq_nome.split()[0]
+    tokens_dir = {t.lower() for t in dir_nome.split()}
+    if len(tipo) >= 3 and tipo.lower() not in tokens_dir:
+        dir_nome = f"{tipo} {dir_nome}"
+    sufixo = f" {peso}" if peso else ""
+    comp_a = sanitizar(f"{esq_nome}{sufixo}").nome_sanitizado
+    comp_b = sanitizar(f"{dir_nome}{sufixo}").nome_sanitizado
+    if not comp_a or not comp_b:
+        return []
+    return [comp_a, comp_b]
+
+
+# RODADA-125 v2 (o Biscoito): sabores CONSAGRADOS que carregam " e "
+# dentro — o par nunca se parte no split ("AGUA E SAL" é UM sabor, não
+# dois). O mesmo critério conservador do _PARES_DO_MERCADO/ortografia:
+# só entra o inequívoco; comparação sem acento/caixa.
+_SABORES_COMPOSTOS = frozenset({
+    "agua e sal", "doce de leite", "milho e ervilha",
+    "coco e leite", "leite e mel",
+})
+
+
+def _sem_acento(t: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (t or "").lower())
+    return "".join(c for c in t if not unicodedata.combining(c)).strip()
+
+
+def familia_da_linha(descricao: str | None) -> tuple[str, list[str]]:
+    """QUINTUSDECIMUS/J13: o detector de SABORES da linha — o que vem
+    DEPOIS da medida é sabor ("SARDINHA COQUEIRO 125 g TOMATE / OLEO e
+    LIMÃO" → base "Sardinha Coqueiro 125g", sabores ["Tomate", "Óleo",
+    "Limão"]); o que vem ANTES é marca (o "ARROZ SOMAR e TIO BONINI
+    5 Kgs" devolve zero sabores — é caso de 2 PRODUTOS, não família).
+    Determinístico; a decisão final é a 3ª pergunta na curadoria.
+
+    v2 (o Biscoito): o split é em DOIS TEMPOS — primeiro só a barra;
+    dentro de cada segmento o " e " só quebra se o segmento não for
+    sabor consagrado ("C. CRACKER/LEITE/AGUA E SAL" dá 3 sabores, não
+    4; "TOMATE/OLEO e LIMÃO" segue dando 3 porque "oleo e limão" não
+    está no vocabulário)."""
+    from app.core.sanitize import REGRAS_PADRAO, _regex_unidades, sanitizar
+    texto = (descricao or "").strip()
+    if not texto:
+        return "", []
+    ultimo = None
+    for m in _regex_unidades(REGRAS_PADRAO).finditer(texto):
+        ultimo = m
+    if ultimo is None:
+        return sanitizar(texto).nome_sanitizado, []
+    base = sanitizar(texto[:ultimo.end()]).nome_sanitizado
+    rabo = texto[ultimo.end():]
+    segmentos: list[str] = []
+    for seg in re.split(r"\s*/\s*", rabo):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if _sem_acento(seg.strip(" .,-–")) in _SABORES_COMPOSTOS:
+            segmentos.append(seg)
+        else:
+            segmentos.extend(re.split(r"\s+e\s+", seg,
+                                      flags=re.IGNORECASE))
+    sabores: list[str] = []
+    for p in segmentos:
+        p = p.strip(" .,-–")
+        if p and any(c.isalpha() for c in p):
+            nome = sanitizar(p).nome_sanitizado
+            if nome:
+                sabores.append(nome)
+    return base, (sabores if len(sabores) >= 2 else [])
+
+
+def marcas_e_sabores_da_linha(descricao: str | None,
+                              ) -> tuple[str, list[str], list[str]]:
+    """RODADA-125 v2 (o Biscoito completo): a linha "BISCOITO BULNEZ e
+    ADORALLE 270 g C. CRACKER/LEITE/AGUA E SAL" declara um CARTESIANO —
+    marcas na CABEÇA, sabores no rabo. Devolve ``(base_sem_marcas,
+    marcas, sabores)``; as marcas saem do vocabulário conhecido (F9:
+    nunca se inventa) e a base limpa alimenta os rótulos marca-major
+    ("Biscoito Bulnez Cream Cracker 270g"). Sem 2 marcas conhecidas na
+    cabeça, devolve a base de sempre e marcas=[]."""
+    from app.core.marcas import marcas_no_nome
+    from app.core.sanitize import sanitizar
+    base, sabores = familia_da_linha(descricao)
+    cabeca = _cabeca_pre_medida((descricao or "").strip())
+    marcas = marcas_no_nome(cabeca, marcas_para_exibicao()) \
+        if cabeca else []
+    if len(marcas) < 2:
+        return base, [], sabores
+    limpa = cabeca
+    for mc in marcas:
+        limpa = re.sub(rf"\s*\be\b\s+{re.escape(mc)}\b", " ", limpa,
+                       flags=re.IGNORECASE)
+        limpa = re.sub(rf"\b{re.escape(mc)}\b", " ", limpa,
+                       flags=re.IGNORECASE)
+    limpa = re.sub(r"\s{2,}", " ", limpa).strip(" e·-,")
+    base_limpa = sanitizar(limpa).nome_sanitizado or base
+    return base_limpa, [sanitizar(m).nome_sanitizado or m
+                        for m in marcas], sabores
+
+
+def membro_do_acervo(nome: str) -> dict | None:
+    """RODADA-125 Onda 2 (a pergunta do dono: "como ele não correlaciona
+    o que já existe?"): procura o produto que este NOME JÁ É no acervo —
+    nome bruto exato → alias aprendido → CHAVE NATURAL do sanitizado (a
+    régua conservadora do caça-duplicatas: marca diferente nunca casa).
+    Devolve {"id","nome","tem_foto"} ou None."""
+    from app.core.models import Produto
+    from app.core.portabilidade import chave_natural
+    from app.core.repositories import ProdutoRepositorio
+    from app.core.sanitize import sanitizar
+
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            repo = ProdutoRepositorio(s)
+            p = (repo.buscar_por_nome_bruto(nome)
+                 or repo.buscar_por_alias(nome))
+            if p is None:
+                import re as _re
+                alvo = chave_natural(
+                    sanitizar(nome).nome_sanitizado, "")
+                # a grafia da unidade não separa ("5kg" × "5 kg"):
+                # a comparação de reserva ignora TODO espaço
+                alvo_denso = _re.sub(r"\s+", "", alvo[0])
+                # v2 (o cartesiano do Biscoito): a ORDEM dos tokens
+                # também não separa — "Biscoito 270g Bulnez Cream
+                # Cracker" e "Biscoito Bulnez Cream Cracker 270g" são
+                # o MESMO produto (mesmo multiconjunto de palavras);
+                # a 3ª reserva compara os tokens ordenados
+                alvo_ord = "".join(sorted(alvo[0].split()))
+                for cand in s.query(Produto).filter(
+                        Produto.excluido_em.is_(None)):
+                    ch = chave_natural(cand.nome_sanitizado or "", "")
+                    if (ch == alvo
+                            or _re.sub(r"\s+", "", ch[0]) == alvo_denso
+                            or "".join(sorted(ch[0].split())) == alvo_ord):
+                        p = cand
+                        break
+            if p is None or p.excluido_em is not None:
+                return None
+            return {"id": p.id, "nome": p.nome_sanitizado,
+                    "tem_foto": bool(p.caminho_imagem),
+                    "imagem": _imagem_absoluta(p.caminho_imagem)}
+    finally:
+        db.engine.dispose()
+
+
+def rotulos_marcas_x_sabores(marcas: list[str],
+                             sabores: list[str]) -> list[str]:
+    """RODADA-125 Onda 2 (a decisão do dono, 03/08): a linha "Bulnez e
+    Adoralle · Cream Cracker/Leite/Maisena" declara o CARTESIANO — um
+    produto por (marca × sabor), marca-major ("Bulnez Cream Cracker",
+    "Bulnez Leite", …, "Adoralle Maisena")."""
+    if not marcas:
+        return list(sabores)
+    if not sabores:
+        return list(marcas)
+    return [f"{m} {s}".strip() for m in marcas for s in sabores]
+
+
+# a régua do CABER (decisão do dono): até 4 fotos a célula mostra
+# todas; acima disso a seleção espaçada pega as pontas (marcas
+# diferentes, na geração marca-major) e o DESCRITOR fala por todos
+MAX_FOTOS_CELULA = 4
+
+
+def selecionar_fotos_da_celula(imagens: list, max_n: int = MAX_FOTOS_CELULA
+                               ) -> list:
+    """"Isso se couber; se não, dê um jeito de selecionar adequadamente"
+    — espaçamento uniforme sobre a lista (pega a 1ª, a última e o meio:
+    com cartesiano marca-major, marcas diferentes entram)."""
+    if len(imagens) <= max_n:
+        return list(imagens)
+    idx = [round(i * (len(imagens) - 1) / (max_n - 1))
+           for i in range(max_n)]
+    vistos: list = []
+    for k in idx:
+        if imagens[k] not in vistos:
+            vistos.append(imagens[k])
+    return vistos
+
+
+def conjunto_do_acervo(descricao: str) -> dict | None:
+    """RODADA-125 Onda 3 (o print do dono, 03/08): a conciliação pensava
+    por PRODUTO ÚNICO — "MON BIJOU PROTEÇÃO e CLASSICO" casava com UM
+    sabor e o dono refazia tudo. O conceito que faltava: a linha MULTI
+    casa com um CONJUNTO do acervo. Se TODOS os membros que a linha
+    declara já existem (nome → alias → chave natural), devolve
+    ``{"tipo": "familia"|"composto", "base", "rotulos", "membros"}`` —
+    e o item nasce VERDE montado (leque das fotos existentes, sabores
+    no descritor), sem curadoria nenhuma. PARCIAL NÃO INVENTA: com
+    qualquer membro faltando devolve None e o fluxo normal decide
+    (nada nasce verde calado). v2 (o Biscoito): marcas×sabores no
+    mesmo conjunto agora casam — os rótulos marca-major do
+    ``rotulos_marcas_x_sabores`` procuram os 6 no acervo."""
+    from app.core.sanitize import separar_peso
+    base, sabores = familia_da_linha(descricao)
+    comps = dividir_em_dois(descricao)
+    base_mx, marcas_mx, sabores_mx = marcas_e_sabores_da_linha(descricao)
+    # SABORES vencem quando os dois detectores disparam: o pós-medida é
+    # o sinal mais específico ("MON BIJOU 5L PROTEÇÃO e CLASSICO" também
+    # divide em 2, mas a divisão perde a marca do 2º)
+    if len(marcas_mx) >= 2 and len(sabores_mx) >= 2:
+        bn, bp = separar_peso(base_mx)
+        sufixo = f" {bp}" if bp else ""
+        nomes = [f"{bn} {m} {s}{sufixo}".strip()
+                 for m in marcas_mx for s in sabores_mx]
+        # v4 (a lei do dono: o Biscoito DIZ as marcas): a base do item
+        # carrega as marcas ("Biscoito Bulnez e Adoralle 270g") — a
+        # hierarquia canônica as desce ao descritor; e os SABORES
+        # exibidos são os FATORADOS (Cream Cracker, Leite ou Água e
+        # Sal), nunca os N×M rótulos do cartesiano por extenso
+        base = f"{bn} {juntar_com_e_texto(marcas_mx)}{sufixo}".strip()
+        tipo = "familia"
+        rotulos = list(sabores_mx)
+    elif len(sabores) >= 2:
+        nomes = [f"{base} {s}".strip() for s in sabores]
+        tipo, rotulos = "familia", list(sabores)
+    elif len(comps) >= 2:
+        nomes = list(comps)
+        tipo, rotulos = "composto", list(comps)
+    else:
+        return None
+    membros = []
+    for n in nomes:
+        m = membro_do_acervo(n)
+        if m is None:
+            return None                # parcial não inventa
+        membros.append(m)
+    return {"tipo": tipo, "base": base or descricao,
+            "rotulos": rotulos, "membros": membros}
+
+
+def _motivo_fotos_do_conjunto(membros: list[dict]) -> str | None:
+    """RODADA-125 v3 (a Sardinha da 3ª prova): o conjunto casou os 3
+    sabores mas 2 não tinham foto — a célula mostrou UMA lata e o dono
+    achou que os sabores foram ignorados. O item nasce dizendo o que
+    falta (I2), com o caminho para completar."""
+    sem = [m["nome"] for m in membros if not m.get("imagem")]
+    if not sem:
+        return None
+    return (f"família casada, mas {len(sem)} de {len(membros)} sabores "
+            f"SEM FOTO ({', '.join(sem[:3])}"
+            + ("…" if len(sem) > 3 else "")
+            + ") — complete pelo Almoxarifado ou botão direito → "
+            "Sabores da família")
+
+
+def item_do_conjunto(desc: str, preco, ean, conjunto: dict,
+                     mp=None, dp=None) -> ItemMesa:
+    """Monta o ItemMesa VERDE do conjunto reconhecido — a linha vira
+    UMA célula (I6) com as fotos que o acervo JÁ tem."""
+    membros = conjunto["membros"]
+    fotos = selecionar_fotos_da_celula(
+        [m["imagem"] for m in membros if m.get("imagem")])
+    n = len(membros)
+    if conjunto["tipo"] == "composto":
+        a = ItemMesa(descricao=membros[0]["nome"], preco=preco,
+                     semaforo="VERDE", nome=membros[0]["nome"],
+                     produto_id=membros[0]["id"],
+                     imagem=membros[0].get("imagem"))
+        b = ItemMesa(descricao=membros[1]["nome"], preco=preco,
+                     semaforo="VERDE", nome=membros[1]["nome"],
+                     produto_id=membros[1]["id"],
+                     imagem=membros[1].get("imagem"))
+        comp = compor_itens(a, b, preco=preco)
+        comp.descricao = desc
+        comp.ean = ean
+        comp.multi_preco = mp
+        comp.desconto_pct = dp
+        comp.via = "conjunto"
+        comp.motivo = (f"linha casada com os {n} produtos que você já "
+                       "criou — nada foi recriado")
+        return comp
+    item = ItemMesa(
+        descricao=desc, preco=preco, semaforo="VERDE",
+        nome=conjunto["base"], produto_id=membros[0]["id"],
+        ean=ean, multi_preco=mp, desconto_pct=dp,
+        imagem=next((m["imagem"] for m in membros
+                     if m.get("imagem")), None),
+        imagens=fotos, arranjo="LEQUE" if fotos else None,
+        sabores=list(conjunto["rotulos"]), via="conjunto",
+        # v3: sabor sem foto vira PENDÊNCIA dita (a Sardinha parecia
+        # "ignorada" porque 2 de 3 latas nem existiam no acervo)
+        pendencias=(["sabor_sem_foto"]
+                    if _motivo_fotos_do_conjunto(membros) else []),
+        motivo=(_motivo_fotos_do_conjunto(membros)
+                or (f"linha casada com a família já criada "
+                    f"({n} sabores) — nada foi recriado")))
+    item.familia = familia_do_item(membros[0]["id"])
+    item.mais18 = item.mais18 or eh_bebida_alcoolica_nome(
+        conjunto["base"])
+    return item
+
+
+def eh_bebida_alcoolica_nome(nome: str) -> bool:
+    from app.core.mais18 import eh_bebida_alcoolica
+    return eh_bebida_alcoolica(nome)
+
+
+def montar_conjunto_manual(item: ItemMesa, produto_ids: list[int],
+                           tipo: str, nome_base: str) -> ItemMesa:
+    """RODADA-125 Onda 3b (o pedido do dono: "preciso ter liberdade pra
+    CAÇAR esses dois itens já existentes e colocar ali"): a CESTA — o
+    dono escolhe N produtos do acervo à mão e a linha vira a célula
+    montada, com as fotos DELES. ``tipo``: "sabores" (leque, nome-base
+    + sabores no descritor) ou "diferentes" (2 → o composto separável
+    de sempre; 3+ → vitrine com o nome que o dono deu). O item da
+    estante nasce VERDE via "conjunto" — nada é recriado."""
+    from app.core.models import Produto
+
+    membros: list[dict] = []
+    db = Database().init()
+    try:
+        with db.Session() as s:
+            for pid in produto_ids:
+                p = s.get(Produto, pid)
+                if p is None or p.excluido_em is not None:
+                    continue
+                membros.append({
+                    "id": p.id, "nome": p.nome_sanitizado,
+                    "tem_foto": bool(p.caminho_imagem),
+                    "imagem": _imagem_absoluta(p.caminho_imagem),
+                    "mais18": bool(p.selo_mais18 or p.bebida_alcoolica),
+                })
+    finally:
+        db.engine.dispose()
+    if len(membros) < 2:
+        raise ValueError("a cesta precisa de pelo menos 2 produtos")
+
+    if tipo == "diferentes" and len(membros) == 2:
+        a = ItemMesa(descricao=membros[0]["nome"], preco=item.preco,
+                     semaforo="VERDE", nome=membros[0]["nome"],
+                     produto_id=membros[0]["id"],
+                     imagem=membros[0].get("imagem"),
+                     mais18=membros[0]["mais18"])
+        b = ItemMesa(descricao=membros[1]["nome"], preco=item.preco,
+                     semaforo="VERDE", nome=membros[1]["nome"],
+                     produto_id=membros[1]["id"],
+                     imagem=membros[1].get("imagem"),
+                     mais18=membros[1]["mais18"])
+        comp = compor_itens(a, b, nome=nome_base or None,
+                            preco=item.preco)
+        comp.descricao = item.descricao
+        comp.ean = item.ean
+        comp.multi_preco = item.multi_preco
+        comp.via = "conjunto"
+        comp.motivo = "montado do acervo pela cesta — nada recriado"
+        return comp
+
+    fotos = selecionar_fotos_da_celula(
+        [m["imagem"] for m in membros if m.get("imagem")])
+    novo = ItemMesa(
+        descricao=item.descricao, preco=item.preco, semaforo="VERDE",
+        nome=nome_base or membros[0]["nome"],
+        produto_id=membros[0]["id"], ean=item.ean,
+        multi_preco=item.multi_preco,
+        imagem=next((m["imagem"] for m in membros
+                     if m.get("imagem")), None),
+        imagens=fotos,
+        arranjo=("LEQUE" if tipo == "sabores" else "LADO_A_LADO"),
+        # ORDEM do arquiteto (a Rosquinha): o fatorador de verdade —
+        # o sabor é o que difere entre os irmãos, nunca o nome quase
+        # completo quando a base digitada é curta
+        sabores=(sabores_fatorados([m["nome"] for m in membros],
+                                   nome_base)
+                 if tipo == "sabores" else []),
+        via="conjunto",
+        motivo=(f"montado do acervo pela cesta ({len(membros)} "
+                "produtos) — nada recriado"),
+        uid=item.uid)                    # I1: a identidade da linha fica
+    novo.mais18 = (any(m["mais18"] for m in membros)
+                   or eh_bebida_alcoolica_nome(nome_base or ""))
+    novo.familia = familia_do_item(membros[0]["id"])
+    return novo
+
+
+def criar_familia_de_sabores(item: ItemMesa, nome_familia: str,
+                             sabores: list[str], mais18: bool,
+                             imagem_tratada: str | list | None,
+                             categoria: str | None = None) -> ItemMesa:
+    """J13 + SEXTUSDECIMUS/M1: a resposta "são SABORES do mesmo produto"
+    — cria um produto COMPLETO por sabor ("Sardinha Coqueiro 125g
+    Tomate"…), liga todos à FAMÍLIA (B4) e o item da estante vira o
+    leque. ``imagem_tratada`` é a LISTA paralela aos sabores (a tela de
+    um espaço por sabor) — CADA sabor grava a sua foto; ``str`` de
+    compatibilidade vai ao 1º (o mesmo padrão do composto). Sabor sem
+    foto avisa (I2), nunca some — L14: ou fecha o N, ou não oferece."""
+    from app.core.modo import exigir_escrita
+    exigir_escrita()
+    if isinstance(imagem_tratada, (list, tuple)):
+        fotos = list(imagem_tratada) + [None] * len(sabores)
+    else:
+        fotos = [imagem_tratada] + [None] * len(sabores)
+    ids: list[int] = []
+    for i, sabor in enumerate(sabores):
+        nome = f"{nome_familia} {sabor}".strip()
+        # Onda 2 (anti-duplicata): o sabor que JÁ EXISTE no acervo é
+        # CASADO, nunca recriado — reimportar/sabores novos SOMAM à
+        # família. Foto nova de membro existente é ingerida NO
+        # existente (a curadoria não-destrutiva preserva a anterior
+        # como versão) — a grafia diferente nunca mais vira duplicata.
+        exist = membro_do_acervo(nome)
+        if exist is not None:
+            if fotos[i]:
+                from app.core.repositories import ProdutoRepositorio
+                from app.images.biblioteca import biblioteca_da_config
+                bib = biblioteca_da_config()
+                bib.ingerir(exist["id"], fotos[i])
+                db_e = Database().init()
+                try:
+                    with db_e.Session() as s_e:
+                        ProdutoRepositorio(s_e).editar(
+                            exist["id"],
+                            caminho_imagem=bib.caminho_relativo(
+                                exist["id"]))
+                        s_e.commit()
+                finally:
+                    db_e.engine.dispose()
+            ids.append(exist["id"])
+            continue
+        sub = ItemMesa(descricao=nome, preco=item.preco,
+                       semaforo="VERMELHO", nome=nome)
+        finalizar_criacao(sub, nome, mais18, fotos[i],
+                          categoria=categoria)
+        ids.append(sub.produto_id)
+    criar_familia_de(ids, nome_familia)
+    fam = familia_do_item(ids[0])
+    item.produto_id = ids[0]
+    item.semaforo = "VERDE"
+    item.via = "novo"
+    item.mais18 = mais18
+    item.nome = nome_familia
+    item.familia = fam
+    item.sabores = list(sabores)           # M3: o descritor os anuncia
+    if fam:
+        aplicar_sabores(item, fam["membros"])
+    item.imagem = next((m["imagem"] for m in (fam or {}).get("membros", [])
+                        if m.get("imagem")), None)
+    return item
+
+
+def deve_revisar_no_lote(proposta: "PropostaCriacao") -> str | None:
+    """Rodada JM (B3): a política da fila em lote numa função só — o
+    motivo pelo qual o item NÃO é criado calado (None = pode criar).
+    Perda de palavra (C-09) e "parece 2 produtos" sem componentes
+    confirmados seguram o item para a curadoria; composto por chute
+    nunca nasce."""
+    if proposta.tokens_perdidos:
+        return "a IA descartou palavra do nome"
+    if proposta.possivel_composto and len(proposta.componentes) < 2:
+        return "parece 2 produtos no mesmo preço — confirme na curadoria"
+    return None
 
 
 def marcas_do_acervo() -> list[str]:
@@ -2063,6 +3747,7 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
     conserta o bug latente em que ``enriquecer(desc, None)`` estourava
     AttributeError em vez de degradar.
     """
+    from app.core.mais18 import eh_bebida_alcoolica
     if motor is None:
         from app.core.aprendizado import ordenar_tipo_marca
         from app.core.sanitize import sanitizar
@@ -2074,15 +3759,42 @@ def enriquecer_descricao(descricao: str, motor=None) -> PropostaCriacao:
             nome = ordenar_tipo_marca(nome, marcas_do_acervo())
         except Exception:
             pass
-        return PropostaCriacao(nome=nome, mais18=False,
-                               categoria=None)
+        # Rodada JM (B3): a pendência "multiplos" do sanitize vira a
+        # PERGUNTA da curadoria (sugestão determinística; o humano
+        # decide) — e o +18 heurístico entra (era False cravado)
+        sugestao = (dividir_em_dois(descricao)
+                    if any(pd.codigo == "multiplos"
+                           for pd in res.pendencias) else [])
+        return PropostaCriacao(nome=nome,
+                               mais18=eh_bebida_alcoolica(nome),
+                               categoria=None,
+                               possivel_composto=len(sugestao) == 2,
+                               sugestao_componentes=sugestao)
     from app.ai.enriquecimento import enriquecer
     enr = enriquecer(descricao, motor)
-    return PropostaCriacao(nome=enr.nome_sanitizado, mais18=enr.mais18,
-                           categoria=enr.categoria,
-                           tokens_perdidos=list(enr.tokens_perdidos),
-                           componentes=[c.nome_sanitizado
-                                        for c in enr.componentes])
+    comps = [c.nome_sanitizado for c in enr.componentes]
+    # QUINTUSDECIMUS/J1 — a lei: a IA SOMA, nunca substitui. O detector
+    # determinístico ("multiplos" + dividir_em_dois) continua valendo
+    # com o LM ligado — na máquina do dono a IA devolvia zero
+    # componentes e o sinal pronto era descartado; a pergunta "são 2
+    # produtos?" nunca aparecia (o mesmo `or` que o mais18 já tinha).
+    det = dividir_em_dois(descricao)
+    return PropostaCriacao(
+        nome=enr.nome_sanitizado,
+        # a heurística só LIGA o +18 — nunca desliga o que a IA ligou
+        mais18=enr.mais18 or eh_bebida_alcoolica(enr.nome_sanitizado),
+        categoria=enr.categoria,
+        tokens_perdidos=list(enr.tokens_perdidos),
+        # L12 (§13.3/L2): a CARGA também soma — a IA que devolve UM
+        # componente (o nome inteiro) não vale como resposta; a
+        # sugestão determinística preenche os 2 campos (o dono não
+        # digita à mão o que a régua já sabia)
+        componentes=(comps if len(comps) >= 2 else det),
+        possivel_composto=len(comps) >= 2 or len(det) == 2,
+        sugestao_componentes=det,
+        # o check só nasce PRÉ-MARCADO quando a IA deu os componentes;
+        # sugestão da régua = desmarcado (o humano decide)
+        componentes_da_ia=len(comps) >= 2)
 
 
 def candidatos_do_acervo(nome: str, limite: int = 2) -> list[str]:
@@ -2166,11 +3878,16 @@ def preparar_criacao(descricao: str, status_cb: StatusCb,
     return proposta
 
 
-def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
-    """Baixa (se URL), remove o fundo + recorta/normaliza. Devolve o tratado.
+def tratar_imagem(fonte: str, status_cb: StatusCb,
+                  aviso_cb=None) -> str:
+    """Baixa (se URL), remove o fundo + recorta + LUZ DE VITRINE +
+    normaliza. Devolve o tratado.
 
     ``fonte``: caminho de arquivo OU URL (o "colar URL" da curadoria).
-    """
+    SEXTUSDECIMUS-ESTÚDIO (03/08): a correção de exposição do Estúdio
+    roda AQUI também (a queixa do dono: colar foto ruim só passava o
+    removedor); ``aviso_cb`` recebe o aviso da régua do recorte-que-
+    comeu-o-produto (I2 — o corte nunca mais é calado)."""
     caminho = Path(fonte)
     if fonte.startswith(("http://", "https://")):
         status_cb("Baixando imagem…")
@@ -2189,8 +3906,34 @@ def tratar_imagem(fonte: str, status_cb: StatusCb) -> str:
     else:
         status_cb("Removendo fundo…")
     destino = Path(tempfile.mkdtemp(prefix="atb_tratada_")) / "tratada.png"
-    processar_imagem(caminho, destino, modelo=modelo)
+    processar_imagem(caminho, destino, modelo=modelo,
+                     luz_de_vitrine=True, aviso_cb=aviso_cb)
     return str(destino)
+
+
+def aprimorar_no_estudio(fonte: str, status_cb: StatusCb
+                         ) -> tuple[str, str | None]:
+    """ESTÚDIO na curadoria (pedido do dono, 03/08): a foto vira a
+    melhor versão de DESIGN — o packshot completo do degrau 1 (recorte
+    + luz + sombra sintética + enquadramento) e, se o gerador (degrau
+    2) estiver ligado na Config E houver GPU/modelo, o refino de IA por
+    cima. Sem GPU/modelo degrada COM aviso (a trava da F10: o degrau 2
+    nunca é requisito). Devolve ``(caminho, aviso|None)``."""
+    from PIL import Image
+
+    from app.images.estudio import packshot_degrau1, refinar_com_gerador
+
+    status_cb("Estúdio: compondo o packshot…")
+    pack = packshot_degrau1(Image.open(fonte))
+    aviso = None
+    if estudio_gerador_ligado():
+        status_cb("Estúdio: refinando com o gerador (IA)…")
+        refinado, aviso = refinar_com_gerador(pack)
+        if refinado is not None:
+            pack = refinado
+    destino = Path(tempfile.mkdtemp(prefix="atb_estudio_")) / "packshot.png"
+    pack.save(destino, "PNG")
+    return str(destino), aviso
 
 
 def estudio_gerador_ligado() -> bool:
@@ -2265,7 +4008,19 @@ def finalizar_criacao(item: ItemMesa, nome: str, mais18: bool,
             repo = ProdutoRepositorio(session)
             res = repo.importar(item.descricao, preco=item.preco)
             produto = res.produto
-            repo.editar(produto.id, nome_sanitizado=nome, selo_mais18=mais18)
+            # Rodada JM (B3.5): bebida_alcoolica TAMBÉM é gravada — a
+            # regra do selo automático (selos.py) e o Excel leem ELA;
+            # gravar só selo_mais18 deixava o round-trip reverter o +18
+            repo.editar(produto.id, nome_sanitizado=nome,
+                        selo_mais18=mais18, bebida_alcoolica=mais18)
+            # RODADA-125 v2: a MARCA reconhecida no nome é GRAVADA na
+            # criação (o banco real tinha 116 produtos e ZERO marcas —
+            # a hierarquia canônica da célula precisa dela; medido).
+            # Só o inequívoco entra (F9: reconhece, nunca inventa).
+            from app.core.marcas import marcas_no_nome
+            achadas = marcas_no_nome(nome, marcas_para_exibicao())
+            if achadas:
+                repo.editar(produto.id, marca=achadas[0])
             if categoria:                # IA sem palpite deixa vazio (→ "Outros")
                 repo.editar(produto.id, categoria=categoria,
                             categoria_origem="ia")

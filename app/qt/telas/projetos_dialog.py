@@ -209,7 +209,7 @@ class AbrirProjetoDialog(QDialog):
 
     def _importar_atproj(self) -> None:
         """R-136: traz um .atproj com PRÉVIA antes de criar qualquer coisa."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog
 
         from app.core.atproj import importar_atproj, ler_manifesto
         arquivo, _ = QFileDialog.getOpenFileName(
@@ -222,15 +222,15 @@ class AbrirProjetoDialog(QDialog):
             mostrar_toast(self, "Este arquivo não é um projeto .atproj "
                                 "válido.", tipo="erro")
             return
-        resp = QMessageBox.question(
-            self, "Trazer este projeto?",
-            f"“{m.get('nome')}”"
-            + (f" · evento {m['evento']}" if m.get("evento") else "")
-            + f"\n{m.get('itens', 0)} item(ns) · "
-              f"{m.get('paginas', 0)} página(s) · salvo em "
-              f"{m.get('criado_em', '?')}\n\nCriar uma CÓPIA dele neste PC?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
+        from app.qt.design.componentes import perguntar
+        if not perguntar(
+                self, "Trazer este projeto?",
+                f"“{m.get('nome')}”"
+                + (f" · evento {m['evento']}" if m.get("evento") else "")
+                + f"\n{m.get('itens', 0)} item(ns) · "
+                  f"{m.get('paginas', 0)} página(s) · salvo em "
+                  f"{m.get('criado_em', '?')}\n\nCriar uma CÓPIA dele neste PC?",
+                sim="Criar a cópia", nao="Cancelar"):
             return
         try:
             novo = importar_atproj(arquivo)

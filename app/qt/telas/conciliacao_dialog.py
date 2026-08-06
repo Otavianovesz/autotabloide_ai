@@ -13,11 +13,17 @@ Cada linha importada aparece com o veredito 🟢🟡🔴:
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -27,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from app.qt.design import tokens as t
 from app.qt.design.carregando import OverlayOcupado
-from app.qt.design.toast import mostrar_toast
+from app.qt.design.toast import mostrar_toast, mostrar_toast_desfazer
 from app.qt.telas import servico
 from app.qt.telas.curadoria_dialog import CuradoriaDialog
 from app.qt.workers import (
@@ -39,6 +45,74 @@ from app.qt.workers import (
 
 _COR = {"VERDE": t.SUCESSO, "AMARELO": t.ALERTA, "VERMELHO": t.PERIGO}
 _ROTULO = {"VERDE": "No banco", "AMARELO": "Conferir", "VERMELHO": "Novo"}
+
+
+class EscolherProdutoDialog(QDialog):
+    """ADENDO 30/07 — o gesto "é ESTE aqui": busca no acervo para o dono
+    vincular a linha da importação a um produto que JÁ existe (o app
+    aprende o apelido e da próxima vez casa sozinho). Seleção única."""
+
+    def __init__(self, texto_inicial: str = "", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Vincular a um produto do acervo")
+        self.resize(520, 460)
+        self.produto_id: int | None = None
+        self.produto_nome: str = ""
+
+        lay = QVBoxLayout(self)
+        info = QLabel("Busque o produto que este item da tabela É — o "
+                      "vínculo vira apelido e a próxima importação casa "
+                      "sozinha.")
+        info.setWordWrap(True)
+        info.setProperty("papel", "legenda")
+        lay.addWidget(info)
+        self.busca = QLineEdit(texto_inicial)
+        self.busca.setPlaceholderText("Digite parte do nome…")
+        self.busca.textChanged.connect(self._rebuscar)
+        lay.addWidget(self.busca)
+        self.lista = QListWidget()
+        self.lista.setIconSize(QSize(40, 40))
+        self.lista.itemDoubleClicked.connect(lambda _it: self._confirmar())
+        lay.addWidget(self.lista, 1)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                  | QDialogButtonBox.StandardButton.Cancel)
+        botoes.button(QDialogButtonBox.StandardButton.Ok).setText("Vincular")
+        botoes.button(
+            QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        botoes.accepted.connect(self._confirmar)
+        botoes.rejected.connect(self.reject)
+        lay.addWidget(botoes)
+        self._rebuscar()
+        self.busca.setFocus()
+
+    def _rebuscar(self) -> None:
+        self.lista.clear()
+        try:
+            achados = servico.buscar_produtos_para_vinculo(
+                self.busca.text())
+        except Exception:
+            achados = []
+        for a in achados:
+            rot = a["nome"] + (f"   —   R$ {a['preco']}"
+                               if a.get("preco") else "")
+            it = QListWidgetItem(rot)
+            it.setData(Qt.ItemDataRole.UserRole, a["produto_id"])
+            it.setData(Qt.ItemDataRole.UserRole + 1, a["nome"])
+            if a.get("imagem"):
+                pix = QPixmap(a["imagem"])
+                if not pix.isNull():
+                    it.setIcon(QIcon(pix))
+            self.lista.addItem(it)
+        if self.lista.count():
+            self.lista.setCurrentRow(0)
+
+    def _confirmar(self) -> None:
+        it = self.lista.currentItem()
+        if it is None:
+            return
+        self.produto_id = it.data(Qt.ItemDataRole.UserRole)
+        self.produto_nome = it.data(Qt.ItemDataRole.UserRole + 1) or ""
+        self.accept()
 
 
 class ConciliacaoDialog(QDialog):
@@ -66,6 +140,14 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setHorizontalHeaderLabels(
             ["Situação", "Importado", "Preço", "No banco", "Ação"])
         self.tabela.verticalHeader().setVisible(False)
+        # RODADA-125 Onda 3b: botão direito em QUALQUER linha — a cesta
+        # (montar do acervo) e a lupa da foto do palpite
+        self.tabela.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tabela.customContextMenuRequested.connect(
+            self._menu_tabela)
+        # ADENDO 30/07: a miniatura do palpite na coluna "No banco"
+        self.tabela.setIconSize(QSize(28, 28))
         # OS F11.5 #13: nome e preço IMPORTADOS editáveis inline (duplo clique
         # ou F2) — o dono corrige o erro do OCR na hora, com a foto ao lado.
         # As demais colunas seguem travadas (flag por célula no _recarregar).
@@ -87,13 +169,15 @@ class ConciliacaoDialog(QDialog):
         self.tabela.setToolTip("Atalhos: N = próximo amarelo · A = aceitar · "
                                "R = rejeitar/ignorar")
         self.tabela.horizontalHeader().setStretchLastSection(False)
-        # FASE 1 (passo 55): nenhuma coluna vira um fiapo; as colunas de
-        # NOME dividem o espaço (elipse à direita é o padrão da view)
+        # FASE 1 (passo 55): nenhuma coluna vira um fiapo (minimum de 90).
+        # F13/D13 (C-10): as colunas de nome eram Stretch — o dono NÃO
+        # CONSEGUIA arrastá-las. Viraram Interactive; a largura inicial sai
+        # do conteúdo (1ª carga) ou da memória (ui.conciliacao.colunas).
         from PySide6.QtWidgets import QHeaderView
         cab = self.tabela.horizontalHeader()
         cab.setMinimumSectionSize(90)
-        cab.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        cab.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        cab.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        cab.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
 
         rodape = QHBoxLayout()
         self._validade_lbl = QLabel(
@@ -160,19 +244,22 @@ class ConciliacaoDialog(QDialog):
         # tabela ocupa tudo (paridade: a lógica é a MESMA, só muda o miolo).
         painel = self._painel_foto()
         if painel is not None:
-            from PySide6.QtWidgets import QSplitter
-            split = QSplitter(Qt.Orientation.Horizontal)
-            split.addWidget(painel)
-            split.addWidget(self.tabela)
-            split.setStretchFactor(0, 3)
-            split.setStretchFactor(1, 4)
+            # F13/D13 (C-10): o splitter cru virou o padrão da casa com
+            # memória (o mesmo do editor/almoxarifado/cofre/fábrica/mesa)
+            from app.qt.design.componentes import splitter_com_memoria
+            split = splitter_com_memoria("conciliacao", painel, self.tabela,
+                                         indice_lateral=0)
             lay.addWidget(split, 1)
-            self.resize(1200, 760)
-            self._tela_cheia = True     # o chamador maximiza no exec()
+            self._chave_ui = "ui.conciliacao.foto"
+            self._geometria_lembrada = self._restaurar_geometria((1200, 760))
+            # o chamador só maximiza quando NÃO há geometria lembrada
+            self._tela_cheia = not self._geometria_lembrada
         else:
             lay.addWidget(self.tabela, 1)
-            self.resize(860, 560)
+            self._chave_ui = "ui.conciliacao.tabela"
+            self._geometria_lembrada = self._restaurar_geometria((860, 560))
             self._tela_cheia = False
+        self.setMinimumSize(700, 460)
         lay.addLayout(rodape)
 
         self._overlay = OverlayOcupado(self)
@@ -188,8 +275,13 @@ class ConciliacaoDialog(QDialog):
         self._pre_busca_em_voo = False
         self._fila_enriquecer = None
         self._fila_criar = None
+        # VICESIMUS-QUARTUS §2.1: linha RISCADA não é "novo produto" — é
+        # oferta cancelada esperando confirmação; fica FORA das filas
+        # automáticas (enriquecer/criar em lote). O clique explícito do
+        # dono nela continua valendo.
         vermelhos = [(it.uid, it.descricao) for it in self.itens
-                     if it.semaforo == "VERMELHO"]
+                     if it.semaforo == "VERMELHO"
+                     and "riscada" not in (it.pendencias or [])]
         if vermelhos:
             estado: dict = {}          # o motor é sondado UMA vez, na thread
 
@@ -289,40 +381,97 @@ class ConciliacaoDialog(QDialog):
 
     # --- tabela -----------------------------------------------------------------
 
-    def _chip(self, semaforo: str) -> QLabel:
+    def _chip(self, semaforo: str, motivo: str | None = None) -> QLabel:
+        # RODADA-125 v3 (achado da frota): TODO motivo do motor ("por
+        # que casou", "2 de 3 sabores sem foto") era gravado no item e
+        # NUNCA mostrado — o J9 mandava o amarelo DIZER por quê e o
+        # campo ficou letra morta. O chip fala pelo tooltip; motivo de
+        # atenção (sem foto) ganha o ⓘ visível sem hover.
+        extra = " ⓘ" if motivo and "SEM FOTO" in motivo.upper() else ""
         chip = QLabel(f'<span style="color:{_COR[semaforo]}">●</span> '
-                      f'{_ROTULO[semaforo]}')
+                      f'{_ROTULO[semaforo]}{extra}')
         chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if motivo:
+            chip.setToolTip(motivo)
         return chip
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt)
+        super().showEvent(ev)
+        # L3: o diálogo NUNCA transborda a tela — a 1366×768 os botões
+        # Concluir/Cancelar ficavam atrás da barra de tarefas
+        from app.qt.design.polimento import clampar_a_tela
+        clampar_a_tela(self)
 
     def _recarregar(self) -> None:
         self._recarregando = True
         try:
             self.tabela.setRowCount(len(self.itens))
             for i, item in enumerate(self.itens):
-                self.tabela.setCellWidget(i, 0, self._chip(item.semaforo))
+                self.tabela.setCellWidget(
+                    i, 0, self._chip(item.semaforo,
+                                     getattr(item, "motivo", None)))
                 # passo 55: nome longo elide na célula, mas o tooltip tem TUDO
                 cel_imp = QTableWidgetItem(item.descricao)
                 cel_imp.setToolTip(item.descricao + "\n(duplo clique edita)")
                 self.tabela.setItem(i, 1, cel_imp)
                 self.tabela.setItem(i, 2, QTableWidgetItem(item.preco or "—"))
-                banco = (item.nome if item.produto_id
-                         else (item.candidato_nome or "—"))
+                # QUINTUSDECIMUS/J21: a linha NOVA nunca perde a seta —
+                # o recarregar trocava "→ nome a criar" pelo top-1 do
+                # fuzzy SEM a seta (a cerveja do dono virava "Doce de
+                # Leite" na vitrine). Vermelho mostra SEMPRE o que será
+                # criado; candidato de vermelho só existe no Vincular…
+                if item.produto_id:
+                    banco = item.nome
+                elif item.semaforo == "VERMELHO":
+                    # o _recarregar roda no __init__ antes da fila nascer
+                    prop = getattr(self, "_propostas", {}).get(item.uid)
+                    alvo = (prop.nome if prop else item.nome) or ""
+                    banco = f"→ {alvo}" if alvo else "—"
+                else:
+                    banco = item.candidato_nome or "—"
                 cel_banco = QTableWidgetItem(banco)
-                cel_banco.setToolTip(banco)
+                # ADENDO 30/07: a MINIATURA do palpite responde "é este
+                # mesmo?" num relance; o tooltip lista os candidatos
+                if item.imagem:
+                    pix = QPixmap(item.imagem)
+                    if not pix.isNull():
+                        cel_banco.setIcon(QIcon(pix))
+                dica = banco
+                if item.candidatos:
+                    dica += "\n\nOutros palpites do banco:"
+                    for c in item.candidatos[:5]:
+                        dica += (f"\n  • {c.get('nome', '?')} "
+                                 f"({c.get('score', 0):.0f})")
+                cel_banco.setToolTip(dica)
                 # #13: só Importado e Preço editam; "No banco" é do banco
                 cel_banco.setFlags(cel_banco.flags()
                                    & ~Qt.ItemFlag.ItemIsEditable)
                 self.tabela.setItem(i, 3, cel_banco)
                 self.tabela.setCellWidget(i, 4, self._acoes(i, item))
-            self.tabela.resizeColumnsToContents()
+            # F13/D13 (C-10): o ajuste-ao-conteúdo só na 1ª carga — cada
+            # recarga ZERAVA a largura que o dono tinha arrastado. Depois
+            # da 1ª, a memória (ou o ajuste manual) manda.
+            if not getattr(self, "_colunas_prontas", False):
+                self.tabela.resizeColumnsToContents()
+                larguras = self._ui_get("ui.conciliacao.colunas")
+                try:
+                    for i, w in enumerate(list(larguras)[:5]):
+                        if int(w) > 0:
+                            self.tabela.setColumnWidth(i, int(w))
+                except Exception:
+                    pass                  # memória ausente/torta → conteúdo
+                self._colunas_prontas = True
         finally:
             self._recarregando = False
         self._atualizar_resumo()
 
     def _celula_editada(self, cel: QTableWidgetItem) -> None:
         """#13: a edição inline reflete no ItemMesa (por LINHA da view atual —
-        a lista self.itens é a mesma que a tabela exibe)."""
+        a lista self.itens é a mesma que a tabela exibe).
+
+        ADENDO 30/07: corrigir o texto do OCR RE-CONCILIA a linha na
+        hora — muitos vermelhos viram verdes só com o nome certo (antes
+        nada recalculava e o dono criava duplicata sem saber)."""
         if self._recarregando:
             return
         linha, col = cel.row(), cel.column()
@@ -330,10 +479,40 @@ class ConciliacaoDialog(QDialog):
             return
         item = self.itens[linha]
         texto = cel.text().strip()
-        if col == 1 and texto:
+        if col == 1 and texto and texto != item.descricao:
             item.descricao = texto
+            if item.semaforo != "VERDE":
+                trab = Trabalhador(lambda st, it=item:
+                                   servico.reconciliar_item(it))
+                trab.status.connect(self._overlay.mostrar)
+                trab.ok.connect(lambda it, u=item.uid:
+                                (self._overlay.esconder(),
+                                 self._resolvido_uid(u, it)))
+                trab.erro.connect(self._falhou)
+                self._overlay.mostrar("Reconferindo no banco…")
+                self._trabalhos.rodar(trab)
         elif col == 2:
+            # QUINTUSDECIMUS/J18: o preço editado é AVALIADO na hora —
+            # "de X por Y" separa (por = preço, de = riscado); número
+            # limpa a pendência; ilegível avisa (nunca fica calado)
             item.preco = "" if texto in ("", "—") else texto
+            dp = servico.preco_de_por(item.preco)
+            if dp:
+                item.preco_de, item.preco = dp
+                item.preco_de_da_tabela = True
+            entendido = (not item.preco
+                         or servico.preco_decimal(item.preco) is not None)
+            if entendido:
+                if "preco_ilegivel" in (item.pendencias or []):
+                    item.pendencias.remove("preco_ilegivel")
+                    if item.semaforo == "AMARELO" and item.produto_id:
+                        item.semaforo = "VERDE"
+                        item.motivo = ""
+                    self._recarregar()
+            else:
+                mostrar_toast(self, f"Preço “{item.preco}” não entendido "
+                                    "— use 5,99 ou “de 8,49 por 6,90”.",
+                              tipo="erro")
 
     def _acoes(self, linha: int, item: servico.ItemMesa) -> QWidget:
         caixa = QWidget()
@@ -344,6 +523,14 @@ class ConciliacaoDialog(QDialog):
             aceitar = QPushButton("Aceitar")
             aceitar.setToolTip("Confirmar o palpite do banco (aprende o alias)")
             aceitar.clicked.connect(lambda _=False, li=linha: self._aceitar(li))
+            # ADENDO 30/07: "não é esse, é AQUELE" — o menu traz os
+            # outros candidatos que o motor calculava e jogava fora,
+            # mais a busca no acervo (o vínculo forçado)
+            outro = QPushButton("Outro…")
+            outro.setToolTip("Vincular a OUTRO produto do banco "
+                             "(candidatos ou busca no acervo)")
+            outro.clicked.connect(
+                lambda _=False, li=linha, b=outro: self._menu_vinculo(li, b))
             criar = QPushButton("É novo")
             criar.setToolTip("Não é esse — criar um produto novo")
             criar.clicked.connect(lambda _=False, li=linha: self._criar(li))
@@ -355,9 +542,28 @@ class ConciliacaoDialog(QDialog):
                                "sem ensinar nada ao banco")
             ignorar.clicked.connect(lambda _=False, li=linha: self._ignorar(li))
             h.addWidget(aceitar)
+            h.addWidget(outro)
             h.addWidget(criar)
+            # §13.6/L6: a linha que acendeu "multiplos" tem "Separar em
+            # 2" em QUALQUER cor — a porta estava só no verde e o Arroz
+            # amarelo (a linha que o dono citou 2×) ficava sem ela
+            if "multiplos" in (item.pendencias or []):
+                separar_am = QPushButton("Separar em 2")
+                separar_am.setToolTip("Dois produtos num preço — criar "
+                                      "os dois e compor")
+                separar_am.clicked.connect(
+                    lambda _=False, li=linha: self._separar_em_dois(li))
+                h.addWidget(separar_am)
             h.addWidget(ignorar)
         elif item.semaforo == "VERMELHO":
+            # ADENDO 30/07: a queixa 3 do dono — o vermelho OBRIGAVA a
+            # duplicata; "Vincular…" aponta o produto que JÁ existe
+            vincular = QPushButton("Vincular…")
+            vincular.setToolTip("Este item JÁ EXISTE no acervo — escolher "
+                                "qual é (o app aprende para a próxima)")
+            vincular.clicked.connect(
+                lambda _=False, li=linha, b=vincular:
+                self._menu_vinculo(li, b))
             criar = QPushButton("Criar")
             criar.setProperty("tipo", "primario")
             criar.setToolTip("Enriquecer o nome, escolher a imagem e cadastrar")
@@ -365,11 +571,147 @@ class ConciliacaoDialog(QDialog):
             ignorar = QPushButton("Ignorar")
             ignorar.setToolTip("Deixar este item fora do tabloide")
             ignorar.clicked.connect(lambda _=False, li=linha: self._ignorar(li))
+            h.addWidget(vincular)
             h.addWidget(criar)
             h.addWidget(ignorar)
         else:
-            h.addWidget(QLabel("—"))
+            # QUINTUSDECIMUS/J17: o VERDE era a única linha SEM PORTA
+            # NENHUMA — e era a linha do Arroz que o dono citou duas
+            # vezes. Verde quer dizer "eu resolvo se você não disser
+            # nada", nunca "você não pode mais falar".
+            trocar = QPushButton("Trocar…")
+            trocar.setToolTip("Não é este produto — vincular a OUTRO do "
+                              "acervo (candidatos ou busca)")
+            trocar.clicked.connect(
+                lambda _=False, li=linha, b=trocar:
+                self._menu_vinculo(li, b))
+            separar = QPushButton("Separar em 2")
+            separar.setToolTip("Esta linha são DOIS produtos num preço — "
+                               "criar os dois e compor (Camil e Rei)")
+            separar.clicked.connect(
+                lambda _=False, li=linha: self._separar_em_dois(li))
+            h.addWidget(trocar)
+            h.addWidget(separar)
         return caixa
+
+    def _separar_em_dois(self, linha: int) -> None:
+        """J17: a porta "são 2 produtos" para a linha JÁ CASADA — ignora
+        o casamento e abre a curadoria com a pergunta ligada e a
+        sugestão determinística nos campos (o humano decide os nomes)."""
+        item = self.itens[linha]
+        det = servico.dividir_em_dois(item.descricao)
+        proposta = servico.PropostaCriacao(
+            nome=item.nome or item.descricao,
+            mais18=item.mais18, categoria=item.categoria,
+            possivel_composto=True,
+            sugestao_componentes=det,
+            componentes=det,          # pré-preenche os 2 campos editáveis
+            # o CLIQUE em "Separar em 2" já é a decisão do dono — o
+            # check nasce marcado (desmarcar continua cancelando)
+            componentes_da_ia=True)
+        trab = Trabalhador(lambda st, n=proposta.nome, e=item.ean:
+                           servico.buscar_candidatos_para(n, st, ean=e))
+        trab.status.connect(self._overlay.mostrar)
+        trab.ok.connect(lambda cs, li=linha, p=proposta:
+                        self._curadoria(li, self._com_candidatos(p, cs)))
+        trab.erro.connect(self._falhou)
+        self._overlay.mostrar("Buscando imagem…")
+        self._trabalhos.rodar(trab)
+
+    # --- ADENDO 30/07: o vínculo forçado ("é ESTE aqui") --------------------
+
+    def _menu_vinculo(self, linha: int, botao: QWidget) -> None:
+        """Os candidatos que o motor conhece (com score) + a busca."""
+        item = self.itens[linha]
+        menu = QMenu(self)
+        vistos: set[int] = set()
+        for c in (item.candidatos or []):
+            pid = c.get("produto_id")
+            if pid is None or pid in vistos or pid == item.produto_id:
+                continue
+            vistos.add(pid)
+            ac = menu.addAction(f"{c.get('nome', '?')}   ({c.get('score', 0):.0f})")
+            ac.triggered.connect(
+                lambda _=False, li=linha, p=pid: self._vincular(li, p))
+        if vistos:
+            menu.addSeparator()
+        buscar = menu.addAction("Buscar no acervo…")
+        buscar.triggered.connect(
+            lambda _=False, li=linha: self._buscar_no_acervo(li))
+        # RODADA-125 Onda 3b: a CESTA — "caçar os N que já existem"
+        montar = menu.addAction("Montar conjunto do acervo…")
+        montar.triggered.connect(
+            lambda _=False, li=linha: self._montar_conjunto(li))
+        menu.exec(botao.mapToGlobal(botao.rect().bottomLeft()))
+
+    def _menu_tabela(self, pos) -> None:
+        """Onda 3b: o botão direito vale em TODA linha, qualquer cor."""
+        idx = self.tabela.indexAt(pos)
+        if not idx.isValid() or idx.row() >= len(self.itens):
+            return
+        linha = idx.row()
+        item = self.itens[linha]
+        menu = QMenu(self)
+        menu.addAction("Montar conjunto do acervo…",
+                       lambda li=linha: self._montar_conjunto(li))
+        if item.imagem:
+            menu.addAction("Ampliar foto (lupa)",
+                           lambda it=item: self._lupa_do_item(it))
+        menu.exec(self.tabela.viewport().mapToGlobal(pos))
+
+    def _lupa_do_item(self, item) -> None:
+        from app.qt.design.lupa import ampliar_imagem
+        ampliar_imagem(self, item.imagem)
+
+    def _montar_conjunto(self, linha: int) -> None:
+        """Onda 3b (o pedido do dono): o gesto LIVRE — ele caça N
+        produtos existentes na cesta e a linha vira a célula montada
+        com as fotos deles. Vale em QUALQUER cor de linha."""
+        from app.qt.telas.montar_conjunto_dialog import (
+            MontarConjuntoDialog,
+        )
+        item = self.itens[linha]
+        from app.core.sanitize import sanitizar
+        dlg = MontarConjuntoDialog(
+            item.descricao, self,
+            sugestao_nome=sanitizar(item.descricao).nome_sanitizado)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        escolha = dlg.escolha()
+        if escolha is None:
+            return
+        ids, tipo, nome_base = escolha
+        try:
+            novo = servico.montar_conjunto_manual(item, ids, tipo,
+                                                  nome_base)
+        except ValueError as exc:
+            mostrar_toast(self, str(exc), tipo="erro")
+            return
+        self.itens[linha] = novo
+        self._recarregar()
+        mostrar_toast(self, f"“{novo.nome}” montado do acervo "
+                            f"({len(ids)} produtos) — nada recriado.",
+                      tipo="sucesso")
+
+    def _buscar_no_acervo(self, linha: int) -> None:
+        item = self.itens[linha]
+        dlg = EscolherProdutoDialog(item.descricao.split("·")[0][:40],
+                                    parent=self)
+        if dlg.exec() and dlg.produto_id is not None:
+            self._vincular(linha, dlg.produto_id)
+
+    def _vincular(self, linha: int, produto_id: int) -> None:
+        item = self.itens[linha]
+        trab = Trabalhador(lambda st, it=item, p=produto_id:
+                           servico.aceitar_correspondencia(it, produto_id=p))
+        trab.status.connect(self._overlay.mostrar)
+        # por UID (I1): a linha pode mudar de índice enquanto o worker roda
+        trab.ok.connect(lambda it, u=item.uid:
+                        (self._overlay.esconder(),
+                         self._resolvido_uid(u, it)))
+        trab.erro.connect(self._falhou)
+        self._overlay.mostrar("Vinculando…")
+        self._trabalhos.rodar(trab)
 
     def _atualizar_resumo(self) -> None:
         n = {"VERDE": 0, "AMARELO": 0, "VERMELHO": 0}
@@ -394,26 +736,24 @@ class ConciliacaoDialog(QDialog):
     # --- R-053: aceitar todos os verdes (OS F11.5 #19/#22) -----------------------
 
     def _aceitar_verdes(self) -> None:
-        """Segue SÓ com os verdes; os pendentes ficam FORA (visível — nunca em
-        silêncio) e o Desfazer os traz de volta num clique."""
+        """QUINTUSDECIMUS/J20: o clique que descartava 31 de 42 linhas
+        em silêncio MORREU. "Aceitar os verdes" confirma os verdes e as
+        demais linhas PERMANECEM na tabela para o dono resolver — quem
+        lê o botão entende "resolve os fáceis e me deixa cuidar do
+        resto", e agora é isso que ele faz. Nada é removido; remoção de
+        linha é decisão explícita (Ignorar, linha a linha)."""
         verdes, amarelos, vermelhos = servico.separar_por_semaforo(self.itens)
-        fora = len(amarelos) + len(vermelhos)
-        if not verdes or not fora:
+        restam = len(amarelos) + len(vermelhos)
+        if not verdes:
             return
-        self._backup_verdes = list(self.itens)
-        self.itens = verdes
-        self._recarregar()
-        self.btn_desfazer_verdes.setVisible(True)
-        mostrar_toast(self, f"{len(verdes)} verdes aceitos — {fora} item(ns) "
-                            "ficaram FORA desta oferta (Desfazer traz de volta).")
+        mostrar_toast(self, f"{len(verdes)} verde(s) já estão aceitos e "
+                            f"entram na oferta. As {restam} linha(s) "
+                            "restantes continuam aqui para você resolver "
+                            "— nada foi descartado.")
 
     def _desfazer_verdes(self) -> None:
-        """#22: o inverso a um clique — a lista volta inteira."""
-        backup = getattr(self, "_backup_verdes", None)
-        if backup:
-            self.itens = list(backup)
-            self._backup_verdes = None
-            self._recarregar()
+        """J20: sem descarte, nada a desfazer — mantido para compat de
+        chamadores antigos; o botão não fica mais visível."""
         self.btn_desfazer_verdes.setVisible(False)
 
     # --- OS F11.5 #15: navegação por teclado ------------------------------------
@@ -455,8 +795,19 @@ class ConciliacaoDialog(QDialog):
         self._trabalhos.rodar(trab)
 
     def _ignorar(self, linha: int) -> None:
+        # ADENDO 30/07: o atalho R tornava o acidente fácil e não havia
+        # volta — agora o toast dá 6 s de "Desfazer" (a linha volta ao
+        # MESMO lugar; nada foi ensinado ao banco em nenhum dos casos)
+        item = self.itens[linha]
         del self.itens[linha]
         self._recarregar()
+
+        def _voltar(li=linha, it=item):
+            self.itens.insert(min(li, len(self.itens)), it)
+            self._recarregar()
+
+        mostrar_toast_desfazer(self, f"“{item.descricao[:40]}” ignorado.",
+                               _voltar)
 
     def _criar(self, linha: int) -> None:
         item = self.itens[linha]
@@ -465,13 +816,14 @@ class ConciliacaoDialog(QDialog):
         # RG-03: fotos desligadas = cadastrar SEM foto, na hora (modo rápido)
         if not self.chk_fotos.isChecked():
             if proposta is not None:
-                self._cadastrar(linha, proposta, None)
+                self._cadastrar_ou_revisar(linha, proposta)
             else:                      # a fila ainda não chegou neste item
                 trab = Trabalhador(lambda st, d=item.descricao:
                                    servico.enriquecer_descricao(
                                        d, servico._motor_se_disponivel()))
                 trab.status.connect(self._overlay.mostrar)
-                trab.ok.connect(lambda p, li=linha: self._cadastrar(li, p, None))
+                trab.ok.connect(lambda p, li=linha:
+                                self._cadastrar_ou_revisar(li, p))
                 trab.erro.connect(self._falhou)
                 self._overlay.mostrar("Enriquecendo nome…")
                 self._trabalhos.rodar(trab)
@@ -501,6 +853,18 @@ class ConciliacaoDialog(QDialog):
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
 
+    def _cadastrar_ou_revisar(self, linha: int,
+                              proposta: servico.PropostaCriacao) -> None:
+        """F13/D6 (C-09): perda de palavra NUNCA passa em silêncio — no
+        modo rápido, proposta com tokens_perdidos abre a curadoria (o
+        único lugar que AVISA e deixa consertar o nome), mesmo sem
+        fotos. Antes ela ia direto ao cadastro e o toast verde dizia
+        'pronto' sobre um nome mutilado."""
+        if proposta.tokens_perdidos:
+            self._curadoria(linha, proposta)
+            return
+        self._cadastrar(linha, proposta, None)
+
     @staticmethod
     def _com_candidatos(proposta, candidatos):
         proposta.candidatos = candidatos
@@ -511,7 +875,8 @@ class ConciliacaoDialog(QDialog):
         vermelho roda em segundo plano (uma por vez — o ddgs tem limite)."""
         if self._pre_busca_em_voo:
             return
-        uids = [it.uid for it in self.itens if it.semaforo == "VERMELHO"]
+        uids = [it.uid for it in self.itens if it.semaforo == "VERMELHO"
+                and "riscada" not in (it.pendencias or [])]     # §2.1
         try:
             pos = uids.index(uid_atual)
         except ValueError:
@@ -543,37 +908,127 @@ class ConciliacaoDialog(QDialog):
     def _curadoria(self, linha: int, proposta: servico.PropostaCriacao) -> None:
         self._overlay.esconder()
         self._pre_buscar_proximo(self.itens[linha].uid)   # RG-02b
-        dlg = CuradoriaDialog(proposta.nome, proposta.candidatos, self,
-                              tokens_perdidos=proposta.tokens_perdidos)
+        # Rodada JM (B3): a pergunta "são 2 produtos?" + o +18 visível —
+        # a sugestão vem da IA (pré-marcada) ou do sanitize (desmarcada)
+        item_cur = self.itens[linha]
+        # J13 → v2: sabores DETECTADOS + marcas da CABEÇA + base LIMPA
+        # (o nome de família nunca mais carrega "Bulnez e Adoralle")
+        base_fam, marcas_det, sabores_det = \
+            servico.marcas_e_sabores_da_linha(item_cur.descricao)
+        # J23: posição na fila de vermelhos ("item n de N")
+        verm = [it for it in self.itens if it.semaforo == "VERMELHO"]
+        try:
+            pos = (verm.index(item_cur) + 1, len(verm))
+        except ValueError:
+            pos = None
+        dlg = CuradoriaDialog(
+            proposta.nome, proposta.candidatos, self,
+            tokens_perdidos=proposta.tokens_perdidos,
+            possivel_composto=(proposta.possivel_composto
+                               or len(proposta.componentes) >= 2),
+            componentes=(proposta.componentes
+                         or proposta.sugestao_componentes),
+            componentes_da_ia=proposta.componentes_da_ia,
+            mais18=proposta.mais18,
+            sabores=sabores_det,
+            nome_familia_sugerido=base_fam,
+            marcas_detectadas=marcas_det,       # v2: a 4ª resposta
+            contexto=item_cur.descricao,
+            posicao=pos)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         proposta.nome = dlg.nome_final()   # A2: a correção humana vale
+        # B3/J13: o humano é a fonte final — a 3ª pergunta decide o
+        # destino: 2 produtos, família de sabores, ou um produto só
+        proposta.componentes = dlg.componentes_finais()
+        proposta.mais18 = dlg.mais18_final()
+        self._sabores_escolhidos = dlg.sabores_finais()
+        # SEXTUSDECIMUS/M2+M5 + RODADA-125 Onda 2: linha MULTI → a tela
+        # de UM ESPAÇO POR FOTO. Com MARCAS E SABORES juntos (o Biscoito
+        # Bulnez e Adoralle × Cream Cracker/Leite/…), os espaços são o
+        # CARTESIANO (decisão do dono: uma foto por item declarado); e
+        # quem JÁ EXISTE no acervo aparece "✓ já no acervo" — nunca se
+        # recria (a pergunta dele sobre duplicatas).
+        # Cancelar cancela: o item segue vermelho, nada nasce pela metade.
+        # v2 (o Biscoito): a 4ª resposta tem rádio PRÓPRIO — o gate
+        # antigo exigia "2 produtos" E "sabores" marcados juntos, mas
+        # os rádios são exclusivos (o cartesiano era inalcançável)
+        cart = dlg.cartesiano_final()
+        if cart:
+            nome_fam, marcas_c, sabores_c = cart
+            self._sabores_escolhidos = (
+                nome_fam,
+                servico.rotulos_marcas_x_sabores(marcas_c, sabores_c))
+        sab = self._sabores_escolhidos
+        rotulos = (sab[1] if sab
+                   else (proposta.componentes
+                         if len(proposta.componentes) >= 2 else None))
+        if rotulos and len(rotulos) >= 2:
+            from app.qt.telas.fotos_por_sabor_dialog import (
+                FotosPorSaborDialog,
+            )
+            base = sab[0] if sab else ""
+            existentes = [servico.membro_do_acervo(
+                f"{base} {r}".strip() if sab else r) for r in rotulos]
+            fdlg = FotosPorSaborDialog(
+                base, rotulos, self,
+                titulo=(sab[0] if sab else proposta.nome),
+                existentes=existentes)
+            if fdlg.exec() != QDialog.DialogCode.Accepted:
+                self._sabores_escolhidos = None
+                return
+            self._cadastrar(linha, proposta, fdlg.fotos())
+            return
         tipo, valor = dlg.escolha
         if tipo == "nenhuma":
             self._cadastrar(linha, proposta, None)
             return
-        trab = Trabalhador(lambda st, v=valor: servico.tratar_imagem(v, st))
+        if not servico.garantir_modelo_recorte(self):   # F13/E1 (CA-01)
+            self._cadastrar(linha, proposta, None)      # cadastra SEM foto
+            return
+        # ESTÚDIO (03/08): o corte que come o produto AVISA (I2)
+        avisos_rec: list[str] = []
+        trab = Trabalhador(lambda st, v=valor: servico.tratar_imagem(
+            v, st, aviso_cb=avisos_rec.append))
         trab.status.connect(self._overlay.mostrar)
-        trab.ok.connect(lambda tratada, li=linha, p=proposta:
-                        self._cadastrar(li, p, tratada))
+        trab.ok.connect(lambda tratada, li=linha, p=proposta,
+                        av=avisos_rec:
+                        (self._cadastrar(li, p, tratada),
+                         av and mostrar_toast(self, av[0], tipo="erro")))
         trab.erro.connect(self._falhou)
         self._trabalhos.rodar(trab)
 
     def _criar_todos_sem_foto(self) -> None:
         """RG-03: TODOS os vermelhos cadastrados de uma vez, sem foto —
         fila em segundo plano, resolvendo POR UID conforme fica pronto."""
+        # §2.1: a riscada NUNCA vira produto por lote — cancelada não é
+        # nova; o pulo é DITO (I2), nunca silencioso
+        riscados = [it for it in self.itens if it.semaforo == "VERMELHO"
+                    and "riscada" in (it.pendencias or [])]
         pares = [(it.uid, it) for it in self.itens
-                 if it.semaforo == "VERMELHO"]
+                 if it.semaforo == "VERMELHO" and it not in riscados]
+        if riscados:
+            mostrar_toast(self, f"{len(riscados)} linha(s) RISCADA(s) na "
+                                "tabela ficaram fora do lote — confirme "
+                                "uma a uma se alguma vale.")
         if not pares:
             return
         self.btn_todos.setEnabled(False)
         estado: dict = {}
+        self._para_revisar = []
 
         def _criar_um(item):
             if "motor" not in estado:
                 estado["motor"] = servico._motor_se_disponivel()
             proposta = self._propostas.get(item.uid) or \
                 servico.enriquecer_descricao(item.descricao, estado["motor"])
+            # F13/D6 (C-09) + Rodada JM (B3): a política do lote virou
+            # função nomeada — perda de palavra E "parece 2 produtos"
+            # sem confirmação seguram o item para a curadoria (composto
+            # NUNCA nasce por chute); nomeado no fim, I2
+            if servico.deve_revisar_no_lote(proposta):
+                self._para_revisar.append(item.descricao)
+                return item
             if len(proposta.componentes) >= 2:      # RG-29: nasce composto
                 return servico.criar_como_composto(
                     item, proposta.componentes, proposta.mais18, None,
@@ -582,15 +1037,27 @@ class ConciliacaoDialog(QDialog):
                                              proposta.mais18, None,
                                              categoria=proposta.categoria)
 
+        def _fim_do_lote():
+            self._overlay.esconder()
+            self.btn_todos.setEnabled(True)
+            rev = list(self._para_revisar)
+            if rev:
+                nomes = ", ".join(f"“{d[:28]}”" for d in rev[:3]) \
+                    + ("…" if len(rev) > 3 else "")
+                mostrar_toast(
+                    self,
+                    f"{len(rev)} item(ns) FICARAM para revisar (a IA "
+                    f"descartou palavra do nome): {nomes} — clique em "
+                    "Criar neles; os demais foram criados.")
+            else:
+                mostrar_toast(self, "Criação em lote concluída — as "
+                                    "fotos vêm depois, na Mesa.")
+
         self._fila_criar = TrabalhadorFila(pares, _criar_um)
         self._fila_criar.item_pronto.connect(self._resolvido_uid)
         self._fila_criar.item_falhou.connect(
             lambda _u, msg: mostrar_toast(self, msg, tipo="erro"))
-        self._fila_criar.fila_terminou.connect(
-            lambda: (self._overlay.esconder(),
-                     self.btn_todos.setEnabled(True),
-                     mostrar_toast(self, "Criação em lote concluída — as "
-                                         "fotos vêm depois, na Mesa.")))
+        self._fila_criar.fila_terminou.connect(_fim_do_lote)
         self._overlay.mostrar("Criando todos sem foto…")
         self._trabalhos.rodar(self._fila_criar)
 
@@ -601,13 +1068,24 @@ class ConciliacaoDialog(QDialog):
             self._recarregar()
 
     def _cadastrar(self, linha: int, proposta: servico.PropostaCriacao,
-                   tratada: str | None) -> None:
+                   tratada: str | list | None) -> None:
+        # M2: ``tratada`` pode ser a LISTA paralela da tela de N espaços
+        # (sabores/composto) — os dois criadores já falam o plural
         item = self.itens[linha]
+        sabores = getattr(self, "_sabores_escolhidos", None)
+        self._sabores_escolhidos = None
 
-        def _executar(st, it=item, p=proposta, tr=tratada):
+        def _executar(st, it=item, p=proposta, tr=tratada, sab=sabores):
+            if sab:                       # J13: "são sabores" → FAMÍLIA
+                nome_fam, lista = sab
+                return servico.criar_familia_de_sabores(
+                    it, nome_fam, lista, p.mais18, tr,
+                    categoria=p.categoria)
             if len(p.componentes) >= 2:             # RG-29: nasce composto
                 return servico.criar_como_composto(
                     it, p.componentes, p.mais18, tr, categoria=p.categoria)
+            if isinstance(tr, (list, tuple)):       # produto só: a 1ª vale
+                tr = next((c for c in tr if c), None)
             return servico.finalizar_criacao(it, p.nome, p.mais18, tr,
                                              categoria=p.categoria)
 
@@ -628,7 +1106,60 @@ class ConciliacaoDialog(QDialog):
         self._overlay.esconder()
         mostrar_toast(self, msg, tipo="erro")
 
+    # --- memória de UI (F13/D13, C-10) --------------------------------------
+
+    @staticmethod
+    def _ui_get(chave, padrao=None):
+        """Leitura da Config com degradação muda ao padrão (o molde do
+        splitter_com_memoria — memória de UI nunca derruba o diálogo)."""
+        try:
+            from app.core.database import Database
+            from app.core.repositories import ConfigRepositorio
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    return ConfigRepositorio(s).get(chave, padrao)
+            finally:
+                db.engine.dispose()
+        except Exception:
+            return padrao
+
+    @staticmethod
+    def _ui_set(chave, valor) -> None:
+        try:
+            from app.core.database import Database
+            from app.core.repositories import ConfigRepositorio
+            db = Database().init()
+            try:
+                with db.Session() as s:
+                    ConfigRepositorio(s).set(chave, valor)
+                    s.commit()
+            finally:
+                db.engine.dispose()
+        except Exception:
+            pass
+
+    def _restaurar_geometria(self, padrao: tuple[int, int]) -> bool:
+        """Devolve True se restaurou da memória (validação dura, como o
+        ui.shell: 2 ints, mínimos sãos; qualquer coisa torta → padrão)."""
+        bruto = self._ui_get(self._chave_ui)
+        try:
+            w, h = int(bruto[0]), int(bruto[1])
+            if w >= 700 and h >= 460:
+                self.resize(w, h)
+                return True
+        except Exception:
+            pass
+        self.resize(*padrao)
+        return False
+
     def done(self, resultado: int) -> None:  # noqa: N802 (Qt)
+        # F13/D13: grava a memória de UI na saída ÚNICA (accept/reject/
+        # Esc/X caem todos aqui) — tamanho da janela e largura de coluna
+        if not self.isMaximized():
+            self._ui_set(self._chave_ui, [self.width(), self.height()])
+        self._ui_set("ui.conciliacao.colunas",
+                     [self.tabela.columnWidth(i) for i in range(5)])
         # junta as pontas ANTES de morrer: fila viva com o dono destruído
         # derruba o processo (a lição da Etapa C do Bloco E)
         for fila in (self._fila_enriquecer, self._fila_criar):

@@ -18,8 +18,11 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-ARTE = "Frente Template.png"
-FIXTURE = Path("app/tests/fixtures/ofertas_belo_brasil.txt")
+# F13/A5: ancorados no próprio pacote, nunca no CWD — rodar o app (ou o
+# pytest) de outra pasta não pode mudar o que o boot encontra.
+_RAIZ = Path(__file__).resolve().parent.parent
+ARTE = str(_RAIZ / "Frente Template.png")
+FIXTURE = Path(__file__).resolve().parent / "tests" / "fixtures" / "ofertas_belo_brasil.txt"
 
 
 def _slug(s: str) -> str:
@@ -65,21 +68,32 @@ def montar_editor():
     from app.rendering.compositor import DadosProduto
     from app.scripts.importar_tabela import parse_tabela
 
-    layout = _grade_real()
+    try:
+        layout, fundo = _grade_real(), ARTE
+    except Exception:
+        # F13/A5 — a MESMA lição da frota F12 escrita logo abaixo em
+        # _layout_padrao_do_banco: sem a arte de bancada o editor não
+        # derruba a montagem — nasce com a grade sintética. §4.2 do selo:
+        # este caminho é SÓ de bancada (montar_janela → 4 scripts de
+        # foto/GIF; o main() do dono não passa aqui) — degradar sem aviso
+        # é tolerável AQUI; se um dia virar caminho de usuário, precisa
+        # de aviso (I2).
+        layout, fundo = _grade_sintetica(), None
     n = len(layout.paginas[0].slots)
     cache = SystemRoot().biblioteca_imagens / "_auto"
 
     produtos = []
-    for desc, preco in parse_tabela(FIXTURE)[:n]:
-        nome = formatar_nome(desc)          # determinístico (offline)
-        img = cache / f"{_slug(nome)}.png"  # foto tratada, se o cache tiver
-        produtos.append(DadosProduto(
-            nome, preco_por=_preco(preco),
-            imagem_path=str(img) if img.exists() else None,
-        ))
+    if FIXTURE.exists():                    # exemplo de bancada; sem ele o
+        for desc, preco in parse_tabela(FIXTURE)[:n]:   # editor abre vazio
+            nome = formatar_nome(desc)          # determinístico (offline)
+            img = cache / f"{_slug(nome)}.png"  # foto tratada, se o cache tiver
+            produtos.append(DadosProduto(
+                nome, preco_por=_preco(preco),
+                imagem_path=str(img) if img.exists() else None,
+            ))
 
     editor = Editor()
-    editor.carregar(layout, produtos, fundo_path=ARTE)
+    editor.carregar(layout, produtos, fundo_path=fundo)
     return editor, layout
 
 
@@ -156,6 +170,37 @@ def _grade_sintetica():
                 Regiao(TipoRegiao.PRECO, Retangulo(x, y + alt - 8, larg, 8)),
             ], origem_mm=(x, y)))
     return LayoutDef(210, 297, dpi=150, paginas=[Pagina(slots)])
+
+
+def _montar_shell_seguro(holder: dict):
+    """F13/E3 (CA-03): a fase 1 do boot era NUA — pasta sem escrita ou
+    banco inacessível estourava AQUI, antes do show(), e o processo
+    morria sem caixa e sem log (o `except OSError` do launcher não pega
+    `sqlite3.OperationalError`). Falhou: o traceback vai a logs/erros.log
+    e o dono recebe uma caixa LEGÍVEL (pai None — janela ainda não
+    existe). Devolve None; o main encerra limpo."""
+    try:
+        return _montar_shell(holder)
+    except Exception:
+        import traceback as _tb
+
+        from app.core.erros import registrar_erro_bruto
+        registrar_erro_bruto(_tb.format_exc())
+        try:
+            from PySide6.QtWidgets import QMessageBox
+
+            from app.core.paths import SystemRoot
+            QMessageBox.critical(
+                None, "O AutoTabloide não conseguiu abrir",
+                "Não deu para preparar a área de trabalho.\n\n"
+                f"Pasta dos dados: {SystemRoot().raiz}\n"
+                "Causas comuns: pasta sem permissão de escrita, disco "
+                "cheio ou antivírus segurando o banco.\n\n"
+                "O detalhe técnico ficou em logs\\erros.log "
+                "(Configurações › Gerar diagnóstico para suporte).")
+        except Exception:
+            pass
+        return None
 
 
 def _montar_shell(holder: dict):
@@ -334,14 +379,20 @@ def montar_janela():
 
 
 def _migrar_artes() -> list[str]:
-    """E-A3: arte de layout com caminho de máquina migra p/ a pasta da raiz."""
+    """E-A3: arte de layout com caminho de máquina migra p/ a pasta da raiz.
+
+    F13/E6 (D-02): as FOTOS ganham o mesmo tratamento — o gêmeo
+    migrar_produtos_absolutos roda junto (I3 curado na raiz, com aviso
+    nominal; nunca em silêncio)."""
     from app.core.database import Database
+    from app.images.biblioteca import BibliotecaImagens
     from app.rendering.persistencia import migrar_artes_absolutas
 
     db = Database().init()
     try:
         with db.Session() as s:
             avisos = migrar_artes_absolutas(s)
+            avisos += BibliotecaImagens.migrar_produtos_absolutos(s)
             s.commit()
     finally:
         db.engine.dispose()
@@ -373,7 +424,13 @@ def main() -> int:
             pass
 
     app = QApplication.instance() or QApplication(sys.argv)
+    # F13/E2 (CA-02): o exe roda com console=False — sem esta rede, um
+    # erro fatal morre MUDO. O rastro inteiro vive em logs/erros.log.
+    from app.core.erros import instalar_rede_de_erros
+    instalar_rede_de_erros()
     aplicar_tema(app)
+    from app.qt.design.componentes import instalar_traducao_qt
+    instalar_traducao_qt(app)   # F13/B2c: nativos do Qt em PT-BR
     # FASE 1 (passo 80): splash IMEDIATO (pixmap pintado, ~ms) — a marca
     # aparece antes de qualquer montagem; some em fade quando o shell abre
     from app.qt.design.splash import (
@@ -389,7 +446,9 @@ def main() -> int:
     # RG-01: a JANELA nasce primeiro; snapshot, migração e as telas pesadas
     # montam logo depois do show() (a percepção de abertura é a janela)
     holder: dict = {}
-    shell = _montar_shell(holder)
+    shell = _montar_shell_seguro(holder)
+    if shell is None:               # F13/E3: falhou CONTANDO, nunca mudo
+        return 1
 
     def _ativar() -> None:
         shell.showNormal()
@@ -431,8 +490,12 @@ def main() -> int:
         purgados = purgar()
         if purgados:                        # I2: nunca em silêncio
             from app.qt.design.toast import mostrar_toast as _toast
-            _toast(shell, f"Lixeira: {len(purgados)} item(ns) com mais de "
-                          "30 dias foram apagados de vez (log no console).")
+            presos = sum(1 for p in purgados if "FICOU na lixeira" in p)
+            texto = (f"Lixeira: {len(purgados) - presos} item(ns) com mais "
+                     "de 30 dias foram apagados de vez")
+            if presos:                      # F13/B9: o preso é NOMEADO
+                texto += f" e {presos} FICARAM (algo vivo aponta para eles)"
+            _toast(shell, texto + " — detalhe no console.")
         shell._editor = _completar_janela(shell, holder)
         # passo 60 (R-023): reabre onde parou — MAS o Modo Pai lembrado
         # (R-150) vence (frota F12: a última tela atropelava o modo e o
@@ -448,13 +511,19 @@ def main() -> int:
             mostrar_toast(shell, f"{len(avisos_migracao)} layout(s) com arte "
                                  "migrada/pendente — detalhes no console.")
         # RG-02: pré-aquece o modelo de recorte em segundo plano — a 1ª foto
-        # da sessão deixa de pagar os ~7 s de carga (medido)
-        from app.images.fundo import aquecer, modelo_configurado
+        # da sessão deixa de pagar os ~7 s de carga (medido).
+        # F13/E1 (CA-01): SÓ se o .onnx JÁ está no disco (o molde do
+        # ESRGAN logo abaixo) — o boot baixava 973 MB sem pedir, com o
+        # progresso indo para o stderr morto do exe. O download agora é
+        # decisão do dono, no 1º recorte (garantir_modelo_recorte).
+        from app.images.fundo import aquecer, modelo_baixado, modelo_configurado
         from app.qt.workers import GerenciadorTrabalhos, Trabalhador
         shell._trabalhos_globais = GerenciadorTrabalhos()
-        aquecedor = Trabalhador(
-            lambda _st, m=modelo_configurado(): aquecer(m))
-        shell._trabalhos_globais.rodar(aquecedor)
+        modelo_boot = modelo_configurado()
+        if modelo_baixado(modelo_boot):
+            aquecedor = Trabalhador(
+                lambda _st, m=modelo_boot: aquecer(m))
+            shell._trabalhos_globais.rodar(aquecedor)
         # OS F11.5 #80: o Real-ESRGAN também aquece (o 1º cartaz da sessão
         # deixava de responder enquanto o .pth carregava)
         def _aquecer_esrgan(_st):

@@ -59,10 +59,29 @@ class SystemRoot:
         self.raiz = Path(raiz)
 
     def criar_estrutura(self) -> "SystemRoot":
-        """Cria a pasta raiz e todas as subpastas (idempotente)."""
+        """Cria a pasta raiz e todas as subpastas (idempotente).
+
+        F13/E3 (CA-03): prova de ESCRITA já aqui — pasta que aceita
+        `mkdir` mas NEGA arquivo (ACL/OneDrive/rede) passava e o boot
+        morria DEPOIS, dentro do SQLite, sem janela e sem log. O erro
+        nasce nominal, em PT-BR, no primeiro segundo."""
         self.raiz.mkdir(parents=True, exist_ok=True)
         for nome in SUBPASTAS.values():
             (self.raiz / nome).mkdir(parents=True, exist_ok=True)
+        # ADENDO 30/07: nome ÚNICO por tentativa — duas threads (fila
+        # de IA + reconciliar da conciliação) iniciando Database ao
+        # mesmo tempo colidiam no MESMO ".escrita_ok" (WinError 32) e
+        # a prova acusava falso "sem escrita" numa pasta saudável
+        import uuid
+        probe = self.raiz / f".escrita_ok_{uuid.uuid4().hex[:8]}"
+        try:
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            raise OSError(
+                f"A pasta “{self.raiz}” não aceita escrita ({exc}). "
+                "Escolha outra pasta para os dados do AutoTabloide ou "
+                "libere a permissão.") from exc
         return self
 
     def subpasta(self, chave: str) -> Path:

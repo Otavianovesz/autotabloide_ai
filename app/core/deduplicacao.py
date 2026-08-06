@@ -44,12 +44,37 @@ def achar_duplicatas(produtos) -> list[ParDuplicata]:
     for chave, membros in grupos.items():
         if len(membros) < 2:
             continue
-        # ordena por id (o mais antigo é o candidato a vencedor — herda a história)
-        membros = sorted(membros, key=lambda x: getattr(x, "id", 0) or 0)
+        # SEXTUSDECIMUS/M11 (decisão do dono): quem TEM FOTO vence;
+        # empate → o mais antigo (id menor, herda a história)
+        membros = sorted(membros, key=lambda x: (
+            0 if getattr(x, "caminho_imagem", None) else 1,
+            getattr(x, "id", 0) or 0))
         vencedor = membros[0]
         for outro in membros[1:]:
             pares.append(ParDuplicata(vencedor, outro, chave))
     return pares
+
+
+def fundir_duplicatas_automatico(session, biblioteca_raiz=None) -> dict:
+    """SEXTUSDECIMUS/M11 (decisão 3 do dono): funde AUTOMÁTICO todos os
+    pares iguais pela chave (EAN/natural — o critério conservador que
+    nunca funde marca diferente, I1), mantendo o que tem foto, com
+    RELATÓRIO do que foi fundido (I2). Reversível: o perdedor vai à
+    lixeira (soft-delete). O chamador commita."""
+    from app.core.models import Produto
+
+    produtos = session.query(Produto).all()
+    fundidos: list[dict] = []
+    for par in achar_duplicatas(produtos):
+        try:
+            log = fundir_no_banco(session, par.a.id, par.b.id,
+                                  biblioteca_raiz=biblioteca_raiz)
+            log["nome_vencedor"] = par.a.nome_sanitizado
+            log["nome_perdedor"] = par.b.nome_sanitizado
+            fundidos.append(log)
+        except ValueError:
+            continue                  # par já resolvido por fusão anterior
+    return {"fundidos": fundidos, "total": len(fundidos)}
 
 
 def fundir_no_banco(session, vencedor_id: int, perdedor_id: int,

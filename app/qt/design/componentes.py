@@ -89,6 +89,14 @@ class Skeleton(QWidget):
             self._anim = None
 
     def _pulsar(self, valor) -> None:
+        if self._anim is not None and not self.isVisible():
+            # F13/B2 (a prova da ordem invertida): ancestral escondido NÃO
+            # manda hideEvent ao filho — o pulso se desliga sozinho no 1º
+            # tick invisível (CPU a zero; nada fica "em voo" para sempre).
+            # Religa normalmente no próximo showEvent.
+            self._anim.stop()        # stop → finished → sai de _VIVAS
+            self._anim = None
+            return
         self._pulso = float(valor)
         self.update()
 
@@ -162,6 +170,44 @@ class SecaoRecolhivel(QWidget):
         anim.start()
 
 
+def instalar_traducao_qt(app) -> None:
+    """F13/B2c (L-03): os botões NATIVOS do Qt (QInputDialog, QColorDialog,
+    QFileDialog…) em PT-BR. Os diálogos da CASA já falam PT-BR por
+    construção (``perguntar``/``confirmar_destrutivo``) — isto só melhora
+    os de fábrica; sem o arquivo de tradução no pacote, os nativos seguem
+    como eram (nenhum conteúdo se perde — por isso a falha é muda)."""
+    try:
+        from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+        tr = QTranslator(app)
+        pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+        if tr.load(QLocale("pt_BR"), "qtbase", "_", pasta):
+            app.installTranslator(tr)
+    except Exception:
+        pass
+
+
+def perguntar(pai, titulo: str, texto: str, *, sim: str = "Sim",
+              nao: str = "Não", padrao_sim: bool = False) -> bool:
+    """F13/B2c (L-03): pergunta de duas saídas SEMPRE em PT-BR — substitui
+    os ``QMessageBox.question`` estáticos, que falavam "Yes"/"No" porque
+    nenhum tradutor Qt é instalado. O chamador manda o VERBO nos botões
+    (lei da casa: nunca um "OK"/"Yes" genérico); o padrão do Enter é
+    DECLARADO (o 'não', salvo indicação contrária) e o Esc cai no 'não'.
+
+    Devolve True só se o botão afirmativo foi clicado."""
+    from PySide6.QtWidgets import QMessageBox
+    caixa = QMessageBox(pai)
+    caixa.setWindowTitle(titulo)
+    caixa.setText(texto)
+    caixa.setIcon(QMessageBox.Icon.Question)
+    b_sim = caixa.addButton(sim, QMessageBox.ButtonRole.YesRole)
+    b_nao = caixa.addButton(nao, QMessageBox.ButtonRole.NoRole)
+    caixa.setDefaultButton(b_sim if padrao_sim else b_nao)
+    caixa.setEscapeButton(b_nao)
+    caixa.exec()
+    return caixa.clickedButton() is b_sim
+
+
 def confirmar_destrutivo(pai, titulo: str, texto: str, verbo: str) -> bool:
     """FASE 1 (passo 78): confirmação destrutiva SEMPRE com o VERBO no
     botão ("Excluir 3 produtos", "Limpar estante") — nunca "OK"/"Yes".
@@ -173,7 +219,12 @@ def confirmar_destrutivo(pai, titulo: str, texto: str, verbo: str) -> bool:
     caixa.setText(texto)
     caixa.setIcon(QMessageBox.Icon.Warning)
     botao = caixa.addButton(verbo, QMessageBox.ButtonRole.DestructiveRole)
-    caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+    cancelar = caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+    # F13/B3 (CF-01): numa caixa cujo único desfecho seguro é Cancelar,
+    # Enter e Esc caem NELE — declarado, nunca na heurística do Qt (o
+    # destrutivo abria com o anel de foco: Enter apagava, L-06).
+    caixa.setDefaultButton(cancelar)
+    caixa.setEscapeButton(cancelar)
     caixa.exec()
     return caixa.clickedButton() is botao
 

@@ -23,10 +23,8 @@ def raiz_tmp(tmp_path, monkeypatch):
     from app.core.database import Database
     from app.core.paths import SystemRoot
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    from app.tests import acervo
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     Database(root).init().engine.dispose()
     return root
 
@@ -137,9 +135,12 @@ def test_detector_fundo_branco():
 
 
 def test_detector_fundo_branco_pula_rembg_quando_ligado(raiz_tmp, tmp_path):
-    """R-095 (wiring): com a Config LIGADA e fundo branco, o pipeline PULA o rembg
-    (o toggle da F3 passou a fazer algo — não é mais promessa morta). Prova de
-    mutação: sem o gate da Config, pularia mesmo desligado."""
+    """R-095 (wiring): com fundo branco o pipeline PULA o rembg.
+
+    VIRADO na F13/D3 (VC-037): o padrão passou a LIGADO (a forma antiga —
+    que fixava o padrão desligado — vive no git log). A prova de mutação
+    trocou de lado: agora é o False EXPLÍCITO na Config que precisa ser
+    respeitado — sem o gate, pularia mesmo com o dono mandando recortar."""
     from app.core.database import Database
     from app.core.repositories import ConfigRepositorio
     from app.images.fundo import _pular_rembg_fundo_branco
@@ -147,13 +148,18 @@ def test_detector_fundo_branco_pula_rembg_quando_ligado(raiz_tmp, tmp_path):
     b = Image.new("RGB", (200, 200), (255, 255, 255))
     b.paste(Image.new("RGB", (80, 80), (20, 20, 20)), (60, 60))
     b.save(branca)
-    assert _pular_rembg_fundo_branco(branca) is False    # flag desligada (padrão)
+    assert _pular_rembg_fundo_branco(branca) is True     # padrão LIGADO (D3)
+    db = Database().init()
+    with db.Session() as s:
+        ConfigRepositorio(s).set("imagem.detector_fundo_branco", False)
+        s.commit()
+    db.engine.dispose()
+    assert _pular_rembg_fundo_branco(branca) is False    # False explícito vence
     db = Database().init()
     with db.Session() as s:
         ConfigRepositorio(s).set("imagem.detector_fundo_branco", True)
         s.commit()
     db.engine.dispose()
-    assert _pular_rembg_fundo_branco(branca) is True      # ligada + branco → pula
     cor = tmp_path / "cor.png"
     Image.new("RGB", (200, 200), (40, 120, 200)).save(cor)
     assert _pular_rembg_fundo_branco(cor) is False        # colorido não pula

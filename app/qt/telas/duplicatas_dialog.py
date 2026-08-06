@@ -100,9 +100,10 @@ class DuplicatasDialog(QDialog):
                 "marca apareceriam aqui."), 1)
         else:
             legenda = QLabel(
-                f"{len(pares)} par(es) suspeitos. Fica o mais antigo (com o "
-                "histórico); o repetido vai para a LIXEIRA — dá para "
-                "restaurar. Marca diferente nunca vira par.")
+                f"{len(pares)} par(es) suspeitos. Fica o que TEM FOTO "
+                "(empate: o mais antigo, com o histórico); o repetido vai "
+                "para a LIXEIRA — dá para restaurar. Marca diferente "
+                "nunca vira par.")
             legenda.setProperty("papel", "legenda")
             legenda.setWordWrap(True)
             raiz.addWidget(legenda)

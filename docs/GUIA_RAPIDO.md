@@ -5,9 +5,11 @@
 > nunca uma exigência.
 >
 > As **duas únicas exceções**, ambas uma vez só: o **primeiro recorte de
-> foto** baixa o modelo de recorte (~900 MB, automático; depois nunca
-> mais) e a **busca de fotos na Web** (que é Web por natureza). Sem
-> internet nessas horas, o app avisa e segue — nada trava.
+> foto** PERGUNTA se você quer baixar o modelo (o completo, ~973 MB, ou
+> o leve, ~5 MB — você escolhe, e "agora não" também vale; abrir o app
+> **nunca** baixa nada sozinho) e a **busca de fotos na Web** (que é Web
+> por natureza). Sem internet nessas horas, o app avisa e segue — nada
+> trava.
 
 ## As telas (na ordem da barra)
 
@@ -61,10 +63,13 @@
 - **Instalar**: descompacte o .zip onde quiser (ex.: `C:\AutoTabloide`) e
   abra o `AutoTabloide.exe`. Na primeira vez ele cria, **ao lado da pasta do
   programa**, a pasta `AutoTabloide_System_Root` — é lá que vivem o banco,
-  as fotos e os projetos. Nada de internet, nada de instalador demorado.
+  as fotos e os projetos. Nada de internet, nada de instalador demorado
+  (abrir o app não baixa nada — o download do modelo de recorte só
+  acontece se VOCÊ mandar, no primeiro recorte).
   Dica para o PC SEM internet da loja: faça o primeiro recorte de foto num
-  PC com internet (baixa o modelo uma vez) e leve junto a pasta `.u2net`
-  que nasce na pasta do usuário — ou simplesmente não use recorte lá.
+  PC com internet (o app pergunta e baixa o modelo uma vez) e leve junto a
+  pasta `.u2net` que nasce na pasta do usuário — no PC sem internet o
+  recorte avisa que está sem o modelo e nada trava.
 - **Mover/levar no pendrive**: copie as DUAS pastas juntas (a do programa e
   a `AutoTabloide_System_Root`).
 - **Desinstalar**: apague a pasta do programa. O seu acervo

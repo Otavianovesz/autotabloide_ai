@@ -54,9 +54,14 @@ class ExportarDialog(QDialog):
                              else Qt.CheckState.Unchecked)
             self.lista.addItem(li)
 
+        # F13/E10 (COND-8): a legenda conta a REGRA VIVA — a trava #1 caiu
+        # no D8 (sai limpo por padrão; o carimbo é o checkbox); a aprovação
+        # aparece como o SELO informativo que é, nunca como condição
         self._nota = QLabel(
-            "A peça sai com “RASCUNHO” até você aprovar o projeto."
-            if not mesa.esta_aprovado() else "Projeto aprovado — sai limpo.")
+            "Projeto aprovado (selo do checklist) — a peça sai limpa."
+            if mesa.esta_aprovado() else
+            "A peça sai LIMPA por padrão — marque “Carimbar RASCUNHO” "
+            "abaixo se quiser a marca d'água.")
         self._nota.setProperty("papel", "legenda")
         self._nota.setWordWrap(True)
 
@@ -84,6 +89,13 @@ class ExportarDialog(QDialog):
             lay.addWidget(EstadoVazio(
                 "impressora", "Nenhum perfil configurado",
                 "Crie perfis de exportação nas Configurações."), 1)
+        # F13/D8: o RASCUNHO é opção EXPLÍCITA do dono (a trava #1 caiu)
+        from PySide6.QtWidgets import QCheckBox
+        self.chk_rascunho = QCheckBox("Carimbar RASCUNHO (marca d'água)")
+        self.chk_rascunho.setToolTip(
+            "Marque para sair com a marca d'água de rascunho — o padrão "
+            "agora é a peça LIMPA")
+        lay.addWidget(self.chk_rascunho)
         lay.addWidget(self._nota)
         lay.addLayout(rod)
         self._overlay = OverlayOcupado(self)
@@ -110,7 +122,9 @@ class ExportarDialog(QDialog):
             self._overlay.esconder()
             mostrar_toast(self, "Nada para exportar.", tipo="erro")
             return
-        if not self.mesa.esta_aprovado():
+        # F13/D8 (a trava #1): limpo por padrão — o carimbo agora é a
+        # opção explícita do checkbox, nunca automático
+        if self.chk_rascunho.isChecked():
             from app.rendering.marca_dagua import carimbar_rascunho
             paginas = [carimbar_rascunho(p) for p in paginas]
         base = Path(pasta)

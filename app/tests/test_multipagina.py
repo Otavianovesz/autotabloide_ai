@@ -24,25 +24,23 @@ from app.rendering.grade import (
 from app.rendering.model import LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao
 from app.rendering.units import mm_para_px
 
-ARTE = Path("arte/quintou")
+from app.tests import acervo
 
-pytestmark = pytest.mark.skipif(
-    not (ARTE / "frente_template.png").exists(),
-    reason="arte real do Quintou não está no repositório")
+# F13/A5: ancorado na raiz do repo (imune ao CWD); ausência é skip
+# EXPLÍCITO e contado no relatório — nunca silencioso.
+ARTE = acervo.ARTE_QUINTOU
+
+pytestmark = acervo.requer_arte_quintou
 
 
 @pytest.fixture()
 def raiz_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
-    import shutil
     from app.core.database import Database
     from app.core.paths import SystemRoot
 
     root = SystemRoot(tmp_path / "raiz").criar_estrutura()
-    reais = Path("AutoTabloide_System_Root/fontes")
-    if reais.exists():
-        for f in reais.glob("*.ttf"):
-            shutil.copy(f, root.fontes / f.name)
+    acervo.copiar_fontes_reais(root.fontes)  # F13/A5: sem fonte real, skip nominal
     Database(root).init().engine.dispose()
     return root
 

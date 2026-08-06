@@ -313,6 +313,8 @@ class ConfiguracoesTela(QWidget):
             "é opcional/sob demanda (nada é convertido em silêncio).")
         self.chk_fundo_branco = QCheckBox(
             "Pular o recorte quando o fundo já é branco")
+        # F13/D3 (VC-037): nasce LIGADO — o mesmo tratamento do upscale
+        self.chk_fundo_branco.setChecked(True)
         self.chk_fundo_branco.setToolTip(
             "R-095: quando a foto já tem fundo branco uniforme, o app não roda o "
             "recorte (economiza tempo e não estraga foto boa).")
@@ -1057,14 +1059,13 @@ class ConfiguracoesTela(QWidget):
                 return
             mb_a = r["bytes_antes"] / 1_048_576
             mb_d = r["bytes_depois"] / 1_048_576
-            from PySide6.QtWidgets import QMessageBox
-            resp = QMessageBox.question(
-                self, f"Migrar o acervo para {rotulo}?",
-                f"{r['fotos']} foto(s): {mb_a:.1f} MB → {mb_d:.1f} MB "
-                f"({mb_d - mb_a:+.1f} MB). Converter agora? (Reversível — "
-                "rode de novo com a chave no outro estado para voltar.)",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if resp != QMessageBox.StandardButton.Yes:
+            from app.qt.design.componentes import perguntar
+            if not perguntar(
+                    self, f"Migrar o acervo para {rotulo}?",
+                    f"{r['fotos']} foto(s): {mb_a:.1f} MB → {mb_d:.1f} MB "
+                    f"({mb_d - mb_a:+.1f} MB). Converter agora? (Reversível — "
+                    "rode de novo com a chave no outro estado para voltar.)",
+                    sim="Converter agora", nao="Deixar como está"):
                 return
             trab2 = Trabalhador(lambda st: servico.migrar_acervo_webp(
                 para_webp, st, previa=False))
@@ -1086,13 +1087,12 @@ class ConfiguracoesTela(QWidget):
             return
         from app.core import modo
         if not ligado and modo.somente_leitura():
-            from PySide6.QtWidgets import QMessageBox
-            resp = QMessageBox.question(
-                self, "Sair do somente-leitura?",
-                "Este PC volta a poder EDITAR o acervo e os projetos. "
-                "Continuar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if resp != QMessageBox.StandardButton.Yes:
+            from app.qt.design.componentes import perguntar
+            if not perguntar(
+                    self, "Sair do somente-leitura?",
+                    "Este PC volta a poder EDITAR o acervo e os projetos. "
+                    "Continuar?",
+                    sim="Sair do somente-leitura", nao="Continuar protegido"):
                 self._refletindo_somente_leitura = True
                 self.chk_somente_leitura.setChecked(True)
                 self._refletindo_somente_leitura = False
@@ -1105,7 +1105,7 @@ class ConfiguracoesTela(QWidget):
 
     def _migrar_antigo(self) -> None:
         """FASE 12: prévia → confirmação → migra em worker (chave natural)."""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog
 
         from app.core.migracao_antiga import (
             analisar_banco_antigo, migrar_banco_antigo)
@@ -1119,17 +1119,17 @@ class ConfiguracoesTela(QWidget):
         except ValueError as exc:
             mostrar_toast(self, str(exc), tipo="erro")
             return
-        resp = QMessageBox.question(
-            self, "Trazer o acervo antigo?",
-            f"O banco antigo tem {previa['total_antigo']} produto(s): "
-            f"{previa['novos']} novo(s) para trazer e "
-            f"{previa['existentes']} que você JÁ tem (serão pulados — "
-            "nada duplica nem sobrescreve)."
-            + (f" O banco antigo repete {r} entre si (entra 1 de cada)."
-               if (r := previa.get('repetidos_no_lote', 0)) else "")
-            + " Continuar?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
+        from app.qt.design.componentes import perguntar
+        if not perguntar(
+                self, "Trazer o acervo antigo?",
+                f"O banco antigo tem {previa['total_antigo']} produto(s): "
+                f"{previa['novos']} novo(s) para trazer e "
+                f"{previa['existentes']} que você JÁ tem (serão pulados — "
+                "nada duplica nem sobrescreve)."
+                + (f" O banco antigo repete {r} entre si (entra 1 de cada)."
+                   if (r := previa.get('repetidos_no_lote', 0)) else "")
+                + " Continuar?",
+                sim="Trazer o acervo", nao="Cancelar"):
             return
         from app.qt.workers import Trabalhador
         trab = Trabalhador(lambda st: migrar_banco_antigo(arquivo, st))
@@ -1848,7 +1848,7 @@ class ConfiguracoesTela(QWidget):
                 self.chk_webp.setChecked(
                     bool(cfg.get("imagem.webp", False)))
                 self.chk_fundo_branco.setChecked(
-                    bool(cfg.get("imagem.detector_fundo_branco", False)))
+                    cfg.get("imagem.detector_fundo_branco", True) is not False)
                 self.chk_estudio_gerador.setChecked(
                     bool(cfg.get("estudio.gerador", False)))
                 from app.core.paths import SystemRoot
