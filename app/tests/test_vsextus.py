@@ -133,6 +133,68 @@ def test_vsextus_hierarquia_nao_inverte(tmp_path, monkeypatch):
         f"a hierarquia inverteu (nome {alt_nome}px × preço {alt_preco}px)")
 
 
+# ============================================== VICESIMUS-SEPTIMUS
+# A ESCADA: cabe? desenha. Não? abrevia. Não? hifeniza. Só então reduz.
+# ==================================================================
+
+
+def test_vseptimus_a_escada_abrevia_antes_de_reduzir(tmp_path):
+    """§2: o degrau 2 existia (glossário RG-22) mas fora da cadeia —
+    a abreviação era decisão PRÉVIA (abreviava mesmo quando cabia) ou
+    nada. Agora: nome completo se couber; se não couber, o abreviado
+    do glossário entra ANTES de o corpo ceder."""
+    from app.rendering.model import (Alinhamento, AlinhamentoV, Regiao,
+                                     Retangulo, TipoRegiao)
+    from app.rendering.nome_fit import precedencia_do_nome
+
+    fontes = _fontes_reais(tmp_path)
+    nome_f = next(fontes.glob("*.ttf")).name
+    # a caixa MEDIDA que discrimina os dois (o completo não cabe nem
+    # hifenizado; o abreviado cabe) — sem ela o teste não testa nada
+    reg = Regiao(TipoRegiao.NOME, Retangulo(0, 0, 26, 11), fonte=nome_f,
+                 tamanho_max_pt=12.0, tamanho_min_pt=8.0,
+                 alinhamento=Alinhamento.ESQUERDA,
+                 alinhamento_v=AlinhamentoV.TOPO)
+    longo = "Achocolatado 3 Corações Tradicional 700 g"
+    curto = "Achoc. 3 Corações 700 g"
+    aj = precedencia_do_nome(longo, None, None, [reg], 96, fontes,
+                             nome_abreviado=curto)
+    assert aj is not None and aj.nome == curto, aj
+    # e o que CABE inteiro nunca é abreviado (a lei v4 do dono)
+    aj2 = precedencia_do_nome("Alface", None, None, [reg], 96, fontes,
+                              nome_abreviado="Alf.")
+    assert aj2 is None or aj2.nome == "Alface", aj2
+
+
+def test_vseptimus_o_quintou_hifeniza_e_alinha_a_esquerda():
+    """§1+§2: o publicado alinha o nome à ESQUERDA e HIFENIZA
+    ("Pau-lista", "Cora-ções"); o sem_hifen do T5 nasceu de ler o
+    hífen do PRÓPRIO dono como artefato."""
+    from app.rendering.encartes import layout_de_encarte
+    from app.rendering.model import Alinhamento, TipoRegiao
+
+    pacote = Path.cwd() / "Templates novos"
+    if not pacote.exists():
+        pytest.skip("REQUER ACERVO DO DONO: 'Templates novos/'")
+    lay = layout_de_encarte("quintou", pacote)
+    nomes = [r for s in lay.paginas[0].slots for r in s.regioes
+             if r.tipo == TipoRegiao.NOME and r.visivel]
+    assert nomes
+    for r in nomes:
+        assert r.alinhamento == Alinhamento.ESQUERDA, r.alinhamento
+        assert r.sem_hifen is False, "o Quintou voltou a proibir o hífen"
+
+
+def test_vseptimus_apostrofo_capitaliza_dos_dois_lados():
+    """Menor da ordem: "D'Ajuda" (a marca) virava "D'ajuda"; o
+    apóstrofo de POSSE ("Hellmann's") não é tocado."""
+    from app.core.sanitize import sanitizar
+
+    assert sanitizar("Mostarda D'Ajuda 200G").nome_sanitizado \
+        == "Mostarda D'Ajuda 200g"
+    assert "Hellmann's" in sanitizar("Hellmann's Supreme").nome_sanitizado
+
+
 def test_vsextus_preenche_caixa_sobrevive_ao_banco():
     """O flag persiste (a lição do incidente da QUINTUS: campo novo
     fora do to_dict morre no reimport)."""

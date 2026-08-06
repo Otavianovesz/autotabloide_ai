@@ -545,6 +545,7 @@ def precedencia_do_nome(
     fontes_dir: str | Path,
     piso_pt: float | None = None,
     marcas: tuple[str, ...] = (),
+    nome_abreviado: str | None = None,
 ) -> NomeAjustado | None:
     """A cadeia dos 6 passos para UMA célula. Devolve None quando não há
     o que decidir (sem região NOME visível, ou nome vazio) — o
@@ -572,6 +573,23 @@ def precedencia_do_nome(
     reg_img = next((r for r in regioes
                     if r.tipo == TipoRegiao.IMAGEM and r.visivel), None)
 
+    # VICESIMUS-SEPTIMUS §2 — A ESCADA, na ordem do dono: (1) cabe no
+    # corpo cheio? desenha; (2) NÃO cabe? ABREVIA pelo glossário DELE;
+    # (3) ainda não? HIFENIZA (o degrau da região, `sem_hifen=False`);
+    # (4) só então REDUZ o corpo, até o piso. Antes o app pulava do 1
+    # direto para o 4 — as duas queixas seguidas ("não coube" e "ficou
+    # pequeno") eram o mesmo defeito nas duas pontas. Aqui mora o
+    # degrau 2: a abreviação é RECURSO DE AJUSTE, nunca decisão prévia
+    # (a lei v4 do dono: informação completa SEMPRE que couber).
+    if (nome_abreviado and nome_abreviado != nome
+            and not _cabe(nome, reg_nome, reg_nome.rect, dpi, fontes_dir)
+            and _cabe(nome_abreviado, reg_nome, reg_nome.rect, dpi,
+                      fontes_dir)):
+        nome = nome_abreviado
+        abreviou = True
+    else:
+        abreviou = False
+
     # QUARTUSDECIMUS (frota): a unidade do DADO entra SEMPRE no
     # descritor de trabalho (dedupe cuida da repetição) — descritor
     # qualificador-puro com unidade só no campo não engana mais o
@@ -582,7 +600,10 @@ def precedencia_do_nome(
         # sem descritor na célula não há para onde mover (I2): a cadeia
         # é só o aviso de elipse (o Quintou/Jornal-fluxo caem aqui)
         if _cabe(nome, reg_nome, reg_nome.rect, dpi, fontes_dir):
-            return None
+            # None = "nada a decidir, use o nome do dado"; quando o
+            # degrau 2 TROCOU o nome, a troca precisa viajar (senão o
+            # abreviado morre aqui e o desenho volta ao completo)
+            return NomeAjustado(nome, descritor) if abreviou else None
         # ADENDO do dono (Quintou, 30/07): "não reduziu o tamanho dos
         # textos maiores" — sem SUBTITULO não há como encurtar; antes
         # da tesoura o PISO CEDE até o mínimo original da região (o

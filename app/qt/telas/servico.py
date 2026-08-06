@@ -750,9 +750,17 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         arranjo = ModoArranjo(it.arranjo) if it.arranjo else ModoArranjo.LEQUE
     except ValueError:
         arranjo = ModoArranjo.LEQUE           # valor estranho: leque padrão
-    # RG-22: a abreviação vale SÓ para o desenho — banco/estante intactos
-    nome = (abreviar_para_tabloide(it.nome, abreviacoes)
-            if abreviacoes else it.nome)
+    # RG-22 → VICESIMUS-SEPTIMUS §2: a abreviação vale SÓ para o
+    # desenho (banco/estante intactos) e virou DEGRAU DA ESCADA — o
+    # nome sai COMPLETO e a cadeia do nome_fit só troca pelo abreviado
+    # quando o completo não cabe (a lei v4 do dono: informação
+    # completa SEMPRE que couber; abreviar antes de precisar era
+    # decidir por ele)
+    nome = it.nome
+    nome_abrev = (abreviar_para_tabloide(it.nome, abreviacoes)
+                  if abreviacoes else None)
+    if nome_abrev == nome:
+        nome_abrev = None
     # RG-33: os selos escolhidos do item viram selos_extra do passe final
     extras = selos_do_item(it.selos, registro_selos) if it.selos else []
     # RG-34: item com validade cadastrada ganha "De olho na validade"
@@ -816,6 +824,7 @@ def dados_para_desenho(it: "ItemMesa", abreviacoes: dict | None = None,
         descritor=descritor,                 # F13-BIS/T2
         desconto_pct=getattr(it, "desconto_pct", None),   # Q2
         marcas_nome=marcas_nome,             # v2: a hierarquia canônica
+        nome_abreviado=nome_abrev,           # SEPTIMUS: o degrau 2
         sabores=tuple(getattr(it, "sabores", None) or ()),   # v3
         categoria=it.categoria,          # F8.2: as seções derivam daqui
         # RG-34: o de/até já vem como frase completa ("OFERTA VÁLIDA DE …");

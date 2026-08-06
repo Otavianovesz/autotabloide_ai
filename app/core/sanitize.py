@@ -224,7 +224,14 @@ def _titulo(token: str, regras: RegrasSanitizacao) -> str:
         return token
     if token[0].isdigit():         # tokens de peso (5kg, 1L, 2x1) ficam intactos
         return token
-    return token[0].upper() + token[1:].lower()
+    base = token[0].upper() + token[1:].lower()
+    # VICESIMUS-SEPTIMUS: nome próprio com APÓSTROFO capitaliza dos dois
+    # lados — "D'Ajuda" (a marca do dono) virava "D'ajuda"; a régua é
+    # conservadora: só o prefixo de UMA letra, o padrão do português
+    # (d'/D'), nunca "Hellmann's" (o apóstrofo no fim é posse)
+    if len(base) > 2 and base[1] == "'" and base[2].isalpha():
+        base = base[:2] + base[2].upper() + base[3:]
+    return base
 
 
 def _expandir_glossario(texto: str, regras: RegrasSanitizacao) -> str:

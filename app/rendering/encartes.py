@@ -1022,9 +1022,17 @@ def _celula_quintou(x: float, y: float) -> list:
     # QUINTUS/C6: arte carregada — o produto NUNCA se repete aqui
     # (exceção DECLARADA da L19; o trio poluía o tijolo azul)
     im.sem_leque = True
+    # VICESIMUS-SEPTIMUS §1: o nome do publicado é alinhado à ESQUERDA
+    # (há uma borda esquerda ÚNICA descendo a coluna; centrado, cada
+    # nome flutuava no próprio centro — o "estranho" que o dono viu).
+    # §2: e HIFENIZA ("Pau-lista", "Cora-ções", "Itaipa-va") — o
+    # sem_hifen do T5 nasceu de ler o hífen do PRÓPRIO dono como
+    # artefato; com ele o corpo era a única saída e o texto encolhia.
     nm = _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
+               alin=Alinhamento.ESQUERDA,
                tam=14.5, tam_min=9.5, cor=branco)
     nm.unidade_caixa_alta = True
+    nm.sem_hifen = False
     # SEXTUS/L24: a região do preço é o CARIMBO INTEIRO do fundo
     # (bbox real 112×64 medido no template, rel 154,193) e o corpo do
     # número é CALCULADO para preenchê-lo — nunca por tamanho_max_pt

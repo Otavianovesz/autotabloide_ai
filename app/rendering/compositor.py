@@ -96,6 +96,10 @@ class DadosProduto:
     # tem SUBTITULO ("Leite Integral" grande + "Parmalat · 1L"). Vazio
     # = comportamento de sempre (testes/latitude antigos intactos).
     marcas_nome: tuple[str, ...] = ()
+    # VICESIMUS-SEPTIMUS §2: o nome pelo GLOSSÁRIO do dono — degrau 2
+    # da escada (só entra quando o completo NÃO cabe; a lei v4 manda
+    # informação completa sempre que couber)
+    nome_abreviado: str | None = None
     # v3: os SABORES declarados viajam também COMO LISTA (não só
     # dissolvidos na prosa do descritor) — o pré-voo compara com as
     # fotos e acusa "anuncia 3 sabores, só 1 tem foto" (a Sardinha)
@@ -1805,7 +1809,8 @@ def compor_pagina(
         aj_nome = precedencia_do_nome(d.nome, d.descritor, d.unidade,
                                       regioes_cel, dpi_ef, fontes_dir,
                                       piso_pt=piso_nome,
-                                      marcas=d.marcas_nome)
+                                      marcas=d.marcas_nome,
+                                      nome_abreviado=d.nome_abreviado)
         rects_subst: dict = dict(rects_foto)
         if aj_nome is not None:
             d = _replace(d, nome=aj_nome.nome, descritor=aj_nome.descritor,
