@@ -314,17 +314,54 @@ def r13_corpo_constante_e_hierarquia(ctx) -> list[str]:
     corpos = {round(d["pt"], 2) for d in ctx["precos_desenhados"]}
     if len(corpos) > 1:
         ruins.append(f"o corpo do preço varia na página: {sorted(corpos)}")
-    for razao in ctx["razoes"]:
-        if not (2.4 - 0.01 <= razao <= 2.9 + 0.01):
-            ruins.append(f"razão preço÷nome fora da banda 2,4–2,9: {razao}")
+    # L31 — **CADA FACE TEM A SUA MÉTRICA.** Onde a face declara os
+    # alvos medidos na peça do dono (subtração, L30), a régua é O
+    # NÚMERO DELA: a banda 2,4–2,9 REPROVARIA o verso do próprio dono,
+    # que opera em 1,50. A banda só vale onde não há medida.
+    if not ctx["alvos_da_face"]:
+        for razao in ctx["razoes"]:
+            if not (2.4 - 0.01 <= razao <= 2.9 + 0.01):
+                ruins.append("razão preço÷nome fora da banda 2,4–2,9: "
+                             f"{razao}")
     # PRECEDÊNCIA DECLARADA, não defeito: quando o nome só cabe inteiro
     # abaixo do piso da banda, a BANDA cede (a lei do dono é
     # "informação completa SEMPRE"; a tesoura é proibida). O caso não
     # some — sai nomeado, e o contador vive no DIVIDA para o arquiteto
     # ver quantas células estão nessa situação.
-    if ctx["banda_cedeu"]:
+    if ctx["banda_cedeu"] and not ctx["alvos_da_face"]:
         ruins.append(f"a banda cedeu em {ctx['banda_cedeu']} célula(s) "
                      "para o nome não ser cortado")
+    return ruins
+
+
+def r14_a_face_bate_com_a_peca_publicada(ctx) -> list[str]:
+    """L30/L31 — **A ESPECIFICAÇÃO EXTRAÍDA POR SUBTRAÇÃO.** Onde a
+    face declara os números medidos na peça do dono (área de tinta e
+    altura do algarismo, escala 1080), o desenho tem de bater com eles.
+
+    É a régua mais forte que existe no projeto: não compara o app com
+    uma regra que alguém escreveu, compara com o que o dono imprimiu.
+    """
+    alvos = ctx["alvos_da_face"]
+    if not alvos:
+        return []
+    ruins = []
+    alvo_alg = alvos.get("algarismo") or 0
+    if alvo_alg and ctx["precos_desenhados"]:
+        alt = ctx["precos_desenhados"][0]["alt_alg_px"] * ctx["k_regua"]
+        # ±5% OU 1 px, o que for maior: a altura do algarismo é inteira
+        # em pixels e um arredondamento não é divergência de desenho
+        if abs(alt - alvo_alg) > max(alvo_alg * 0.05, 1.0):
+            ruins.append(f"o algarismo mede {alt:.0f} px onde a peça do "
+                         f"dono tem {alvo_alg:.0f} (±5%)")
+    alvo_area = alvos.get("area") or 0
+    if alvo_area and ctx["tintas"]:
+        for sid, tinta in ctx["tintas"].items():
+            t = tinta * ctx["k_regua"] ** 2
+            if t > alvo_area * 1.28:
+                ruins.append(f"{sid}: a tinta do produto mede {t:.0f} px² "
+                             f"onde a peça do dono tem {alvo_area:.0f} "
+                             "(+28% é o teto medido)")
     return ruins
 
 
@@ -369,7 +406,9 @@ REGRAS = [r1_hifen_nao_parte_marca, r2_nenhum_nome_elipsado,
           r9_duas_classes_de_celula, r10_zona_da_foto_generosa,
           r11_validade_fora_da_celula, r12_patamar_do_preco,
           # TRICESIMUS — o preço é constante e a hierarquia tem banda
-          r13_corpo_constante_e_hierarquia]
+          r13_corpo_constante_e_hierarquia,
+          # L30/L31 — a face bate com a peça publicada (por subtração)
+          r14_a_face_bate_com_a_peca_publicada]
 
 
 # ============================================================== o motor
@@ -445,6 +484,23 @@ def _contexto(ldef, pagina, img, dados):
     # mede na peça, com a fonte real de cada região)
     precos_arte = [d for d in getattr(img, "_preco_desenhado", {}).values()
                    if d["enche_caixa"]]
+
+    # L30/L31: os alvos MEDIDOS na peça publicada, por FACE, e a escala
+    # da régua do arquiteto (a página em 1080 px de largura)
+    from app.rendering.units import mm_para_px
+    k_regua = 1080.0 / mm_para_px(ldef.largura_mm, ldef.dpi)
+    alvos_face: dict[str, float] = {}
+    for slot in pagina.slots:
+        for r in slot.regioes:
+            if getattr(r, "alvo_altura_algarismo_px", 0.0):
+                alvos_face["algarismo"] = r.alvo_altura_algarismo_px
+            if getattr(r, "alvo_area_tinta_px", 0.0):
+                alvos_face["area"] = r.alvo_area_tinta_px
+    tintas = {sid: t for sid, t in
+              ((s.id, getattr(img, "_tinta_px", {}).get(r.uid))
+               for s in pagina.slots for r in s.regioes
+               if r.tipo == TipoRegiao.IMAGEM and r.visivel)
+              if t}
     razoes = []
     cedeu = getattr(img, "_banda_cedeu", set())
     if precos_arte:
@@ -471,6 +527,11 @@ def _contexto(ldef, pagina, img, dados):
         "precos_desenhados": precos_arte,
         "razoes": razoes,
         "banda_cedeu": len(cedeu),
+        # L30/L31: os alvos DECLARADOS desta FACE (só existem onde há
+        # peça publicada do dono — hoje, o Quintou) e a escala da régua
+        "alvos_da_face": alvos_face,
+        "tintas": tintas,
+        "k_regua": k_regua,
     }
 
 

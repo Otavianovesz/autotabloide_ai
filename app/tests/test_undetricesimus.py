@@ -310,6 +310,92 @@ def test_tricesimus_primus_o_lote_inventado_saiu_da_arte():
         "o gerador ressuscitaria o LOTE na próxima regeração"
 
 
+# ===================================== L30/L31 (a espec por SUBTRAÇÃO)
+# A área de tinta, os alvos por FACE, e a razão como CONSEQUÊNCIA
+# ======================================================================
+
+
+def test_l30_a_foto_escala_por_area_de_tinta(tmp_path, monkeypatch):
+    """L30 — **O DONO NORMALIZA A ÁREA, NÃO A CAIXA.** A especificação
+    saiu da subtração `peça − template`: a proporção da foto dele é
+    LIVRE (0,44 a 2,78) e o que fica igual é quanta TINTA cada produto
+    ocupa. Duas fotos de proporções OPOSTAS na mesma zona têm de sair
+    com área de tinta parecida — antes, cada uma enchia a caixa e a
+    área variava com o formato."""
+    from PIL import Image
+
+    monkeypatch.setenv("AUTOTABLOIDE_ROOT", str(tmp_path / "raiz"))
+    from app.rendering.compositor import DadosProduto, compor_pagina
+    from app.rendering.model import (
+        Ajuste, LayoutDef, Pagina, Regiao, Retangulo, Slot, TipoRegiao,
+    )
+
+    fontes = _fontes_reais(tmp_path)
+
+    def _foto(nome, w, h):
+        p = tmp_path / nome
+        im = Image.new("RGBA", (w, h), (200, 30, 30, 255))
+        im.save(p)
+        return str(p)
+
+    def _pagina(caminho):
+        # a zona precisa COMPORTAR o alvo — quando ela é menor que a
+        # área pedida, quem manda é a caixa (e aí o LAYOUT é que está
+        # curto: é o §4.1 da ordem, que pede a zona sem proporção fixa)
+        z = Regiao(TipoRegiao.IMAGEM, Retangulo(10, 10, 100, 100),
+                   nome="Foto", ajuste=Ajuste.ASSENTAR)
+        z.sem_leque = True
+        z.alvo_area_tinta_px = 19413.0
+        pg = Pagina(slots=[Slot("c1", [z])])
+        lay = LayoutDef(285.75, 381.0, dpi=96, paginas=[pg])
+        d = DadosProduto("Prova", imagem_path=caminho)
+        img = compor_pagina(lay, pg, {"c1": d}, fontes_dir=fontes)
+        return img._tinta_px[z.uid]
+
+    fina = _pagina(_foto("fina.png", 200, 600))      # garrafa (0,33)
+    deitada = _pagina(_foto("deitada.png", 600, 200))  # pacote (3,0)
+    assert fina > 0 and deitada > 0
+    razao = max(fina, deitada) / min(fina, deitada)
+    assert razao < 1.30, (
+        "duas proporções opostas têm de sair com tinta parecida "
+        f"(saíram {fina:.0f} e {deitada:.0f} px², razão {razao:.2f})")
+
+
+def test_l31_cada_face_tem_a_sua_metrica():
+    """L31: frente e verso são peças distintas. A mesma célula, com o
+    parâmetro da face, carrega os números MEDIDOS de cada uma — e a
+    razão preço÷nome cai deles (2,75× e 1,50×), em vez de ser uma
+    banda que reprovaria o verso do próprio dono."""
+    from app.rendering.encartes import _celula_quintou
+    from app.rendering.model import TipoRegiao
+
+    # o algarismo do VERSO fica SEM alvo (0.0): a divergência de
+    # medição está registrada no gerador — a ordem diz 18 px (p85 dos
+    # glifos) e a subtração medida dentro do carimbo dá 57 de mediana
+    # contra 41 da frente. Sem número confiável, vale a regra do
+    # carimbo; o alvo entra quando o algarismo do verso for medido.
+    for verso, area, alg in ((False, 19413.0, 33.0), (True, 26643.0, 0.0)):
+        regs = _celula_quintou(0, 0, verso=verso)
+        img = next(r for r in regs if r.tipo == TipoRegiao.IMAGEM)
+        pre = next(r for r in regs if r.tipo == TipoRegiao.PRECO)
+        nome = next(r for r in regs if r.tipo == TipoRegiao.NOME)
+        assert img.alvo_area_tinta_px == area
+        assert pre.alvo_altura_algarismo_px == alg
+        # o NOME tem 12 px nas DUAS faces — ele não é derivado do preço
+        assert nome.alvo_caixa_alta_px == 12.0
+
+
+def test_l30_alvos_medidos_sobrevivem_ao_banco():
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+
+    r = Regiao(TipoRegiao.IMAGEM, Retangulo(0, 0, 20, 10))
+    r.alvo_area_tinta_px = 19413.0
+    r.alvo_altura_algarismo_px = 33.0
+    volta = Regiao.from_dict(r.to_dict())
+    assert volta.alvo_area_tinta_px == 19413.0
+    assert volta.alvo_altura_algarismo_px == 33.0
+
+
 # ================================================================== §5.4
 # O CARIMBO NA ARTE (e o roundtrip — a lição do incidente da QUINTUS)
 # ======================================================================

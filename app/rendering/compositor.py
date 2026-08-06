@@ -504,6 +504,25 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 if bbox:
                     img = img.crop(bbox)
                 escala = min(rw / img.width, rh / img.height)
+                # L30 (a especificação extraída por SUBTRAÇÃO da peça do
+                # dono) — **ELE NORMALIZA A ÁREA, NÃO A CAIXA.** Cada
+                # produto entra no formato natural dele (a proporção
+                # medida vai de 0,44 a 2,78) e o que fica igual é
+                # QUANTA TINTA ocupa: 19.413 px² na frente, 26.643 no
+                # verso (escala 1080). A caixa fixa era a doença — e é
+                # a causa raiz de "as imagens estão pequenas", viva
+                # desde a primeira rodada. O alvo NUNCA estoura a zona
+                # (não cruza o carimbo): quem manda no teto é a célula.
+                _alvo_area = getattr(reg, "alvo_area_tinta_px", 0.0)
+                if _alvo_area > 0:
+                    _frac = _fracao_de_tinta(img)
+                    _pag = getattr(base, "_pagina_mm", None)
+                    if _frac > 0 and _pag:
+                        _e = mm_para_px(_pag[0], dpi) / 1080.0
+                        _tinta_1x = _frac * img.width * img.height
+                        _esc_alvo = ((_alvo_area * _e * _e)
+                                     / max(_tinta_1x, 1)) ** 0.5
+                        escala = min(escala, _esc_alvo)
                 # VICESIMUS-PRIMUS/P4: NORMALIZAR POR ÁREA DE TINTA —
                 # a foto muito CHEIA (saco que enche a caixa) comprime
                 # em direção à mediana da página (teto: tinta ≤ 62% da
@@ -567,6 +586,12 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 if not hasattr(base, "_silhuetas"):
                     base._silhuetas = {}
                 base._silhuetas[reg.uid] = (ox, oy, nw, nh)
+                # L30/§1: a ÁREA DE TINTA desenhada — é ela que a
+                # especificação do dono normaliza, e é ela que a prova
+                # compara com as 15 fotos da peça publicada
+                if not hasattr(base, "_tinta_px"):
+                    base._tinta_px = {}
+                base._tinta_px[reg.uid] = _fracao_de_tinta(img) * nw * nh
                 return
             if reg.ajuste == Ajuste.PREENCHER:
                 escala = max(rw / img.width, rh / img.height)
@@ -1379,8 +1404,9 @@ def corpo_para_caixa_alta(fontes_dir: Path, nome_fonte: str,
     return hi if nunca_abaixo else lo
 
 
-def corpo_do_preco_da_pagina(pares, dpi: int,
-                             fontes_dir: Path) -> tuple[float, float]:
+def corpo_do_preco_da_pagina(pares, dpi: int, fontes_dir: Path,
+                             escala_pagina: float = 0.0
+                             ) -> tuple[float, float]:
     """TRICESIMUS §2 / **L27 — DIMENSIONAR PELO CONJUNTO, NÃO PELA PEÇA**.
 
     ``pares`` são os (região de preço, valor) da página que enchem
@@ -1395,11 +1421,24 @@ def corpo_do_preco_da_pagina(pares, dpi: int,
     defeito de impressão.
     """
     melhor_pt, melhor_alt = None, 0.0
+    alvo = 0.0
     for reg, valor in pares:
         pt, alt = corpo_pela_caixa(reg, valor, dpi, fontes_dir)
+        alvo = alvo or getattr(reg, "alvo_altura_algarismo_px", 0.0)
         if melhor_pt is None or pt < melhor_pt:
             melhor_pt, melhor_alt = pt, alt
-    return (melhor_pt or 0.0), melhor_alt
+    melhor_pt = melhor_pt or 0.0
+    # L30/L31: onde a peça do dono foi MEDIDA, o alvo é a altura do
+    # ALGARISMO dela (por FACE: 33 px na frente, 18 no verso, escala
+    # 1080) — encher o carimbo vira o TETO. O alvo se aplica DEPOIS do
+    # pior caso, sobre o corpo único da página; aplicá-lo por célula
+    # arrastava o mínimo para baixo (medido: 31 px onde a peça tem 33).
+    if alvo > 0 and melhor_alt > 0 and escala_pagina > 0:
+        fator = (alvo * escala_pagina) / melhor_alt
+        if fator < 1.0:                    # só REDUZ: o carimbo é o teto
+            melhor_pt *= fator
+            melhor_alt = alvo * escala_pagina
+    return melhor_pt, melhor_alt
 
 
 def _desenhar_preco(
@@ -2042,7 +2081,8 @@ def compor_pagina(
     base._alt_algarismo_pagina = 0.0
     if _pares_preco:
         _pt_pg, _alt_pg = corpo_do_preco_da_pagina(
-            _pares_preco, dpi_ef, fontes_dir)
+            _pares_preco, dpi_ef, fontes_dir,
+            escala_pagina=mm_para_px(layout.largura_mm, dpi_ef) / 1080.0)
         base._corpo_preco_pagina = _pt_pg
         base._alt_algarismo_pagina = _alt_pg
 
@@ -2306,7 +2346,12 @@ def compor_pagina(
                     _pt_alvo = corpo_para_caixa_alta(
                         fontes_dir, reg.fonte, _alvo * _esc, dpi_ef,
                         nunca_abaixo=True)
-                    teto_b = min(teto_b, max(piso_b, _pt_alvo))
+                    # **L31: o ALVO MEDIDO MANDA, a razão é consequência.**
+                    # O nome tem 12 px nas DUAS faces do publicado; amarrá-lo
+                    # ao preço pela banda encolhia o nome do verso para 7 px
+                    # quando o algarismo de lá caiu para 18 (medido). A banda
+                    # fica como ALARME, não como régua.
+                    teto_b, piso_b = _pt_alvo, min(piso_b, _pt_alvo)
                 campos["tamanho_max_pt"] = teto_b
                 # ...mas o piso da banda é PREFERÊNCIA, não mordaça: se
                 # o nome não couber nele, quem cede é a banda, nunca a

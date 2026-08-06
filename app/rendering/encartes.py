@@ -1038,7 +1038,7 @@ def _quintou() -> list[Slot]:
 _F_QUICK = "Quicksand-Bold.ttf"            # QUATER/Q2: a fonte REAL
 
 
-def _celula_quintou(x: float, y: float) -> list:
+def _celula_quintou(x: float, y: float, *, verso: bool = False) -> list:
     """A célula do Quintou MEDIDA no publicado (QUATER §2 → QUINTUS/
     L23): foto usa a zona inteira acima do rodapé; nome em até 3
     linhas Quicksand branco CENTRADO na metade esquerda, com a UNIDADE
@@ -1051,6 +1051,12 @@ def _celula_quintou(x: float, y: float) -> list:
     # QUINTUS/C6: arte carregada — o produto NUNCA se repete aqui
     # (exceção DECLARADA da L19; o trio poluía o tijolo azul)
     im.sem_leque = True
+    # L30 (especificação extraída por SUBTRAÇÃO da peça publicada): o
+    # dono normaliza a TINTA e deixa a PROPORÇÃO LIVRE — cada produto
+    # no formato natural dele (0,44 a 2,78 medidos). A caixa fixa era
+    # a doença. **L31: cada FACE tem o seu número** — o verso tem 37%
+    # mais tinta por célula que a frente, e não se copia um do outro.
+    im.alvo_area_tinta_px = 26643.0 if verso else 19413.0
     # TRICESIMUS-PRIMUS (3ª errata do arquiteto, MEDIDA): o nome do
     # publicado é CENTRADO na faixa de texto — ele mediu 40 linhas e o
     # `x` inicial varia de 7 a 58 enquanto o CENTRO fica em 74,5–77,0
@@ -1079,6 +1085,24 @@ def _celula_quintou(x: float, y: float) -> list:
                 cor=branco, tam=34.0, tam_cent=34.0,
                 centavos_na_base=True, moeda=False)
     pr.preenche_caixa = True
+    # L30/L31: o ALGARISMO da FRENTE mede 33 px na peça publicada
+    # (escala 1080) — o alvo é o número medido, e encher o carimbo
+    # vira o TETO.
+    #
+    # O VERSO fica SEM alvo declarado, e isto é uma DIVERGÊNCIA DE
+    # MEDIÇÃO que eu registro em vez de resolver sozinho: a ordem diz
+    # 18 px, tirado do p85 dos 426 glifos do verso. Refiz a mesma
+    # subtração medindo DENTRO do carimbo, célula a célula, e a mancha
+    # do preço do verso mede 57 px de mediana contra 41 da frente — o
+    # verso é MAIOR, não menor. O p85 do verso cai em texto pequeno
+    # porque lá há mais texto pequeno (o disclaimer completo), e não
+    # porque o preço encolheu. Aplicar os 18 px encolhia o verso a 19
+    # px na prova visual, contra os ~28 do desenho atual. Sem alvo, a
+    # regra do carimbo (o teto) continua valendo — é o comportamento
+    # conhecido, e o número certo depende de o arquiteto medir o
+    # ALGARISMO isolado do verso (a minha janela pega o bloco todo).
+    if not verso:
+        pr.alvo_altura_algarismo_px = 33.0
     return [im, nm, pr]
 
 
@@ -1097,7 +1121,8 @@ def _quintou_verso() -> list[Slot]:
     for pos in range(1, 17):
         lin, col = divmod(pos - 1, 4)
         x, y = xs_col[col], ys_lin[lin]
-        slots.append(_slot(f"vpos-{pos:02d}", _celula_quintou(x, y),
+        slots.append(_slot(f"vpos-{pos:02d}",
+                           _celula_quintou(x, y, verso=True),
                            origem=(x, y)))
     # ADENDO do dono (30/07): o disclaimer do publicado é a FRASE
     # COMPLETA com o aviso das imagens, alinhada à DIREITA — e a DATA

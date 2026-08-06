@@ -258,6 +258,15 @@ class Regiao:
     # original, o alvo é o NÚMERO medido — a razão da hierarquia fica
     # como guarda-corpo. 0.0 = não medido (o layout manda como sempre).
     alvo_caixa_alta_px: float = 0.0
+    # L30 — **A ESPECIFICAÇÃO SE EXTRAI POR SUBTRAÇÃO** (peça − template
+    # = conteúdo). Os dois alvos abaixo saíram assim, exatos, da peça
+    # publicada do dono, e valem POR FACE (L31: frente e verso são peças
+    # gráficas distintas). 0.0 = não medido.
+    #   ``alvo_area_tinta_px``: quanta TINTA o produto ocupa (px² na
+    #   escala 1080) — o dono normaliza a ÁREA, não a caixa.
+    #   ``alvo_altura_algarismo_px``: a altura do algarismo do preço.
+    alvo_area_tinta_px: float = 0.0
+    alvo_altura_algarismo_px: float = 0.0
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -365,6 +374,8 @@ class Regiao:
             "preenche_caixa": self.preenche_caixa,       # SEXTUS/L24
             "carimbo_na_arte": self.carimbo_na_arte,     # UNDETRICESIMUS
             "alvo_caixa_alta_px": self.alvo_caixa_alta_px,   # L29
+            "alvo_area_tinta_px": self.alvo_area_tinta_px,           # L30
+            "alvo_altura_algarismo_px": self.alvo_altura_algarismo_px,
         }
 
     @classmethod
@@ -420,6 +431,8 @@ class Regiao:
             preenche_caixa=d.get("preenche_caixa", False),   # L24 aditivo
             carimbo_na_arte=d.get("carimbo_na_arte", False),
             alvo_caixa_alta_px=d.get("alvo_caixa_alta_px", 0.0),
+            alvo_area_tinta_px=d.get("alvo_area_tinta_px", 0.0),
+            alvo_altura_algarismo_px=d.get("alvo_altura_algarismo_px", 0.0),
         )
 
 
