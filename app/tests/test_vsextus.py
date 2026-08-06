@@ -20,11 +20,22 @@ def _fontes_reais(tmp_path):
     return fontes
 
 
-def test_vsextus_corpo_pela_caixa_curto_maior_que_longo(tmp_path):
-    """L24: o corpo vem da CAIXA — "0,19" (curto) ganha corpo MAIOR
-    que "11,91" (longo) na mesma caixa, e os dois respeitam os tetos
-    (~85% da largura, ~84% da altura). A mutação que volta ao max_pt
-    fixo deixa os dois iguais e este teste vermelho."""
+def test_vsextus_corpo_pela_caixa_vem_da_caixa(tmp_path):
+    """L24: o corpo do número vem da CAIXA do carimbo, nunca do
+    ``tamanho_max_pt`` da região — e respeita os tetos de largura e de
+    altura. A mutação que volta ao max_pt fixo deixa este teste
+    vermelho.
+
+    **EDITADO DE PROPÓSITO na TRICESIMUS (errata do arquiteto).** A
+    versão original exigia que "0,19" (curto) ganhasse corpo MAIOR que
+    "11,91" (longo) na mesma caixa — a VARIAÇÃO por célula. Ela nasceu
+    da medição de que "a referência varia 55→80 px"; medido de novo, o
+    publicado do dono é CONSTANTE (33 px em 14 dos 15 carimbos), e a
+    variação por célula é o mosaico que ele reclamou. Quem governa o
+    desenho agora é ``corpo_do_preco_da_pagina`` (o pior caso, um corpo
+    só na página — L27), guardado em test_undetricesimus.py e na r13 da
+    rede dos oito. Esta função continua sendo a MEDIDA, e é isso que
+    este teste guarda."""
     from decimal import Decimal
 
     from app.rendering.compositor import _rect_px, corpo_pela_caixa
@@ -38,12 +49,13 @@ def test_vsextus_corpo_pela_caixa_curto_maior_que_longo(tmp_path):
                  preenche_caixa=True)
     pt_curto, alt_curto = corpo_pela_caixa(reg, Decimal("0.19"), 96, fontes)
     pt_longo, alt_longo = corpo_pela_caixa(reg, Decimal("11.91"), 96, fontes)
-    assert pt_curto > pt_longo, (pt_curto, pt_longo)
     _x, _y, rw, rh = _rect_px(reg.rect, 96)
     assert alt_curto <= rh * 0.85
     assert alt_longo <= rh * 0.85
+    assert pt_curto >= pt_longo, (pt_curto, pt_longo)
     # e nenhum dos dois é o max_pt da região (o corpo é da CAIXA)
     assert abs(pt_curto - 34.0) > 1.0
+    assert abs(pt_longo - 34.0) > 1.0
 
 
 def test_vsextus_o_numero_enche_o_carimbo_por_pixel(tmp_path, monkeypatch):

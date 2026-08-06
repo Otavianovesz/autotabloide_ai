@@ -831,6 +831,13 @@ def _desenhar_texto(
         "tipo": reg.tipo.value, "nome": reg.nome,
         "rect_alt_px": rh, "texto": texto,
         "max_pt": reg.tamanho_max_pt, "min_pt": reg.tamanho_min_pt,
+        # TRICESIMUS §3: a fonte entra no registro porque a razão da
+        # hierarquia se mede em ALTURA DE CAIXA ALTA, e cada família
+        # tem a sua — medir com a fonte errada dá razão errada (foi o
+        # que a 1ª medição desta rodada fez, do meu lado)
+        "fonte": reg.fonte,
+        "cap_px": _altura_caixa_alta(fontes_dir, reg.fonte,
+                                     aj.tamanho_pt, dpi),
     }
     total_h = aj.altura_linha_px * len(aj.linhas)
     oy = _y_alinhado(y, rh, total_h, reg)     # F13/C4: TOPO/CENTRO/BASE
@@ -1293,10 +1300,15 @@ def corpo_pela_caixa(reg: Regiao, valor, dpi: int,
                      fontes_dir: Path) -> tuple[float, float]:
     """VICESIMUS-SEXTUS/L24: o corpo (pt) que ENCHE o elemento de arte
     — cresce até a largura do conjunto chegar a ~85% OU a altura do
-    algarismo chegar a ~88% da caixa, o que bater primeiro (os tetos
-    calibrados pela sobreposição com o publicado do Quintou; preço
-    curto ganha corpo maior — a variação 55→80 px da referência).
-    Devolve ``(pt, altura_do_algarismo_px)``."""
+    algarismo chegar a ~84% da caixa, o que bater primeiro.
+    Devolve ``(pt, altura_do_algarismo_px)``.
+
+    TRICESIMUS (errata do arquiteto): esta conta é POR CÉLULA e sozinha
+    produz MOSAICO — o publicado do dono tem 33 px em 14 dos 15
+    carimbos e o app chegou a nove tamanhos numa página. Ela continua
+    sendo a MEDIDA (a L24 vale), mas quem manda no desenho é
+    ``corpo_do_preco_da_pagina``: mede o PIOR CASO e aplica um corpo só
+    à página inteira (L27 — dimensionar pelo conjunto, não pela peça)."""
     from app.rendering.units import pt_para_px as _ppx
     _x, _y, rw, rh = _rect_px(reg.rect, dpi)
     reais, centavos = _reais_centavos(valor)
@@ -1314,11 +1326,80 @@ def corpo_pela_caixa(reg: Regiao, valor, dpi: int,
                  + f_p.getlength("," + centavos))
         bb = f_g.getbbox(reais)
         alt_alg = (bb[3] - bb[1]) if bb else sum(f_g.getmetrics())
-        if total <= rw * 0.85 and alt_alg <= rh * 0.84:
+        # TRICESIMUS §5.3: o teto de LARGURA é o que manda no carimbo
+        # (a altura nunca chega a 50% da caixa) — e era ele que segurava
+        # o número em 28 px enquanto o publicado do dono tem 33. Medido
+        # na peça dele: o número ENCHE o carimbo (~99% da largura); o
+        # 85% era folga minha, não desenho dele.
+        if total <= rw * 0.98 and alt_alg <= rh * 0.84:
             lo, alt_lo = mid, alt_alg
         else:
             hi = mid
     return lo, alt_lo
+
+
+def _altura_caixa_alta(fontes_dir: Path, nome_fonte: str,
+                       pt: float, dpi: int) -> int:
+    """Altura, em px, das MAIÚSCULAS desta fonte neste corpo."""
+    f = fonte_segura(fontes_dir, nome_fonte,
+                     max(1, round(pt_para_px(pt, dpi))))
+    bb = f.getbbox("MEIA")
+    return (bb[3] - bb[1]) if bb else 0
+
+
+def corpo_para_caixa_alta(fontes_dir: Path, nome_fonte: str,
+                          alvo_px: float, dpi: int,
+                          nunca_abaixo: bool = False) -> float:
+    """O corpo (pt) cuja ALTURA DE CAIXA ALTA mede ``alvo_px``.
+
+    TRICESIMUS §3: a razão da hierarquia é medida como o arquiteto
+    mede na peça — altura do ALGARISMO do preço ÷ altura das
+    MAIÚSCULAS do nome. Para converter a razão em corpo é preciso a
+    métrica real da fonte (cada família tem sua caixa alta), então a
+    conta mede o bbox de "MEIA" em vez de supor um fator.
+
+    ``nunca_abaixo`` diz de que lado a conta arredonda. Sem ele, pega o
+    maior corpo cuja caixa alta ainda CABE no alvo (o TETO da banda);
+    com ele, o menor corpo cuja caixa alta já ALCANÇA o alvo (o PISO).
+    Sem essa distinção o piso arredondava para baixo e a razão escapava
+    da banda por um fio (2,91 medido na 1ª prova desta rodada)."""
+    if alvo_px <= 0:
+        return 0.0
+    lo, hi = 3.0, 200.0
+    for _ in range(20):
+        meio = (lo + hi) / 2
+        f = fonte_segura(fontes_dir, nome_fonte,
+                         max(1, round(pt_para_px(meio, dpi))))
+        bb = f.getbbox("MEIA")
+        alt = (bb[3] - bb[1]) if bb else 0
+        if alt <= alvo_px:
+            lo = meio
+        else:
+            hi = meio
+    return hi if nunca_abaixo else lo
+
+
+def corpo_do_preco_da_pagina(pares, dpi: int,
+                             fontes_dir: Path) -> tuple[float, float]:
+    """TRICESIMUS §2 / **L27 — DIMENSIONAR PELO CONJUNTO, NÃO PELA PEÇA**.
+
+    ``pares`` são os (região de preço, valor) da página que enchem
+    elemento de arte. Devolve o corpo ÚNICO (pt) e a altura do
+    algarismo (px) que valem para TODOS eles: o menor corpo entre os
+    piores casos — o preço mais longo no seu carimbo manda, e os
+    outros usam o mesmo.
+
+    É o que qualquer diagramador faz (acerta o pior caso e repete) e é
+    o que o dono fez à mão: 33 px em 14 dos 15 carimbos do publicado.
+    Corpo por célula produzia MOSAICO, e mosaico o olho lê como
+    defeito de impressão.
+    """
+    melhor_pt, melhor_alt = None, 0.0
+    for reg, valor in pares:
+        pt, alt = corpo_pela_caixa(reg, valor, dpi, fontes_dir)
+        if melhor_pt is None or pt < melhor_pt:
+            melhor_pt, melhor_alt = pt, alt
+    return (melhor_pt or 0.0), melhor_alt
 
 
 def _desenhar_preco(
@@ -1431,7 +1512,11 @@ def _desenhar_preco(
     # DIMENSIONA PELO ELEMENTO — com ``preenche_caixa`` o corpo é
     # CALCULADO para preencher; nunca há max_pt, há teto de caixa.
     if getattr(reg, "preenche_caixa", False):
-        pt_grande, _alt = corpo_pela_caixa(reg, valor, dpi, fontes_dir)
+        # TRICESIMUS/L27: o corpo é o DA PÁGINA (medido 1× pelo pior
+        # caso, antes do desenho) — a conta por célula só entra se
+        # alguém compuser a região fora de uma página (prévia isolada)
+        pt_grande = getattr(base, "_corpo_preco_pagina", 0.0) \
+            or corpo_pela_caixa(reg, valor, dpi, fontes_dir)[0]
         pt_peq = pt_grande * ((reg.tamanho_centavos_pt or
                                reg.tamanho_max_pt * 0.5)
                               / max(reg.tamanho_max_pt, 0.001))
@@ -1473,6 +1558,21 @@ def _desenhar_preco(
                       features=["tnum"])
         except (KeyError, TypeError):
             draw.text(xy, txt, font=fonte_d, fill=reg.cor, anchor="ls")
+    # TRICESIMUS §5.3: o que o preço REALMENTE desenhou fica registrado
+    # (corpo e altura do algarismo) — é a lista que a prova por
+    # sobreposição compara com a do publicado do dono, e é o que a
+    # regra r13 mede na rede dos oito. Medir por fora, na imagem,
+    # esbarra na hachura do carimbo (foi o que fez a régua do
+    # arquiteto ver variação onde não havia).
+    if not hasattr(base, "_preco_desenhado"):
+        base._preco_desenhado = {}
+    _bb = f_g.getbbox(reais)
+    base._preco_desenhado[reg.uid] = {
+        "pt": round(pt_grande, 2),
+        "alt_alg_px": (_bb[3] - _bb[1]) if _bb else alt_g,
+        "enche_caixa": bool(getattr(reg, "preenche_caixa", False)),
+        "nome": reg.nome or reg.tipo.value,
+    }
     if prefixo:
         _texto_preco((cursor, baseline), prefixo, f_p)
     cursor += w_prefixo
@@ -1925,6 +2025,27 @@ def compor_pagina(
         for s in pagina.slots for r in s.regioes if r.visivel}
     base._pagina_mm = (layout.largura_mm, layout.altura_mm)
 
+    # TRICESIMUS §2 (L27): O PREÇO É CONSTANTE NA PÁGINA. O corpo sai
+    # do PIOR CASO — o preço mais longo no seu carimbo — e vale para
+    # todos. Medido 1× aqui, antes de qualquer desenho.
+    _pares_preco = []
+    for _i, _slot in enumerate(pagina.slots):
+        _d = _dados_do_slot(dados, lista, _i, slot_id=_slot.id)
+        if _d is None or _d.preco_por is None:
+            continue
+        for _r in _slot.regioes:
+            if (_r.tipo == TipoRegiao.PRECO and _r.visivel
+                    and getattr(_r, "preenche_caixa", False)
+                    and _r.papel_preco != PapelPreco.DE):
+                _pares_preco.append((_r, _d.preco_por))
+    base._corpo_preco_pagina = 0.0
+    base._alt_algarismo_pagina = 0.0
+    if _pares_preco:
+        _pt_pg, _alt_pg = corpo_do_preco_da_pagina(
+            _pares_preco, dpi_ef, fontes_dir)
+        base._corpo_preco_pagina = _pt_pg
+        base._alt_algarismo_pagina = _alt_pg
+
     zonas_pg = [r.rect.larg_mm for s in pagina.slots
                 for r in s.regioes
                 if r.tipo == TipoRegiao.IMAGEM and r.visivel]
@@ -2097,20 +2218,30 @@ def compor_pagina(
                 if not hasattr(base, "_p4_uids"):
                     base._p4_uids = set()
                 base._p4_uids.add(_img_slot.uid)
-        # VICESIMUS-SEXTUS §4: A HIERARQUIA NÃO INVERTE — onde o preço
-        # ENCHE um elemento de arte (L24), a razão preço÷nome nunca
-        # desce de 2,2×: o corpo do NOME ganha teto pela altura REAL
-        # do algarismo daquela célula; quem cede é o nome (abrevia e
-        # hifeniza), nunca o preço.
-        cap_nome_pt = None
-        _preco_cx = next((r for r in slot.regioes
-                          if r.tipo == TipoRegiao.PRECO and r.visivel
-                          and getattr(r, "preenche_caixa", False)), None)
-        if _preco_cx is not None and d.preco_por is not None:
-            _pt_pc, _alt_pc = corpo_pela_caixa(_preco_cx, d.preco_por,
-                                               dpi_ef, fontes_dir)
-            if _alt_pc > 0:
-                cap_nome_pt = (_alt_pc / 2.2) * 72.0 / dpi_ef
+        # VICESIMUS-SEXTUS §4 → TRICESIMUS §3 (errata do arquiteto): A
+        # HIERARQUIA TEM AS DUAS PONTAS. A regra antiga ("a razão
+        # preço÷nome nunca desce de 2,2×") era PISO SEM TETO — o preço
+        # cresceu, o nome ficou, e a razão foi a 3,7× (o "absurdamente
+        # pequena" do dono). Agora é BANDA: entre 2,4× e 2,9×, medida
+        # como o arquiteto mede — altura do ALGARISMO ÷ altura da
+        # CAIXA ALTA do nome (o publicado dele está em 2,75×, no meio).
+        # O alvo é o meio da banda; as pontas viram teto e piso.
+        banda_nome = None
+        _alt_pc = getattr(base, "_alt_algarismo_pagina", 0.0)
+        if _alt_pc > 0 and any(
+                r.tipo == TipoRegiao.PRECO and r.visivel
+                and getattr(r, "preenche_caixa", False)
+                for r in slot.regioes):
+            _reg_nm = next((r for r in slot.regioes
+                            if r.tipo == TipoRegiao.NOME and r.visivel),
+                           None)
+            if _reg_nm is not None:
+                banda_nome = (
+                    corpo_para_caixa_alta(fontes_dir, _reg_nm.fonte,
+                                          _alt_pc / 2.9, dpi_ef,
+                                          nunca_abaixo=True),       # piso
+                    corpo_para_caixa_alta(fontes_dir, _reg_nm.fonte,
+                                          _alt_pc / 2.4, dpi_ef))   # teto
         # UNDETRICESIMUS §3: esta é célula DE PRODUTO (tem foto e nome) —
         # a validade da página não se repete aqui dentro
         base._slot_de_produto = bool(zonas_img) and any(
@@ -2145,12 +2276,37 @@ def compor_pagina(
                 if min_ef != reg.tamanho_min_pt:
                     campos["tamanho_min_pt"] = min_ef
             if (reg.tipo == TipoRegiao.NOME and reg.visivel
-                    and cap_nome_pt is not None
-                    and reg.tamanho_max_pt > cap_nome_pt):
-                # SEXTUS §4: o teto do nome pela hierarquia 2,2× —
-                # nunca abaixo do mínimo da própria região (sanidade)
-                campos["tamanho_max_pt"] = max(cap_nome_pt,
-                                               reg.tamanho_min_pt)
+                    and banda_nome is not None):
+                # TRICESIMUS §3: a BANDA da hierarquia (2,4×–2,9×) vira
+                # teto E piso do corpo do nome. O teto impede o nome de
+                # brigar com o preço; o PISO é o que faltava — sem ele
+                # o preço crescia sozinho e o nome ficava "absurdamente
+                # pequeno" (a queixa do dono). Com o preço constante na
+                # página (L27), a banda também é constante: o nome sai
+                # do mesmo tamanho em todas as células.
+                piso_b, teto_b = banda_nome
+                campos["tamanho_max_pt"] = teto_b
+                # ...mas o piso da banda é PREFERÊNCIA, não mordaça: se
+                # o nome não couber nele, quem cede é a banda, nunca a
+                # informação ("informação completa SEMPRE" é lei do
+                # dono, e a tesoura é o único resultado proibido). O
+                # mínimo declarado da região volta a valer — é a mesma
+                # forma do degrau 4 da escada (preferência ordenada).
+                from app.rendering.nome_fit import _cabe as _cabe_nome
+                _r_ef = campos.get("rect", reg.rect)
+                _teste = _replace(reg, tamanho_max_pt=teto_b,
+                                  tamanho_min_pt=min(teto_b, piso_b))
+                if _cabe_nome(d.nome, _teste, _r_ef, dpi_ef, fontes_dir,
+                              getattr(base, "_atomos_marcas", frozenset())):
+                    campos["tamanho_min_pt"] = min(teto_b, piso_b)
+                else:
+                    # a banda cedeu — fica REGISTRADO (I2): quem audita
+                    # a hierarquia precisa saber que aquela célula está
+                    # fora da banda POR ORDEM DE PRECEDÊNCIA, e não por
+                    # defeito do motor
+                    if not hasattr(base, "_banda_cedeu"):
+                        base._banda_cedeu = set()
+                    base._banda_cedeu.add(reg.uid)
             reg_f = _replace(reg, **campos) if campos else reg
             d_reg = d
             if reg.uid in por_zona:

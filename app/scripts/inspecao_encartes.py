@@ -455,6 +455,29 @@ def layout_do_banco(chave: str, pasta_pacote: Path, raiz=None):
         db.engine.dispose()
 
 
+def _relatar_hierarquia(chave: str, n_pag: int, lay, img) -> None:
+    """TRICESIMUS §5.3: a prova da errata, na escala em que o arquiteto
+    mediu o publicado (página-régua de 1080 px). Imprime a lista de
+    alturas do algarismo — que tem de ser CONSTANTE (L27) — e a razão
+    preço ÷ nome, que tem de cair na banda 2,4×–2,9×."""
+    from app.rendering.units import mm_para_px
+
+    pre = [d for d in getattr(img, "_preco_desenhado", {}).values()
+           if d["enche_caixa"]]
+    if not pre:
+        return
+    k = 1080.0 / mm_para_px(lay.largura_mm, lay.dpi)
+    alturas = sorted({round(d["alt_alg_px"] * k) for d in pre})
+    nomes = [d for d in getattr(img, "_texto_desenhado", {}).values()
+             if d["tipo"] == "NOME" and (d.get("cap_px") or 0) > 0]
+    razoes = sorted({round(pre[0]["alt_alg_px"] / d["cap_px"], 2)
+                     for d in nomes})
+    cedeu = len(getattr(img, "_banda_cedeu", ()))
+    print(f"    [hierarquia {chave} p{n_pag}] algarismo(1080px)="
+          f"{alturas}  corpos={sorted({d['pt'] for d in pre})}  "
+          f"razão preço÷nome={razoes}  banda cedeu em {cedeu} célula(s)")
+
+
 def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
     from PIL import Image
 
@@ -506,6 +529,7 @@ def _compor(chave: str, pasta_pacote: Path) -> list[Path]:
                     r.texto_fixo = etiquetas[s.id]
 
         app_full = compor_pagina(lay, pag, dados)
+        _relatar_hierarquia(chave, n_pag, lay, app_full)
         alt_1x = round(1080 * lay.altura_mm / lay.largura_mm)
         app_1x = app_full.resize((1080, alt_1x), Image.LANCZOS)
         if spec.get("preview"):

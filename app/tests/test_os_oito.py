@@ -297,11 +297,54 @@ def r8_preco_coerente_na_pagina(ctx) -> list[str]:
     return []
 
 
+def r13_corpo_constante_e_hierarquia(ctx) -> list[str]:
+    """TRICESIMUS / **L27 — DIMENSIONAR PELO CONJUNTO, NÃO PELA PEÇA**.
+
+    Duas medidas na mesma regra, porque são o mesmo defeito visto de
+    dois ângulos (o dono viu os dois na mesma peça):
+
+    1. o corpo do preço é UM SÓ na página — o publicado dele tem 33 px
+       em 14 dos 15 carimbos e o app chegou a NOVE tamanhos numa
+       página; corpo por célula produz mosaico;
+    2. a razão preço ÷ nome fica na BANDA 2,4×–2,9× (a dele é 2,75×) —
+       a regra antiga dava piso sem teto e o nome ficou "absurdamente
+       pequeno" enquanto o preço crescia sozinho.
+    """
+    ruins = []
+    corpos = {round(d["pt"], 2) for d in ctx["precos_desenhados"]}
+    if len(corpos) > 1:
+        ruins.append(f"o corpo do preço varia na página: {sorted(corpos)}")
+    for razao in ctx["razoes"]:
+        if not (2.4 - 0.01 <= razao <= 2.9 + 0.01):
+            ruins.append(f"razão preço÷nome fora da banda 2,4–2,9: {razao}")
+    # PRECEDÊNCIA DECLARADA, não defeito: quando o nome só cabe inteiro
+    # abaixo do piso da banda, a BANDA cede (a lei do dono é
+    # "informação completa SEMPRE"; a tesoura é proibida). O caso não
+    # some — sai nomeado, e o contador vive no DIVIDA para o arquiteto
+    # ver quantas células estão nessa situação.
+    if ctx["banda_cedeu"]:
+        ruins.append(f"a banda cedeu em {ctx['banda_cedeu']} célula(s) "
+                     "para o nome não ser cortado")
+    return ruins
+
+
 # DÍVIDA DECLARADA (DUODETRICESIMUS §14): o que a rede achou HOJE e
 # cujo conserto é de LAYOUT/arte, não de motor — fica NOMEADA aqui,
 # nunca escondida. Defeito novo deixa o teste vermelho; dívida
 # consertada também (o número tem de baixar junto com o conserto).
 DIVIDA = {
+    # TRICESIMUS — PRECEDÊNCIA DECLARADA (uma linha por página): com o
+    # ITEM DE PROVA (o nome mais longo que qualquer um do dono, feito
+    # para estressar as regras), o piso da banda 2,4–2,9 não cabe na
+    # caixa de nome do Quintou e a BANDA cede para o nome não ser
+    # cortado. Na página REAL do dono (galeria, dados dele) o quadro é
+    # outro e está medido: algarismo 32 px CONSTANTE (o publicado tem
+    # 33 — dentro dos ±5% do §5.3), razão 2,46 a 2,91 (a dele é 2,75),
+    # e a banda cede num fio em 7 de 15 células da frente, zero no
+    # verso. Se o arquiteto quiser a banda inviolável, o conserto é de
+    # ARTE (a caixa do nome do Quintou precisa de mais altura) — e aí
+    # este número tem de cair junto.
+    ("quintou", "r13_corpo_constante_e_hierarquia"): 1,
     # QUITADA na UNDETRICESIMUS §5.4: os "2 de 11 preços sem carimbo"
     # da Sexta eram FALSO POSITIVO desta régua — o oval coral das
     # bancas está GRAVADO no BASE do dono, e o app desenha só o número
@@ -324,7 +367,9 @@ REGRAS = [r1_hifen_nao_parte_marca, r2_nenhum_nome_elipsado,
           r7_piso_do_celular, r8_preco_coerente_na_pagina,
           # UNDETRICESIMUS §3 — o padrão de célula dos sete
           r9_duas_classes_de_celula, r10_zona_da_foto_generosa,
-          r11_validade_fora_da_celula, r12_patamar_do_preco]
+          r11_validade_fora_da_celula, r12_patamar_do_preco,
+          # TRICESIMUS — o preço é constante e a hierarquia tem banda
+          r13_corpo_constante_e_hierarquia]
 
 
 # ============================================================== o motor
@@ -394,6 +439,19 @@ def _contexto(ldef, pagina, img, dados):
     med = median([m[2] for m in medidas]) if medidas else 0.0
     zonas = {sid: (cl, prop) for sid, cl, area, prop in medidas
              if med and area > med * 1.5}
+
+    # TRICESIMUS: os preços que ENCHEM elemento de arte e a razão da
+    # hierarquia contra a caixa alta do nome (medida como o arquiteto
+    # mede na peça, com a fonte real de cada região)
+    precos_arte = [d for d in getattr(img, "_preco_desenhado", {}).values()
+                   if d["enche_caixa"]]
+    razoes = []
+    cedeu = getattr(img, "_banda_cedeu", set())
+    if precos_arte:
+        alt_alg = precos_arte[0]["alt_alg_px"]
+        razoes = sorted({round(alt_alg / d["cap_px"], 2)
+                         for uid, d in desenhado.items()
+                         if (d.get("cap_px") or 0) > 0 and uid not in cedeu})
     # o nome/descritor REAIS da página (o que a escada decidiu)
     nome_final = (next(iter(desenhado.values()))["texto"]
                   if desenhado else d0.nome)
@@ -407,6 +465,12 @@ def _contexto(ldef, pagina, img, dados):
         "classes": classes, "zonas": zonas,
         "validade_em_celula": validade_em_celula,
         "precos": precos_por_classe,
+        # TRICESIMUS: o que o PREÇO desenhou (corpo e altura do
+        # algarismo) e a razão contra a caixa alta do nome — as duas
+        # medidas saem do registro do compositor, na mesma escala
+        "precos_desenhados": precos_arte,
+        "razoes": razoes,
+        "banda_cedeu": len(cedeu),
     }
 
 

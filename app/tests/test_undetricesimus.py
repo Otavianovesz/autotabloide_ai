@@ -231,6 +231,75 @@ def test_undetricesimus_o_selo_nao_escreve_a_data_duas_vezes():
 # ======================================================================
 
 
+# ============================================== TRICESIMUS (errata dupla)
+# O PREÇO É CONSTANTE (L27) e a hierarquia tem as DUAS pontas
+# ======================================================================
+
+
+def test_tricesimus_o_corpo_do_preco_e_um_so_na_pagina(tmp_path):
+    """L27: o publicado do dono tem 33 px em 14 dos 15 carimbos; o app
+    chegou a NOVE tamanhos numa página porque a conta era POR CÉLULA.
+    Duas células com preços de larguras diferentes têm de sair com o
+    MESMO corpo — o do pior caso."""
+    from decimal import Decimal
+
+    from app.rendering.compositor import (
+        FormaPreco, corpo_do_preco_da_pagina, corpo_pela_caixa,
+    )
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+
+    fontes = _fontes_reais(tmp_path)
+
+    def _carimbo():
+        r = Regiao(TipoRegiao.PRECO, Retangulo(0, 0, 30, 17),
+                   fonte="Roboto-Bold.ttf", tamanho_max_pt=34.0,
+                   tamanho_centavos_pt=21.0,
+                   forma_preco=FormaPreco.TEXTO)
+        r.preenche_caixa = True
+        r.mostrar_moeda = False
+        return r
+
+    curto, longo = _carimbo(), _carimbo()
+    pt_curto, _ = corpo_pela_caixa(curto, Decimal("4.90"), 192, fontes)
+    pt_longo, _ = corpo_pela_caixa(longo, Decimal("199.00"), 192, fontes)
+    assert pt_curto > pt_longo, (
+        "a conta POR CÉLULA é justamente a que produz o mosaico "
+        f"({pt_curto:.1f} vs {pt_longo:.1f} pt) — é ela que a lei corrige")
+
+    pt_pg, alt_pg = corpo_do_preco_da_pagina(
+        [(curto, Decimal("4.90")), (longo, Decimal("199.00"))], 192, fontes)
+    assert abs(pt_pg - pt_longo) < 0.01, (
+        "o corpo da página é o do PIOR CASO — o preço mais longo manda")
+    assert alt_pg > 0
+
+
+def test_tricesimus_a_hierarquia_tem_as_duas_pontas(tmp_path):
+    """§3: a regra antiga dava PISO sem TETO e a razão foi a 3,7×. A
+    banda 2,4–2,9 se traduz em corpo pela caixa alta REAL da fonte, e
+    as duas pontas têm de sair na ordem certa."""
+    from app.rendering.compositor import (
+        _altura_caixa_alta, corpo_para_caixa_alta,
+    )
+
+    fontes = _fontes_reais(tmp_path)
+    alt_algarismo = 60.0                      # px do algarismo do preço
+
+    piso = corpo_para_caixa_alta(fontes, "Roboto-Bold.ttf",
+                                 alt_algarismo / 2.9, 192,
+                                 nunca_abaixo=True)
+    teto = corpo_para_caixa_alta(fontes, "Roboto-Bold.ttf",
+                                 alt_algarismo / 2.4, 192)
+    assert piso < teto, "o piso da banda é menor que o teto"
+
+    # e as pontas ficam DENTRO da banda (o arredondamento do piso para
+    # baixo deixava a razão escapar em 2,91 — medido na 1ª prova)
+    for corpo, limite in ((piso, 2.9), (teto, 2.4)):
+        cap = _altura_caixa_alta(fontes, "Roboto-Bold.ttf", corpo, 192)
+        razao = alt_algarismo / cap
+        assert 2.4 - 0.01 <= razao <= 2.9 + 0.01, \
+            f"corpo {corpo:.2f} pt dá razão {razao:.2f} (alvo {limite})"
+
+
 def test_undetricesimus_carimbo_na_arte_sobrevive_ao_banco():
     """Flag novo que não viaja no to_dict morre no reimport (foi assim
     que o Frango virou trio na rodada passada). Roundtrip completo."""
