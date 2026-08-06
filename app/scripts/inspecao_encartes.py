@@ -473,6 +473,9 @@ def _relatar_hierarquia(chave: str, n_pag: int, lay, img) -> None:
     razoes = sorted({round(pre[0]["alt_alg_px"] / d["cap_px"], 2)
                      for d in nomes})
     cedeu = len(getattr(img, "_banda_cedeu", ()))
+    caps = sorted({d["cap_px"] for d in nomes})
+    print(f"    [nome {chave} p{n_pag}] caixa alta desenhada (régua 1080): "
+          f"{[round(c * k, 1) for c in caps]}")
     print(f"    [hierarquia {chave} p{n_pag}] algarismo(1080px)="
           f"{alturas}  corpos={sorted({d['pt'] for d in pre})}  "
           f"razão preço÷nome={razoes}  banda cedeu em {cedeu} célula(s)")

@@ -2168,6 +2168,14 @@ def compor_pagina(
                          unidade=None if aj_nome.descritor_saiu
                          else d.unidade)
             rects_subst.update(aj_nome.rects)
+        # TRICESIMUS-PRIMUS §3: o descritor nunca abre com conector — a
+        # variante partida ao meio ("Tomate Salada" + "e Italiano") se
+        # remonta com OU. Vale para toda célula, venha o par da cadeia
+        # ou direto do item (crônico 5, nos oito).
+        from app.rendering.nome_fit import sem_conector_orfao
+        _nm_c, _ds_c = sem_conector_orfao(d.nome, d.descritor)
+        if (_nm_c, _ds_c) != (d.nome, d.descritor):
+            d = _replace(d, nome=_nm_c, descritor=_ds_c)
         # RODADA-125 v4.1 ("quase descolado, as imagens diminuíram"):
         # a CÉLULA DE COLUNA é ELÁSTICA — o texto mede o que realmente
         # usa, ancora no preço e a FOTO cresce até encostar nele (a
@@ -2285,6 +2293,20 @@ def compor_pagina(
                 # página (L27), a banda também é constante: o nome sai
                 # do mesmo tamanho em todas as células.
                 piso_b, teto_b = banda_nome
+                # TRICESIMUS-PRIMUS/L29: onde a peça do dono foi MEDIDA,
+                # o alvo é o NÚMERO dela (caixa alta em px na escala
+                # 1080 do layout) e a banda vira guarda-corpo — a razão
+                # é derivada, a medida é fato.
+                _alvo = getattr(reg, "alvo_caixa_alta_px", 0.0)
+                if _alvo > 0:
+                    _esc = mm_para_px(layout.largura_mm, dpi_ef) / 1080.0
+                    # ALCANÇA o alvo (nunca 1 px abaixo dele): a caixa
+                    # alta é inteira em px e a bisseção que converge por
+                    # baixo entregava 11 onde o dono tem 12
+                    _pt_alvo = corpo_para_caixa_alta(
+                        fontes_dir, reg.fonte, _alvo * _esc, dpi_ef,
+                        nunca_abaixo=True)
+                    teto_b = min(teto_b, max(piso_b, _pt_alvo))
                 campos["tamanho_max_pt"] = teto_b
                 # ...mas o piso da banda é PREFERÊNCIA, não mordaça: se
                 # o nome não couber nele, quem cede é a banda, nunca a

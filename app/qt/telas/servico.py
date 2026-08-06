@@ -2162,6 +2162,34 @@ def avisos_de_riscadas(itens, mapa: dict | None) -> list[str]:
             if it.uid in na_grade and "riscada" in (it.pendencias or [])]
 
 
+def itens_fora_da_pagina(itens, mapa: dict | None) -> list[str]:
+    """TRICESIMUS-PRIMUS §1 — **A CONTAGEM TABELA × PÁGINA.**
+
+    Sumiu o "MAMÃO FORMOSA 6,66" da Sexta Verde: a tabela do dono tinha
+    12 itens e a página saiu com 11. Ninguém percebeu porque nada
+    contava. Esta é a guarda dos crônicos 1 (item não chega), 2
+    (riscado impresso) e 6 (palavra some): o pré-voo diz quantos são,
+    quantos entraram, e NOMEIA os que ficaram de fora.
+
+    Item RISCADO pelo dono não conta como falta (ele mandou tirar) —
+    esse tem aviso próprio (``avisos_de_riscadas``).
+    """
+    if not itens:
+        return []
+    colocados = set((mapa or {}).values())
+    fora = [it for it in itens
+            if it.uid not in colocados
+            and not getattr(it, "riscada", False)
+            and not getattr(it, "ignorado", False)]
+    if not fora:
+        return []
+    nomes = ", ".join(f"“{(it.nome or it.descricao or '?').strip()}”"
+                      for it in fora[:6])
+    resto = f" (+{len(fora) - 6})" if len(fora) > 6 else ""
+    return [f"a tabela tem {len(itens)} itens e a página tem "
+            f"{len(itens) - len(fora)} — ficaram de fora: {nomes}{resto}"]
+
+
 def validar_composicao(layout, dados_por_slot: dict, *, cartaz: bool = False,
                        fontes_dir=None) -> list[str]:
     """Pendências por slot ocupado, ANTES de exportar/salvar.

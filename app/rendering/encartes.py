@@ -1051,17 +1051,25 @@ def _celula_quintou(x: float, y: float) -> list:
     # QUINTUS/C6: arte carregada — o produto NUNCA se repete aqui
     # (exceção DECLARADA da L19; o trio poluía o tijolo azul)
     im.sem_leque = True
-    # VICESIMUS-SEPTIMUS §1: o nome do publicado é alinhado à ESQUERDA
-    # (há uma borda esquerda ÚNICA descendo a coluna; centrado, cada
-    # nome flutuava no próprio centro — o "estranho" que o dono viu).
+    # TRICESIMUS-PRIMUS (3ª errata do arquiteto, MEDIDA): o nome do
+    # publicado é CENTRADO na faixa de texto — ele mediu 40 linhas e o
+    # `x` inicial varia de 7 a 58 enquanto o CENTRO fica em 74,5–77,0
+    # em todas. A faixa desta região tem centro em 77,0 (conferido do
+    # lado de cá antes de mexer, L29): a caixa já estava certa, só o
+    # alinhamento estava errado. A SEPTIMUS §1 tinha mandado ESQUERDA
+    # a partir de impressão visual, e eu implementei com fidelidade.
     # §2: e HIFENIZA ("Pau-lista", "Cora-ções", "Itaipa-va") — o
     # sem_hifen do T5 nasceu de ler o hífen do PRÓPRIO dono como
     # artefato; com ele o corpo era a única saída e o texto encolhia.
     nm = _nome(x + 10, y + 192, 134, 62, fonte=_F_QUICK,
-               alin=Alinhamento.ESQUERDA,
+               alin=Alinhamento.CENTRO,
                tam=14.5, tam_min=9.5, cor=branco)
     nm.unidade_caixa_alta = True
     nm.sem_hifen = False
+    # TRICESIMUS-PRIMUS: o ALVO do corpo é o número medido na peça —
+    # caixa alta de 12 px na escala 1080 do publicado —, não uma razão
+    # derivada; a banda 2,4–2,9 fica como guarda-corpo (L29)
+    nm.alvo_caixa_alta_px = 12.0
     # SEXTUS/L24: a região do preço é o CARIMBO INTEIRO do fundo
     # (bbox real 112×64 medido no template, rel 154,193) e o corpo do
     # número é CALCULADO para preenchê-lo — nunca por tamanho_max_pt

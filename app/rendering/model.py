@@ -252,6 +252,12 @@ class Regiao:
     # não da página). Diferente de ``preenche_caixa``: aqui o número
     # NÃO se redimensiona pelo elemento — a arte é só o fundo dele.
     carimbo_na_arte: bool = False
+    # TRICESIMUS-PRIMUS / **L29 — REGRA SOBRE ARTE SÓ NASCE DE MEDIÇÃO**:
+    # a altura de CAIXA ALTA que este texto tem na peça publicada do
+    # dono, na escala do layout (1080 px de largura). Onde existe
+    # original, o alvo é o NÚMERO medido — a razão da hierarquia fica
+    # como guarda-corpo. 0.0 = não medido (o layout manda como sempre).
+    alvo_caixa_alta_px: float = 0.0
 
     # --- imagem ---
     ajuste: Ajuste = Ajuste.CONTER
@@ -358,6 +364,7 @@ class Regiao:
             "unidade_caixa_alta": self.unidade_caixa_alta,   # QUINTUS/L23
             "preenche_caixa": self.preenche_caixa,       # SEXTUS/L24
             "carimbo_na_arte": self.carimbo_na_arte,     # UNDETRICESIMUS
+            "alvo_caixa_alta_px": self.alvo_caixa_alta_px,   # L29
         }
 
     @classmethod
@@ -412,6 +419,7 @@ class Regiao:
             unidade_caixa_alta=d.get("unidade_caixa_alta", False),
             preenche_caixa=d.get("preenche_caixa", False),   # L24 aditivo
             carimbo_na_arte=d.get("carimbo_na_arte", False),
+            alvo_caixa_alta_px=d.get("alvo_caixa_alta_px", 0.0),
         )
 
 

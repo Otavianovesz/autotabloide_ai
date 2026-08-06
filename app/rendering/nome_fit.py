@@ -72,6 +72,36 @@ def _norm(s: str) -> str:
 _CONECTORES = ("e", "ou", "com")
 
 
+def sem_conector_orfao(nome: str, descritor: str | None
+                       ) -> tuple[str, str | None]:
+    """TRICESIMUS-PRIMUS §3 / crônico 5 — **O DESCRITOR NUNCA ABRE COM
+    CONECTOR.** "Tomate Salada" + "e Italiano" é uma VARIANTE partida
+    ao meio: o nome ficou com a primeira e o descritor abriu com o "e"
+    órfão. A forma canônica da família já existe e é com OU — a
+    escolha é do cliente, não uma soma:
+
+        Tomate Salada / e Italiano   →   Tomate / Salada ou Italiano
+        Maçã Fuji     / e Gala       →   Maçã   / Fuji ou Gala
+
+    A primeira variante DESCE do nome (é ela que perdeu o par), e o
+    conector vira "ou". Se o nome tiver uma palavra só, ele fica
+    inteiro e o descritor só troca o conector — nunca se apaga a
+    informação (lei do dono).
+    """
+    if not descritor:
+        return nome, descritor
+    toks = descritor.split()
+    if not toks or toks[0].lower().strip(".,;") not in _CONECTORES:
+        return nome, descritor
+    resto = " ".join(toks[1:]).strip()
+    if not resto:                     # "e" sozinho: frase manca, cai
+        return nome, None
+    nome_toks = (nome or "").split()
+    if len(nome_toks) >= 2:
+        return " ".join(nome_toks[:-1]), f"{nome_toks[-1]} ou {resto}"
+    return nome, f"ou {resto}"
+
+
 def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
     """Monta o descritor final: excedente do nome (na ordem do nome) +
     o descritor que o item já tinha — sem duplicar conteúdo.

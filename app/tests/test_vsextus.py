@@ -178,10 +178,18 @@ def test_vseptimus_a_escada_abrevia_antes_de_reduzir(tmp_path):
     assert aj2 is None or aj2.nome == "Alface", aj2
 
 
-def test_vseptimus_o_quintou_hifeniza_e_alinha_a_esquerda():
-    """§1+§2: o publicado alinha o nome à ESQUERDA e HIFENIZA
-    ("Pau-lista", "Cora-ções"); o sem_hifen do T5 nasceu de ler o
-    hífen do PRÓPRIO dono como artefato."""
+def test_vseptimus_o_quintou_hifeniza_e_alinha_no_centro():
+    """§2 da SEPTIMUS: o publicado HIFENIZA ("Pau-lista", "Cora-ções")
+    — o sem_hifen do T5 nasceu de ler o hífen do PRÓPRIO dono como
+    artefato, e isso continua valendo.
+
+    **EDITADO DE PROPÓSITO na TRICESIMUS-PRIMUS (3ª errata do
+    arquiteto).** O §1 da SEPTIMUS mandava alinhar à ESQUERDA a partir
+    de impressão visual — sem medir. A medição de 40 linhas do
+    publicado mostrou o contrário: o `x` inicial varia de 7 a 58 e o
+    CENTRO é constante em 74,5–77,0. O nome é CENTRADO na faixa de
+    texto (a faixa desta região tem centro em 77,0). Regra sobre a arte
+    do dono só nasce de medição — L29."""
     from app.rendering.encartes import layout_de_encarte
     from app.rendering.model import Alinhamento, TipoRegiao
 
@@ -193,7 +201,7 @@ def test_vseptimus_o_quintou_hifeniza_e_alinha_a_esquerda():
              if r.tipo == TipoRegiao.NOME and r.visivel]
     assert nomes
     for r in nomes:
-        assert r.alinhamento == Alinhamento.ESQUERDA, r.alinhamento
+        assert r.alinhamento == Alinhamento.CENTRO, r.alinhamento
         assert r.sem_hifen is False, "o Quintou voltou a proibir o hífen"
 
 

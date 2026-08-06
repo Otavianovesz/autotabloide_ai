@@ -226,6 +226,90 @@ def test_undetricesimus_o_selo_nao_escreve_a_data_duas_vezes():
         "o prefixo de palavra (o Quintou) continua valendo"
 
 
+# ========================================= TRICESIMUS-PRIMUS (3ª errata)
+# O nome CENTRADO na faixa, a contagem tabela × página, a variante com OU
+# ======================================================================
+
+
+def test_tricesimus_primus_o_nome_do_quintou_e_centrado():
+    """3ª errata (MEDIDA pelo arquiteto em 40 linhas do publicado): o
+    `x` inicial varia de 7 a 58 e o CENTRO fica em 74,5–77,0 — o nome é
+    centrado na FAIXA DE TEXTO. A caixa desta região já tinha o centro
+    em 77; era o alinhamento que estava errado."""
+    from app.rendering.encartes import _celula_quintou
+    from app.rendering.model import Alinhamento, TipoRegiao
+
+    regs = _celula_quintou(0, 0)
+    nome = next(r for r in regs if r.tipo == TipoRegiao.NOME)
+    assert nome.alinhamento == Alinhamento.CENTRO, \
+        "o nome do Quintou é CENTRADO na faixa (a medição do publicado)"
+    # e o ALVO de corpo é o número medido, não uma razão derivada (L29)
+    assert nome.alvo_caixa_alta_px == 12.0
+
+
+def test_tricesimus_primus_alvo_medido_sobrevive_ao_banco():
+    from app.rendering.model import Regiao, Retangulo, TipoRegiao
+
+    r = Regiao(TipoRegiao.NOME, Retangulo(0, 0, 20, 10))
+    r.alvo_caixa_alta_px = 12.0
+    assert Regiao.from_dict(r.to_dict()).alvo_caixa_alta_px == 12.0
+
+
+def test_tricesimus_primus_a_contagem_tabela_x_pagina():
+    """§1: sumiu o MAMÃO FORMOSA da Sexta (12 na tabela, 11 na página).
+    O pré-voo passa a contar e NOMEAR quem ficou de fora — a guarda dos
+    crônicos 1, 2 e 6. Item RISCADO não conta como falta."""
+    from app.qt.telas.servico import ItemMesa, itens_fora_da_pagina
+
+    a = ItemMesa(descricao="Batata Noiva", preco="4,22", semaforo="VERDE",
+                 nome="Batata Noiva")
+    b = ItemMesa(descricao="Mamão Formosa", preco="6,66", semaforo="VERDE",
+                 nome="Mamão Formosa")
+    c = ItemMesa(descricao="Alho Roxo", preco="25,00", semaforo="VERDE",
+                 nome="Alho Roxo")
+    c.riscada = True
+
+    assert itens_fora_da_pagina([a, b, c], {"celula-1": a.uid, }) == \
+        [f"a tabela tem 3 itens e a página tem 2 — ficaram de fora: "
+         f"“Mamão Formosa”"]
+    assert itens_fora_da_pagina([a, b], {"c1": a.uid, "c2": b.uid}) == []
+
+
+def test_tricesimus_primus_a_variante_usa_ou():
+    """§3 / crônico 5: o descritor nunca abre com conector — a variante
+    partida ao meio se remonta com OU (a forma da família)."""
+    from app.rendering.nome_fit import sem_conector_orfao
+
+    assert sem_conector_orfao("Tomate Salada", "e Italiano") == \
+        ("Tomate", "Salada ou Italiano")
+    assert sem_conector_orfao("Maçã Fuji", "e Gala") == \
+        ("Maçã", "Fuji ou Gala")
+    # nome de uma palavra só: o conector vira "ou" e nada se perde
+    assert sem_conector_orfao("Mexerica", "e Murcot") == \
+        ("Mexerica", "ou Murcot")
+    # o "e" no MEIO é frase legítima, não se toca
+    assert sem_conector_orfao("Granola", "banana e canela · 250 g") == \
+        ("Granola", "banana e canela · 250 g")
+
+
+def test_tricesimus_primus_o_lote_inventado_saiu_da_arte():
+    """§2: "LOTE 01..09" não existe na tabela do dono — num encarte de
+    hortifrúti sugere quantidade limitada, que ele não prometeu."""
+    from pathlib import Path
+
+    pasta = (Path(__file__).resolve().parents[2] / "Templates novos"
+             / "artes" / "sexta-verde")
+    if not pasta.exists():
+        pytest.skip("REQUER ACERVO DO DONO: 'Templates novos/'")
+    for svg in pasta.glob("*.svg"):
+        assert "LOTE" not in svg.read_text(encoding="utf-8"), \
+            f"{svg.name} ainda tem o rótulo inventado"
+    ger = (Path(__file__).resolve().parents[2] / "Templates novos"
+           / "geradores" / "gen_verde5.py")
+    assert "LOTE 0{" not in ger.read_text(encoding="utf-8"), \
+        "o gerador ressuscitaria o LOTE na próxima regeração"
+
+
 # ================================================================== §5.4
 # O CARIMBO NA ARTE (e o roundtrip — a lição do incidente da QUINTUS)
 # ======================================================================
