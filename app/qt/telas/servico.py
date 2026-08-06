@@ -2466,6 +2466,37 @@ def importar_ofertas(caminho: str | Path, status_cb: StatusCb) -> ResultadoMesa:
                             aviso=aviso_cache, caminho_fonte=None)
 
 
+def sem_numeracao_de_lote(linhas: list) -> list:
+    """VICESIMUS-OCTAVUS §3: a tabela do dono é NUMERADA (1..31) e o
+    número da linha vazou para o nome ("14 Bis Lacta Xtra Branco…").
+
+    A decisão é do LOTE, nunca da linha: "3 Corações" e "1 Kg" também
+    começam com número. Só remove quando a MAIORIA das linhas abre com
+    inteiro e a sequência é CRESCENTE — a assinatura de uma coluna de
+    numeração, que nenhum nome de produto tem. Devolve a lista nova
+    (as tuplas intactas onde não há numeração)."""
+    import re as _re
+    if len(linhas) < 4:
+        return linhas
+    pref = []
+    for tupla in linhas:
+        m = _re.match(r"^\s*(\d{1,3})\s+(?=\D)", str(tupla[0] or ""))
+        pref.append(int(m.group(1)) if m else None)
+    com = [n for n in pref if n is not None]
+    if len(com) < len(linhas) * 0.7:
+        return linhas
+    if any(b <= a for a, b in zip(com, com[1:])):
+        return linhas                     # não é sequência crescente
+    saida = []
+    for tupla, n in zip(linhas, pref):
+        if n is None:
+            saida.append(tupla)
+            continue
+        desc = _re.sub(r"^\s*\d{1,3}\s+", "", str(tupla[0] or ""), count=1)
+        saida.append((desc,) + tuple(tupla[1:]))
+    return saida
+
+
 def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
                      aviso=None, caminho_fonte=None,
                      multi_precos=None, descontos=None,
@@ -2479,6 +2510,8 @@ def conciliar_linhas(linhas, status_cb: StatusCb, *, validade=None,
     reconhecido na colagem (R-070) para o ItemMesa — a tupla só carrega o valor,
     o formato de promoção viaja aqui."""
     status_cb("Conciliando com o banco…")
+    # §3: a numeração de linha da tabela é METADADO — nunca nome
+    linhas = sem_numeracao_de_lote(list(linhas))
     from app.ai.conciliacao import Conciliador
 
     motor = _motor_se_disponivel()

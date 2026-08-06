@@ -318,7 +318,8 @@ def compactar_coluna(regioes: list[Regiao], nome: str,
 
 
 def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
-          fontes_dir: Path) -> bool:
+          fontes_dir: Path,
+          atomos: frozenset[str] | set[str] = frozenset()) -> bool:
     """O texto cabe SEM elipse no corpo mínimo da região? (passos 1-2:
     1 ou N linhas é a mesma medida — quem manda é a altura da caixa)."""
     if not texto:
@@ -327,7 +328,7 @@ def _cabe(texto: str, reg: Regiao, rect: Retangulo, dpi: int,
         texto, fontes_dir / reg.fonte,
         mm_para_px(rect.larg_mm, dpi), mm_para_px(rect.alt_mm, dpi),
         reg.tamanho_max_pt, dpi, reg.tamanho_min_pt,
-        sem_hifen=reg.sem_hifen,
+        sem_hifen=reg.sem_hifen, atomos=atomos,
     )
     return not any("…" in ln for ln in aj.linhas)
 

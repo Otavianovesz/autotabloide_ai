@@ -161,6 +161,10 @@ class _Vigia:
         # o botão pedido NÃO existia no diálogo (o vigia fechou com reject
         # para o teste não pendurar — a asserção fica para depois do with)
         self.faltou_botao: str | None = None
+        # o vigia ESGOTOU o tempo (máquina sob carga): fechou o que
+        # estava aberto para a suíte não morrer de timeout — o teste
+        # que quiser distinguir "não abriu" de "abriu tarde" olha aqui
+        self.esgotou = False
 
 
 def _dialogo_modal_visivel() -> QDialog | None:
@@ -175,7 +179,7 @@ def _dialogo_modal_visivel() -> QDialog | None:
 
 @contextmanager
 def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
-                  intervalo_ms: int = 15, timeout_ms: int = 4000,
+                  intervalo_ms: int = 15, timeout_ms: int = 20000,
                   vezes: int = 1):
     """Arma um vigia que responde o PRÓXIMO diálogo modal pelo GESTO:
     clique REAL no botão com esse texto — ou uma tecla no diálogo, se
@@ -192,17 +196,35 @@ def vigia_dialogo(texto_botao: str | None = None, *, tecla=None,
     timer = QTimer()
     timer.setInterval(intervalo_ms)
     restante = {"ms": timeout_ms}
-    respondidos: set[int] = set()
+    # A CAUSA-RAIZ do flake de 5 quedas (achada quando o vigia parou
+    # de matar a suíte por timeout e passou a falhar com asserção):
+    # os respondidos eram guardados por ``id(caixa)``. O 1º diálogo é
+    # destruído ao fechar e o CPython RECICLA o endereço — o 2º
+    # QInputDialog nascia com o MESMO id, o vigia o dava por
+    # respondido e ninguém clicava nele. Guardar o OBJETO mantém a
+    # referência viva e o id nunca se repete enquanto o vigia existe.
+    respondidos: list = []
 
     def _tenta() -> None:
         restante["ms"] -= intervalo_ms
         if restante["ms"] <= 0:
+            # DUODETRICESIMUS (a dívida "endurecer vigias", cobrada em
+            # 5 quedas de bancada num dia só): ao esgotar, o vigia
+            # NUNCA desiste calado deixando o modal aberto — o exec()
+            # ficava vivo e a suíte INTEIRA morria de timeout, sem
+            # dizer qual diálogo. Agora ele FECHA o que estiver aberto
+            # e registra o esgotamento; o teste falha por asserção
+            # (disparos != N), que diz o que aconteceu.
+            visto.esgotou = True
+            caixa = _dialogo_modal_visivel()
+            if caixa is not None:
+                caixa.reject()
             timer.stop()
             return
         caixa = _dialogo_modal_visivel()
-        if caixa is None or id(caixa) in respondidos:
+        if caixa is None or any(c is caixa for c in respondidos):
             return
-        respondidos.add(id(caixa))
+        respondidos.append(caixa)          # a referência SEGURA o id
         visto.disparos += 1
         if visto.disparos >= vezes:
             timer.stop()

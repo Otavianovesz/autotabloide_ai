@@ -40,6 +40,12 @@ MARCAS_MERCADO: frozenset[str] = frozenset({
     # "marca diferente nunca casa" disparar — Itamaraty nunca é palavra
     # de produto (açúcar/rosquinha do acervo real do dono)
     "itamaraty",
+    # VICESIMUS-OCTAVUS/L25 (as marcas que o HÍFEN partiu no Quintou):
+    # marca longa precisa do vocabulário para virar ÁTOMO — a régua de
+    # tamanho (8+ letras) sozinha não a distingue de palavra comum
+    "andorinha", "campilar", "lowcucar", "lowçucar", "bauducco",
+    "anaconda", "belma", "cepera", "marombi", "predilecta", "apti",
+    "vitacoco", "negresco", "madremassa", "faisao", "faisão",
     # "todos" (a marca do açúcar do dono) fica FORA: palavra comum
     # demais — o caso-limite do critério; entra pela Config/acervo
     # encartes anteriores (Quintou/Terça/Segunda) e nacionais inequívocas

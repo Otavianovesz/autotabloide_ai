@@ -625,8 +625,24 @@ def _desenhar_texto(
     x, y, rw, rh = _rect_px(reg.rect, dpi)
     aj = ajustar_texto(
         texto, fontes_dir / reg.fonte, rw, rh, reg.tamanho_max_pt, dpi,
-        reg.tamanho_min_pt, sem_hifen=reg.sem_hifen   # F13-BIS/T5
+        reg.tamanho_min_pt, sem_hifen=reg.sem_hifen,  # F13-BIS/T5
+        # L25: as marcas conhecidas viajam com o DADO e nunca se
+        # partem (o vocabulário chega pronto do serviço, 1x por lote)
+        atomos=getattr(base, '_atomos_marcas', frozenset()),
     )
+    # DUODETRICESIMUS §14 (a rede dos oito): o que foi REALMENTE
+    # desenhado fica registrado na base — linhas e corpo final, por
+    # região. É a fonte de prova das auditorias (recalcular por fora
+    # mede outra coisa: sem a escada, sem os rects substituídos).
+    if not hasattr(base, "_texto_desenhado"):
+        base._texto_desenhado = {}
+    base._texto_desenhado[reg.uid] = {
+        "linhas": list(aj.linhas), "pt": aj.tamanho_pt,
+        "altura_px": aj.altura_linha_px * len(aj.linhas),
+        "tipo": reg.tipo.value, "nome": reg.nome,
+        "rect_alt_px": rh, "texto": texto,
+        "max_pt": reg.tamanho_max_pt, "min_pt": reg.tamanho_min_pt,
+    }
     total_h = aj.altura_linha_px * len(aj.linhas)
     oy = _y_alinhado(y, rh, total_h, reg)     # F13/C4: TOPO/CENTRO/BASE
     # TERTIUSDECIMUS/A1 (a rede do invariante): NENHUM texto desenha
@@ -1696,6 +1712,19 @@ def compor_pagina(
     # "Editorial" é RELATIVO à página: herói é a zona de foto bem MAIOR
     # que a mediana (>60 mm E >1,25× a mediana), ou a página com menos
     # de 3 zonas (cartaz, destaque solo). Medido ANTES do desenho.
+    # VICESIMUS-OCTAVUS/L25: as marcas conhecidas da PÁGINA viram
+    # ÁTOMOS de hifenização — reunidas 1× (os dados já trazem as do
+    # nome, extraídas na montagem oficial); o hífen nunca parte marca.
+    _at: set[str] = set()
+    for _d in (dados.values() if isinstance(dados, dict)
+               else (dados if isinstance(dados, (list, tuple)) else [dados])):
+        for _m in (getattr(_d, "marcas_nome", ()) or ()):
+            for _pal in str(_m).split():
+                import unicodedata as _ud
+                _k = _ud.normalize("NFKD", _pal.lower())
+                _at.add("".join(c for c in _k if not _ud.combining(c)))
+    base._atomos_marcas = frozenset(_at)
+
     zonas_pg = [r.rect.larg_mm for s in pagina.slots
                 for r in s.regioes
                 if r.tipo == TipoRegiao.IMAGEM and r.visivel]
