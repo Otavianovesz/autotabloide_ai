@@ -369,12 +369,10 @@ def test_l31_cada_face_tem_a_sua_metrica():
     from app.rendering.encartes import _celula_quintou
     from app.rendering.model import TipoRegiao
 
-    # o algarismo do VERSO fica SEM alvo (0.0): a divergência de
-    # medição está registrada no gerador — a ordem diz 18 px (p85 dos
-    # glifos) e a subtração medida dentro do carimbo dá 57 de mediana
-    # contra 41 da frente. Sem número confiável, vale a regra do
-    # carimbo; o alvo entra quando o algarismo do verso for medido.
-    for verso, area, alg in ((False, 19413.0, 33.0), (True, 26643.0, 0.0)):
+    # §8 (a 3ª medição, com o método da frente): o algarismo é **33 px
+    # nas DUAS faces**; a ÁREA é que muda (+41% no verso). A face muda
+    # o que depende do ESPAÇO, não o que depende do LEITOR.
+    for verso, area, alg in ((False, 19431.0, 33.0), (True, 27430.0, 33.0)):
         regs = _celula_quintou(0, 0, verso=verso)
         img = next(r for r in regs if r.tipo == TipoRegiao.IMAGEM)
         pre = next(r for r in regs if r.tipo == TipoRegiao.PRECO)

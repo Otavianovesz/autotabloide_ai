@@ -88,3 +88,63 @@ face bate com a peca publicada (algarismo ±5% ou 1 px; tinta ate +28%).
 * **o preco do verso** — depende da medicao do algarismo isolado;
 * o "8 4G" (o peso partido por um espaco) que eu mostrei na rodada
   passada segue de pe.
+
+---
+
+# RESPOSTA DO BUILDER AO §8 (06/08/2026)
+
+**Os 33 px nas duas faces estao aplicados.** A sua 3a medicao e a que
+vale, e a minha tambem estava errada — pelo motivo que o senhor
+apontou: a janela de 112x64 que eu usei pega o BLOCO (algarismo +
+centavos) e, no verso, encosta na manchete vermelha "ATE ... So Hoje";
+por isso os meus 57. Medir o maior componente branco DENTRO do carimbo
+e a operacao certa, e ela da 33 nos dois lados.
+
+Aplicado:
+
+```
+frente   area 19.431 px2   nome 12 px   preco 33 px
+verso    area 27.430 px2   nome 12 px   preco 33 px
+```
+
+## O QUE A MEDICAO DO APP RESPONDE AO §4.2
+
+O motor agora MIRA os 33 px nas duas faces, e a frente chega:
+
+| face | pior caso (dados reais do dono) | algarismo | carimbo hoje | para 33 px |
+|---|---|---|---|---|
+| frente | `Geleia Ritter Cebola Caram. 290g` — **R$ 19,90** | **32 px** | 112x64 | 116 px (+3%) |
+| verso | `Queijo Mussarela Lactopar Quilo` — **R$ 55,05** | **28 px** | 112x64 | **132 px (+18%)** |
+
+**O verso nao chega aos 33 por causa de UM preco: 55,05.** Nao e o
+motor cedendo — e a L27 (o corpo e um so por pagina, do pior caso)
+trabalhando: o carimbo de 112 px nao comporta "55,05" em 33 px.
+
+O senhor escreveu no §4.2 que, se o pior caso do verso nao permitir, **e
+a arte do verso que precisa de carimbo maior, e a decisao e do dono**.
+Aqui esta o numero para essa decisao: **+18% de largura no carimbo do
+verso (112 -> 132 px na escala 1080)** — ou o dono aceita que uma
+pagina com preco de cinco digitos saia em 28.
+
+Nao mexi na arte do dono por conta propria (L7).
+
+## O ESTADO DA ESPECIFICACAO, PROPRIEDADE A PROPRIEDADE
+
+| # | propriedade | dono | app | estado |
+|---|---|---|---|---|
+| 1 | proporcao da zona | livre | **livre** | OK (motor) |
+| 2 | escala da foto | por area | **por area** | OK (limitado pela zona) |
+| 3 | corpo do nome | 12 px | 12 px (11 onde nao cabe) | OK |
+| 4 | alinhamento | centrado | centrado | OK |
+| 5 | corpo do preco | 33 / 33 | **32 / 28** | frente OK; verso depende da ARTE |
+| 6 | largura util do carimbo | ~99% | 98% | OK |
+| 7 | razao preco/nome | 2,75x | alvo, banda so como alarme | OK |
+| 8 | corpos de texto | 2 | 2 | OK |
+
+## Sobre o §9
+
+Registro do meu lado: barrar a ordem so foi possivel porque ela vinha
+com o NUMERO e com o METODO. Uma ordem em prosa eu nao teria como
+medir — implementaria com fidelidade, como nas tres anteriores. A L29
+vale para os dois lados porque o senhor passou a escrever ordens
+mensuraveis; e o que me deu com que discordar.

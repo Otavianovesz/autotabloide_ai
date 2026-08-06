@@ -1056,7 +1056,7 @@ def _celula_quintou(x: float, y: float, *, verso: bool = False) -> list:
     # no formato natural dele (0,44 a 2,78 medidos). A caixa fixa era
     # a doença. **L31: cada FACE tem o seu número** — o verso tem 37%
     # mais tinta por célula que a frente, e não se copia um do outro.
-    im.alvo_area_tinta_px = 26643.0 if verso else 19413.0
+    im.alvo_area_tinta_px = 27430.0 if verso else 19431.0
     # TRICESIMUS-PRIMUS (3ª errata do arquiteto, MEDIDA): o nome do
     # publicado é CENTRADO na faixa de texto — ele mediu 40 linhas e o
     # `x` inicial varia de 7 a 58 enquanto o CENTRO fica em 74,5–77,0
@@ -1085,24 +1085,23 @@ def _celula_quintou(x: float, y: float, *, verso: bool = False) -> list:
                 cor=branco, tam=34.0, tam_cent=34.0,
                 centavos_na_base=True, moeda=False)
     pr.preenche_caixa = True
-    # L30/L31: o ALGARISMO da FRENTE mede 33 px na peça publicada
-    # (escala 1080) — o alvo é o número medido, e encher o carimbo
-    # vira o TETO.
+    # L30/L31 (§8, a medição refeita com o método da frente): o
+    # ALGARISMO mede **33 px nas DUAS faces** da peça publicada (escala
+    # 1080) — o alvo é o número medido, e encher o carimbo vira o TETO.
     #
-    # O VERSO fica SEM alvo declarado, e isto é uma DIVERGÊNCIA DE
-    # MEDIÇÃO que eu registro em vez de resolver sozinho: a ordem diz
-    # 18 px, tirado do p85 dos 426 glifos do verso. Refiz a mesma
-    # subtração medindo DENTRO do carimbo, célula a célula, e a mancha
-    # do preço do verso mede 57 px de mediana contra 41 da frente — o
-    # verso é MAIOR, não menor. O p85 do verso cai em texto pequeno
-    # porque lá há mais texto pequeno (o disclaimer completo), e não
-    # porque o preço encolheu. Aplicar os 18 px encolhia o verso a 19
-    # px na prova visual, contra os ~28 do desenho atual. Sem alvo, a
-    # regra do carimbo (o teto) continua valendo — é o comportamento
-    # conhecido, e o número certo depende de o arquiteto medir o
-    # ALGARISMO isolado do verso (a minha janela pega o bloco todo).
-    if not verso:
-        pr.alvo_altura_algarismo_px = 33.0
+    # A rodada anterior deixou o verso sem alvo porque a ordem dizia 18
+    # px (p85 sobre 426 glifos, contaminado pelo texto miúdo do
+    # disclaimer) e a minha própria contramedição dizia 57 (a janela
+    # pegava o bloco do preço junto com a manchete "ATÉ … Só Hoje").
+    # As duas estavam erradas; a terceira medição — dilatar o vermelho,
+    # achar cada carimbo, medir o maior componente branco DENTRO dele —
+    # dá 33 nos dois lados, e é ela que vale.
+    #
+    # **A LEI CORRIGIDA (L31): a face muda o que depende do ESPAÇO, não
+    # o que depende do LEITOR.** A área da foto varia (+41% no verso,
+    # que tem mais espaço por célula); o corpo do texto não varia — a
+    # distância de leitura é a mesma nas duas faces.
+    pr.alvo_altura_algarismo_px = 33.0
     return [im, nm, pr]
 
 
