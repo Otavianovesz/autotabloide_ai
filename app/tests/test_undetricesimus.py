@@ -284,9 +284,11 @@ def test_tricesimus_primus_a_variante_usa_ou():
         ("Tomate", "Salada ou Italiano")
     assert sem_conector_orfao("Maçã Fuji", "e Gala") == \
         ("Maçã", "Fuji ou Gala")
-    # nome de uma palavra só: o conector vira "ou" e nada se perde
+    # nome de uma palavra só: a variante SOBE ao nome (corrigido na
+    # TRICESIMUS-SECUNDUS §3.11 — deixar "ou Murcot" abrindo o
+    # descritor era o mesmo conector órfão, do outro lado)
     assert sem_conector_orfao("Mexerica", "e Murcot") == \
-        ("Mexerica", "ou Murcot")
+        ("Mexerica ou Murcot", None)
     # o "e" no MEIO é frase legítima, não se toca
     assert sem_conector_orfao("Granola", "banana e canela · 250 g") == \
         ("Granola", "banana e canela · 250 g")
@@ -392,6 +394,45 @@ def test_l30_alvos_medidos_sobrevivem_ao_banco():
     volta = Regiao.from_dict(r.to_dict())
     assert volta.alvo_area_tinta_px == 19413.0
     assert volta.alvo_altura_algarismo_px == 33.0
+
+
+# ============================== TRICESIMUS-SECUNDUS (a Sexta, 25 itens)
+# L32 e o conector que ficou órfão do outro lado
+# ======================================================================
+
+
+def test_l32_nao_multiplica_quem_tem_quantidade_declarada():
+    """**L32** — o dono: *"os dois ovos com essa coisa de multiplicar —
+    parece que tem mais ovo do que é pra ter"*. Bandeja de 30 unidades
+    desenhada duas vezes faz o cliente ler 60; vale igual para o que se
+    vende por peso (o alho). O leque continua servindo ao produto de
+    unidade indivisível com silhueta estreita."""
+    from app.rendering.compositor import DadosProduto, quantidade_declarada
+
+    assert quantidade_declarada(
+        DadosProduto("Ovo Branco", descritor="Campo Verde Pvc Bdj · 30 un"))
+    assert quantidade_declarada(
+        DadosProduto("Ovo Branco", descritor="Red Pvc Bdj", unidade="20 un"))
+    assert quantidade_declarada(DadosProduto("Alho Roxo", unidade="kg"))
+    assert quantidade_declarada(DadosProduto("Batata Noiva", descritor="kg"))
+    # o que o leque EXISTE para servir continua passando
+    assert not quantidade_declarada(
+        DadosProduto("Azeite Andorinha", descritor="lata 200 mL"))
+    assert not quantidade_declarada(
+        DadosProduto("Extrato de Tomate", descritor="pote 300 g"))
+
+
+def test_tsecundus_o_conector_nao_fica_orfao_de_nenhum_lado():
+    """§3.11: com nome de UMA palavra a regra da variante tinha entrado
+    pela metade — o descritor abria com "ou Murcot". A variante sobe ao
+    NOME e o descritor fica livre para a unidade."""
+    from app.rendering.nome_fit import sem_conector_orfao
+
+    assert sem_conector_orfao("Mexerica", "e Murcot") == \
+        ("Mexerica ou Murcot", None)
+    # com duas palavras, a primeira variante desce (o caso do Tomate)
+    assert sem_conector_orfao("Tomate Salada", "e Italiano") == \
+        ("Tomate", "Salada ou Italiano")
 
 
 # ================================================================== §5.4

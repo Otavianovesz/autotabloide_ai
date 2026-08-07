@@ -365,6 +365,24 @@ def r14_a_face_bate_com_a_peca_publicada(ctx) -> list[str]:
     return ruins
 
 
+def r15_nao_multiplica_quem_tem_quantidade(ctx) -> list[str]:
+    """**L32** (TRICESIMUS-SECUNDUS §2.4) — o dono, olhando a Sexta:
+    *"os dois ovos com essa coisa de multiplicar — parece que tem mais
+    ovo do que é pra ter"*. Bandeja de 30 unidades desenhada duas vezes
+    faz o cliente ler 60. Vale igual para o que se vende por peso.
+
+    A regra vai para os OITO porque o defeito é do motor, não da Sexta
+    — é o crônico que o §7 da ordem nomeia: lei que fica na ordem em
+    vez de ir para a rede volta no próximo encarte."""
+    from app.rendering.compositor import quantidade_declarada
+
+    if not quantidade_declarada(ctx["dados"]):
+        return []
+    return [f"{sid}: o produto tem quantidade declarada e mesmo assim "
+            "foi multiplicado (o leque contradiz o número ao lado)"
+            for sid, multiplicou in ctx["multiplicou"].items() if multiplicou]
+
+
 # DÍVIDA DECLARADA (DUODETRICESIMUS §14): o que a rede achou HOJE e
 # cujo conserto é de LAYOUT/arte, não de motor — fica NOMEADA aqui,
 # nunca escondida. Defeito novo deixa o teste vermelho; dívida
@@ -408,7 +426,9 @@ REGRAS = [r1_hifen_nao_parte_marca, r2_nenhum_nome_elipsado,
           # TRICESIMUS — o preço é constante e a hierarquia tem banda
           r13_corpo_constante_e_hierarquia,
           # L30/L31 — a face bate com a peça publicada (por subtração)
-          r14_a_face_bate_com_a_peca_publicada]
+          r14_a_face_bate_com_a_peca_publicada,
+          # L32 — não se multiplica quem já tem quantidade declarada
+          r15_nao_multiplica_quem_tem_quantidade]
 
 
 # ============================================================== o motor
@@ -532,6 +552,12 @@ def _contexto(ldef, pagina, img, dados):
         "alvos_da_face": alvos_face,
         "tintas": tintas,
         "k_regua": k_regua,
+        # L32: o dado da prova e quem foi multiplicado pelo leque
+        "dados": d0,
+        "multiplicou": {
+            s.id: any(r.uid in getattr(img, "_multiplicou", ())
+                      for r in s.regioes)
+            for s in pagina.slots if s.id in dados},
     }
 
 

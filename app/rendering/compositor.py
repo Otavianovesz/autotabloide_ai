@@ -8,6 +8,7 @@ no tamanho físico exato definido pelo LayoutDef.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -483,6 +484,32 @@ def _centroide_x(img: Image.Image) -> float:
     return (soma / peso) / 40.0 * img.width
 
 
+_RE_QUANTIDADE = re.compile(
+    r"\b(\d+\s*(?:un|und|unid|unidades?|uni)\b"       # "30 un", "20 Und."
+    r"|\d+(?:[.,]\d+)?\s*(?:kg|quilos?)\b"            # vendido por peso
+    r"|\bkg\b|\bund\.?\b|\bunidade\b)", re.IGNORECASE)
+
+
+def quantidade_declarada(dados: "DadosProduto") -> bool:
+    """**L32 — NÃO SE MULTIPLICA O QUE JÁ TEM QUANTIDADE DECLARADA.**
+
+    O dono, olhando a Sexta: *"os dois ovos com essa coisa de
+    multiplicar — parece que tem mais ovo do que é pra ter"*. O leque
+    desenhou DUAS bandejas de 30 unidades e o cliente lê 60. Vale
+    igual para o alho e para tudo que se vende por peso: multiplicar a
+    foto contradiz o número escrito ao lado dela.
+
+    O leque (L19) continua servindo ao que ele foi feito: produto de
+    unidade indivisível (garrafa, lata, pote) com silhueta estreita
+    demais para a zona.
+    """
+    texto = " ".join(str(t) for t in (
+        getattr(dados, "descritor", None) or "",
+        getattr(dados, "unidade", None) or "",
+        getattr(dados, "nome", None) or "") if t)
+    return bool(_RE_QUANTIDADE.search(texto))
+
+
 def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: int) -> None:
     pares = _carregar_imagens(dados)
     if not pares:
@@ -558,6 +585,7 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                 eh_heroi = reg.uid in getattr(base, "_heroi_uids", ())
                 if (img.mode == "RGBA" and not eh_heroi
                         and not getattr(reg, "sem_leque", False)
+                        and not quantidade_declarada(dados)      # L32
                         and reg.uid not in getattr(base, "_q1_uids", ())):
                     frac = _fracao_de_tinta(img)
                     tinta_un = frac * nw * nh / max(rw * rh, 1)
@@ -570,6 +598,10 @@ def _desenhar_imagem(base: Image.Image, reg: Regiao, dados: DadosProduto, dpi: i
                         if conj is not None:
                             img = conj
                             nw, nh = img.width, img.height
+                            # a rede dos oito mede o que ACONTECEU (L32)
+                            if not hasattr(base, "_multiplicou"):
+                                base._multiplicou = set()
+                            base._multiplicou.add(reg.uid)
                 if img.size != (nw, nh):
                     img = img.resize((nw, nh))
                 # VICESIMUS-PRIMUS/P1: a FOTO É ÓPTICA — centra pela

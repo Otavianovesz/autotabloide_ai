@@ -99,7 +99,11 @@ def sem_conector_orfao(nome: str, descritor: str | None
     nome_toks = (nome or "").split()
     if len(nome_toks) >= 2:
         return " ".join(nome_toks[:-1]), f"{nome_toks[-1]} ou {resto}"
-    return nome, f"ou {resto}"
+    # TRICESIMUS-SECUNDUS §3.11: nome de UMA palavra — a variante sobe
+    # ao NOME ("Mexerica ou Murcot"). Deixar "ou Murcot" abrindo o
+    # descritor era o conector órfão de novo, agora do outro lado: a
+    # regra tinha entrado pela metade.
+    return f"{nome} ou {resto}", None
 
 
 def _juntar_descritor(partes: list[str], existente: str | None) -> str | None:
